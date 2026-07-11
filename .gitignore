@@ -35,8 +35,10 @@ backend-fastapi/nota.txt
 /backend-fastapi/dist/
 /backend-fastapi/build
 /backend-fastapi/static
-/backend-fastapi/alembic
-backend-fastapi/alembic.ini
+# Migrations Alembic são versionadas (viajam com o código p/ atualizar o banco).
+# Apenas os caches são ignorados.
+/backend-fastapi/alembic/__pycache__/
+/backend-fastapi/alembic/versions/__pycache__/
 seeds/
 /backend-fastapi/run.py
 /backend-fastapi/run.spec
