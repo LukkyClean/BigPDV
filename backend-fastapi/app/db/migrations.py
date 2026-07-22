@@ -13,6 +13,7 @@ from alembic.config import Config
 from alembic.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from sqlalchemy import inspect
+from sqlalchemy.exc import OperationalError
 
 from app.core.config import settings
 from app.db.session import engine
@@ -100,8 +101,19 @@ def aplicar_migracoes():
             )
             command.stamp(alembic_cfg, "head")
         else:
-            command.upgrade(alembic_cfg, "head")
-
+            try:
+                command.upgrade(alembic_cfg, "head")
+            except OperationalError as exc:
+                msg = str(exc).lower()
+                if "already exists" in msg or "duplicate column" in msg:
+                    logger.warning(
+                        "Upgrade encontrou schema já existente (create_all): %s. "
+                        "Registrando o banco na head via stamp.",
+                        exc,
+                    )
+                    command.stamp(alembic_cfg, "head")
+                else:
+                    raise
         revisao_nova = _obter_revisao_atual()
         if revisao_nova != revisao_atual:
             logger.info("Banco atualizado: %s -> %s", revisao_atual, revisao_nova)
