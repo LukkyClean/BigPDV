@@ -1,14 +1,17 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import { Banknote, Receipt, ShoppingCart, Wrench, TriangleAlert } from 'lucide-vue-next';
+import { Banknote, Receipt, ShoppingCart, Wrench, TriangleAlert, Download } from 'lucide-vue-next';
 
-import { formatCurrency } from '@/shared/utils/finance';
+import { formatCurrency, formatCentsToInput } from '@/shared/utils/finance';
+import { saveCsv } from '@/shared/utils/csv';
+import { useToast } from '@/shared/composables/useToast';
 import { useFaturamentoQuery } from '../composables/useFaturamentoQuery';
 import PeriodFilter from '../components/PeriodFilter.vue';
 import KpiCard from '../components/KpiCard.vue';
 import FaturamentoChart from '../components/FaturamentoChart.vue';
 import FormasPagamentoDonut from '../components/FormasPagamentoDonut.vue';
 import FaturamentoTabela from '../components/FaturamentoTabela.vue';
+import RankingSection from '../components/RankingSection.vue';
 
 const inicio = ref('');
 const fim = ref('');
@@ -18,11 +21,42 @@ function onPeriodo(r: { inicio: string; fim: string }) {
 }
 
 const { data, isLoading, isError } = useFaturamentoQuery(inicio, fim);
+const toast = useToast();
+
+/** Exporta o detalhamento por dia (dias com movimento) como CSV e abre no Excel. */
+async function exportarCsv() {
+  const d = data.value;
+  if (!d) return;
+  const linhas = d.por_dia
+    .filter((x) => x.total_geral > 0)
+    .map((x) => [
+      x.dia,
+      formatCentsToInput(x.total_vendas),
+      formatCentsToInput(x.total_os),
+      formatCentsToInput(x.total_geral),
+    ]);
+  const caminho = await saveCsv(
+    `faturamento_${d.inicio}_a_${d.fim}.csv`,
+    ['Dia', 'Vendas (R$)', 'OS (R$)', 'Total (R$)'],
+    linhas,
+  );
+  if (caminho) toast.success(`Planilha salva em: ${caminho}`);
+}
 </script>
 
 <template>
   <div class="p-6 max-w-7xl mx-auto space-y-5">
-    <PeriodFilter @change="onPeriodo" />
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <PeriodFilter @change="onPeriodo" />
+      <button
+        type="button"
+        :disabled="!data"
+        class="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-slate-200 text-xs font-semibold text-slate-600 hover:border-brand-primary hover:text-brand-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+        @click="exportarCsv"
+      >
+        <Download :size="14" /> Exportar CSV
+      </button>
+    </div>
 
     <div
       v-if="isError"
@@ -77,6 +111,9 @@ const { data, isLoading, isError } = useFaturamentoQuery(inicio, fim);
           </div>
         </div>
       </div>
+
+      <!-- Ranking por funcionário -->
+      <RankingSection :inicio="inicio" :fim="fim" />
 
       <!-- Tabela -->
       <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">

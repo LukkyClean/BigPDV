@@ -34,3 +34,21 @@ class RelatorioFaturamento(BaseModel):
     qtd_os: int = Field(..., description="Quantidade de OS finalizadas")
     por_dia: list[FaturamentoDiaItem] = Field(default_factory=list)
     formas_pagamento: list[FormaPagamentoResumo] = Field(default_factory=list)
+
+
+class RankingFuncionarioItem(BaseModel):
+    """Faturamento de um funcionario no periodo (base da comissao)."""
+    funcionario_id: int
+    nome: str
+    faturamento_vendas: int = Field(..., description="Vendas finalizadas do funcionario (centavos)")
+    faturamento_os: int = Field(..., description="OS finalizadas do funcionario (centavos)")
+    faturamento_total: int = Field(..., description="Vendas + OS (centavos)")
+    qtd_vendas: int
+    qtd_os: int
+
+
+class RelatorioRanking(BaseModel):
+    """Ranking de funcionarios por faturamento no periodo."""
+    inicio: date
+    fim: date
+    itens: list[RankingFuncionarioItem] = Field(default_factory=list)

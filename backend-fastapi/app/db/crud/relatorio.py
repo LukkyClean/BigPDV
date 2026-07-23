@@ -71,3 +71,65 @@ def get_faturamento_os_por_dia(
         .group_by(func.date(OSModel.data_criacao))
     )
     return db.execute(stmt).all()
+
+
+def get_ranking_faturamento(
+    db: Session, data_inicio: datetime, data_fim: datetime, empresa_id: int, limit: int = 50
+) -> Sequence:
+    """Faturamento por funcionario (vendas + OS finalizadas) no periodo, ordenado desc.
+
+    Base do futuro relatorio de comissao. Os subselects somam por funcionario e o
+    join com Funcionario restringe a empresa e traz o nome.
+    """
+    vendas_sub = (
+        select(
+            Venda.funcionario_id.label("fid"),
+            func.coalesce(func.sum(Venda.total), 0).label("vendas_valor"),
+            func.count(Venda.id).label("vendas_qtd"),
+        )
+        .where(
+            and_(
+                Venda.status == VendaStatus.FINALIZADA,
+                Venda.criado_em >= data_inicio,
+                Venda.criado_em <= data_fim,
+            )
+        )
+        .group_by(Venda.funcionario_id)
+        .subquery()
+    )
+    os_sub = (
+        select(
+            OSModel.funcionario_id.label("fid"),
+            func.coalesce(func.sum(OSModel.valor_total), 0).label("os_valor"),
+            func.count(OSModel.id).label("os_qtd"),
+        )
+        .where(
+            and_(
+                OSModel.status == OrdemServicoStatus.FINALIZADA,
+                OSModel.data_criacao >= data_inicio,
+                OSModel.data_criacao <= data_fim,
+            )
+        )
+        .group_by(OSModel.funcionario_id)
+        .subquery()
+    )
+
+    vendas_valor = func.coalesce(vendas_sub.c.vendas_valor, 0)
+    os_valor = func.coalesce(os_sub.c.os_valor, 0)
+
+    stmt = (
+        select(
+            Funcionario.id,
+            Funcionario.nome,
+            vendas_valor.label("vendas_valor"),
+            func.coalesce(vendas_sub.c.vendas_qtd, 0).label("vendas_qtd"),
+            os_valor.label("os_valor"),
+            func.coalesce(os_sub.c.os_qtd, 0).label("os_qtd"),
+        )
+        .outerjoin(vendas_sub, vendas_sub.c.fid == Funcionario.id)
+        .outerjoin(os_sub, os_sub.c.fid == Funcionario.id)
+        .where(and_(Funcionario.empresa_id == empresa_id, Funcionario.ativo == True))
+        .order_by((vendas_valor + os_valor).desc())
+        .limit(limit)
+    )
+    return db.execute(stmt).all()

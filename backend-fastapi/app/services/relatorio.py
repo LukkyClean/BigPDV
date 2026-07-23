@@ -14,6 +14,8 @@ from app.schemas.relatorio import (
     RelatorioFaturamento,
     FaturamentoDiaItem,
     FormaPagamentoResumo,
+    RelatorioRanking,
+    RankingFuncionarioItem,
 )
 
 
@@ -79,3 +81,34 @@ def get_faturamento(db: Session, inicio: date, fim: date, empresa_id: int) -> Re
         por_dia=por_dia,
         formas_pagamento=formas,
     )
+
+
+def get_ranking(db: Session, inicio: date, fim: date, empresa_id: int) -> RelatorioRanking:
+    """Ranking de funcionarios por faturamento (vendas + OS finalizadas) no periodo.
+
+    Só entram funcionarios que faturaram algo (total > 0), ja ordenados desc pelo crud.
+    """
+    dt_inicio = datetime.combine(inicio, datetime.min.time())
+    dt_fim = datetime.combine(fim, datetime.max.time())
+
+    rows = relatorio_crud.get_ranking_faturamento(db, dt_inicio, dt_fim, empresa_id)
+    itens: list[RankingFuncionarioItem] = []
+    for r in rows:
+        vendas = r.vendas_valor or 0
+        os = r.os_valor or 0
+        total = vendas + os
+        if total <= 0:
+            continue
+        itens.append(
+            RankingFuncionarioItem(
+                funcionario_id=r.id,
+                nome=r.nome,
+                faturamento_vendas=vendas,
+                faturamento_os=os,
+                faturamento_total=total,
+                qtd_vendas=r.vendas_qtd or 0,
+                qtd_os=r.os_qtd or 0,
+            )
+        )
+
+    return RelatorioRanking(inicio=inicio, fim=fim, itens=itens)

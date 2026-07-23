@@ -47,13 +47,28 @@ def _forma_pagamento(client, header):
     return r.json()["id"]
 
 
-def _os_finalizada(client, header, cliente_id, fp_id, numero_serie, valor):
+def _funcionario(client, header):
     payload = {
+        "nome": "Vendedor Teste", "cpf": "11122233344", "contato": "11999999999",
+        "usuario": {"nome": "vendedor1", "email": "vend1@empresa.com", "senha": "SenhaForte123!"},
+        "endereco": [{"logradouro": "Rua X", "numero": "1", "cep": "12345-678",
+                      "bairro": "Centro", "cidade": "Lab City", "estado": "SP"}],
+    }
+    r = client.post("/api/v1/funcionarios/", json=payload, headers=header)
+    assert r.status_code in (200, 201), r.text
+    return r.json()["id"]
+
+
+def _os_finalizada(client, header, cliente_id, fp_id, numero_serie, valor, funcionario_id=None):
+    objeto_payload = {
         "cliente_id": cliente_id, "prioridade": "NORMAL", "defeito_relatado": "Não liga",
         "dados_adicionais": {},
         "objeto": {"marca": "Dell", "modelo": "Inspiron", "numero_serie": numero_serie, "dados_adicionais": {}},
         "itens": [{"tipo": "SERVICO", "nome": "Reparo", "unidade_medida": "UN", "quantidade": 1, "valor_unitario": valor}],
     }
+    if funcionario_id is not None:
+        objeto_payload["funcionario_id"] = funcionario_id
+    payload = objeto_payload
     r = client.post("/api/v1/ordens-servico/", json=payload, headers=header)
     assert r.status_code == status.HTTP_201_CREATED, r.text
     numero = r.json()["numero_os"]
@@ -102,3 +117,22 @@ def test_faturamento_periodo_vazio_zera(client, db_session):
     assert body["faturamento_total"] == 0
     assert body["ticket_medio"] == 0
     assert body["qtd_os"] == 0 and body["qtd_vendas"] == 0
+
+
+def test_ranking_funcionario_soma_faturamento(client, db_session):
+    header = _auth(client)
+    cliente_id = _cliente(client, header)
+    fp_id = _forma_pagamento(client, header)
+    func_id = _funcionario(client, header)
+    _os_finalizada(client, header, cliente_id, fp_id, "SERIAL-RK", 20000, funcionario_id=func_id)
+
+    hoje = datetime.utcnow().date().isoformat()
+    r = client.get(f"/api/v1/relatorios/ranking-funcionarios?inicio={hoje}&fim={hoje}", headers=header)
+    assert r.status_code == 200, r.text
+    itens = r.json()["itens"]
+    alvo = next((i for i in itens if i["funcionario_id"] == func_id), None)
+    assert alvo is not None, itens
+    assert alvo["faturamento_os"] == 20000
+    assert alvo["faturamento_vendas"] == 0
+    assert alvo["faturamento_total"] == 20000
+    assert alvo["qtd_os"] == 1

@@ -8,6 +8,7 @@ export function useFaturamentoQuery(inicio: MaybeRef<string>, fim: MaybeRef<stri
   return useQuery({
     queryKey: computed(() => reportKeys.faturamento(unref(inicio), unref(fim))),
     queryFn: () => getFaturamento(unref(inicio), unref(fim)),
+    enabled: computed(() => !!unref(inicio) && !!unref(fim)),
     staleTime: 1000 * 60, // 1 min — relatório não muda a cada segundo
   });
 }
