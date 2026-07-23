@@ -5,6 +5,7 @@
 # ---------------------------------------------------------------------------
 
 from datetime import date
+from typing import Optional
 from pydantic import BaseModel, Field
 
 
@@ -52,3 +53,27 @@ class RelatorioRanking(BaseModel):
     inicio: date
     fim: date
     itens: list[RankingFuncionarioItem] = Field(default_factory=list)
+
+
+class ComissaoFuncionarioItem(BaseModel):
+    """Comissao apurada de um funcionario no periodo."""
+    funcionario_id: int
+    nome: str
+    faturamento_vendas: int = Field(..., description="Base de vendas (centavos)")
+    faturamento_os: int = Field(..., description="Base de OS (centavos)")
+    faturamento_total: int
+    percentual_venda: Optional[int] = Field(None, description="Taxa aplicada em vendas (basis points); None = sem taxa")
+    percentual_servico: Optional[int] = Field(None, description="Taxa aplicada em serviços (basis points)")
+    comissao_vendas: int = Field(..., description="Comissao de vendas (centavos)")
+    comissao_servico: int = Field(..., description="Comissao de serviços (centavos)")
+    comissao_total: int = Field(..., description="Comissao total a pagar (centavos)")
+    meta_mensal: Optional[int] = Field(None, description="Meta do funcionario/cargo (centavos)")
+    meta_atingida_percentual: Optional[float] = Field(None, description="% da meta atingido no período")
+
+
+class RelatorioComissao(BaseModel):
+    """Relatorio de comissao por funcionario no periodo."""
+    inicio: date
+    fim: date
+    total_comissao: int = Field(..., description="Soma das comissões — total a pagar (centavos)")
+    itens: list[ComissaoFuncionarioItem] = Field(default_factory=list)

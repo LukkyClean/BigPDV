@@ -12,6 +12,7 @@ import FaturamentoChart from '../components/FaturamentoChart.vue';
 import FormasPagamentoDonut from '../components/FormasPagamentoDonut.vue';
 import FaturamentoTabela from '../components/FaturamentoTabela.vue';
 import RankingSection from '../components/RankingSection.vue';
+import ComissaoSection from '../components/ComissaoSection.vue';
 
 const inicio = ref('');
 const fim = ref('');
@@ -114,6 +115,9 @@ async function exportarCsv() {
 
       <!-- Ranking por funcionário -->
       <RankingSection :inicio="inicio" :fim="fim" />
+
+      <!-- Comissão por funcionário -->
+      <ComissaoSection :inicio="inicio" :fim="fim" />
 
       <!-- Tabela -->
       <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">

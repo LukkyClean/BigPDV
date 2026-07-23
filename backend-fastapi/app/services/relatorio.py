@@ -16,6 +16,8 @@ from app.schemas.relatorio import (
     FormaPagamentoResumo,
     RelatorioRanking,
     RankingFuncionarioItem,
+    RelatorioComissao,
+    ComissaoFuncionarioItem,
 )
 
 
@@ -112,3 +114,55 @@ def get_ranking(db: Session, inicio: date, fim: date, empresa_id: int) -> Relato
         )
 
     return RelatorioRanking(inicio=inicio, fim=fim, itens=itens)
+
+
+def get_comissao(db: Session, inicio: date, fim: date, empresa_id: int) -> RelatorioComissao:
+    """
+    Comissao apurada por funcionario no periodo.
+
+    Base LIQUIDA (Venda.total e OS.valor_total ja sao pos-desconto), só FINALIZADO.
+    Taxa resolvida por cascata funcionario -> cargo (no crud). Comissao = base * taxa,
+    com a taxa em basis points (500 = 5,00% -> divide por 10000).
+    Metas/faixas/gatilho ficam para a F3c; aqui a meta é só informativa (% atingido).
+    """
+    dt_inicio = datetime.combine(inicio, datetime.min.time())
+    dt_fim = datetime.combine(fim, datetime.max.time())
+
+    rows = relatorio_crud.get_comissao_base(db, dt_inicio, dt_fim, empresa_id)
+    itens: list[ComissaoFuncionarioItem] = []
+    total_comissao = 0
+    for r in rows:
+        vendas = r.vendas_valor or 0
+        os = r.os_valor or 0
+        fat_total = vendas + os
+        if fat_total <= 0:
+            continue  # só quem faturou entra na apuração
+
+        rate_v = r.rate_venda  # basis points ou None
+        rate_s = r.rate_servico
+        comissao_vendas = round(vendas * (rate_v or 0) / 10000)
+        comissao_servico = round(os * (rate_s or 0) / 10000)
+        comissao_total = comissao_vendas + comissao_servico
+        total_comissao += comissao_total
+
+        meta = r.meta
+        meta_pct = round(fat_total / meta * 100, 1) if meta else None
+
+        itens.append(
+            ComissaoFuncionarioItem(
+                funcionario_id=r.id,
+                nome=r.nome,
+                faturamento_vendas=vendas,
+                faturamento_os=os,
+                faturamento_total=fat_total,
+                percentual_venda=rate_v,
+                percentual_servico=rate_s,
+                comissao_vendas=comissao_vendas,
+                comissao_servico=comissao_servico,
+                comissao_total=comissao_total,
+                meta_mensal=meta,
+                meta_atingida_percentual=meta_pct,
+            )
+        )
+
+    return RelatorioComissao(inicio=inicio, fim=fim, total_comissao=total_comissao, itens=itens)

@@ -5,6 +5,7 @@ import {
   type RelatorioFaturamento,
 } from './schemas/faturamento.schema';
 import { RelatorioRankingSchema, type RelatorioRanking } from './schemas/ranking.schema';
+import { RelatorioComissaoSchema, type RelatorioComissao } from './schemas/comissao.schema';
 
 /**
  * Faturamento (vendas + OS finalizadas) no intervalo [inicio, fim].
@@ -19,4 +20,10 @@ export async function getFaturamento(inicio: string, fim: string): Promise<Relat
 export async function getRanking(inicio: string, fim: string): Promise<RelatorioRanking> {
   const { data } = await api.get('/relatorios/ranking-funcionarios', { params: { inicio, fim } });
   return safeParseResponse(RelatorioRankingSchema, data, 'getRanking');
+}
+
+/** Comissão apurada por funcionário no intervalo (cascata funcionário→cargo). */
+export async function getComissao(inicio: string, fim: string): Promise<RelatorioComissao> {
+  const { data } = await api.get('/relatorios/comissoes', { params: { inicio, fim } });
+  return safeParseResponse(RelatorioComissaoSchema, data, 'getComissao');
 }

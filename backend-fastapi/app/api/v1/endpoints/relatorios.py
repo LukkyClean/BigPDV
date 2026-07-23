@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.core.depends import check_permission, get_db
-from app.schemas.relatorio import RelatorioFaturamento, RelatorioRanking
+from app.schemas.relatorio import RelatorioFaturamento, RelatorioRanking, RelatorioComissao
 from app.services import relatorio as relatorio_service
 
 router = APIRouter()
@@ -55,3 +55,22 @@ def obter_ranking_funcionarios(
     fim: date = Query(..., description="Data final do periodo (YYYY-MM-DD)"),
 ):
     return relatorio_service.get_ranking(db, inicio, fim, user_token["empresa_id"])
+
+
+@router.get(
+    "/comissoes",
+    response_model=RelatorioComissao,
+    summary="Relatorio de comissao por funcionario",
+    description=(
+        "Comissao apurada por funcionario no periodo: base liquida (vendas + OS "
+        "finalizadas), taxa resolvida pela cascata funcionario -> cargo, e total a pagar."
+    ),
+)
+def obter_comissoes(
+    user_token: dict = Depends(check_permission(required_permission=module_permission)),
+    *,
+    db: Session = Depends(get_db),
+    inicio: date = Query(..., description="Data inicial do periodo (YYYY-MM-DD)"),
+    fim: date = Query(..., description="Data final do periodo (YYYY-MM-DD)"),
+):
+    return relatorio_service.get_comissao(db, inicio, fim, user_token["empresa_id"])

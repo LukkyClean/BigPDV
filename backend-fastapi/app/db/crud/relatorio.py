@@ -17,6 +17,7 @@ from sqlalchemy import select, func, and_, or_
 from app.db.models.venda import Venda
 from app.db.models.ordem_servico import OrdemServico as OSModel
 from app.db.models.funcionario import Funcionario
+from app.db.models.cargo import Cargo
 from app.core.enum import VendaStatus, OrdemServicoStatus
 
 
@@ -128,6 +129,74 @@ def get_ranking_faturamento(
         )
         .outerjoin(vendas_sub, vendas_sub.c.fid == Funcionario.id)
         .outerjoin(os_sub, os_sub.c.fid == Funcionario.id)
+        .where(and_(Funcionario.empresa_id == empresa_id, Funcionario.ativo == True))
+        .order_by((vendas_valor + os_valor).desc())
+        .limit(limit)
+    )
+    return db.execute(stmt).all()
+
+
+def get_comissao_base(
+    db: Session, data_inicio: datetime, data_fim: datetime, empresa_id: int, limit: int = 200
+) -> Sequence:
+    """Base da comissao por funcionario: faturamento (vendas/OS finalizadas) +
+    a TAXA resolvida pela cascata funcionario -> cargo (COALESCE) e a meta.
+
+    Percentuais em basis points (500 = 5,00%). Meta em centavos. O calculo em si
+    (aplicar a taxa) fica no service.
+    """
+    vendas_sub = (
+        select(
+            Venda.funcionario_id.label("fid"),
+            func.coalesce(func.sum(Venda.total), 0).label("vendas_valor"),
+        )
+        .where(
+            and_(
+                Venda.status == VendaStatus.FINALIZADA,
+                Venda.criado_em >= data_inicio,
+                Venda.criado_em <= data_fim,
+            )
+        )
+        .group_by(Venda.funcionario_id)
+        .subquery()
+    )
+    os_sub = (
+        select(
+            OSModel.funcionario_id.label("fid"),
+            func.coalesce(func.sum(OSModel.valor_total), 0).label("os_valor"),
+        )
+        .where(
+            and_(
+                OSModel.status == OrdemServicoStatus.FINALIZADA,
+                OSModel.data_criacao >= data_inicio,
+                OSModel.data_criacao <= data_fim,
+            )
+        )
+        .group_by(OSModel.funcionario_id)
+        .subquery()
+    )
+
+    vendas_valor = func.coalesce(vendas_sub.c.vendas_valor, 0)
+    os_valor = func.coalesce(os_sub.c.os_valor, 0)
+
+    stmt = (
+        select(
+            Funcionario.id,
+            Funcionario.nome,
+            vendas_valor.label("vendas_valor"),
+            os_valor.label("os_valor"),
+            # Cascata: taxa/meta do funcionario; se nula, herda do cargo.
+            func.coalesce(
+                Funcionario.comissao_venda_percentual, Cargo.comissao_venda_percentual
+            ).label("rate_venda"),
+            func.coalesce(
+                Funcionario.comissao_servico_percentual, Cargo.comissao_servico_percentual
+            ).label("rate_servico"),
+            func.coalesce(Funcionario.meta_mensal, Cargo.meta_mensal).label("meta"),
+        )
+        .outerjoin(vendas_sub, vendas_sub.c.fid == Funcionario.id)
+        .outerjoin(os_sub, os_sub.c.fid == Funcionario.id)
+        .outerjoin(Cargo, Cargo.id == Funcionario.cargo_id)
         .where(and_(Funcionario.empresa_id == empresa_id, Funcionario.ativo == True))
         .order_by((vendas_valor + os_valor).desc())
         .limit(limit)

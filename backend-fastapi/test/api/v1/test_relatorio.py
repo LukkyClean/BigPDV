@@ -136,3 +136,38 @@ def test_ranking_funcionario_soma_faturamento(client, db_session):
     assert alvo["faturamento_vendas"] == 0
     assert alvo["faturamento_total"] == 20000
     assert alvo["qtd_os"] == 1
+
+
+def test_comissao_calcula_pela_taxa_do_cargo(client, db_session):
+    header = _auth(client)
+    cliente_id = _cliente(client, header)
+    fp_id = _forma_pagamento(client, header)
+
+    # Cargo com 5% em vendas e 8% em serviços (basis points)
+    c = client.post("/api/v1/cargos/", json={
+        "nome": "Tecnico", "permissoes": {},
+        "comissao_venda_percentual": 500, "comissao_servico_percentual": 800,
+    }, headers=header)
+    assert c.status_code in (200, 201), c.text
+    cargo_id = c.json()["id"]
+
+    func_id = _funcionario(client, header)
+    lk = client.put(f"/api/v1/funcionarios/{func_id}/cargo?cargo_id={cargo_id}", headers=header)
+    assert lk.status_code == 200, lk.text
+
+    # OS de R$1.000,00 finalizada, atribuída ao funcionário → base de serviço
+    _os_finalizada(client, header, cliente_id, fp_id, "SERIAL-COM", 100000, funcionario_id=func_id)
+
+    hoje = datetime.utcnow().date().isoformat()
+    r = client.get(f"/api/v1/relatorios/comissoes?inicio={hoje}&fim={hoje}", headers=header)
+    assert r.status_code == 200, r.text
+    body = r.json()
+
+    alvo = next((i for i in body["itens"] if i["funcionario_id"] == func_id), None)
+    assert alvo is not None, body["itens"]
+    # 8% de 100000 = 8000 (serviço); vendas 0
+    assert alvo["percentual_servico"] == 800
+    assert alvo["comissao_servico"] == 8000
+    assert alvo["comissao_vendas"] == 0
+    assert alvo["comissao_total"] == 8000
+    assert body["total_comissao"] >= 8000
