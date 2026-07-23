@@ -107,6 +107,17 @@ const homeRoutes: RouteRecordRaw[] = [
           requiresAuth: true,
         }
       },
+      {
+        path: '/relatorios',
+        name: 'reports',
+        component: () => import('@/modules/reports/views/ReportsDashboard.vue'),
+        meta: {
+          title: 'Relatórios',
+          subtitle: 'Faturamento e desempenho no período.',
+          tabId: 'reports',
+          requiresAuth: true,
+        },
+      },
     ],
   },
 ];
