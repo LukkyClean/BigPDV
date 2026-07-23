@@ -23,7 +23,16 @@ class CargoBase(BaseModel):
         default_factory=dict, # Usar default_factory=dict para valores mutáveis
         description="Objeto JSON definindo as regras de acesso"
     )
-    
+
+    # Comissão padrão do cargo (basis points: 500 = 5,00%). Meta em centavos.
+    comissao_venda_percentual: Optional[int] = Field(
+        None, ge=0, le=10000, description="Comissão sobre vendas (basis points: 500 = 5,00%)"
+    )
+    comissao_servico_percentual: Optional[int] = Field(
+        None, ge=0, le=10000, description="Comissão sobre serviços/OS (basis points: 500 = 5,00%)"
+    )
+    meta_mensal: Optional[int] = Field(None, ge=0, description="Meta mensal de faturamento (centavos)")
+
     model_config = ConfigDict(from_attributes=True)
 
 # =========================
@@ -65,6 +74,9 @@ class CargoUpdate(BaseModel):
     nome: Optional[str] = Field(None, max_length=50)
     # Permite atualizar todo o dicionário de permissões ou deixar nulo
     permissoes: Optional[Dict[str, Any]] = Field(None)
+    comissao_venda_percentual: Optional[int] = Field(None, ge=0, le=10000)
+    comissao_servico_percentual: Optional[int] = Field(None, ge=0, le=10000)
+    meta_mensal: Optional[int] = Field(None, ge=0)
 
     model_config = ConfigDict(
         from_attributes=True,

@@ -9,6 +9,7 @@ import { Check, X, XCircle } from 'lucide-vue-next';
 
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
 import BaseInput from '@/shared/components/ui/BaseInput/BaseInput.vue';
+import BaseMoneyInput from '@/shared/components/ui/BaseMoneyInput/MoneyInput.vue';
 
 import { usePositionModal } from '../composables/usePositionModal';
 import { usePositionFormProvider } from '../composables/usePositionForm';
@@ -32,6 +33,9 @@ const {
 const {
   nome,
   permissoes,
+  comissaoVenda,
+  comissaoServico,
+  metaMensal,
   errors,
   submitCount,
   apiError,
@@ -42,6 +46,27 @@ const {
 } = usePositionFormProvider();
 
 const deleteMutation = useDeletePositionMutation();
+
+// Conversão só na exibição: form guarda basis points (500=5%) e centavos.
+function bpParaStr(bp: number | null | undefined): string {
+  return bp != null ? String(bp / 100) : '';
+}
+function strParaBp(v: string): number | null {
+  const n = parseFloat(String(v).replace(',', '.'));
+  return isNaN(n) ? null : Math.round(n * 100);
+}
+const comissaoVendaPct = computed<string>({
+  get: () => bpParaStr(comissaoVenda.value),
+  set: (v) => { comissaoVenda.value = strParaBp(v); },
+});
+const comissaoServicoPct = computed<string>({
+  get: () => bpParaStr(comissaoServico.value),
+  set: (v) => { comissaoServico.value = strParaBp(v); },
+});
+const metaReais = computed<number>({
+  get: () => (metaMensal.value != null ? metaMensal.value / 100 : 0),
+  set: (v) => { metaMensal.value = v ? Math.round(Number(v) * 100) : null; },
+});
 
 const totalPermissions = computed(() => PERMISSION_KEYS.length);
 const permissionStats = computed(() => getPermissionStats(permissoes.value));
@@ -189,6 +214,33 @@ watch(isOpen, (open) => {
                       <div class="mt-2 text-xs text-zinc-600">
                         {{ enabledPermissions }} de {{ totalPermissions }} permissoes habilitadas
                       </div>
+                    </div>
+                  </div>
+
+                  <div class="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+                    <h3 class="text-sm font-semibold text-zinc-800">Comissão</h3>
+                    <p class="mt-1 text-xs text-zinc-400">
+                      Padrão deste cargo. Deixe vazio para "sem comissão".
+                    </p>
+                    <div class="mt-5 grid grid-cols-2 gap-3">
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-zinc-600">% sobre vendas</label>
+                        <div class="flex items-center gap-1.5">
+                          <BaseInput v-model="comissaoVendaPct" type="number" placeholder="0" :disabled="isViewMode" />
+                          <span class="text-sm font-medium text-zinc-400">%</span>
+                        </div>
+                      </div>
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-zinc-600">% sobre serviços</label>
+                        <div class="flex items-center gap-1.5">
+                          <BaseInput v-model="comissaoServicoPct" type="number" placeholder="0" :disabled="isViewMode" />
+                          <span class="text-sm font-medium text-zinc-400">%</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="mt-4">
+                      <label class="mb-1 block text-xs font-medium text-zinc-600">Meta mensal (opcional)</label>
+                      <BaseMoneyInput v-model="metaReais" :disabled="isViewMode" />
                     </div>
                   </div>
 
