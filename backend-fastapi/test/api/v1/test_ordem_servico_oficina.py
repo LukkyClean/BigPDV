@@ -137,6 +137,56 @@ def test_criar_os_oficina_com_placa_invalida_bloqueia(client, db_session):
     assert r.status_code == 422, r.text
 
 
+def test_acessorios_vistoria_sobrevivem_ao_update(client, db_session):
+    """Oficina: o Record de acessórios da vistoria (dados_adicionais.acessorios)
+    não pode ser apagado pelo campo legado 'acessorios' (texto) vazio que o form
+    envia no update. Regressão do bug de colisão de nome."""
+    header = _autenticar_e_criar_empresa(client, "oficina_mecanica")
+    cliente_id = _criar_cliente(client, header)
+
+    payload = _os_payload(
+        cliente_id, "ABC1D23",
+        os_dados_adicionais={"acessorios": {"acendedor": True}},
+    )
+    r = client.post("/api/v1/ordens-servico/", json=payload, headers=header)
+    assert r.status_code == status.HTTP_201_CREATED, r.text
+    numero = r.json()["numero_os"]
+
+    # Update como o frontend: marca mais um acessório + envia 'acessorios' legado vazio
+    upd = {
+        "dados_adicionais": {"acessorios": {"acendedor": True, "calota": True}},
+        "acessorios": "",
+    }
+    r2 = client.put(f"/api/v1/ordens-servico/{numero}", json=upd, headers=header)
+    assert r2.status_code == 200, r2.text
+
+    g = client.get(f"/api/v1/ordens-servico/{numero}", headers=header)
+    assert g.status_code == 200, g.text
+    da = g.json().get("dados_adicionais") or {}
+    assert da.get("acessorios") == {"acendedor": True, "calota": True}, da
+
+
+def test_guardiao_informatica_pode_limpar_campo_legado(client, db_session):
+    """GUARDIAO: informática continua podendo LIMPAR os campos legados de texto
+    (senha_aparelho/acessorios/condicoes_aparelho) enviando string vazia — o
+    guard do dict não afeta a informática, cujos campos são sempre texto."""
+    header = _autenticar_e_criar_empresa(client, "assistencia_tecnica")
+    cliente_id = _criar_cliente(client, header)
+
+    payload = _os_payload(cliente_id, "SERIAL-9", os_dados_adicionais={"senha_aparelho": "1234"})
+    r = client.post("/api/v1/ordens-servico/", json=payload, headers=header)
+    assert r.status_code == status.HTTP_201_CREATED, r.text
+    numero = r.json()["numero_os"]
+    assert (r.json().get("dados_adicionais") or {}).get("senha_aparelho") == "1234"
+
+    r2 = client.put(f"/api/v1/ordens-servico/{numero}", json={"senha_aparelho": ""}, headers=header)
+    assert r2.status_code == 200, r2.text
+
+    g = client.get(f"/api/v1/ordens-servico/{numero}", headers=header)
+    da = g.json().get("dados_adicionais") or {}
+    assert da.get("senha_aparelho") == "", da
+
+
 def test_definicao_campos_oficina(client, db_session):
     """Contrato de campos: oficina retorna definicao dedicada com rotulo Veiculo."""
     header = _autenticar_e_criar_empresa(client, "oficina_mecanica")
@@ -327,3 +377,58 @@ def test_guardiao_informatica_itens_contam_normalmente(client, db_session):
     body = r.json()
     assert body["valor_bruto"] == 10000, "todos os itens contam (default APROVADO)"
     assert body["itens"][0]["status_aprovacao"] == "APROVADO"
+
+
+# =========================
+# REABERTURA — cliente_pagou (global: OS de qualquer segmento)
+# =========================
+
+def _criar_forma_pagamento(client, header) -> int:
+    r = client.post("/api/v1/formas-pagamento/", json={"nome": "Dinheiro", "ativo": True}, headers=header)
+    assert r.status_code == status.HTTP_201_CREATED, r.text
+    return r.json()["id"]
+
+
+def _criar_e_finalizar_os(client, header, cliente_id, fp_id, numero_serie, valor):
+    """Cria uma OS (informática) com 1 item e finaliza pagando o valor cheio."""
+    itens = [_item("Serviço", valor)]
+    r = client.post("/api/v1/ordens-servico/", json=_os_payload(cliente_id, numero_serie, itens=itens), headers=header)
+    assert r.status_code == status.HTTP_201_CREATED, r.text
+    numero = r.json()["numero_os"]
+    fin = {
+        "situacao_equipamento": "REPARADO", "garantia": "90 dias",
+        "pagamentos": [{"forma_pagamento_id": fp_id, "valor": valor}],
+    }
+    rf = client.put(f"/api/v1/ordens-servico/{numero}/finalizar", json=fin, headers=header)
+    assert rf.status_code == 200, rf.text
+    assert len(rf.json()["pagamentos"]) == 1
+    return numero
+
+
+def test_reabrir_nao_pagou_apaga_pagamento_e_recobra_cheio(client, db_session):
+    """Reabertura com cliente_pagou=False: pagamento não era real → apaga os
+    pagamentos e zera o crédito; a OS recobra o valor cheio."""
+    header = _autenticar_e_criar_empresa(client, "assistencia_tecnica")
+    cliente_id = _criar_cliente(client, header)
+    fp_id = _criar_forma_pagamento(client, header)
+    numero = _criar_e_finalizar_os(client, header, cliente_id, fp_id, "SERIAL-NP", 14000)
+
+    rr = client.put(f"/api/v1/ordens-servico/{numero}/reabrir", json={"cliente_pagou": False}, headers=header)
+    assert rr.status_code == 200, rr.text
+    body = rr.json()
+    assert body["pagamentos"] == [], body["pagamentos"]
+    assert body.get("credito_anterior") in (None, 0), body.get("credito_anterior")
+    assert body["valor_total"] == 14000, body["valor_total"]
+
+
+def test_reabrir_ja_pagou_preserva_credito(client, db_session):
+    """Reabertura padrão (cliente_pagou=True): o valor pago vira crédito da OS
+    (credito_anterior), abatido do novo total. Comportamento atual preservado."""
+    header = _autenticar_e_criar_empresa(client, "assistencia_tecnica")
+    cliente_id = _criar_cliente(client, header)
+    fp_id = _criar_forma_pagamento(client, header)
+    numero = _criar_e_finalizar_os(client, header, cliente_id, fp_id, "SERIAL-JP", 14000)
+
+    rr = client.put(f"/api/v1/ordens-servico/{numero}/reabrir", json={"cliente_pagou": True}, headers=header)
+    assert rr.status_code == 200, rr.text
+    assert rr.json().get("credito_anterior") == 14000, rr.json().get("credito_anterior")

@@ -1,6 +1,6 @@
 import { computed } from 'vue';
 import { useAuthStore } from '@/shared/stores/auth.store';
-import { formatCNPJ } from '@/shared/utils/document.utils';
+import { formatCNPJ, formatCPF } from '@/shared/utils/document.utils';
 import { getBackendBaseUrl } from '@/api/backendUrl';
 import type { CompanyPrintInfo, PrintFormat } from '@/shared/components/print/print.types';
 
@@ -210,14 +210,30 @@ export function useCompanyPrintInfo() {
       ? `${endereco.cidade} - ${endereco.estado}`
       : '';
 
+    const docRaw = empresa?.documento || '';
+    const digits = docRaw.replace(/\D/g, '');
+    let formattedDoc = '';
+    let labelDoc = 'CNPJ';
+    if (digits.length === 11) {
+      formattedDoc = formatCPF(digits);
+      labelDoc = 'CPF';
+    } else if (digits.length === 14) {
+      formattedDoc = formatCNPJ(digits);
+      labelDoc = 'CNPJ';
+    } else if (docRaw) {
+      formattedDoc = docRaw;
+    }
+
     return {
       nome: empresa?.nome_fantasia || empresa?.razao_social || 'Empresa',
       razaoSocial: empresa?.razao_social || '',
-      cnpj: formatCNPJ(empresa?.documento || ''),
+      cnpj: formattedDoc,
+      documento: formattedDoc,
+      labelDocumento: labelDoc,
       endereco: enderecoParts.join(', ') || 'Endereço não cadastrado',
       enderecoLinha1: shortParts.join(', ') || 'Endereço não informado',
       enderecoLinha2: cityState,
-      contato: empresa?.telefone || empresa?.celular || '',
+      contato: formatPrintPhone(empresa?.telefone || empresa?.celular || ''),
       email: empresa?.email || '',
       logo: getImageUrl(empresa?.url_logo),
     };

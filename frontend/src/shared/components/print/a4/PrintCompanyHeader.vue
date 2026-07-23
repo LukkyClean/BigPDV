@@ -23,9 +23,13 @@ defineProps<{
         <h1 class="text-xl font-black text-slate-900 uppercase tracking-tight">{{ company.nome }}</h1>
         <p class="text-[10px] uppercase font-bold text-slate-500 mb-1">{{ company.razaoSocial }}</p>
         <div class="text-xs text-slate-700 space-y-0.5 mt-2">
-          <p class="flex items-center gap-1.5"><MapPin :size="12" /> {{ company.endereco }}</p>
-          <p class="flex items-center gap-1.5"><FileText :size="12" /> CNPJ: {{ company.cnpj }}</p>
-          <p class="flex items-center gap-1.5"><Phone :size="12" /> {{ company.contato }} | {{ company.email }}</p>
+          <p v-if="company.endereco" class="flex items-center gap-1.5"><MapPin :size="12" /> {{ company.endereco }}</p>
+          <p v-if="company.cnpj" class="flex items-center gap-1.5">
+            <FileText :size="12" /> {{ company.labelDocumento || 'CNPJ' }}: {{ company.cnpj }}
+          </p>
+          <p class="flex items-center gap-1.5">
+            <Phone :size="12" /> {{ company.contato }}<template v-if="company.email"> | {{ company.email }}</template>
+          </p>
         </div>
       </div>
     </div>

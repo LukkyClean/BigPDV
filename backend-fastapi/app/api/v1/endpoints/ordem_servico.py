@@ -443,7 +443,9 @@ def reabrir_ordem_servico(
     payload: OrdemServicoReabrir = OrdemServicoReabrir(),
     db: Session = Depends(get_db)
 ):
-    return _handle_db_transaction(db, os_service.reabrir_ordem_servico, os_number, payload.codigo_gerente)
+    return _handle_db_transaction(
+        db, os_service.reabrir_ordem_servico, os_number, payload.codigo_gerente, payload.cliente_pagou
+    )
 
 
 # ===========================================================================

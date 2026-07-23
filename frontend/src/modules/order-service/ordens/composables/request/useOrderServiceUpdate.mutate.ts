@@ -35,6 +35,9 @@ export function useUpdateOrderServiceMutation() {
     onSuccess: (data) => {
       toast.success(`${data.numero_os} atualizada com sucesso`);
       queryClient.invalidateQueries({ queryKey: [ORDER_SERVICE_QUERY_KEY] });
+      // Histórico do cliente também depende desta OS — sem isto reabrir de lá
+      // servia dados velhos (acessórios/vistoria recém-salvos sumindo).
+      queryClient.invalidateQueries({ queryKey: [OS_CUSTOMER_QUERY_KEY] });
     },
     onError: (error) => {
       toast.error(getErrorMessage(error, 'Erro ao atualizar a ordem de serviço') as string);
@@ -51,6 +54,7 @@ export function useUpdateObjetoOSMutation() {
     onSuccess: (data) => {
       toast.success(`${data.numero_os} objeto atualizado com sucesso`);
       queryClient.invalidateQueries({ queryKey: [ORDER_SERVICE_QUERY_KEY] });
+      queryClient.invalidateQueries({ queryKey: [OS_CUSTOMER_QUERY_KEY] });
     },
     onError: (error) => {
       toast.error(getErrorMessage(error, 'Erro ao atualizar o objeto') as string);
@@ -114,7 +118,7 @@ export function useReopenOrderServiceMutation() {
   const toast = useToast();
   const queryClient = useQueryClient();
 
-  return useMutation<OrderServiceReadDataType, AxiosError<ApiError>, { osNumber: string; codigoGerente?: string }>({
+  return useMutation<OrderServiceReadDataType, AxiosError<ApiError>, { osNumber: string; codigoGerente?: string; clientePagou?: boolean }>({
     mutationFn: updateReopen,
     onSuccess: (data) => {
       toast.success(`${data.numero_os} reaberta com sucesso`);

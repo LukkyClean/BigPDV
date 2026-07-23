@@ -32,8 +32,18 @@ export async function updateCancelOS(cancelOs: OsCancelUpdateRequest): Promise<O
     return safeParseResponse(OrderServiceReadSchema, data, 'updateCancelOS');
 }
 
-export async function updateReopen({ osNumber, codigoGerente }: { osNumber: string; codigoGerente?: string }): Promise<OrderServiceReadDataType> {
-    const body = codigoGerente ? { codigo_gerente: codigoGerente } : undefined;
-    const { data } = await api.put<OrderServiceReadDataType>(`${BASE_ORDER_SERVICE_URL}/${osNumber}/reabrir`, body)
+export async function updateReopen(
+    { osNumber, codigoGerente, clientePagou }:
+    { osNumber: string; codigoGerente?: string; clientePagou?: boolean },
+): Promise<OrderServiceReadDataType> {
+    const body: Record<string, unknown> = {};
+    if (codigoGerente) body.codigo_gerente = codigoGerente;
+    // Só envia quando explicitamente "não pagou" — o backend assume true (mantém
+    // o crédito) por padrão, preservando o comportamento atual.
+    if (clientePagou === false) body.cliente_pagou = false;
+    const { data } = await api.put<OrderServiceReadDataType>(
+        `${BASE_ORDER_SERVICE_URL}/${osNumber}/reabrir`,
+        Object.keys(body).length ? body : undefined,
+    )
     return safeParseResponse(OrderServiceReadSchema, data, 'updateReopen');
 }

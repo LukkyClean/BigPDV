@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, Teleport } from 'vue'
+import { ref, computed } from 'vue'
 import { Pencil, Trash2, MapPin } from 'lucide-vue-next'
 import {
   TIPOS_DANO,

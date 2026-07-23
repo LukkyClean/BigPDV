@@ -70,7 +70,8 @@ export interface OSFormViewContext {
   handleFinalizarOS: () => void;
   printEntrada: () => void;
   printSaida: () => void;
-  imprimirFicha: (tipo: 'ENTRADA' | 'SAIDA') => void;
+  imprimirFicha: (tipo: 'ENTRADA' | 'SAIDA', preenchimento?: Record<string, unknown> | null) => void;
+  imprimirVistoriaPreenchida: () => void;
   handleReopenClick: () => void;
   handleChangeCliente: () => void;
   handleUpdateCliente: (cliente: CustomerUnionReadSchemaDataType) => void;
@@ -96,7 +97,7 @@ export interface OSFormViewContext {
   handleRemoveItem: (index: number) => void;
   handleReopenCancel: () => void;
   handleReopenTextOnly: () => void;
-  handleReopenFull: () => void;
+  handleReopenFull: (clientePagou?: boolean) => void;
   closeFinalizarModal: () => void;
   onFinalized: (payload: { shouldPrint: boolean }) => void;
   refreshCurrentOSData: () => Promise<void>;

@@ -22,10 +22,10 @@ import {
   formatPrintPhone,
 } from '@/shared/utils/print.utils';
 
-import PrintFooter from '@/shared/components/print/a4/PrintFooter.vue';
 
 import { useOSFieldDefinition } from '@/modules/order-service/shared/segmento/useOSFieldDefinition.queries';
 import { useObjetoLabels } from '@/modules/order-service/shared/segmento/useObjetoLabels';
+import { corPorTipo, type MarcaDano } from '../types/mapeamentoDanos.types';
 
 interface FichaObjeto {
   marca?: string | null;
@@ -41,6 +41,12 @@ const props = defineProps<{
   numeroOs?: string | null;
   dataOs?: string | null;
   tipo: 'ENTRADA' | 'SAIDA';
+  /**
+   * Quando presente, a ficha sai PREENCHIDA com o que foi marcado na tela
+   * (acessórios, checklist, pneus/estepe, danos). É o `dados_adicionais` da OS
+   * (mesmo formato que a OSVistoriaTab manipula). Ausente = ficha em branco.
+   */
+  preenchimento?: Record<string, unknown> | null;
 }>();
 
 const { companyInfo } = useCompanyPrintInfo();
@@ -77,6 +83,38 @@ function dado(chave: string): string {
 
 const niveisCombustivel = ['Reserva', '1/4', '1/2', '3/4', 'Cheio'];
 const estadosPecas = ['Bom', 'Regular', 'Ruim'];
+
+// ─── Modo preenchido ───────────────────────────────────────────────────────
+// Quando `preenchimento` chega, marcamos na ficha o que foi selecionado na tela.
+const preench = computed<Record<string, unknown> | null>(() => props.preenchimento ?? null);
+const isPreenchida = computed(() => preench.value !== null);
+
+const acessoriosSel = computed<Record<string, boolean>>(
+  () => (preench.value?.acessorios as Record<string, boolean>) ?? {},
+);
+const acessoriosOutros = computed<string>(() => (preench.value?.acessorios_outros as string) ?? '');
+const vistoriaSel = computed<Record<string, string>>(
+  () => (preench.value?.vistoria as Record<string, string>) ?? {},
+);
+const danos = computed<MarcaDano[]>(() => (preench.value?.mapeamento_danos as MarcaDano[]) ?? []);
+
+/** Valor de check-in salvo direto no dados_adicionais (ex: pneus_estado, km_entrada). */
+function pd(chave: string): string {
+  const v = preench.value?.[chave];
+  return v === null || v === undefined ? '' : String(v);
+}
+
+/** True se o check-in `campo` tem o valor `label` (compara ignorando caixa). */
+function checkinMarcado(campo: string, label: string): boolean {
+  const v = preench.value?.[campo];
+  return typeof v === 'string' && v.toUpperCase() === label.toUpperCase();
+}
+
+/** Estado marcado do item do checklist (OK / N_OK / REPARAR). Vazio se não marcado. */
+function vistoriaEstado(grupoIdx: number, item: string): string {
+  return vistoriaSel.value[`${grupoIdx}_${item}`] ?? '';
+}
+
 </script>
 
 <template>
@@ -91,7 +129,7 @@ const estadosPecas = ['Bom', 'Regular', 'Ruim'];
               v-if="companyInfo.logo"
               :src="companyInfo.logo"
               alt="Logo"
-              class="max-w-full max-h-14 object-contain"
+              class="max-w-full max-h-13 object-contain"
             />
             <span v-else class="text-[9px] text-slate-400 text-center uppercase tracking-wide">Logo</span>
           </div>
@@ -101,7 +139,10 @@ const estadosPecas = ['Bom', 'Regular', 'Ruim'];
               {{ companyInfo.razaoSocial }}
             </p>
             <p class="text-[11px] text-slate-700 mt-0.5">{{ companyInfo.endereco }}</p>
-            <p class="text-[11px] text-slate-700">CNPJ: {{ companyInfo.cnpj }} &nbsp;|&nbsp; {{ companyInfo.contato }}</p>
+            <div class="text-[11px] text-slate-700 mt-0.5 space-y-0.5">
+              <p v-if="companyInfo.cnpj">{{ companyInfo.labelDocumento }}: {{ companyInfo.cnpj }}</p>
+              <p v-if="companyInfo.contato">Celular: {{ companyInfo.contato }}</p>
+            </div>
           </div>
           <div class="w-36 shrink-0 flex flex-col">
             <div class="bg-slate-800 text-white text-center py-1">
@@ -164,11 +205,11 @@ const estadosPecas = ['Bom', 'Regular', 'Ruim'];
           </div>
           <div class="px-2 py-0.5 border-r border-t border-slate-800">
             <span class="text-[9px] font-bold uppercase text-slate-500 block">{{ kmLabel }}</span>
-            &nbsp;
+            {{ isPreenchida ? pd('km_entrada') : '' }}&nbsp;
           </div>
           <div class="px-2 py-0.5 border-t border-slate-800">
             <span class="text-[9px] font-bold uppercase text-slate-500 block">Prisma</span>
-            &nbsp;
+            {{ isPreenchida ? pd('prisma') : '' }}&nbsp;
           </div>
         </div>
 
@@ -177,21 +218,45 @@ const estadosPecas = ['Bom', 'Regular', 'Ruim'];
           <!-- Avarias: ilustração das 5 vistas do veículo (superior, laterais, frente, traseira) -->
           <div class="border-r border-slate-800 p-1 flex flex-col items-center justify-center">
             <p class="text-[8px] font-bold uppercase text-slate-500 text-center leading-none mb-0.5">
-              Avarias — marque com X
+              {{ isPreenchida ? 'Avarias registradas' : 'Avarias — marque com X' }}
             </p>
+            <!-- Em branco: apenas a ilustração -->
             <img
+              v-if="!isPreenchida"
               src="/vistoria-carro.png"
               alt="Vistas do veículo: superior, laterais, frente e traseira"
               class="w-full object-contain"
               style="max-height: 36mm"
             />
+            <!-- Preenchida: ilustração + marcadores de dano sobrepostos (coords em %) -->
+            <div v-else class="relative w-full" style="max-width: 48mm">
+              <img
+                src="/vistoria-carro.png"
+                alt="Vistas do veículo: superior, laterais, frente e traseira"
+                class="block w-full h-auto"
+              />
+              <svg
+                v-if="danos.length"
+                class="absolute inset-0 w-full h-full"
+                viewBox="0 0 1000 750"
+                preserveAspectRatio="none"
+              >
+                <g v-for="m in danos" :key="m.id">
+                  <circle :cx="m.x * 10" :cy="m.y * 7.5" r="13" :fill="corPorTipo(m.tipo)" stroke="white" stroke-width="2.5" />
+                  <circle :cx="m.x * 10" :cy="m.y * 7.5" r="4" fill="white" />
+                </g>
+              </svg>
+            </div>
           </div>
           <div>
             <!-- Combustível -->
             <div class="flex flex-wrap items-center gap-x-2 gap-y-1 px-2 py-1 border-b border-slate-800 text-xs">
               <span class="font-bold uppercase text-slate-600 text-[10px]">Combustível:</span>
               <span v-for="n in niveisCombustivel" :key="n" class="inline-flex items-center gap-1">
-                <span class="inline-block w-3 h-3 rounded-full border border-slate-600"></span>{{ n }}
+                <span
+                  class="inline-block w-3 h-3 rounded-full border border-slate-600"
+                  :class="{ 'bg-slate-800': isPreenchida && checkinMarcado('combustivel_nivel', n) }"
+                ></span>{{ n }}
               </span>
             </div>
             <!-- Pneus / Estepe -->
@@ -199,13 +264,19 @@ const estadosPecas = ['Bom', 'Regular', 'Ruim'];
               <span class="inline-flex items-center gap-1.5">
                 <span class="font-bold uppercase text-slate-600 text-[10px]">Pneus:</span>
                 <span v-for="e in estadosPecas" :key="'pneu-' + e" class="inline-flex items-center gap-1">
-                  <span class="inline-block w-3 h-3 rounded-full border border-slate-600"></span>{{ e }}
+                  <span
+                    class="inline-block w-3 h-3 rounded-full border border-slate-600"
+                    :class="{ 'bg-slate-800': isPreenchida && checkinMarcado('pneus_estado', e) }"
+                  ></span>{{ e }}
                 </span>
               </span>
               <span class="inline-flex items-center gap-1.5">
                 <span class="font-bold uppercase text-slate-600 text-[10px]">Estepe:</span>
                 <span v-for="e in estadosPecas" :key="'estepe-' + e" class="inline-flex items-center gap-1">
-                  <span class="inline-block w-3 h-3 rounded-full border border-slate-600"></span>{{ e }}
+                  <span
+                    class="inline-block w-3 h-3 rounded-full border border-slate-600"
+                    :class="{ 'bg-slate-800': isPreenchida && checkinMarcado('estepe_estado', e) }"
+                  ></span>{{ e }}
                 </span>
               </span>
             </div>
@@ -214,9 +285,13 @@ const estadosPecas = ['Bom', 'Regular', 'Ruim'];
               <p class="text-[10px] font-bold uppercase text-slate-600 mb-1">Acessórios presentes</p>
               <div v-if="acessorios.length" class="grid grid-cols-3 gap-x-3 gap-y-1 text-xs">
                 <span v-for="ac in acessorios" :key="ac" class="flex items-center gap-1.5">
-                  <span class="inline-block w-3 h-3 border border-slate-600 shrink-0"></span>
+                  <span class="inline-flex items-center justify-center w-3 h-3 border border-slate-600 shrink-0 text-[10px] font-black leading-none text-slate-800">
+                    <template v-if="isPreenchida && acessoriosSel[ac]">✕</template>
+                  </span>
                   <span class="shrink-0">{{ rotulo(ac) }}</span>
-                  <span v-if="ac === 'outros'" class="flex-1 self-end border-b border-dotted border-slate-400">&nbsp;</span>
+                  <span v-if="ac === 'outros'" class="flex-1 self-end border-b border-dotted border-slate-400 text-[10px] leading-tight">
+                    {{ isPreenchida ? acessoriosOutros : '' }}&nbsp;
+                  </span>
                 </span>
               </div>
             </div>
@@ -225,13 +300,13 @@ const estadosPecas = ['Bom', 'Regular', 'Ruim'];
 
         <!-- Checklists de inspeção (uma tabela por grupo) -->
         <table
-          v-for="grupo in grupos"
+          v-for="(grupo, gi) in grupos"
           :key="grupo.titulo"
-          class="w-full border-collapse text-[11px] border-b border-slate-800"
+          class="w-full border-collapse text-[12px] border-b border-slate-800"
         >
           <thead>
             <tr class="bg-slate-100">
-              <th class="border-r border-b border-slate-800 text-left px-2 py-0.5 font-bold uppercase text-[10px] text-slate-700">
+              <th class="border-r border-b border-slate-800 text-left px-2 py-0.5 font-bold uppercase text-[11px] text-slate-700">
                 {{ grupo.titulo }}
               </th>
               <th class="border-r border-b border-slate-800 w-12 py-0.5 font-bold text-[10px] text-slate-700">OK</th>
@@ -242,27 +317,25 @@ const estadosPecas = ['Bom', 'Regular', 'Ruim'];
           <tbody>
             <tr v-for="item in grupo.itens" :key="item">
               <td class="border-r border-b border-slate-300 px-2 py-px leading-tight text-slate-700">{{ rotulo(item) }}</td>
-              <td class="border-r border-b border-slate-300"></td>
-              <td class="border-r border-b border-slate-300"></td>
-              <td class="border-b border-slate-300"></td>
+              <td class="border-r border-b border-slate-300 text-center font-black text-slate-800">
+                {{ vistoriaEstado(gi, item) === 'OK' ? '✕' : '' }}
+              </td>
+              <td class="border-r border-b border-slate-300 text-center font-black text-slate-800">
+                {{ vistoriaEstado(gi, item) === 'N_OK' ? '✕' : '' }}
+              </td>
+              <td class="border-b border-slate-300 text-center font-black text-slate-800">
+                {{ vistoriaEstado(gi, item) === 'REPARAR' ? '✕' : '' }}
+              </td>
             </tr>
           </tbody>
         </table>
 
-        <!-- Observações -->
-        <div class="px-2 py-1 border-b-2 border-slate-800">
-          <p class="text-[10px] font-bold uppercase text-slate-600 mb-1">Observações / Avarias</p>
-          <div class="space-y-3 pt-1">
-            <div v-for="n in 3" :key="n" class="border-b border-dotted border-slate-400"></div>
-          </div>
-        </div>
-
         <!-- Assinatura -->
-        <div class="grid grid-cols-2 text-xs">
+        <div class="grid grid-cols-2 text-xs border-t-2 border-slate-800">
           <div class="px-2 py-1 border-r border-slate-800 font-bold uppercase text-slate-700 flex items-end">
             De acordo com a vistoria
           </div>
-          <div class="px-4 pt-8 pb-1 text-center">
+          <div class="px-4 pb-1 text-center" :class="isPreenchida ? 'pt-6' : 'pt-8'">
             <div class="border-t border-slate-700 pt-1">
               <span class="text-[10px] uppercase text-slate-500">Assinatura do Cliente</span>
             </div>
@@ -270,7 +343,6 @@ const estadosPecas = ['Bom', 'Regular', 'Ruim'];
         </div>
       </div>
 
-      <PrintFooter />
     </div>
   </Teleport>
 </template>
@@ -283,13 +355,13 @@ const estadosPecas = ['Bom', 'Regular', 'Ruim'];
 @media print {
   @page ficha-vistoria {
     size: A4;
-    margin: 6mm 0;
+    margin: 0;
   }
 
   .ficha-a4 {
     page: ficha-vistoria;
     box-sizing: border-box;
-    padding: 0 7mm;
+    padding: 8mm 10mm !important;
   }
 
   /* Permite quebra entre linhas do checklist, mas nunca dentro de uma linha
@@ -302,11 +374,5 @@ const estadosPecas = ['Bom', 'Regular', 'Ruim'];
     break-inside: avoid;
   }
 
-  /* Rodapé compartilhado herda margin-top: 2rem do print-a4.css global (produção).
-     Na ficha, encolhe esse espaço pra o rodapé caber na mesma folha. */
-  .ficha-a4 :deep(.print-footer) {
-    margin-top: 0.3rem;
-    padding-top: 0.3rem;
-  }
 }
 </style>

@@ -100,8 +100,19 @@ const valorEntrada = computed(() => props.ordemServico?.valor_entrada ?? 0);
 const creditoAoReabrir = computed(() => props.creditoAoReabrir ?? null);
 const acrescimoTotal = computed(() => pagamentosJuros.value.reduce((sum, v) => sum + v, 0));
 
+// Desconto já acumulado na OS. O `descontoOs` recebido é só o desconto ADICIONAL
+// desta finalização; sem somar o existente aqui, o "Total a pagar" ignorava o
+// desconto antigo e cobrava a mais (ex.: 190 − 10 = 180 em vez de 190 − 20 − 10 =
+// 160). É sempre o os.desconto atual (o backend acumula em cima dele) — NÃO amarrar
+// ao credito_anterior: na reabertura "não pagou" o crédito é zerado mas o desconto
+// permanece, e amarrar fazia voltar a cobrar a mais.
+const existingDesconto = computed(() => props.ordemServico?.desconto ?? 0);
+
 const valorTotal = computed(() =>
-  Math.max(0, subtotalItens.value - desconto.value + taxaEntrega.value + acrescimoTotal.value),
+  Math.max(
+    0,
+    subtotalItens.value - existingDesconto.value - desconto.value + taxaEntrega.value + acrescimoTotal.value,
+  ),
 );
 
 // Pagamentos de finalizações anteriores (preservados após reopen)
@@ -386,9 +397,16 @@ watch(() => paymentDetails.value.taxa_juros, (v) => {
               <span class="text-base font-semibold text-zinc-800">{{ formatCurrency(subtotalItens) }}</span>
             </div>
 
+            <div v-if="existingDesconto > 0" class="flex justify-between items-center">
+              <span class="text-xs text-zinc-500 flex items-center gap-1">
+                <Tag :size="12" /> Desconto anterior
+              </span>
+              <span class="text-base font-semibold text-emerald-600">- {{ formatCurrency(existingDesconto) }}</span>
+            </div>
+
             <div class="flex justify-between items-center">
               <span class="text-xs text-zinc-500 flex items-center gap-1">
-                <Tag :size="12" /> Desconto
+                <Tag :size="12" /> {{ existingDesconto > 0 ? 'Desconto adicional' : 'Desconto' }}
               </span>
               <span class="text-base" :class="desconto > 0 ? 'font-semibold text-emerald-600' : 'font-medium text-zinc-400'">
                 {{ desconto > 0 ? `- ${formatCurrency(desconto)}` : '—' }}

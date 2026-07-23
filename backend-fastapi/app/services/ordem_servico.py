@@ -373,10 +373,16 @@ def update_ordem_servico(db: Session, numero_os: str, data: OrdemServicoUpdate) 
         sent_data = update_data.pop("dados_adicionais") or {}
         dados_adicionais.update(sent_data)
 
+    # O campo legado `acessorios` (texto, da informática) colide de nome com o
+    # `dados_adicionais.acessorios` (Record de checkboxes da vistoria da oficina):
+    # um "" vindo do form apagava o Record a cada update. Guarda: não sobrescreve
+    # quando o valor já existente é um Record (dict) — condição que só a oficina
+    # tem. Para a informática (sempre texto), o comportamento fica idêntico ao de
+    # antes (inclusive continua podendo limpar o campo com string vazia).
     for legacy_field in ["senha_aparelho", "acessorios", "condicoes_aparelho"]:
         if legacy_field in update_data:
             val = update_data.pop(legacy_field)
-            if val is not None:
+            if val is not None and not isinstance(dados_adicionais.get(legacy_field), dict):
                 dados_adicionais[legacy_field] = val
 
     os_in_db.dados_adicionais = dados_adicionais
@@ -756,12 +762,24 @@ def cancelar_ordem_servico(db: Session, numero_os: str, data: OrdemServicoCancel
     return os_crud.update_ordem_servico(db, os_to_update=os_in_db)
 
 
-def reabrir_ordem_servico(db: Session, numero_os: str, codigo_gerente: str | None = None) -> OSModel:
+def reabrir_ordem_servico(
+    db: Session,
+    numero_os: str,
+    codigo_gerente: str | None = None,
+    cliente_pagou: bool = True,
+) -> OSModel:
     """
     Reabre uma OS FINALIZADA ou CANCELADA.
 
-    Limpa: status → EM_ANDAMENTO, data_finalizacao → None, solucao → None.
-    Remove os pagamentos existentes (necessário pois os valores podem ser renegociados).
+    Limpa: status → EM_ANDAMENTO, data_finalizacao → None.
+
+    cliente_pagou:
+      - True (padrão): o valor já pago é preservado como crédito da OS
+        (credito_anterior) e será abatido do novo total ao refinalizar.
+      - False: o pagamento não era real (ex.: OS reaberta na hora, antes de o
+        cliente pagar). Apaga os pagamentos e zera o crédito, então a OS recobra
+        o valor cheio. Só use quando tiver certeza de que o dinheiro NÃO entrou —
+        senão o registro do pagamento do cliente é perdido.
     """
     os_in_db = _get_os_or_raise(db, numero_os)
 
@@ -777,11 +795,18 @@ def reabrir_ordem_servico(db: Session, numero_os: str, codigo_gerente: str | Non
             if not verify_password(codigo_gerente, config_seg.pin_gerente):
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="PIN_GERENTE_INVALIDO")
 
-    total_bruto = sum(p.valor for p in os_in_db.pagamentos) + (os_in_db.valor_entrada or 0)
-    valor_total = os_in_db.valor_total or 0
-    os_in_db.credito_anterior = min(total_bruto, valor_total) or None
-    os_in_db.valor_entrada = 0
+    if cliente_pagou:
+        # Preserva o que foi pago como crédito abatido do novo total.
+        total_bruto = sum(p.valor for p in os_in_db.pagamentos) + (os_in_db.valor_entrada or 0)
+        valor_total = os_in_db.valor_total or 0
+        os_in_db.credito_anterior = min(total_bruto, valor_total) or None
+    else:
+        # Pagamento não era real: apaga os pagamentos (cascade delete-orphan) e
+        # zera o crédito, para a OS recobrar o valor cheio.
+        os_in_db.pagamentos.clear()
+        os_in_db.credito_anterior = None
 
+    os_in_db.valor_entrada = 0
     os_in_db.status = OrdemServicoStatus.EM_ANDAMENTO
     os_in_db.data_finalizacao = None
 

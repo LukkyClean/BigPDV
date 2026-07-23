@@ -396,6 +396,15 @@ class OrdemServicoCancelar(BaseModel):
 class OrdemServicoReabrir(BaseModel):
     """Payload para reabrir uma OS."""
     codigo_gerente: Optional[str] = Field(None, description="PIN do gerente para aprovar reabertura")
+    cliente_pagou: bool = Field(
+        True,
+        description=(
+            "Se o cliente já pagou o valor da finalização anterior. True (padrão): o "
+            "valor pago é preservado como crédito da OS e abatido do novo total. False: "
+            "o pagamento não era real (ex.: reaberta na hora, antes de o cliente pagar) — "
+            "os pagamentos são apagados e a OS recobra o valor cheio."
+        ),
+    )
 
 
 # ===========================================================================

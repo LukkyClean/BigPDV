@@ -12,6 +12,11 @@ import api from '@/api/axios';
 interface Props {
   /** dados_adicionais da OS (guarda acessorios + vistoria). */
   osDados?: Record<string, unknown>;
+  /**
+   * dados_adicionais PERSISTIDO (o que está salvo no banco). Base do merge de 3
+   * vias do polling: distingue o que o PC editou (local ≠ salvo) do que não tocou.
+   */
+  osDadosPersistido?: Record<string, unknown>;
   isLocked?: boolean;
   /** Numero da OS (ex: OS-2026-000001). Necessario para QR code e polling. */
   osNumber?: string;
@@ -21,6 +26,7 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), {
   osDados: () => ({}),
+  osDadosPersistido: () => ({}),
   isLocked: false,
   osNumber: '',
   isCreateMode: false,
@@ -30,6 +36,7 @@ const emit = defineEmits<{
   'update:osDados': [value: Record<string, unknown>];
   imprimirFichaEntrada: [];
   imprimirFichaSaida: [];
+  imprimirVistoriaPreenchida: [];
 }>();
 
 // --- QR Code Modal ---
@@ -49,18 +56,33 @@ function startPolling() {
     try {
       const { data } = await api.get(`/ordens-servico/${props.osNumber}`);
       const remoteDados = data?.dados_adicionais ?? {};
-      // Merge mapeamento_danos por ID para não perder marcadores locais
-      const localDanos = props.osDados.mapeamento_danos;
-      const remotoDanos = remoteDados.mapeamento_danos;
-      const merged = { ...remoteDados };
-      // Filtrar marcadores deletados localmente de qualquer fonte
-      const filterDeleted = (arr: any[]) => arr.filter((m: any) => !deletedMarkerIds.has(m.id));
+      const local = props.osDados as Record<string, unknown>;
+      // Base do merge = estado PERSISTIDO (o que já está salvo no banco). Merge 3
+      // vias por chave: se o PC editou a chave (local ≠ salvo) mantém o do PC (não
+      // perde digitação); se não tocou (local == salvo) vale o do servidor,
+      // refletindo ao vivo o que foi preenchido pelo celular.
+      const base = props.osDadosPersistido as Record<string, unknown>;
+      const merged: Record<string, unknown> = { ...local };
+      const chaves = new Set([
+        ...Object.keys(remoteDados),
+        ...Object.keys(local),
+        ...Object.keys(base),
+      ]);
+      for (const chave of chaves) {
+        if (chave === 'mapeamento_danos') continue; // tratado à parte abaixo
+        const pcEditou = JSON.stringify(local[chave]) !== JSON.stringify(base[chave]);
+        if (!pcEditou) merged[chave] = remoteDados[chave];
+      }
 
+      // mapeamento_danos: merge por ID — nunca perde marcadores locais e acrescenta
+      // os novos vindos do remoto (celular), ignorando os deletados localmente.
+      const localDanos = local.mapeamento_danos;
+      const remotoDanos = remoteDados.mapeamento_danos;
+      const filterDeleted = (arr: any[]) => arr.filter((m: any) => !deletedMarkerIds.has(m.id));
       if (Array.isArray(localDanos) && localDanos.length > 0) {
         if (!Array.isArray(remotoDanos) || remotoDanos.length === 0) {
           merged.mapeamento_danos = localDanos;
         } else {
-          // Local como base (preserva edições não salvas) + novos do remoto (celular)
           const localIds = new Set(localDanos.map((m: any) => m.id));
           const novosDoRemoto = filterDeleted(remotoDanos).filter((m: any) => !localIds.has(m.id));
           merged.mapeamento_danos = [...localDanos, ...novosDoRemoto];
@@ -68,7 +90,8 @@ function startPolling() {
       } else if (Array.isArray(remotoDanos) && remotoDanos.length > 0) {
         merged.mapeamento_danos = filterDeleted(remotoDanos);
       }
-      const localJson = JSON.stringify(props.osDados);
+
+      const localJson = JSON.stringify(local);
       const mergedJson = JSON.stringify(merged);
       if (localJson !== mergedJson) {
         emit('update:osDados', merged);
@@ -378,6 +401,19 @@ function setMapeamentoDanos(marcas: MarcaDano[]) {
         />
       </div>
     </fieldset>
+
+    <!-- Imprimir a vistoria já preenchida (fora do fieldset: funciona mesmo com a OS trancada) -->
+    <div v-if="definicao" class="flex justify-end pt-3 border-t border-slate-200">
+      <button
+        type="button"
+        title="Imprimir a ficha de vistoria com o que já foi preenchido na tela"
+        class="inline-flex items-center gap-2 h-10 px-4 rounded-lg bg-brand-primary text-white text-sm font-semibold hover:bg-brand-primary/90 transition-colors"
+        @click="emit('imprimirVistoriaPreenchida')"
+      >
+        <Printer :size="16" />
+        Imprimir vistoria preenchida
+      </button>
+    </div>
 
     <!-- Modal do QR Code -->
     <OSQrCodeModal

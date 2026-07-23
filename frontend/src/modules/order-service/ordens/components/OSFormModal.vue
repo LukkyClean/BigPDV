@@ -107,20 +107,20 @@ const reopenMutation = useReopenOrderServiceMutation();
 const gerenteReopen = useGerenteAprovacao();
 const toast = useToast();
 
-async function executarReopenOS(numeroOS: string, codigoGerente?: string): Promise<void> {
+async function executarReopenOS(numeroOS: string, clientePagou: boolean, codigoGerente?: string): Promise<void> {
   try {
-    await reopenMutation.mutateAsync({ osNumber: numeroOS, codigoGerente });
+    await reopenMutation.mutateAsync({ osNumber: numeroOS, codigoGerente, clientePagou });
     await refreshCurrentOSData();
     capturarCreditoAnterior();
   } catch (error: any) {
     const detail = error?.response?.data?.detail;
     if (detail === 'REQUER_APROVACAO_GERENTE') {
       const pin = await gerenteReopen.pedirPin();
-      if (pin) await executarReopenOS(numeroOS, pin);
+      if (pin) await executarReopenOS(numeroOS, clientePagou, pin);
     } else if (detail === 'PIN_GERENTE_INVALIDO') {
       toast.error('PIN do gerente inválido');
       const pin = await gerenteReopen.pedirPin();
-      if (pin) await executarReopenOS(numeroOS, pin);
+      if (pin) await executarReopenOS(numeroOS, clientePagou, pin);
     }
   }
 }
@@ -135,7 +135,7 @@ const {
   resetReopenState,
 } = useOSReopenState({
   osNumber,
-  onReopenRequest: (numeroOS) => void executarReopenOS(numeroOS),
+  onReopenRequest: (numeroOS, clientePagou) => void executarReopenOS(numeroOS, clientePagou),
   onFullReopen: () => {},
 });
 const { isStructureLocked, isDiagnosticoLocked, isItemsLocked } = useOSStatusLocks({ isFinalizada, isCancelada, reopenMode });
@@ -210,6 +210,10 @@ function handleLocalSubmit() {
   } else if (reopenMode.value === 'TEXT_ONLY') {
     form.atualizarGeral.onSubmitTextOnly();
   } else {
+    // Salva também o OBJETO (cor, chassi, ano...). Sem isto, só a OS era
+    // persistida e as edições do objeto se perdiam ao reabrir — o objeto tem
+    // endpoint próprio e nunca era submetido no salvar comum.
+    form.atualizarObjeto.onSubmit();
     form.atualizarGeral.onSubmit();
   }
 }
@@ -236,6 +240,7 @@ useOSModalLifecycle({
   reopenMode,
   form,
   resetReopenState,
+  refreshEditData: refreshCurrentOSData,
   onOpen: () => {
     resetObjetoSelectStateProxy?.();
     // Captura crédito se a OS já foi reaberta anteriormente (vem da tabela)
@@ -316,6 +321,8 @@ const fichaData = ref<{
   numeroOs: string | null;
   dataOs: string | null;
 } | null>(null);
+// Quando != null, a ficha sai PREENCHIDA com os dados marcados na tela (vistoria).
+const fichaPreenchimento = ref<Record<string, unknown> | null>(null);
 
 /**
  * Pré-carrega uma imagem e resolve quando ela estiver pronta (ou no timeout,
@@ -335,14 +342,19 @@ function aguardarImagem(src: string, timeoutMs = 2000): Promise<void> {
   });
 }
 
-async function imprimirFicha(tipo: 'ENTRADA' | 'SAIDA') {
+async function imprimirFicha(
+  tipo: 'ENTRADA' | 'SAIDA',
+  preenchimento: Record<string, unknown> | null = null,
+) {
   const os = currentOSData.value;
-  const objeto = os?.objeto ?? {
-    marca: form.criar.objeto_marca.value,
-    modelo: form.criar.objeto_modelo.value,
-    numero_serie: form.criar.objeto_numero_serie.value,
-    cor: form.criar.objeto_cor.value,
-    dados_adicionais: form.criar.objeto_dados_adicionais.value,
+  // Usa os valores VIVOS do formulário (não o os.objeto persistido): assim a Cor
+  // e os demais campos saem preenchidos mesmo antes de salvar e refletem edições.
+  const objeto = {
+    marca: objetoFormData.value.marca,
+    modelo: objetoFormData.value.modelo,
+    numero_serie: objetoFormData.value.numero_serie,
+    cor: objetoFormData.value.cor,
+    dados_adicionais: objetoDados.value,
   };
   fichaData.value = {
     cliente: (currentCliente.value as Record<string, unknown> | null) ?? null,
@@ -350,6 +362,7 @@ async function imprimirFicha(tipo: 'ENTRADA' | 'SAIDA') {
     numeroOs: os?.numero_os ?? null,
     dataOs: os?.data_criacao ?? null,
   };
+  fichaPreenchimento.value = preenchimento;
   fichaTipo.value = tipo;
   // Evita que o comprovante (OSPrintTemplate, condicionado a printFormat==='A4')
   // saia junto ao imprimir a ficha.
@@ -357,12 +370,29 @@ async function imprimirFicha(tipo: 'ENTRADA' | 'SAIDA') {
   await nextTick();
   // Espera a ilustração do veículo carregar antes de abrir o diálogo de impressão.
   await aguardarImagem('/vistoria-carro.png');
-  // Ficha de vistoria é sempre A4 (força o @page correto — ver imprimirComPagina).
-  imprimirComPagina('A4');
-  setTimeout(() => {
+
+  // A ficha só sai do DOM DEPOIS que a impressão termina (evento afterprint).
+  // Um timeout curto (600ms) removia a ficha antes de o "Salvar como PDF"
+  // concluir: no WebView o window.print() não bloqueia, então o motor recapturava
+  // o DOM já vazio e o arquivo saía em branco (embora o preview aparecesse cheio).
+  // O fallback longo cobre motores onde o afterprint não dispara.
+  let fallbackTimer: ReturnType<typeof setTimeout>;
+  const limparFicha = () => {
     fichaTipo.value = null;
     fichaData.value = null;
-  }, 600);
+    fichaPreenchimento.value = null;
+    window.removeEventListener('afterprint', limparFicha);
+    clearTimeout(fallbackTimer);
+  };
+  window.addEventListener('afterprint', limparFicha);
+  fallbackTimer = setTimeout(limparFicha, 120000);
+  // Ficha de vistoria é sempre A4 (força o @page correto — ver imprimirComPagina).
+  imprimirComPagina('A4');
+}
+
+/** Imprime a ficha de vistoria de ENTRADA já preenchida com o que está na tela. */
+function imprimirVistoriaPreenchida() {
+  imprimirFicha('ENTRADA', osDados.value ?? {});
 }
 
 const saldoCreditoCliente = computed(() => {
@@ -473,6 +503,7 @@ useOSFormViewProvider({
   printEntrada,
   printSaida,
   imprimirFicha,
+  imprimirVistoriaPreenchida,
   handleReopenClick,
   handleChangeCliente,
   handleUpdateCliente,
@@ -525,6 +556,7 @@ useOSFormViewProvider({
     :numero-os="fichaData.numeroOs"
     :data-os="fichaData.dataOs"
     :tipo="fichaTipo"
+    :preenchimento="fichaPreenchimento"
   />
   <GerenteAprovacaoModal
     :is-open="gerenteReopen.isOpen.value"

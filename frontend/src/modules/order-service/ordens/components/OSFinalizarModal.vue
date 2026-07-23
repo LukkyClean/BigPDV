@@ -154,10 +154,11 @@ const pagoAnteriormente = computed(() => props.ordemServico?.credito_anterior ??
 
 const taxaEntrega = computed(() => props.ordemServico?.taxa_entrega ?? 0);
 
-// Desconto já gravado na OS (de finalizações anteriores) — somente leitura, acumulado no backend
-const existingDesconto = computed(() =>
-  props.ordemServico?.credito_anterior ? (props.ordemServico?.desconto ?? 0) : 0
-);
+// Desconto já gravado na OS — somente leitura; o backend ACUMULA o desconto novo em
+// cima deste, então ele precisa ser sempre o os.desconto atual. NÃO condicionar ao
+// credito_anterior: numa reabertura "não pagou" o crédito é zerado mas o desconto
+// permanece, e amarrar ao crédito fazia o modal ignorar o desconto existente.
+const existingDesconto = computed(() => props.ordemServico?.desconto ?? 0);
 
 const valorEntrada = computed(() => props.ordemServico?.valor_entrada ?? 0);
 
@@ -616,9 +617,9 @@ async function handleEmitEntrega(zerarAdiantamento: boolean) {
               {{ aCobrar === 0 ? 'Nada a cobrar' : formatCurrency(aCobrar) }}
             </p>
           </div>
-          <div v-else-if="desconto > 0" class="shrink-0">
+          <div v-else-if="desconto > 0 || existingDesconto > 0" class="shrink-0">
             <p class="text-[10px] font-semibold text-zinc-400 uppercase tracking-wide leading-none mb-0.5">Total</p>
-            <p class="text-xl font-bold text-brand-primary">{{ formatCurrency(subtotalItens - desconto + taxaEntrega) }}</p>
+            <p class="text-xl font-bold text-brand-primary">{{ formatCurrency(subtotalItens - existingDesconto - desconto + taxaEntrega) }}</p>
           </div>
 
           <!-- Link ver/ocultar resumo -->

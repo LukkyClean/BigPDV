@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 
 import OSReopenOptionsModal from './OSReopenOptionsModal.vue';
 import OSItemFormModal from './OSItemFormModal.vue';
@@ -15,6 +15,15 @@ import { useReadyOrderServiceMutation } from '../../composables/request/useOrder
 
 const view = useOSFormView();
 const finalizarEntregaMutation = useReadyOrderServiceMutation();
+
+// Valor já registrado como pago na OS — usado para perguntar "o cliente já pagou?"
+// na reabertura completa. Só pergunta quando há dinheiro em jogo.
+const valorJaPago = computed(() => {
+  const os = view.currentOSData.value;
+  if (!os) return 0;
+  const pagamentos = (os.pagamentos ?? []).reduce((s, p) => s + p.valor, 0);
+  return (os.credito_anterior ?? 0) + pagamentos + (os.valor_entrada ?? 0);
+});
 
 // ─── Estado do fluxo de finalização (dois modais) ─────────────────────────────
 const isPagamentoOpen = ref(false);
@@ -88,6 +97,8 @@ async function handleFinalized(payload: { shouldPrint: boolean }) {
 
   <OSReopenOptionsModal
     :is-open="view.isReopenOptionsOpen.value"
+    :tem-pagamento="valorJaPago > 0"
+    :valor-pago="valorJaPago"
     @cancel="view.handleReopenCancel"
     @text-only="view.handleReopenTextOnly"
     @full="view.handleReopenFull"

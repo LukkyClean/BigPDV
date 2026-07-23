@@ -19,6 +19,12 @@ interface UseOSModalLifecycleParams {
   form: OSFormContext;
   resetReopenState: () => void;
   onOpen: () => void;
+  /**
+   * Rebusca a OS fresca do banco (getUniqueOS → localOSData). A lista/tabela e o
+   * histórico do cliente podem estar em cache desatualizado; sem isto o form
+   * reabria com dados velhos (ex.: acessórios/vistoria recém-salvos sumindo).
+   */
+  refreshEditData?: () => Promise<void>;
 }
 
 export function useOSModalLifecycle({
@@ -31,6 +37,7 @@ export function useOSModalLifecycle({
   form,
   resetReopenState,
   onOpen,
+  refreshEditData,
 }: UseOSModalLifecycleParams) {
   const authStore = useAuthStore();
   const configStore = useConfiguracoesStore();
@@ -57,12 +64,23 @@ export function useOSModalLifecycle({
     });
   }
 
-  watch(isOpen, (open) => {
+  watch(isOpen, async (open) => {
     if (open) {
       onOpen();
 
       if (currentOSData.value) {
+        // Popula já com o cache (instantâneo) e reabre sempre com dados FRESCOS do
+        // banco (a lista/histórico pode estar em cache velho — sem isto, acessórios
+        // e vistoria recém-salvos sumiam ao reabrir). Se a rebusca falhar, fica o
+        // do cache.
         populateEditForm(currentOSData.value);
+        try {
+          await refreshEditData?.();
+        } catch {
+          // offline / erro de rede: mantém o dado do cache já populado
+        }
+        if (!isOpen.value) return; // modal fechou durante a rebusca
+        if (currentOSData.value) populateEditForm(currentOSData.value);
       } else {
         form.criar.resetForm();
         if (authStore.userData?.funcionario_id) {
