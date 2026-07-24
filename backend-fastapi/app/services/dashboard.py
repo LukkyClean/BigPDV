@@ -10,8 +10,11 @@ from calendar import monthrange
 from sqlalchemy.orm import Session
 
 from app.db.crud import dashboard as dashboard_crud
+from app.db.crud import relatorio as relatorio_crud
 from app.schemas.dashboard import (
     DashboardStats,
+    TendenciaDiaItem,
+    TendenciaResponse,
     OSVencendoItem,
     OSVencendoResponse,
     EstoqueBaixoItem,
@@ -124,9 +127,17 @@ def get_dashboard_stats(db: Session, periodo: str, empresa_id: int) -> Dashboard
     ticket_atual = _calcular_ticket_medio(atual)
     ticket_ant = _calcular_ticket_medio(anterior)
 
+    # Faturamento total = vendas + OS finalizadas (os_soma ja e o faturamento de OS).
+    fat_atual = atual.vendas_total + atual.os_soma
+    fat_ant = anterior.vendas_total + anterior.os_soma
+
     return DashboardStats(
+        faturamento_total=fat_atual,
+        faturamento_total_variacao=_calcular_variacao(fat_atual, fat_ant),
         vendas_total=atual.vendas_total,
         vendas_total_variacao=_calcular_variacao(atual.vendas_total, anterior.vendas_total),
+        os_total=atual.os_soma,
+        os_total_variacao=_calcular_variacao(atual.os_soma, anterior.os_soma),
         os_count=atual.os_count,
         os_count_variacao=_calcular_variacao(atual.os_count, anterior.os_count),
         novos_clientes=atual.clientes_count,
@@ -189,11 +200,54 @@ def get_meu_resumo(db: Session, periodo: str, funcionario_id: int) -> MeuResumoS
     inicio, fim, _, _ = _calcular_periodo(periodo)
     dados = dashboard_crud.get_meu_resumo_stats(db, inicio, fim, funcionario_id)
     return MeuResumoStats(
+        meu_faturamento=dados.minhas_vendas_valor + dados.minhas_os_valor,
         minhas_vendas_valor=dados.minhas_vendas_valor,
         minhas_vendas_count=dados.minhas_vendas_count,
+        minhas_os_valor=dados.minhas_os_valor,
         minhas_os_abertas=dados.minhas_os_abertas,
         minhas_os_concluidas=dados.minhas_os_concluidas,
     )
+
+
+# ===========================================================================
+# TENDENCIA — serie de faturamento por dia (grafico do topo)
+# ===========================================================================
+
+def _montar_serie(
+    inicio: datetime, fim: datetime, vendas_rows, os_rows
+) -> list[TendenciaDiaItem]:
+    """Monta a serie diaria continua (dias sem movimento viram zero) a partir das
+    linhas agrupadas por dia de vendas e OS. Mantem o grafico sem buracos."""
+    vendas_dia = {str(r.dia): (r.total or 0) for r in vendas_rows}
+    os_dia = {str(r.dia): (r.total or 0) for r in os_rows}
+
+    itens: list[TendenciaDiaItem] = []
+    dia = inicio.date()
+    fim_dia = fim.date()
+    while dia <= fim_dia:
+        chave = dia.isoformat()
+        tv = vendas_dia.get(chave, 0)
+        to = os_dia.get(chave, 0)
+        itens.append(TendenciaDiaItem(dia=dia, total_vendas=tv, total_os=to, total_geral=tv + to))
+        dia += timedelta(days=1)
+    return itens
+
+
+def get_tendencia(db: Session, periodo: str, empresa_id: int) -> TendenciaResponse:
+    """Serie de faturamento (vendas + OS) por dia da LOJA no periodo. Reusa o crud
+    por-dia do modulo de relatorios para nao duplicar as agregacoes."""
+    inicio, fim, _, _ = _calcular_periodo(periodo)
+    vendas_rows = relatorio_crud.get_faturamento_vendas_por_dia(db, inicio, fim, empresa_id)
+    os_rows = relatorio_crud.get_faturamento_os_por_dia(db, inicio, fim, empresa_id)
+    return TendenciaResponse(items=_montar_serie(inicio, fim, vendas_rows, os_rows))
+
+
+def get_minha_tendencia(db: Session, periodo: str, funcionario_id: int) -> TendenciaResponse:
+    """Serie de faturamento (minhas vendas + minhas OS) por dia do FUNCIONARIO."""
+    inicio, fim, _, _ = _calcular_periodo(periodo)
+    vendas_rows = dashboard_crud.get_minhas_vendas_por_dia(db, inicio, fim, funcionario_id)
+    os_rows = dashboard_crud.get_minhas_os_por_dia(db, inicio, fim, funcionario_id)
+    return TendenciaResponse(items=_montar_serie(inicio, fim, vendas_rows, os_rows))
 
 
 def get_minhas_os_vencendo(db: Session, funcionario_id: int) -> OSVencendoResponse:
@@ -329,17 +383,27 @@ _STATUS_LABELS = {
 def get_ranking_funcionarios(db: Session, periodo: str, empresa_id: int) -> RankingFuncionariosResponse:
     inicio, fim, _, _ = _calcular_periodo(periodo)
     rows = dashboard_crud.get_ranking_funcionarios(db, inicio, fim, empresa_id)
-    items = [
-        RankingFuncionarioItem(
-            posicao=i + 1,
-            id=row.id,
-            nome=row.nome,
-            total_vendas_valor=row.total_vendas_valor,
-            qtd_vendas=row.qtd_vendas,
-            qtd_os_fechadas=row.qtd_os_fechadas,
+
+    items: list[RankingFuncionarioItem] = []
+    posicao = 0
+    for row in rows:
+        total_geral = row.total_vendas_valor + row.total_os_valor
+        # Esconde quem esta 100% zerado no periodo (sem venda e sem OS) — tira o ruido.
+        if total_geral == 0 and row.qtd_vendas == 0 and row.qtd_os_fechadas == 0:
+            continue
+        posicao += 1
+        items.append(
+            RankingFuncionarioItem(
+                posicao=posicao,
+                id=row.id,
+                nome=row.nome,
+                total_vendas_valor=row.total_vendas_valor,
+                total_os_valor=row.total_os_valor,
+                total_geral=total_geral,
+                qtd_vendas=row.qtd_vendas,
+                qtd_os_fechadas=row.qtd_os_fechadas,
+            )
         )
-        for i, row in enumerate(rows)
-    ]
     return RankingFuncionariosResponse(items=items)
 
 

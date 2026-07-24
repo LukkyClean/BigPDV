@@ -194,6 +194,7 @@ def get_estoque_baixo(db: Session, limit: int = 8) -> Sequence:
 class MeuResumoAgregado(NamedTuple):
     minhas_vendas_valor: int
     minhas_vendas_count: int
+    minhas_os_valor: int
     minhas_os_abertas: int
     minhas_os_concluidas: int
 
@@ -221,6 +222,9 @@ def get_meu_resumo_stats(
     os_stmt = select(
         func.sum(case((OSModel.status.notin_([OrdemServicoStatus.FINALIZADA, OrdemServicoStatus.CANCELADA]), 1), else_=0)).label("os_abertas"),
         func.sum(case((OSModel.status == OrdemServicoStatus.FINALIZADA, 1), else_=0)).label("os_concluidas"),
+        func.coalesce(
+            func.sum(case((OSModel.status == OrdemServicoStatus.FINALIZADA, OSModel.valor_total), else_=0)), 0
+        ).label("os_valor"),
     ).where(
         and_(
             OSModel.data_criacao >= data_inicio,
@@ -234,9 +238,54 @@ def get_meu_resumo_stats(
     return MeuResumoAgregado(
         minhas_vendas_valor=vendas_result.vendas_valor or 0,
         minhas_vendas_count=vendas_result.vendas_count or 0,
+        minhas_os_valor=os_result.os_valor or 0,
         minhas_os_abertas=os_result.os_abertas or 0,
         minhas_os_concluidas=os_result.os_concluidas or 0,
     )
+
+
+def get_minhas_vendas_por_dia(
+    db: Session, data_inicio: datetime, data_fim: datetime, funcionario_id: int
+) -> Sequence:
+    """Soma das vendas finalizadas do funcionario, agrupada por dia (serie de tendencia pessoal)."""
+    stmt = (
+        select(
+            func.date(Venda.criado_em).label("dia"),
+            func.coalesce(func.sum(Venda.total), 0).label("total"),
+        )
+        .where(
+            and_(
+                Venda.status == VendaStatus.FINALIZADA,
+                Venda.criado_em >= data_inicio,
+                Venda.criado_em <= data_fim,
+                Venda.funcionario_id == funcionario_id,
+            )
+        )
+        .group_by(func.date(Venda.criado_em))
+    )
+    return db.execute(stmt).all()
+
+
+def get_minhas_os_por_dia(
+    db: Session, data_inicio: datetime, data_fim: datetime, funcionario_id: int
+) -> Sequence:
+    """Soma das OS finalizadas do funcionario, agrupada por dia (serie de tendencia pessoal)."""
+    stmt = (
+        select(
+            func.date(OSModel.data_criacao).label("dia"),
+            func.coalesce(func.sum(OSModel.valor_total), 0).label("total"),
+        )
+        .where(
+            and_(
+                OSModel.status == OrdemServicoStatus.FINALIZADA,
+                OSModel.data_criacao >= data_inicio,
+                OSModel.data_criacao <= data_fim,
+                OSModel.funcionario_id == funcionario_id,
+            )
+        )
+        .group_by(func.date(OSModel.data_criacao))
+    )
+    return db.execute(stmt).all()
 
 
 def get_minhas_os_vencendo(db: Session, funcionario_id: int, limit: int = 10):
@@ -487,6 +536,7 @@ def get_ranking_funcionarios(
         select(
             OSModel.funcionario_id,
             func.count(OSModel.id).label("qtd_os"),
+            func.coalesce(func.sum(OSModel.valor_total), 0).label("os_valor"),
         )
         .where(and_(
             OSModel.status == OrdemServicoStatus.FINALIZADA,
@@ -497,12 +547,16 @@ def get_ranking_funcionarios(
         .subquery()
     )
 
+    total_vendas = func.coalesce(vendas_sub.c.total_vendas, 0)
+    total_os = func.coalesce(os_sub.c.os_valor, 0)
+
     stmt = (
         select(
             Funcionario.id,
             Funcionario.nome,
-            func.coalesce(vendas_sub.c.total_vendas, 0).label("total_vendas_valor"),
+            total_vendas.label("total_vendas_valor"),
             func.coalesce(vendas_sub.c.qtd_vendas, 0).label("qtd_vendas"),
+            total_os.label("total_os_valor"),
             func.coalesce(os_sub.c.qtd_os, 0).label("qtd_os_fechadas"),
         )
         .outerjoin(vendas_sub, vendas_sub.c.funcionario_id == Funcionario.id)
@@ -511,7 +565,8 @@ def get_ranking_funcionarios(
             Funcionario.empresa_id == empresa_id,
             Funcionario.ativo == True,
         ))
-        .order_by(func.coalesce(vendas_sub.c.total_vendas, 0).desc())
+        # Ranking JUSTO: ordena por faturamento total (vendas + OS), nao so vendas.
+        .order_by((total_vendas + total_os).desc())
         .limit(limit)
     )
     return db.execute(stmt).all()

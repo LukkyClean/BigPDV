@@ -16,9 +16,11 @@ import type {
   OSPorStatusResponseData,
   FormasPagamentoResponseData,
   OSAtrasadaEmpresaResponseData,
+  TendenciaResponseData,
 } from '../schemas/dashboard.schema';
 import {
   DashboardStatsSchema,
+  TendenciaResponseSchema,
   OSVencendoResponseSchema,
   EstoqueBaixoResponseSchema,
   UltimasVendasResponseSchema,
@@ -71,6 +73,20 @@ export const dashboardService = {
       params: { periodo },
     });
     return safeParseResponse(MeuResumoStatsSchema, data, 'dashboardService.getMeuResumo');
+  },
+
+  async getTendencia(periodo: PeriodFilter): Promise<TendenciaResponseData> {
+    const { data } = await api.get<TendenciaResponseData>(`${DASHBOARD_URL}/tendencia`, {
+      params: { periodo },
+    });
+    return safeParseResponse(TendenciaResponseSchema, data, 'dashboardService.getTendencia');
+  },
+
+  async getMinhaTendencia(periodo: PeriodFilter): Promise<TendenciaResponseData> {
+    const { data } = await api.get<TendenciaResponseData>(`${DASHBOARD_URL}/minha-tendencia`, {
+      params: { periodo },
+    });
+    return safeParseResponse(TendenciaResponseSchema, data, 'dashboardService.getMinhaTendencia');
   },
 
   async getMinhasOSVencendo(): Promise<OSVencendoResponseData> {

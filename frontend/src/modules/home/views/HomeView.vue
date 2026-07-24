@@ -9,13 +9,11 @@ import { useAuthStore } from '@/shared/stores/auth.store';
 const authStore = useAuthStore();
 const { userData } = storeToRefs(authStore);
 
-const CARGOS_VISAO_MASTER = ['administrador', 'gerente'];
-
-const isMaster = computed(() => {
-  if (userData.value?.is_master) return true;
-  const cargo = userData.value?.cargo?.nome?.toLowerCase() ?? '';
-  return CARGOS_VISAO_MASTER.some((c) => cargo.includes(c));
-});
+// A visão geral da loja é EXCLUSIVA do Master (is_master setado pelo dono).
+// Alinha com o backend (get_current_master_user): quem não é master vê o
+// dashboard pessoal. Antes o gate incluía cargos por nome ("gerente"/
+// "administrador"), o que era frágil e não batia com a trava do servidor.
+const isMaster = computed(() => userData.value?.is_master === true);
 </script>
 
 <template>
