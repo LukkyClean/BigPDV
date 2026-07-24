@@ -92,6 +92,8 @@ class Funcionario(Base):
     comissao_venda_percentual: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, doc="Comissão sobre vendas (basis points); vazio herda do cargo")
     comissao_servico_percentual: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, doc="Comissão sobre serviços/OS (basis points); vazio herda do cargo")
     meta_mensal: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, doc="Meta mensal de faturamento (centavos); vazio herda do cargo")
+    # Modo de comissão: 'direto' | 'meta'. Vazio herda do cargo (cascata); sem nada = 'direto'.
+    comissao_modo: Mapped[Optional[str]] = mapped_column(String(10), nullable=True, doc="Modo de comissão: 'direto' | 'meta'; vazio herda do cargo")
      # --- Outros ---
     data_nascimento: Mapped[Optional[date]] = mapped_column(Date, nullable=True, doc="Data de nascimento do funcionário")
     mae: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, doc="Nome completo da mãe")

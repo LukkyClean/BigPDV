@@ -25,6 +25,8 @@ function fmtData(iso: string): string {
   return `${d}/${m}/${y}`;
 }
 const periodo = computed(() => `${fmtData(props.inicio)} a ${fmtData(props.fim)}`);
+// Alguém teve comissão retida por não bater a meta? (para a nota de rodapé)
+const temRetida = computed(() => props.itens.some((i) => !i.comissao_liberada));
 
 function pct(bp: number | null): string {
   return bp == null ? '—' : `${(bp / 100).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`;
@@ -77,7 +79,9 @@ function pct(bp: number | null): string {
         </thead>
         <tbody>
           <tr v-for="i in itens" :key="i.funcionario_id">
-            <td class="border border-slate-300 px-2 py-1 text-slate-800">{{ i.nome }}</td>
+            <td class="border border-slate-300 px-2 py-1 text-slate-800">
+              {{ i.nome }}<span v-if="!i.comissao_liberada" class="text-slate-500"> *</span>
+            </td>
             <td class="border border-slate-300 px-2 py-1 text-right tabular-nums">{{ formatCurrency(i.faturamento_vendas) }}</td>
             <td class="border border-slate-300 px-2 py-1 text-right tabular-nums text-slate-500">{{ pct(i.percentual_venda) }}</td>
             <td class="border border-slate-300 px-2 py-1 text-right tabular-nums">{{ formatCurrency(i.faturamento_os) }}</td>
@@ -96,9 +100,13 @@ function pct(bp: number | null): string {
         </tfoot>
       </table>
 
-      <p class="text-[10px] text-slate-400 mb-8">
+      <p class="text-[10px] text-slate-400 mb-1">
         Base líquida (vendas + OS finalizadas) no período. Percentuais aplicados conforme configuração do cargo/funcionário.
       </p>
+      <p v-if="temRetida" class="text-[10px] text-slate-500 mb-8">
+        * Comissão retida — meta do período não atingida (regra "só ao bater a meta").
+      </p>
+      <p v-else class="mb-8"></p>
 
       <!-- Assinaturas -->
       <div class="grid grid-cols-2 gap-10 mt-12 text-xs">

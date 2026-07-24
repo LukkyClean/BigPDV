@@ -13,6 +13,9 @@ export const ComissaoItemSchema = z.object({
   comissao_total: z.number(),
   meta_mensal: z.number().nullable(),
   meta_atingida_percentual: z.number().nullable(),
+  // F3c: modo aplicado e se a comissão foi liberada (false = travada pela meta).
+  comissao_modo: z.enum(['direto', 'meta']).default('direto'),
+  comissao_liberada: z.boolean().default(true),
 });
 
 export const RelatorioComissaoSchema = z.object({

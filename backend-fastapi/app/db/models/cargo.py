@@ -44,6 +44,11 @@ class Cargo(Base):
     meta_mensal: Mapped[Optional[int]] = mapped_column(
         Integer, nullable=True, doc="Meta mensal de faturamento do cargo (centavos)"
     )
+    # Modo de comissão: 'direto' paga a taxa sobre tudo (padrão); 'meta' só paga
+    # ao bater a meta_mensal (gatilho). Nullable -> herda; sem nada = 'direto'.
+    comissao_modo: Mapped[Optional[str]] = mapped_column(
+        String(10), nullable=True, doc="Modo de comissão: 'direto' | 'meta' (gatilho por meta)"
+    )
 
     # =========================
     # RELACIONAMENTOS

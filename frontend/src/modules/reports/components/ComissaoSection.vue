@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, nextTick, toRef } from 'vue';
-import { HandCoins, Download, Printer } from 'lucide-vue-next';
+import { HandCoins, Download, Printer, Lock } from 'lucide-vue-next';
 
 import { formatCurrency, formatCentsToInput } from '@/shared/utils/finance';
 import { saveCsv } from '@/shared/utils/csv';
@@ -126,8 +126,22 @@ async function exportar() {
             <td class="py-2 px-2 text-right text-slate-400 tabular-nums">{{ pct(i.percentual_venda) }}</td>
             <td class="py-2 px-3 text-right text-slate-500 tabular-nums">{{ formatCurrency(i.faturamento_os) }}</td>
             <td class="py-2 px-2 text-right text-slate-400 tabular-nums">{{ pct(i.percentual_servico) }}</td>
-            <td class="py-2 px-3 text-right text-slate-400 tabular-nums">{{ metaTexto(i.meta_atingida_percentual) }}</td>
-            <td class="py-2 pl-3 text-right font-bold text-brand-primary tabular-nums">{{ formatCurrency(i.comissao_total) }}</td>
+            <td class="py-2 px-3 text-right tabular-nums">
+              <span
+                v-if="!i.comissao_liberada"
+                class="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-600"
+                title="Modo por meta: comissão travada até bater a meta"
+              >
+                <Lock :size="10" /> {{ metaTexto(i.meta_atingida_percentual) }}
+              </span>
+              <span v-else class="text-slate-400">{{ metaTexto(i.meta_atingida_percentual) }}</span>
+            </td>
+            <td
+              class="py-2 pl-3 text-right font-bold tabular-nums"
+              :class="i.comissao_liberada ? 'text-brand-primary' : 'text-slate-300'"
+            >
+              {{ formatCurrency(i.comissao_total) }}
+            </td>
           </tr>
         </tbody>
       </table>

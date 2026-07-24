@@ -4,7 +4,10 @@
 # ---------------------------------------------------------------------------
 
 from pydantic import BaseModel, ConfigDict, Field
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Literal
+
+# Modo de comissão: 'direto' paga a taxa sobre tudo; 'meta' só paga ao bater a meta.
+ComissaoModo = Literal["direto", "meta"]
 
 # =========================
 # Schema Base
@@ -32,6 +35,9 @@ class CargoBase(BaseModel):
         None, ge=0, le=10000, description="Comissão sobre serviços/OS (basis points: 500 = 5,00%)"
     )
     meta_mensal: Optional[int] = Field(None, ge=0, description="Meta mensal de faturamento (centavos)")
+    comissao_modo: Optional[ComissaoModo] = Field(
+        None, description="Modo de comissão: 'direto' (paga sobre tudo) ou 'meta' (só ao bater a meta). Vazio = 'direto'."
+    )
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -77,6 +83,7 @@ class CargoUpdate(BaseModel):
     comissao_venda_percentual: Optional[int] = Field(None, ge=0, le=10000)
     comissao_servico_percentual: Optional[int] = Field(None, ge=0, le=10000)
     meta_mensal: Optional[int] = Field(None, ge=0)
+    comissao_modo: Optional[ComissaoModo] = Field(None)
 
     model_config = ConfigDict(
         from_attributes=True,

@@ -13,6 +13,8 @@ import FormasPagamentoDonut from '../components/FormasPagamentoDonut.vue';
 import FaturamentoTabela from '../components/FaturamentoTabela.vue';
 import RankingSection from '../components/RankingSection.vue';
 import ComissaoSection from '../components/ComissaoSection.vue';
+import EstoqueSection from '../components/EstoqueSection.vue';
+import OSPerformanceSection from '../components/OSPerformanceSection.vue';
 
 const inicio = ref('');
 const fim = ref('');
@@ -118,6 +120,12 @@ async function exportarCsv() {
 
       <!-- Comissão por funcionário -->
       <ComissaoSection :inicio="inicio" :fim="fim" />
+
+      <!-- Estoque e Curva ABC -->
+      <EstoqueSection :inicio="inicio" :fim="fim" />
+
+      <!-- Desempenho de OS -->
+      <OSPerformanceSection :inicio="inicio" :fim="fim" />
 
       <!-- Tabela -->
       <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
