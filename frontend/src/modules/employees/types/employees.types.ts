@@ -93,6 +93,12 @@ export interface FuncionarioBase {
   tipo_contrato?: string;
   data_admissao?: string; // ISO date string YYYY-MM-DD
   cargo_id?: number;
+  // Comissão (override do cargo). Vazio/null = herda do cargo (cascata).
+  // Percentuais em BASIS POINTS (500 = 5,00%); meta em centavos.
+  comissao_venda_percentual?: number | null;
+  comissao_servico_percentual?: number | null;
+  meta_mensal?: number | null;
+  comissao_modo?: 'direto' | 'meta' | null;
 }
 
 export interface FuncionarioCreate extends FuncionarioBase {
@@ -181,6 +187,12 @@ export interface EmployeeFormData {
   banco: string;
   agencia: string;
   conta: string;
+
+  // Comissão (override do cargo). null = herda.
+  comissao_venda_percentual: number | null;
+  comissao_servico_percentual: number | null;
+  meta_mensal: number | null;
+  comissao_modo: 'direto' | 'meta' | null;
 
   // Observacoes
   observacao: string;

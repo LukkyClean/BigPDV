@@ -10,7 +10,7 @@ import {
   Wrench,
   Users,
   Tags,
-  BookOpen,
+  BarChart3,
   Building,
   IdCard,
   ShieldCheck,
@@ -129,13 +129,13 @@ export const PERMISSION_MATRIX: PermissionMatrixItem[] = [
     deleteKey: 'delete_products',
   },
   {
-    id: 'catalog',
-    label: 'Catalogo',
-    description: 'Experiencias e apresentacoes',
-    icon: BookOpen,
-    viewKey: 'view_catalog',
-    manageKey: 'manage_catalog',
-    deleteKey: 'delete_catalog',
+    id: 'reports',
+    label: 'Relatorios',
+    description: 'Faturamento, ranking e comissoes',
+    icon: BarChart3,
+    viewKey: 'view_reports',
+    manageKey: 'manage_reports',
+    // Read-only: sem acao de excluir.
   },
   {
     id: 'enterprise',
@@ -168,11 +168,11 @@ export const PERMISSION_MATRIX: PermissionMatrixItem[] = [
 
 export const PERMISSION_KEYS = Array.from(
   new Set(
-    PERMISSION_MATRIX.flatMap((item) => [
-      item.viewKey,
-      item.manageKey,
-      item.deleteKey,
-    ]),
+    PERMISSION_MATRIX.flatMap((item) =>
+      [item.viewKey, item.manageKey, item.deleteKey].filter(
+        (key): key is string => Boolean(key),
+      ),
+    ),
   ),
 );
 
@@ -204,7 +204,7 @@ export function applyEndpointPermissions(permissoes: Record<string, boolean>) {
     if (!permissionKey) return;
 
     const hasAny = [module.viewKey, module.manageKey, module.deleteKey].some(
-      (key) => updated[key],
+      (key) => key && updated[key],
     );
 
     updated[permissionKey] = hasAny;

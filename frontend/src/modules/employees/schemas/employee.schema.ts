@@ -87,6 +87,12 @@ export const employeeSchema = z
     agencia: z.string().max(10).optional().or(z.literal('')),
     conta: z.string().max(20).optional().or(z.literal('')),
 
+    // Comissão (override do cargo). null = herda. Basis points / centavos.
+    comissao_venda_percentual: z.number().min(0).max(10000).nullable().optional(),
+    comissao_servico_percentual: z.number().min(0).max(10000).nullable().optional(),
+    meta_mensal: z.number().min(0).nullable().optional(),
+    comissao_modo: z.enum(['direto', 'meta']).nullable().optional(),
+
     // Observacoes
     observacao: z.string().max(500).optional().or(z.literal('')),
   })
@@ -140,6 +146,12 @@ export const employeeUpdateSchema = z
     banco: z.string().max(50).optional().or(z.literal('')),
     agencia: z.string().max(10).optional().or(z.literal('')),
     conta: z.string().max(20).optional().or(z.literal('')),
+
+    // Comissão (override do cargo). null = herda. Basis points / centavos.
+    comissao_venda_percentual: z.number().min(0).max(10000).nullable().optional(),
+    comissao_servico_percentual: z.number().min(0).max(10000).nullable().optional(),
+    meta_mensal: z.number().min(0).nullable().optional(),
+    comissao_modo: z.enum(['direto', 'meta']).nullable().optional(),
 
     // Observacoes
     observacao: z.string().max(500).optional().or(z.literal('')),

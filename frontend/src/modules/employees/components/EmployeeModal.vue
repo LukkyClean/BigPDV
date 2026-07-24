@@ -15,6 +15,7 @@ import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
 import DadosFuncionarioSection from './form/DadosFuncionarioSection.vue';
 import EnderecoSection from './form/EnderecoSection.vue';
 import DadosBancariosSection from './form/DadosBancariosSection.vue';
+import ComissaoSection from './form/ComissaoSection.vue';
 import ObservacoesSection from './form/ObservacoesSection.vue';
 
 // =============================================
@@ -165,6 +166,12 @@ watch(isOpen, (open) => {
 
                 <!-- Dados Bancarios -->
                 <DadosBancariosSection
+                  :submit-count="submitCount"
+                  :disabled="isViewMode"
+                />
+
+                <!-- Comissão (override do cargo) -->
+                <ComissaoSection
                   :submit-count="submitCount"
                   :disabled="isViewMode"
                 />

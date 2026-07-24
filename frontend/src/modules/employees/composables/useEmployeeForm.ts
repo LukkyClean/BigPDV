@@ -131,6 +131,12 @@ const DEFAULT_FORM_VALUES: EmployeeFormData = {
   agencia: '',
   conta: '',
 
+  // Comissão (override do cargo). null = herda.
+  comissao_venda_percentual: null,
+  comissao_servico_percentual: null,
+  meta_mensal: null,
+  comissao_modo: null,
+
   // Observacoes
   observacao: '',
 };
@@ -170,6 +176,12 @@ export interface EmployeeFormContext {
   banco: Ref<string>;
   agencia: Ref<string>;
   conta: Ref<string>;
+
+  // Comissão (override do cargo)
+  comissao_venda_percentual: Ref<number | null | undefined>;
+  comissao_servico_percentual: Ref<number | null | undefined>;
+  meta_mensal: Ref<number | null | undefined>;
+  comissao_modo: Ref<'direto' | 'meta' | null | undefined>;
 
   // Observacoes
   observacao: Ref<string>;
@@ -242,6 +254,11 @@ export function useEmployeeFormProvider() {
   const [agencia] = defineField('agencia');
   const [conta] = defineField('conta');
 
+  const [comissao_venda_percentual] = defineField('comissao_venda_percentual');
+  const [comissao_servico_percentual] = defineField('comissao_servico_percentual');
+  const [meta_mensal] = defineField('meta_mensal');
+  const [comissao_modo] = defineField('comissao_modo');
+
   const [observacao] = defineField('observacao');
 
   // Field array for enderecos
@@ -300,6 +317,10 @@ export function useEmployeeFormProvider() {
       banco: employee.banco || '',
       agencia: employee.agencia || '',
       conta: employee.conta || '',
+      comissao_venda_percentual: employee.comissao_venda_percentual ?? null,
+      comissao_servico_percentual: employee.comissao_servico_percentual ?? null,
+      meta_mensal: employee.meta_mensal ?? null,
+      comissao_modo: employee.comissao_modo ?? null,
       observacao: employee.observacao || '',
     });
   }
@@ -343,6 +364,11 @@ export function useEmployeeFormProvider() {
       tipo_contrato: formData.tipo_contrato || undefined,
       data_admissao: formData.data_admissao || undefined,
       cargo_id: formData.cargo_id || undefined,
+      // Comissão (override do cargo). null = herda -> omite.
+      comissao_venda_percentual: formData.comissao_venda_percentual ?? undefined,
+      comissao_servico_percentual: formData.comissao_servico_percentual ?? undefined,
+      meta_mensal: formData.meta_mensal ?? undefined,
+      comissao_modo: formData.comissao_modo ?? undefined,
       usuario: {
         nome: formData.usuario_nome,
         email: formData.usuario_email,
@@ -419,6 +445,12 @@ export function useEmployeeFormProvider() {
           jornada_trabalho: formData.jornada_trabalho || undefined,
           tipo_contrato: formData.tipo_contrato || undefined,
           data_admissao: formData.data_admissao || undefined,
+
+          // Comissão (override). Envia null explícito p/ permitir LIMPAR e voltar a herdar.
+          comissao_venda_percentual: formData.comissao_venda_percentual,
+          comissao_servico_percentual: formData.comissao_servico_percentual,
+          meta_mensal: formData.meta_mensal,
+          comissao_modo: formData.comissao_modo,
 
           // Observações
           observacao: formData.observacao || undefined,
@@ -498,6 +530,10 @@ export function useEmployeeFormProvider() {
     banco,
     agencia,
     conta,
+    comissao_venda_percentual,
+    comissao_servico_percentual,
+    meta_mensal,
+    comissao_modo,
     observacao,
     enderecos,
     handleAddEndereco,
