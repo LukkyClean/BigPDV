@@ -16,6 +16,7 @@ export const OsItemTypeEnum = z.enum(['PRODUTO', 'SERVICO']);
 
 export const OsEquipTypeEnum = z.enum([
   'COMPUTADOR',
+  'NOTEBOOK',
   'CELULAR',
   'TABLET',
   'IMPRESSORA',

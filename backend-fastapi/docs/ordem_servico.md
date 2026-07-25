@@ -288,7 +288,7 @@ O `_handle_db_transaction` em `app/core/depends.py`:
 `PRODUTO` | `SERVICO`
 
 ### `TipoEquipamento`
-`COMPUTADOR` | `CELULAR` | `TABLET` | `IMPRESSORA` | `MONITOR` | `PRINTER` | `SCANNER` | `OUTROS`
+`COMPUTADOR` | `NOTEBOOK` | `CELULAR` | `TABLET` | `IMPRESSORA` | `MONITOR` | `PRINTER` | `SCANNER` | `OUTROS`
 
 ---
 

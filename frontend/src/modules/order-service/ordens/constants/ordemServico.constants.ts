@@ -49,6 +49,7 @@ export const OS_EQUIP_TYPE_OPTIONS = [
   { value: 'CELULAR' as OsEquipTypeEnumDataType, label: 'Celular' },
   { value: 'TABLET' as OsEquipTypeEnumDataType, label: 'Tablet' },
   { value: 'COMPUTADOR' as OsEquipTypeEnumDataType, label: 'Computador' },
+  { value: 'NOTEBOOK' as OsEquipTypeEnumDataType, label: 'Notebook' },
   { value: 'IMPRESSORA' as OsEquipTypeEnumDataType, label: 'Impressora' },
   { value: 'MONITOR' as OsEquipTypeEnumDataType, label: 'Monitor' },
   { value: 'SCANNER' as OsEquipTypeEnumDataType, label: 'Scanner' },

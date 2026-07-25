@@ -103,6 +103,7 @@ class OrdemServicoItemAprovacao(str, enum.Enum):
 
 class TipoEquipamento(str, enum.Enum):
     COMPUTADOR = "COMPUTADOR"
+    NOTEBOOK = "NOTEBOOK"
     CELULAR = "CELULAR"
     TABLET = "TABLET"
     IMPRESSORA = "IMPRESSORA"
