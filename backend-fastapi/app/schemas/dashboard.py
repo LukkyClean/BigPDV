@@ -23,7 +23,7 @@ class DashboardStats(BaseModel):
     os_total: int = Field(0, description="Faturamento de OS finalizadas no periodo (centavos)")
     os_total_variacao: float = Field(0.0, description="Variacao percentual vs periodo anterior")
 
-    os_count: int = Field(0, description="Quantidade de OS criadas no periodo")
+    os_count: int = Field(0, description="Quantidade de OS FINALIZADAS no periodo (mesma ancora do os_total)")
     os_count_variacao: float = Field(0.0, description="Variacao percentual vs periodo anterior")
 
     novos_clientes: int = Field(0, description="Novos clientes cadastrados no periodo")

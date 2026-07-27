@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref } from 'vue';
-import { Banknote, Receipt, ShoppingCart, Wrench, TriangleAlert, Download } from 'lucide-vue-next';
+import { ref, computed } from 'vue';
+import { Banknote, Receipt, ShoppingCart, Wrench, TriangleAlert, Download, Percent } from 'lucide-vue-next';
 
 import { formatCurrency, formatCentsToInput } from '@/shared/utils/finance';
 import { saveCsv } from '@/shared/utils/csv';
@@ -25,6 +25,11 @@ function onPeriodo(r: { inicio: string; fim: string }) {
 
 const { data, isLoading, isError } = useFaturamentoQuery(inicio, fim);
 const toast = useToast();
+
+/** Só mostra o bloco de juros quando houve juros — repassado ou absorvido. */
+const jurosTotal = computed(
+  () => (data.value?.juros_repassado ?? 0) + (data.value?.juros_absorvido ?? 0),
+);
 
 /** Exporta o detalhamento por dia (dias com movimento) como CSV e abre no Excel. */
 async function exportarCsv() {
@@ -72,11 +77,19 @@ async function exportarCsv() {
     <template v-else>
       <!-- KPIs -->
       <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <!--
+          Mostra o LÍQUIDO: é o que efetivamente entrou no caixa. O juros de
+          cartão vai para a operadora, então exibi-lo aqui dizia que um dinheiro
+          que nunca chegou na loja tinha chegado. O bruto continua visível, na
+          linha de apoio e no desdobramento abaixo.
+        -->
         <KpiCard
           label="Faturamento"
-          :value="formatCurrency(data?.faturamento_total ?? 0)"
+          :value="formatCurrency(data?.faturamento_liquido ?? data?.faturamento_total ?? 0)"
           :icon="Banknote"
-          :hint="`${data?.qtd_vendas ?? 0} vendas · ${data?.qtd_os ?? 0} OS`"
+          :hint="jurosTotal > 0
+            ? `Bruto ${formatCurrency(data?.faturamento_total ?? 0)} − ${formatCurrency(jurosTotal)} de juros`
+            : `${data?.qtd_vendas ?? 0} vendas · ${data?.qtd_os ?? 0} OS`"
         />
         <KpiCard label="Ticket médio" :value="formatCurrency(data?.ticket_medio ?? 0)" :icon="Receipt" />
         <KpiCard
@@ -91,6 +104,56 @@ async function exportarCsv() {
           :icon="Wrench"
           :hint="`${data?.qtd_os ?? 0} finalizadas`"
         />
+      </div>
+
+      <!--
+        Juros de cartão. Só aparece quando existe — loja que não cobra juros não
+        precisa ver a linha. O repassado já está dentro do faturamento bruto; o
+        absorvido nunca entrou nele. Os dois vão para a operadora, então os dois
+        saem do líquido.
+      -->
+      <div
+        v-if="jurosTotal > 0"
+        class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm"
+      >
+        <h3 class="text-sm font-bold text-slate-700 mb-3 flex items-center gap-1.5">
+          <Percent :size="14" class="text-slate-400" /> Juros de cartão no período
+        </h3>
+        <p class="text-xs text-slate-500 mb-3">
+          Juros de cartão fica com a operadora, não com a loja — por isso sai do faturamento.
+        </p>
+        <div class="space-y-2 text-sm">
+          <div class="flex justify-between items-center">
+            <span class="text-slate-500">Faturamento bruto</span>
+            <span class="font-medium text-slate-700 tabular-nums">
+              {{ formatCurrency(data?.faturamento_total ?? 0) }}
+            </span>
+          </div>
+          <div v-if="(data?.juros_repassado ?? 0) > 0" class="flex justify-between items-center">
+            <span class="text-amber-600">
+              (−) Juros repassado ao cliente
+              <span class="text-[11px] text-slate-400">· cobrado a mais, fica com a operadora</span>
+            </span>
+            <span class="font-medium text-amber-600 tabular-nums">
+              − {{ formatCurrency(data?.juros_repassado ?? 0) }}
+            </span>
+          </div>
+          <div v-if="(data?.juros_absorvido ?? 0) > 0" class="flex justify-between items-center">
+            <span class="text-rose-600">
+              (−) Juros absorvido pela loja
+              <span class="text-[11px] text-slate-400">· o cliente não pagou, a loja bancou</span>
+            </span>
+            <span class="font-medium text-rose-600 tabular-nums">
+              − {{ formatCurrency(data?.juros_absorvido ?? 0) }}
+            </span>
+          </div>
+          <div class="flex justify-between items-center border-t border-slate-200 pt-2">
+            <span class="font-bold text-slate-700">Faturamento líquido</span>
+            <span class="text-lg font-bold text-emerald-700 tabular-nums">
+              {{ formatCurrency(data?.faturamento_liquido ?? data?.faturamento_total ?? 0) }}
+            </span>
+          </div>
+        </div>
       </div>
 
       <!-- Gráficos -->

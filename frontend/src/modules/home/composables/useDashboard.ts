@@ -43,12 +43,14 @@ export function useDashboard() {
       {
         id: 'ordens-servico',
         icon: Wrench,
-        label: 'Ordens de Serviço',
+        // Conta OS FINALIZADAS no período — o painel é de resultados, e o
+        // faturamento de serviços ao lado usa a mesma âncora.
+        label: 'OS Finalizadas',
         value: String(data.os_count),
         change: formatVariacao(data.os_count_variacao),
         isPositive: data.os_count_variacao >= 0,
         isEmpty: data.os_count === 0,
-        emptyLabel: 'Nenhuma OS',
+        emptyLabel: 'Nenhuma finalizada',
       },
       {
         id: 'novos-clientes',

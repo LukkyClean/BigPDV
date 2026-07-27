@@ -31,6 +31,7 @@ from app.core.enum import (
     TipoEquipamento,
     OrdemServicoPrioridade,
     SituacaoEquipamento,
+    JurosResponsavel,
 )
 
 from app.schemas.cliente import ClienteRead
@@ -165,7 +166,12 @@ class OSPagamentoCreate(BaseModel):
     A soma dos valores deve ser exatamente igual ao valor_total da OS.
     """
     forma_pagamento_id: int = Field(..., description="ID da forma de pagamento do catálogo")
-    valor: int = Field(..., gt=0, description="Valor pago nesta forma de pagamento (centavos)")
+    valor: int = Field(..., gt=0, description="Valor pago pelo cliente nesta forma de pagamento (centavos)")
+    juros_valor: int = Field(0, ge=0, description="Juros calculados neste pagamento (centavos)")
+    juros_responsavel: JurosResponsavel = Field(
+        JurosResponsavel.CLIENTE,
+        description="CLIENTE: juros embutido em `valor`. LOJA: juros absorvido, fora de `valor`.",
+    )
     parcelas: int = Field(1, ge=1, description="Número de parcelas (mínimo 1)")
     bandeira_cartao: Optional[str] = Field(None, max_length=50, description="Bandeira do cartão (VISA, MASTERCARD, etc.)")
     vencimento: Optional[date] = Field(None, description="Data de vencimento do pagamento (ex: boletos)")
@@ -179,7 +185,11 @@ class OSPagamentoRead(BaseModel):
     id: int = Field(..., description="ID único do pagamento")
     ordem_servico_id: int = Field(..., description="ID da OS associada")
     forma_pagamento: FormaPagamentoRead = Field(..., description="Forma de pagamento utilizada")
-    valor: int = Field(..., description="Valor pago (centavos)")
+    valor: int = Field(..., description="Valor pago pelo cliente (centavos)")
+    juros_valor: int = Field(0, description="Juros calculados neste pagamento (centavos)")
+    juros_responsavel: JurosResponsavel = Field(
+        JurosResponsavel.CLIENTE, description="Quem arca com o juros deste pagamento"
+    )
     parcelas: int = Field(..., description="Número de parcelas")
     bandeira_cartao: Optional[str] = Field(None, description="Bandeira do cartão")
     vencimento: Optional[date] = Field(None, description="Data de vencimento do pagamento")

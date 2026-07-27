@@ -138,8 +138,12 @@ def get_dashboard_stats(db: Session, periodo: str, empresa_id: int) -> Dashboard
         vendas_total_variacao=_calcular_variacao(atual.vendas_total, anterior.vendas_total),
         os_total=atual.os_soma,
         os_total_variacao=_calcular_variacao(atual.os_soma, anterior.os_soma),
-        os_count=atual.os_count,
-        os_count_variacao=_calcular_variacao(atual.os_count, anterior.os_count),
+        # OS FINALIZADAS, não criadas. Este painel é de resultados: ao lado
+        # aparecem as vendas finalizadas e o faturamento de serviços do período.
+        # Contando as criadas, uma OS aberta na semana passada e fechada hoje
+        # deixava a tela dizendo "0 OS" logo acima de "Serviços R$ 51,10".
+        os_count=atual.os_finalizadas_count,
+        os_count_variacao=_calcular_variacao(atual.os_finalizadas_count, anterior.os_finalizadas_count),
         novos_clientes=atual.clientes_count,
         novos_clientes_variacao=_calcular_variacao(atual.clientes_count, anterior.clientes_count),
         ticket_medio=ticket_atual,

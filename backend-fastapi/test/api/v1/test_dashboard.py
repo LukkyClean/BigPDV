@@ -214,3 +214,35 @@ def test_ranking_ordena_por_vendas_mais_os_e_esconde_zerados(client, db_session)
     assert alvo["total_os_valor"] == 50000
     assert alvo["total_geral"] == 50000  # ranqueado por vendas + OS
     assert alvo["posicao"] == 1
+
+
+def test_dashboard_conta_os_pela_finalizacao_nao_pela_abertura(client, db_session):
+    """Bug real: OS aberta dias atras e finalizada hoje deixava o painel de HOJE
+    dizendo "Nenhuma OS" logo acima de "Servicos R$ 51,10". O painel e de
+    resultados, entao o card conta o que foi FINALIZADO no periodo."""
+    from datetime import datetime, timedelta
+    from app.db.models.ordem_servico import OrdemServico as OSModel
+
+    master_header = _auth_master(client)
+    func_header, func_id = _auth_funcionario(client, master_header)
+    cliente_id = _cliente(client, master_header)
+    fp_id = _forma_pagamento(client, master_header)
+
+    numero = _os_finalizada(client, master_header, cliente_id, fp_id, "DASH-DT-1", 5110, funcionario_id=func_id)
+
+    # Abertura empurrada para tras; finalizacao continua hoje.
+    os_db = db_session.query(OSModel).filter(OSModel.numero_os == numero).first()
+    os_db.data_criacao = datetime.utcnow() - timedelta(days=4)
+    db_session.commit()
+
+    r = client.get("/api/v1/dashboard/stats?periodo=hoje", headers=master_header)
+    assert r.status_code == 200, r.text
+    stats = r.json()
+    assert stats["os_count"] == 1, "a OS finalizada hoje tem que aparecer no painel de hoje"
+    assert stats["os_total"] == 5110, "o valor e a contagem usam a MESMA ancora"
+
+    # Coerencia do painel pessoal do funcionario.
+    r = client.get("/api/v1/dashboard/meu-resumo?periodo=hoje", headers=func_header)
+    resumo = r.json()
+    assert resumo["minhas_os_concluidas"] == 1
+    assert resumo["minhas_os_valor"] == 5110

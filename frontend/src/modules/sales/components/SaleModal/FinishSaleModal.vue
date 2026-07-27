@@ -32,6 +32,10 @@ import { useConfiguracoesStore } from '@/shared/stores/configuracoes.store';
 import { useFinishSaleModal } from '../../composables/flows/useFinishSaleModal';
 import { useFinishSaleMutation } from '../../composables/mutates/useFinishSaleMutation';
 import { usePaymentMethodsQuery } from '../../composables/queries/usePaymentMethodsQuery';
+import {
+  useJurosPagamento,
+  JUROS_RESPONSAVEL_OPTIONS,
+} from '@/shared/composables/useJurosPagamento';
 
 import type { SaleRead } from '../../schemas/sale.schema';
 import type { CardFlag } from '../../schemas/paymentSale.schema';
@@ -49,17 +53,28 @@ const saleTotal = computed(() => props.sale?.total ?? 0);
 
 const {
   payments,
-  paymentsJuros,
   finishModalIsOpen,
   closeFinishModal,
   addPayment,
   removePayment,
   totalPago,
   acrescimo,
+  jurosLoja,
   troco,
   restante,
   canFinish,
 } = useFinishSaleModal(saleTotal);
+
+// Juros do pagamento que está sendo montado no sub-modal.
+const {
+  taxaInput: jurosTaxaInput,
+  responsavel: jurosResponsavel,
+  temJuros: jurosAtivo,
+  lojaAbsorve: jurosLojaAbsorve,
+  calcular: calcularJuros,
+  normalizar: normalizarJuros,
+  reset: resetJuros,
+} = useJurosPagamento();
 
 const finishMutation = useFinishSaleMutation();
 const { formasPagamento } = usePaymentMethodsQuery();
@@ -75,14 +90,12 @@ const confirmacao = ref(false);
 const paymentDetails = ref<{
   parcelas: number;
   bandeira: CardFlag | '';
-  taxa_juros: number;
   vencimento?: string;
   banco_destino?: string;
   codigo_transacao?: string;
 }>({
   parcelas: 1,
   bandeira: '',
-  taxa_juros: 0,
   vencimento: new Date().toISOString().split('T')[0],
   banco_destino: '',
   codigo_transacao: '',
@@ -103,12 +116,22 @@ const displayTroco = computed(() => formatCurrency(troco.value));
 
 const canFinishWithConfirmation = computed(() => canFinish.value && confirmacao.value);
 
-// Parcelas com o valor de cada parcela já refletindo os juros informados.
+const paymentBaseCentavos = computed(() => Math.round(paymentValueReais.value * 100));
+/** Juros do pagamento em edição. Só existe para cartão. */
+const jurosDoPagamentoAtual = computed(() =>
+  currentPaymentMethod.value && getMethodTipo(currentPaymentMethod.value).includes('CARTAO')
+    ? calcularJuros(paymentBaseCentavos.value)
+    : 0,
+);
+/** O que o cliente efetivamente paga: só sobe se o juros for repassado. */
+const valorCobradoDoCliente = computed(
+  () => paymentBaseCentavos.value + (jurosLojaAbsorve.value ? 0 : jurosDoPagamentoAtual.value),
+);
+
+// Parcelas com o valor de cada parcela já refletindo o que o cliente vai pagar.
 const parcelasOptions = computed(() => {
   const options = [{ value: 1, label: 'À vista' }];
-  const baseValor = Math.round(paymentValueReais.value * 100);
-  const jurosAmount = Math.round(baseValor * (paymentDetails.value.taxa_juros / 100));
-  const totalParcelar = baseValor + jurosAmount;
+  const totalParcelar = valorCobradoDoCliente.value;
   const max = Math.max(2, parcelasMaximas.value || 12);
   for (let i = 2; i <= max; i++) {
     options.push({ value: i, label: `${i}x de ${formatCurrency(Math.round(totalParcelar / i))}` });
@@ -171,11 +194,11 @@ function handleAddPaymentClick(method: PaymentFormReadDataType) {
   paymentDetails.value = {
     parcelas: 1,
     bandeira: '',
-    taxa_juros: 0,
     vencimento: new Date().toISOString().split('T')[0],
     banco_destino: '',
     codigo_transacao: '',
   };
+  resetJuros();
   showPaymentDetails.value = true;
   nextTick(() => {
     if (moneyInputRef.value?.inputRef) {
@@ -189,10 +212,9 @@ function confirmAddPayment() {
   if (!method || paymentValueReais.value <= 0) return;
 
   const tipo = getMethodTipo(method);
-  const baseValor = Math.round(paymentValueReais.value * 100);
-  const jurosAmount = tipo.includes('CARTAO')
-    ? Math.round(baseValor * (paymentDetails.value.taxa_juros / 100))
-    : 0;
+  const baseValor = paymentBaseCentavos.value;
+  const jurosAmount = jurosDoPagamentoAtual.value;
+  const responsavel = jurosResponsavel.value;
 
   const podeParcelar = displayParcelasFor(method);
   const parcelado = podeParcelar && paymentDetails.value.parcelas > 1;
@@ -205,18 +227,19 @@ function confirmAddPayment() {
     };
   }
 
-  addPayment(
-    {
-      forma_pagamento_id: method.id,
-      parcelado,
-      qtd_parcelas: parcelado ? paymentDetails.value.parcelas : null,
-      valor: baseValor + jurosAmount,
-      bandeira_cartao: tipo.includes('CARTAO') ? (paymentDetails.value.bandeira || undefined) : undefined,
-      vencimento: tipo === 'BOLETO' ? paymentDetails.value.vencimento : undefined,
-      detalhes,
-    },
-    jurosAmount,
-  );
+  addPayment({
+    forma_pagamento_id: method.id,
+    parcelado,
+    qtd_parcelas: parcelado ? paymentDetails.value.parcelas : null,
+    // Quando a loja absorve, o cliente paga só a base — o juros fica registrado
+    // à parte, como custo, e não infla o total da venda.
+    valor: responsavel === 'LOJA' ? baseValor : baseValor + jurosAmount,
+    juros_valor: jurosAmount,
+    juros_responsavel: responsavel,
+    bandeira_cartao: tipo.includes('CARTAO') ? (paymentDetails.value.bandeira || undefined) : undefined,
+    vencimento: tipo === 'BOLETO' ? paymentDetails.value.vencimento : undefined,
+    detalhes,
+  });
 
   showPaymentDetails.value = false;
   currentPaymentMethod.value = null;
@@ -338,11 +361,17 @@ function handleFinish() {
                       <span v-if="payment.parcelado" class="font-normal text-zinc-400"> · {{ payment.qtd_parcelas }}x</span>
                       <span v-if="payment.bandeira_cartao" class="font-normal text-zinc-400"> · {{ payment.bandeira_cartao }}</span>
                     </p>
-                    <template v-if="paymentsJuros[idx] > 0">
+                    <template v-if="(payment.juros_valor ?? 0) > 0 && payment.juros_responsavel !== 'LOJA'">
                       <p class="text-[10px] text-zinc-400">
-                        Venda: {{ formatCurrency(payment.valor - paymentsJuros[idx]) }}
-                        <span class="text-amber-500"> + Juros: {{ formatCurrency(paymentsJuros[idx]) }}</span>
+                        Venda: {{ formatCurrency(payment.valor - (payment.juros_valor ?? 0)) }}
+                        <span class="text-amber-500"> + Juros: {{ formatCurrency(payment.juros_valor ?? 0) }}</span>
                         = {{ formatCurrency(payment.valor) }}
+                      </p>
+                    </template>
+                    <template v-else-if="(payment.juros_valor ?? 0) > 0">
+                      <p class="text-[10px] text-zinc-400">
+                        {{ formatCurrency(payment.valor) }}
+                        <span class="text-rose-500"> · loja absorve {{ formatCurrency(payment.juros_valor ?? 0) }}</span>
                       </p>
                     </template>
                     <template v-else>
@@ -392,9 +421,16 @@ function handleFinish() {
 
             <div v-if="acrescimo > 0" class="flex justify-between items-center">
               <span class="text-xs text-amber-600 flex items-center gap-1">
-                <Percent :size="12" /> Juros
+                <Percent :size="12" /> Juros repassado
               </span>
               <span class="text-base font-medium text-amber-600">+ {{ formatCurrency(acrescimo) }}</span>
+            </div>
+
+            <div v-if="jurosLoja > 0" class="flex justify-between items-center">
+              <span class="text-xs text-rose-600 flex items-center gap-1">
+                <Percent :size="12" /> Juros absorvido pela loja
+              </span>
+              <span class="text-base font-medium text-rose-600">{{ formatCurrency(jurosLoja) }}</span>
             </div>
 
             <!-- Divisor -->
@@ -412,14 +448,22 @@ function handleFinish() {
                 <span class="text-lg">{{ displayTotalPago }}</span>
               </div>
 
-              <!-- Breakdown de devolução (só exibe quando há juros) -->
-              <div v-if="acrescimo > 0 && totalPago > 0" class="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 space-y-1">
+              <!-- Breakdown de devolução (só exibe quando há juros, de qualquer origem) -->
+              <div
+                v-if="(acrescimo > 0 || jurosLoja > 0) && totalPago > 0"
+                class="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 space-y-1"
+              >
                 <p class="text-[10px] font-semibold text-amber-700 uppercase tracking-wide">Em caso de devolução</p>
-                <div class="flex justify-between items-center text-xs text-zinc-600">
+                <div v-if="acrescimo > 0" class="flex justify-between items-center text-xs text-zinc-600">
                   <span>Venda (sem juros)</span>
                   <span class="font-semibold">{{ formatCurrency(totalPago - acrescimo) }}</span>
                 </div>
-                <p class="text-[10px] text-amber-600">Juros pagos à operadora: {{ formatCurrency(acrescimo) }}</p>
+                <p v-if="acrescimo > 0" class="text-[10px] text-amber-600">
+                  Juros pagos à operadora pelo cliente: {{ formatCurrency(acrescimo) }}
+                </p>
+                <p v-if="jurosLoja > 0" class="text-[10px] text-rose-600">
+                  A loja não recupera {{ formatCurrency(jurosLoja) }} de juros absorvidos.
+                </p>
               </div>
 
               <div v-if="restante > 0" class="flex justify-between items-center font-bold text-red-500">
@@ -522,14 +566,33 @@ function handleFinish() {
             <Percent :size="14" /> Taxa de Juros
           </label>
           <div class="w-24">
-            <BaseInput v-model="paymentDetails.taxa_juros" type="number" placeholder="0" />
+            <BaseInput
+              v-model="jurosTaxaInput"
+              type="text"
+              inputmode="decimal"
+              placeholder="0"
+              @blur="normalizarJuros()"
+            />
           </div>
         </div>
-        <div v-if="paymentDetails.taxa_juros > 0" class="flex justify-between text-xs text-amber-600 bg-amber-50 px-3 py-2 rounded-lg">
-          <span>Valor com juros</span>
-          <span class="font-semibold">
-            {{ formatCurrency(Math.round(paymentValueReais * 100 * (1 + paymentDetails.taxa_juros / 100))) }}
-          </span>
+
+        <div v-if="jurosAtivo" class="space-y-2">
+          <BaseSelect
+            v-model="jurosResponsavel"
+            label="Quem paga o juros"
+            :options="JUROS_RESPONSAVEL_OPTIONS"
+          />
+          <div
+            class="flex justify-between text-xs px-3 py-2 rounded-lg"
+            :class="jurosLojaAbsorve ? 'text-rose-600 bg-rose-50' : 'text-amber-600 bg-amber-50'"
+          >
+            <span>{{ jurosLojaAbsorve ? 'Cliente paga' : 'Valor com juros' }}</span>
+            <span class="font-semibold">{{ formatCurrency(valorCobradoDoCliente) }}</span>
+          </div>
+          <p v-if="jurosLojaAbsorve" class="text-[11px] text-rose-600 px-1">
+            A loja absorve {{ formatCurrency(jurosDoPagamentoAtual) }} de juros — o cliente não é
+            cobrado a mais e o recebimento da loja fica menor.
+          </p>
         </div>
       </div>
 

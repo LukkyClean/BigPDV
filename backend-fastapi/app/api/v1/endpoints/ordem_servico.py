@@ -402,7 +402,7 @@ def finalizar_ordem_servico(
     data: OrdemServicoFinalizar,
     db: Session = Depends(get_db)
 ):
-    return _handle_db_transaction(db, os_service.finalizar_ordem_servico, os_number, data)
+    return _handle_db_transaction(db, os_service.finalizar_ordem_servico, os_number, data, user_token)
 
 
 @router.put(
@@ -422,7 +422,7 @@ def cancelar_ordem_servico(
     data: OrdemServicoCancelar,
     db: Session = Depends(get_db)
 ):
-    return _handle_db_transaction(db, os_service.cancelar_ordem_servico, os_number, data)
+    return _handle_db_transaction(db, os_service.cancelar_ordem_servico, os_number, data, user_token)
 
 
 @router.put(
@@ -444,7 +444,7 @@ def reabrir_ordem_servico(
     db: Session = Depends(get_db)
 ):
     return _handle_db_transaction(
-        db, os_service.reabrir_ordem_servico, os_number, payload.codigo_gerente, payload.cliente_pagou
+        db, os_service.reabrir_ordem_servico, os_number, payload.codigo_gerente, payload.cliente_pagou, user_token
     )
 
 

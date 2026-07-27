@@ -19,6 +19,10 @@ export const RelatorioFaturamentoSchema = z.object({
   faturamento_total: z.number(),
   faturamento_vendas: z.number(),
   faturamento_os: z.number(),
+  // Juros de cartão. Opcionais para não quebrar contra um backend anterior.
+  juros_repassado: z.number().optional(),
+  juros_absorvido: z.number().optional(),
+  faturamento_liquido: z.number().optional(),
   ticket_medio: z.number(),
   qtd_vendas: z.number(),
   qtd_os: z.number(),

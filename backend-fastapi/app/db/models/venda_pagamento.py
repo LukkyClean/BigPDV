@@ -49,7 +49,15 @@ class PagamentoVenda(Base):
     )
 
     # --- Dados do Pagamento ---
-    valor: Mapped[int] = mapped_column(Integer, nullable=False, doc="Fracao financeira paga neste metodo, ja com juros embutidos (centavos)")
+    valor: Mapped[int] = mapped_column(Integer, nullable=False, doc="Fracao financeira paga pelo cliente neste metodo (centavos)")
+    juros_valor: Mapped[int] = mapped_column(
+        Integer, default=0, nullable=False, server_default="0",
+        doc="Juros calculados neste pagamento (centavos). Ver juros_responsavel para saber quem paga."
+    )
+    juros_responsavel: Mapped[str] = mapped_column(
+        String(10), default="CLIENTE", nullable=False, server_default="CLIENTE",
+        doc="CLIENTE = juros repassado (embutido em valor); LOJA = juros absorvido pela loja (fora de valor)"
+    )
     parcelado: Mapped[bool] = mapped_column(Boolean, default=False, nullable=True, doc="Flag indicando compra a prazo")
     qtd_parcelas: Mapped[int] = mapped_column(Integer, nullable=True, doc="Quantidade de parcelas (1 = a vista)")
     bandeira_cartao: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, doc="Bandeira do cartao (VISA, MASTERCARD, etc)")

@@ -48,6 +48,21 @@ def get_faturamento(db: Session, inicio: date, fim: date, empresa_id: int) -> Re
     qtd_transacoes = stats.vendas_count + stats.os_finalizadas_count
     ticket_medio = int(faturamento_total / qtd_transacoes) if qtd_transacoes else 0
 
+    # Juros de cartao: sempre fica com a operadora — o que muda e quem pagou.
+    # Repassado, ja inflou o faturamento_total (esta dentro do total da venda/OS).
+    # Absorvido, nunca entrou no total, mas saiu do caixa da loja.
+    # Os dois saem do liquido; so o segundo pode deixar o liquido menor que o bruto
+    # sem que nenhuma linha de venda tenha mudado.
+    juros = {"CLIENTE": 0, "LOJA": 0}
+    for linha in relatorio_crud.get_juros_vendas_por_responsavel(db, dt_inicio, dt_fim, empresa_id):
+        juros[linha.responsavel or "CLIENTE"] = juros.get(linha.responsavel or "CLIENTE", 0) + (linha.total or 0)
+    for linha in relatorio_crud.get_juros_os_por_responsavel(db, dt_inicio, dt_fim, empresa_id):
+        juros[linha.responsavel or "CLIENTE"] = juros.get(linha.responsavel or "CLIENTE", 0) + (linha.total or 0)
+
+    juros_repassado = juros.get("CLIENTE", 0)
+    juros_absorvido = juros.get("LOJA", 0)
+    faturamento_liquido = faturamento_total - juros_repassado - juros_absorvido
+
     # Serie por dia — preenche dias sem movimento com zero para o grafico ficar continuo.
     vendas_dia = {
         str(r.dia): (r.total or 0)
@@ -86,6 +101,9 @@ def get_faturamento(db: Session, inicio: date, fim: date, empresa_id: int) -> Re
         faturamento_total=faturamento_total,
         faturamento_vendas=faturamento_vendas,
         faturamento_os=faturamento_os,
+        juros_repassado=juros_repassado,
+        juros_absorvido=juros_absorvido,
+        faturamento_liquido=faturamento_liquido,
         ticket_medio=ticket_medio,
         qtd_vendas=stats.vendas_count,
         qtd_os=stats.os_finalizadas_count,

@@ -4,18 +4,25 @@ import { PaymentSaleCreate } from "../../schemas/paymentSale.schema";
 
 const finishModalIsOpen = ref(false);
 const payments = ref<PaymentSaleCreate[]>([]);
-// Juros (em centavos) embutido em cada pagamento, na mesma ordem de `payments`.
-// Mantido em paralelo para calcular o acréscimo total sem poluir o payload.
-const paymentsJuros = ref<number[]>([]);
 
 export function useFinishSaleModal(saleTotal?: Ref<number>) {
     const totalPago = computed(() =>
         payments.value.reduce((sum, p) => sum + p.valor, 0)
     );
 
-    // Acréscimo total = soma dos juros de todos os pagamentos.
+    // Acréscimo = só o juros REPASSADO ao cliente. O absorvido pela loja não é
+    // cobrado, então não pode inflar o total da venda — ele é custo, não receita.
     const acrescimo = computed(() =>
-        paymentsJuros.value.reduce((sum, j) => sum + j, 0)
+        payments.value
+            .filter((p) => p.juros_responsavel !== 'LOJA')
+            .reduce((sum, p) => sum + (p.juros_valor ?? 0), 0)
+    );
+
+    // Quanto a loja deixa de receber por ter absorvido juros.
+    const jurosLoja = computed(() =>
+        payments.value
+            .filter((p) => p.juros_responsavel === 'LOJA')
+            .reduce((sum, p) => sum + (p.juros_valor ?? 0), 0)
     );
 
     // Total a pagar já considerando o acréscimo de juros do checkout.
@@ -33,19 +40,16 @@ export function useFinishSaleModal(saleTotal?: Ref<number>) {
         payments.value.length > 0 && totalPago.value >= totalComAcrescimo.value
     );
 
-    function addPayment(payment: PaymentSaleCreate, juros = 0) {
+    function addPayment(payment: PaymentSaleCreate) {
         payments.value.push(payment);
-        paymentsJuros.value.push(juros);
     }
 
     function removePayment(index: number) {
         payments.value.splice(index, 1);
-        paymentsJuros.value.splice(index, 1);
     }
 
     function resetPayments() {
         payments.value = [];
-        paymentsJuros.value = [];
     }
 
     function openFinishModal() {
@@ -62,12 +66,12 @@ export function useFinishSaleModal(saleTotal?: Ref<number>) {
         openFinishModal,
         closeFinishModal,
         payments,
-        paymentsJuros,
         addPayment,
         removePayment,
         resetPayments,
         totalPago,
         acrescimo,
+        jurosLoja,
         troco,
         restante,
         canFinish,

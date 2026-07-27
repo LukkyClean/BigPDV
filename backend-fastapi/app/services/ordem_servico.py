@@ -40,10 +40,19 @@ from app.db.crud import cliente as cliente_crud
 from app.db.crud import funcionario as funcionario_crud
 from app.db.crud import forma_pagamento as fp_crud
 from app.db.crud import configuracao_seguranca as config_seg_crud
+from app.db.crud import produto as produto_crud
 
 from app.services.segmentos import validar_objeto_por_segmento
+from app.services import movimentacao_estoque as mov_service
 
-from app.core.enum import OrdemServicoItemTipo, OrdemServicoStatus, SituacaoEquipamento, OrdemServicoItemAprovacao
+from app.core.enum import (
+    OrdemServicoItemTipo,
+    OrdemServicoStatus,
+    SituacaoEquipamento,
+    OrdemServicoItemAprovacao,
+    MovimentacaoTipo,
+    MovimentacaoOrigem,
+)
 from app.core.security import verify_password
 from app.helpers.set_pagination import _set_pagination
 
@@ -638,10 +647,72 @@ def remove_item_from_os(db: Session, numero_os: str, item_id: int) -> None:
 
 
 # ===========================================================================
+# ESTOQUE
+#
+# Peça aplicada numa OS sai do estoque igual peça vendida no balcão — o que
+# mudava era só que ninguém dava a baixa. A baixa acontece na FINALIZAÇÃO (é
+# quando a OS vira fato consumado, mesmo padrão da venda) e é desfeita se a OS
+# for cancelada ou reaberta, senão reabrir e refinalizar tirava a peça duas
+# vezes do estoque.
+# ===========================================================================
+
+def _itens_de_produto(os_in_db: OSModel) -> list[OSItemModel]:
+    """Itens que consomem estoque: produto do catálogo e APROVADO.
+
+    Item PENDENTE ou REPROVADO não entra no valor_total da OS, então também não
+    pode sair do estoque — o cliente recusou a peça e ela continua na prateleira.
+    Item avulso (sem produto_id) não tem estoque para movimentar.
+    """
+    return [
+        item for item in os_in_db.itens
+        if item.tipo == OrdemServicoItemTipo.PRODUTO
+        and item.produto_id is not None
+        and item.status_aprovacao == OrdemServicoItemAprovacao.APROVADO
+        and (item.quantidade or 0) > 0
+    ]
+
+
+def _movimentar_estoque_os(
+    db: Session,
+    os_in_db: OSModel,
+    saida: bool,
+    usuario_token: dict | None = None,
+) -> None:
+    """Aplica (saida=True) ou estorna (saida=False) o estoque dos itens da OS.
+
+    Delega ao registro central em services/movimentacao_estoque, que é quem
+    altera a quantidade e grava o histórico na mesma operação. `permitir_negativo`
+    é a regra específica da OS (ver o helper).
+    """
+    usuario_token = usuario_token or {}
+    sub = usuario_token.get("sub")
+
+    for item in _itens_de_produto(os_in_db):
+        produto = produto_crud.get_produto_by_id(db, produto_id=item.produto_id)
+        mov_service.registrar_movimentacao(
+            db,
+            produto=produto,
+            tipo=MovimentacaoTipo.SAIDA if saida else MovimentacaoTipo.ENTRADA,
+            quantidade=item.quantidade or 0,
+            origem=MovimentacaoOrigem.ORDEM_SERVICO,
+            usuario_id=int(sub) if sub else None,
+            usuario_nome=usuario_token.get("nome", "Sistema"),
+            ordem_servico_id=os_in_db.id,
+            observacao=f"{'Baixa' if saida else 'Estorno'} pela OS {os_in_db.numero_os}",
+            permitir_negativo=True,
+        )
+
+
+# ===========================================================================
 # AÇÕES DE STATUS
 # ===========================================================================
 
-def finalizar_ordem_servico(db: Session, numero_os: str, data: OrdemServicoFinalizar) -> OSModel:
+def finalizar_ordem_servico(
+    db: Session,
+    numero_os: str,
+    data: OrdemServicoFinalizar,
+    usuario_token: dict | None = None,
+) -> OSModel:
     """
     Finaliza uma OS registrando a solução e os pagamentos.
 
@@ -694,6 +765,8 @@ def finalizar_ordem_servico(db: Session, numero_os: str, data: OrdemServicoFinal
             ordem_servico_id=os_in_db.id,
             forma_pagamento_id=pagamento_data.forma_pagamento_id,
             valor=pagamento_data.valor,
+            juros_valor=pagamento_data.juros_valor,
+            juros_responsavel=pagamento_data.juros_responsavel.value,
             parcelas=pagamento_data.parcelas,
             bandeira_cartao=pagamento_data.bandeira_cartao,
             vencimento=pagamento_data.vencimento,
@@ -709,6 +782,10 @@ def finalizar_ordem_servico(db: Session, numero_os: str, data: OrdemServicoFinal
             if cliente:
                 cliente.saldo_credito = (cliente.saldo_credito or 0) + excedente
 
+    # Baixa das peças aplicadas. Vai aqui, junto da mudança de status, para que
+    # a OS só consuma estoque quando de fato fecha — e para que reabrir devolva.
+    _movimentar_estoque_os(db, os_in_db, saida=True, usuario_token=usuario_token)
+
     # Aplica finalização
     os_in_db.situacao_equipamento = data.situacao_equipamento
     os_in_db.garantia = data.garantia
@@ -722,7 +799,12 @@ def finalizar_ordem_servico(db: Session, numero_os: str, data: OrdemServicoFinal
     return os_crud.update_ordem_servico(db, os_to_update=os_in_db)
 
 
-def cancelar_ordem_servico(db: Session, numero_os: str, data: OrdemServicoCancelar) -> OSModel:
+def cancelar_ordem_servico(
+    db: Session,
+    numero_os: str,
+    data: OrdemServicoCancelar,
+    usuario_token: dict | None = None,
+) -> OSModel:
     """
     Cancela uma OS.
 
@@ -746,6 +828,12 @@ def cancelar_ordem_servico(db: Session, numero_os: str, data: OrdemServicoCancel
             if not verify_password(data.codigo_gerente, config_seg.pin_gerente):
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="PIN_GERENTE_INVALIDO")
 
+    # Só devolve peça ao estoque se ela chegou a sair — ou seja, se a OS estava
+    # FINALIZADA. Cancelar uma OS que nunca foi finalizada não movimenta nada;
+    # estornar aqui inventaria estoque que nunca saiu.
+    if os_in_db.status == OrdemServicoStatus.FINALIZADA:
+        _movimentar_estoque_os(db, os_in_db, saida=False, usuario_token=usuario_token)
+
     os_in_db.status = OrdemServicoStatus.CANCELADA
 
     if data.motivo:
@@ -767,6 +855,7 @@ def reabrir_ordem_servico(
     numero_os: str,
     codigo_gerente: str | None = None,
     cliente_pagou: bool = True,
+    usuario_token: dict | None = None,
 ) -> OSModel:
     """
     Reabre uma OS FINALIZADA ou CANCELADA.
@@ -794,6 +883,13 @@ def reabrir_ordem_servico(
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="REQUER_APROVACAO_GERENTE")
             if not verify_password(codigo_gerente, config_seg.pin_gerente):
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="PIN_GERENTE_INVALIDO")
+
+    # Devolve as peças ao estoque, mas SÓ se elas tinham saído. Vindo de
+    # FINALIZADA, saíram na finalização. Vindo de CANCELADA, o cancelamento já
+    # estornou — estornar de novo aqui criaria estoque do nada, e o erro só
+    # apareceria muito depois, na contagem física.
+    if os_in_db.status == OrdemServicoStatus.FINALIZADA:
+        _movimentar_estoque_os(db, os_in_db, saida=False, usuario_token=usuario_token)
 
     if cliente_pagou:
         # Preserva o que foi pago como crédito abatido do novo total.

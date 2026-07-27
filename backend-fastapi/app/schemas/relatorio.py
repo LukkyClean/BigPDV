@@ -27,9 +27,24 @@ class RelatorioFaturamento(BaseModel):
     """Resposta do relatorio de faturamento por periodo."""
     inicio: date
     fim: date
-    faturamento_total: int = Field(..., description="Vendas + OS finalizadas no periodo (centavos)")
+    faturamento_total: int = Field(..., description="Bruto: vendas + OS finalizadas no periodo (centavos)")
     faturamento_vendas: int = Field(..., description="Somente vendas (centavos)")
     faturamento_os: int = Field(..., description="Somente OS (centavos)")
+    juros_repassado: int = Field(
+        0,
+        description="Juros cobrado do cliente. Já está dentro do faturamento_total, "
+                    "mas fica com a operadora — por isso sai do líquido (centavos)",
+    )
+    juros_absorvido: int = Field(
+        0,
+        description="Juros que a loja bancou. NÃO está no faturamento_total (o cliente "
+                    "não foi cobrado), e mesmo assim reduz o líquido (centavos)",
+    )
+    faturamento_liquido: int = Field(
+        0,
+        description="faturamento_total − juros_repassado − juros_absorvido. É o que "
+                    "efetivamente sobra para a loja (centavos)",
+    )
     ticket_medio: int = Field(..., description="Faturamento / nº de transacoes finalizadas (centavos)")
     qtd_vendas: int = Field(..., description="Quantidade de vendas finalizadas")
     qtd_os: int = Field(..., description="Quantidade de OS finalizadas")

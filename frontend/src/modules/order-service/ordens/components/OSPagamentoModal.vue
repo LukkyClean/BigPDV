@@ -21,10 +21,18 @@ import { formatCurrency } from '@/shared/utils/finance';
 import { useOsPaymentMethodsGet } from '../composables/request/relationship/useOSPaymentMethods.queries';
 import { useReadyOrderServiceMutation } from '../composables/request/useOrderServiceUpdate.mutate';
 import { inferPaymentType, inferPermiteParcelamento, getPaymentDisplayName } from '../../shared/utils/formatters';
+import {
+  useJurosPagamento,
+  JUROS_RESPONSAVEL_OPTIONS,
+  type JurosResponsavel,
+} from '@/shared/composables/useJurosPagamento';
 
 interface Pagamento {
   forma_pagamento_id: number;
   valor: number;
+  /** Juros deste pagamento em centavos. Embutido em `valor` só quando repassado ao cliente. */
+  juros_valor: number;
+  juros_responsavel: JurosResponsavel;
   parcelas: number;
   bandeira_cartao?: OsCardsFlagEnumDataType;
   vencimento?: string;
@@ -54,9 +62,19 @@ const finalizarMutation = useReadyOrderServiceMutation();
 
 // ─── Estado ──────────────────────────────────────────────────────────────────
 const pagamentos = ref<Pagamento[]>([]);
-const pagamentosJuros = ref<number[]>([]);
 const confirmacao = ref(false);
 const hasAttemptedSubmit = ref(false);
+
+// Juros do pagamento que está sendo montado no sub-modal.
+const {
+  taxaInput: jurosTaxaInput,
+  responsavel: jurosResponsavel,
+  temJuros: jurosAtivo,
+  lojaAbsorve: jurosLojaAbsorve,
+  calcular: calcularJuros,
+  normalizar: normalizarJuros,
+  reset: resetJuros,
+} = useJurosPagamento();
 
 const moneyInputRef = ref();
 
@@ -65,18 +83,28 @@ const currentPaymentMethod = ref<PaymentFormReadDataType | null>(null);
 const paymentDetails = ref<{
   parcelas: number;
   bandeira: OsCardsFlagEnumDataType | '';
-  taxa_juros: number;
   vencimento?: string;
   banco_destino?: string;
   codigo_transacao?: string;
-}>({ parcelas: 1, bandeira: '', taxa_juros: 0, vencimento: new Date().toISOString().split('T')[0], banco_destino: '', codigo_transacao: '' });
+}>({ parcelas: 1, bandeira: '', vencimento: new Date().toISOString().split('T')[0], banco_destino: '', codigo_transacao: '' });
 const paymentValueReais = ref(0);
+
+const paymentBaseCentavos = computed(() => Math.round(paymentValueReais.value * 100));
+/** Juros do pagamento em edição. Só existe para cartão. */
+const jurosDoPagamentoAtual = computed(() =>
+  currentPaymentMethod.value && getMethodTipo(currentPaymentMethod.value).includes('CARTAO')
+    ? calcularJuros(paymentBaseCentavos.value)
+    : 0,
+);
+/** O que o cliente efetivamente paga: só sobe se o juros for repassado. */
+const valorCobradoDoCliente = computed(
+  () => paymentBaseCentavos.value + (jurosLojaAbsorve.value ? 0 : jurosDoPagamentoAtual.value),
+);
 
 const parcelasOptions = computed(() => {
   const options = [{ value: 1, label: 'À vista' }];
-  const baseValor = Math.round(paymentValueReais.value * 100);
-  const jurosAmount = Math.round(baseValor * (paymentDetails.value.taxa_juros / 100));
-  const totalParcelar = baseValor + jurosAmount;
+  // Parcela-se o que o cliente paga. Se a loja absorve o juros, ele não entra aqui.
+  const totalParcelar = valorCobradoDoCliente.value;
 
   for (let i = 2; i <= 12; i++) {
     const valorParcela = totalParcelar / i;
@@ -98,7 +126,18 @@ const desconto = computed(() => props.descontoOs);
 const taxaEntrega = computed(() => props.ordemServico?.taxa_entrega ?? 0);
 const valorEntrada = computed(() => props.ordemServico?.valor_entrada ?? 0);
 const creditoAoReabrir = computed(() => props.creditoAoReabrir ?? null);
-const acrescimoTotal = computed(() => pagamentosJuros.value.reduce((sum, v) => sum + v, 0));
+// Só o juros REPASSADO entra no total da OS. O absorvido pela loja não é cobrado
+// do cliente — ele é custo, e aparece separado.
+const acrescimoTotal = computed(() =>
+  pagamentos.value
+    .filter(p => p.juros_responsavel === 'CLIENTE')
+    .reduce((sum, p) => sum + p.juros_valor, 0),
+);
+const jurosLojaTotal = computed(() =>
+  pagamentos.value
+    .filter(p => p.juros_responsavel === 'LOJA')
+    .reduce((sum, p) => sum + p.juros_valor, 0),
+);
 
 // Desconto já acumulado na OS. O `descontoOs` recebido é só o desconto ADICIONAL
 // desta finalização; sem somar o existente aqui, o "Total a pagar" ignorava o
@@ -173,7 +212,8 @@ function getPaymentIconById(id: number) {
 function handleAddPaymentClick(method: PaymentFormReadDataType) {
   currentPaymentMethod.value = method;
   paymentValueReais.value = restante.value / 100;
-  paymentDetails.value = { parcelas: 1, bandeira: '', taxa_juros: 0, vencimento: new Date().toISOString().split('T')[0], banco_destino: '', codigo_transacao: '' };
+  paymentDetails.value = { parcelas: 1, bandeira: '', vencimento: new Date().toISOString().split('T')[0], banco_destino: '', codigo_transacao: '' };
+  resetJuros();
   showPaymentDetails.value = true;
   
   nextTick(() => {
@@ -185,8 +225,9 @@ function handleAddPaymentClick(method: PaymentFormReadDataType) {
 
 function confirmAddPayment() {
   if (!currentPaymentMethod.value) return;
-  const baseValor = Math.round(paymentValueReais.value * 100);
-  const jurosAmount = Math.round(baseValor * (paymentDetails.value.taxa_juros / 100));
+  const baseValor = paymentBaseCentavos.value;
+  const jurosAmount = jurosDoPagamentoAtual.value;
+  const responsavel = jurosResponsavel.value;
 
   let payloadDetalhes = undefined;
   if (getMethodTipo(currentPaymentMethod.value).includes('TRANSFERENCIA')) {
@@ -200,25 +241,26 @@ function confirmAddPayment() {
 
   pagamentos.value.push({
     forma_pagamento_id: currentPaymentMethod.value.id,
-    valor: baseValor + jurosAmount,
+    // Quando a loja absorve, o cliente paga só a base — o juros fica registrado
+    // à parte, como custo, e não infla o total da OS.
+    valor: responsavel === 'LOJA' ? baseValor : baseValor + jurosAmount,
+    juros_valor: jurosAmount,
+    juros_responsavel: responsavel,
     parcelas: paymentDetails.value.parcelas,
     bandeira_cartao: (paymentDetails.value.bandeira || undefined) as OsCardsFlagEnumDataType | undefined,
     vencimento: paymentDetails.value.vencimento,
     detalhes: payloadDetalhes,
   });
-  pagamentosJuros.value.push(jurosAmount);
   showPaymentDetails.value = false;
   currentPaymentMethod.value = null;
 }
 
 function removePayment(index: number) {
   pagamentos.value.splice(index, 1);
-  pagamentosJuros.value.splice(index, 1);
 }
 
 function zerarPagamentos() {
   pagamentos.value = [];
-  pagamentosJuros.value = [];
   showPaymentDetails.value = false;
   currentPaymentMethod.value = null;
 }
@@ -244,6 +286,8 @@ function handleSubmit() {
         pagamentos: pagamentos.value.map(p => ({
           forma_pagamento_id: p.forma_pagamento_id,
           valor: p.valor,
+          juros_valor: p.juros_valor,
+          juros_responsavel: p.juros_responsavel,
           parcelas: p.parcelas,
           bandeira_cartao: p.bandeira_cartao,
           vencimento: p.vencimento,
@@ -258,21 +302,21 @@ function handleSubmit() {
 // ─── Reset / Init ─────────────────────────────────────────────────────────────
 function resetState() {
   pagamentos.value = [];
-  pagamentosJuros.value = [];
   confirmacao.value = false;
   hasAttemptedSubmit.value = false;
   showPaymentDetails.value = false;
   currentPaymentMethod.value = null;
+  resetJuros();
 }
 
 watch(() => props.isOpen, (open) => {
   if (!open) resetState();
 });
 
-watch(() => paymentDetails.value.taxa_juros, (v) => {
-  const clamped = Math.min(100, Math.max(0, v ?? 0));
-  if (v !== clamped) paymentDetails.value.taxa_juros = clamped;
-});
+// O clamp da taxa NÃO pode ser um watch que escreve de volta no campo: enquanto
+// o usuário digita "3,5", o input devolve string vazia no instante da vírgula, e
+// reescrever ali apagava o que ele tinha acabado de digitar. O limite 0–100 é
+// aplicado na leitura (`jurosTaxaInput`) e o campo só é arrumado no blur.
 </script>
 
 <template>
@@ -359,11 +403,17 @@ watch(() => paymentDetails.value.taxa_juros, (v) => {
                     {{ getPaymentDisplayName(getPaymentMethodById(pgto.forma_pagamento_id)?.nome ?? 'Pagamento') }}
                     <span v-if="pgto.parcelas > 1" class="font-normal text-zinc-400"> · {{ pgto.parcelas }}x</span>
                   </p>
-                  <template v-if="pagamentosJuros[idx] > 0">
+                  <template v-if="pgto.juros_valor > 0 && pgto.juros_responsavel === 'CLIENTE'">
                     <p class="text-[10px] text-zinc-400">
-                      Serviço: {{ formatCurrency(pgto.valor - pagamentosJuros[idx]) }}
-                      <span class="text-amber-500"> + Juros: {{ formatCurrency(pagamentosJuros[idx]) }}</span>
+                      Serviço: {{ formatCurrency(pgto.valor - pgto.juros_valor) }}
+                      <span class="text-amber-500"> + Juros: {{ formatCurrency(pgto.juros_valor) }}</span>
                       = {{ formatCurrency(pgto.valor) }}
+                    </p>
+                  </template>
+                  <template v-else-if="pgto.juros_valor > 0">
+                    <p class="text-[10px] text-zinc-400">
+                      {{ formatCurrency(pgto.valor) }}
+                      <span class="text-rose-500"> · loja absorve {{ formatCurrency(pgto.juros_valor) }}</span>
                     </p>
                   </template>
                   <template v-else>
@@ -436,9 +486,16 @@ watch(() => paymentDetails.value.taxa_juros, (v) => {
 
             <div v-if="acrescimoTotal > 0" class="flex justify-between items-center">
               <span class="text-xs text-amber-600 flex items-center gap-1">
-                <Percent :size="12" /> Juros
+                <Percent :size="12" /> Juros repassado
               </span>
               <span class="text-base font-medium text-amber-600">+ {{ formatCurrency(acrescimoTotal) }}</span>
+            </div>
+
+            <div v-if="jurosLojaTotal > 0" class="flex justify-between items-center">
+              <span class="text-xs text-rose-600 flex items-center gap-1">
+                <Percent :size="12" /> Juros absorvido pela loja
+              </span>
+              <span class="text-base font-medium text-rose-600">{{ formatCurrency(jurosLojaTotal) }}</span>
             </div>
 
             <!-- Divisor -->
@@ -459,10 +516,13 @@ watch(() => paymentDetails.value.taxa_juros, (v) => {
                 <span class="text-lg">{{ formatCurrency(totalPago) }}</span>
               </div>
 
-              <!-- Breakdown de devolução (só exibe quando há juros) -->
-              <div v-if="acrescimoTotal > 0 && totalPago > 0" class="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 space-y-1">
+              <!-- Breakdown de devolução (só exibe quando há juros, de qualquer origem) -->
+              <div
+                v-if="(acrescimoTotal > 0 || jurosLojaTotal > 0) && totalPago > 0"
+                class="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 space-y-1"
+              >
                 <p class="text-[10px] font-semibold text-amber-700 uppercase tracking-wide">Em caso de devolução</p>
-                <div class="flex justify-between items-center text-xs text-zinc-600">
+                <div v-if="acrescimoTotal > 0" class="flex justify-between items-center text-xs text-zinc-600">
                   <span>Serviço (dinheiro)</span>
                   <span class="font-semibold">{{ formatCurrency(totalPago - acrescimoTotal) }}</span>
                 </div>
@@ -470,7 +530,12 @@ watch(() => paymentDetails.value.taxa_juros, (v) => {
                   <span>Estorno cartão (total pago)</span>
                   <span class="font-semibold">{{ formatCurrency(totalPago) }}</span>
                 </div>
-                <p class="text-[10px] text-amber-600">Juros pagos à operadora: {{ formatCurrency(acrescimoTotal) }}</p>
+                <p v-if="acrescimoTotal > 0" class="text-[10px] text-amber-600">
+                  Juros pagos à operadora pelo cliente: {{ formatCurrency(acrescimoTotal) }}
+                </p>
+                <p v-if="jurosLojaTotal > 0" class="text-[10px] text-rose-600">
+                  A loja não recupera {{ formatCurrency(jurosLojaTotal) }} de juros absorvidos.
+                </p>
               </div>
 
               <div v-if="restante > 0" class="flex justify-between items-center font-bold text-red-500">
@@ -580,14 +645,38 @@ watch(() => paymentDetails.value.taxa_juros, (v) => {
             <Percent :size="14" /> Taxa de Juros
           </label>
           <div class="w-24">
-            <BaseInput v-model="paymentDetails.taxa_juros" type="number" placeholder="0" />
+            <BaseInput
+              v-model="jurosTaxaInput"
+              type="text"
+              inputmode="decimal"
+              placeholder="0"
+              @blur="normalizarJuros()"
+            />
           </div>
         </div>
-        <div v-if="paymentDetails.taxa_juros > 0" class="flex justify-between text-xs text-amber-600 bg-amber-50 px-3 py-2 rounded-lg">
-          <span>Valor com juros</span>
-          <span class="font-semibold">
-            {{ formatCurrency(Math.round(paymentValueReais * 100 * (1 + paymentDetails.taxa_juros / 100))) }}
-          </span>
+
+        <div v-if="jurosAtivo" class="space-y-2">
+          <BaseSelect
+            v-model="jurosResponsavel"
+            label="Quem paga o juros"
+            :options="JUROS_RESPONSAVEL_OPTIONS"
+          />
+          <div
+            class="flex justify-between text-xs px-3 py-2 rounded-lg"
+            :class="jurosLojaAbsorve
+              ? 'text-rose-600 bg-rose-50'
+              : 'text-amber-600 bg-amber-50'"
+          >
+            <span>{{ jurosLojaAbsorve ? 'Cliente paga' : 'Valor com juros' }}</span>
+            <span class="font-semibold">{{ formatCurrency(valorCobradoDoCliente) }}</span>
+          </div>
+          <p
+            v-if="jurosLojaAbsorve"
+            class="text-[11px] text-rose-600 px-1"
+          >
+            A loja absorve {{ formatCurrency(jurosDoPagamentoAtual) }} de juros — o cliente não é
+            cobrado a mais e o recebimento da loja fica menor.
+          </p>
         </div>
       </div>
 

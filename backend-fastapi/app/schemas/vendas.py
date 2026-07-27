@@ -6,7 +6,7 @@ from typing import Optional, Sequence
 from app.schemas.cliente import ClienteRead, ClienteSimpleRead
 from app.schemas.cargo import CargoBase
 
-from app.core.enum import TipoProdutoVenda
+from app.core.enum import TipoProdutoVenda, JurosResponsavel
 
 # Schemas para criação de venda, produtos e pagamentos relacionados a uma venda
 
@@ -45,7 +45,12 @@ class PagamentoVendaCreate(BaseModel):
     forma_pagamento_id: int = Field(..., description="ID da forma de pagamento, obrigatório")
     parcelado: bool = Field(False, description="Indica se o pagamento é parcelado")
     qtd_parcelas: Optional[int] = Field(1, gt=0, description="Quantidade de parcelas")
-    valor: int = Field(..., ge=0, description="Valor do pagamento (já com juros embutidos), obrigatório")
+    valor: int = Field(..., ge=0, description="Valor pago pelo cliente neste método (centavos), obrigatório")
+    juros_valor: int = Field(0, ge=0, description="Juros calculados neste pagamento (centavos)")
+    juros_responsavel: JurosResponsavel = Field(
+        JurosResponsavel.CLIENTE,
+        description="CLIENTE: juros embutido em `valor`. LOJA: juros absorvido, fora de `valor`.",
+    )
     bandeira_cartao: Optional[str] = Field(None, max_length=50, description="Bandeira do cartão (VISA, MASTERCARD, etc.)")
     vencimento: Optional[date] = Field(None, description="Data de vencimento do pagamento (ex: boletos)")
     detalhes: Optional[dict] = Field(None, description="Dados adicionais do pagamento em formato JSON (ex: banco/NSU)")

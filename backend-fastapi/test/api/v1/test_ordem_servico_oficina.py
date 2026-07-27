@@ -432,3 +432,236 @@ def test_reabrir_ja_pagou_preserva_credito(client, db_session):
     rr = client.put(f"/api/v1/ordens-servico/{numero}/reabrir", json={"cliente_pagou": True}, headers=header)
     assert rr.status_code == 200, rr.text
     assert rr.json().get("credito_anterior") == 14000, rr.json().get("credito_anterior")
+
+
+# =========================
+# JUROS: repassado ao cliente x absorvido pela loja
+# =========================
+
+def _finalizar_com_juros(client, header, cliente_id, fp_id, serie, base, juros, responsavel):
+    """Cria uma OS de `base` e finaliza com um pagamento que tem juros.
+
+    Espelha o que o frontend monta: quando o cliente paga o juros, ele vem
+    embutido no `valor` e some no `acrescimo`; quando a loja absorve, o `valor`
+    é só a base e o `acrescimo` fica zerado.
+    """
+    itens = [_item("Serviço", base)]
+    r = client.post("/api/v1/ordens-servico/", json=_os_payload(cliente_id, serie, itens=itens), headers=header)
+    assert r.status_code == status.HTTP_201_CREATED, r.text
+    numero = r.json()["numero_os"]
+
+    repassa = responsavel == "CLIENTE"
+    fin = {
+        "situacao_equipamento": "REPARADO",
+        "garantia": "90 dias",
+        "acrescimo": juros if repassa else 0,
+        "pagamentos": [{
+            "forma_pagamento_id": fp_id,
+            "valor": base + juros if repassa else base,
+            "juros_valor": juros,
+            "juros_responsavel": responsavel,
+            "bandeira_cartao": "VISA",
+        }],
+    }
+    rf = client.put(f"/api/v1/ordens-servico/{numero}/finalizar", json=fin, headers=header)
+    assert rf.status_code == 200, rf.text
+    return rf.json()
+
+
+def test_os_juros_repassado_ao_cliente_sobe_o_total(client, db_session):
+    """CLIENTE: o juros entra no acréscimo e o cliente paga a mais."""
+    header = _autenticar_e_criar_empresa(client, "assistencia_tecnica")
+    cliente_id = _criar_cliente(client, header)
+    fp_id = _criar_forma_pagamento(client, header)
+
+    body = _finalizar_com_juros(client, header, cliente_id, fp_id, "SERIAL-JC", 10000, 500, "CLIENTE")
+
+    assert body["acrescimo"] == 500
+    assert body["valor_total"] == 10500, "total sobe com o juros repassado"
+    pgto = body["pagamentos"][0]
+    assert pgto["valor"] == 10500, "o valor cobrado já inclui o juros"
+    assert pgto["juros_valor"] == 500
+    assert pgto["juros_responsavel"] == "CLIENTE"
+
+
+def test_os_juros_absorvido_pela_loja_nao_sobe_o_total(client, db_session):
+    """LOJA: o cliente paga o preço combinado; o juros fica registrado como custo
+    e NÃO pode inflar o total da OS."""
+    header = _autenticar_e_criar_empresa(client, "assistencia_tecnica")
+    cliente_id = _criar_cliente(client, header)
+    fp_id = _criar_forma_pagamento(client, header)
+
+    body = _finalizar_com_juros(client, header, cliente_id, fp_id, "SERIAL-JL", 10000, 500, "LOJA")
+
+    assert body["acrescimo"] == 0, "juros absorvido não é acréscimo"
+    assert body["valor_total"] == 10000, "o cliente paga o preço combinado"
+    pgto = body["pagamentos"][0]
+    assert pgto["valor"] == 10000, "o valor cobrado NÃO inclui o juros"
+    assert pgto["juros_valor"] == 500, "mas o custo fica registrado"
+    assert pgto["juros_responsavel"] == "LOJA"
+
+
+def test_os_pagamento_sem_juros_assume_cliente(client, db_session):
+    """Retrocompatibilidade: payload antigo, sem os campos de juros, continua
+    válido e é lido como CLIENTE com juros zero."""
+    header = _autenticar_e_criar_empresa(client, "assistencia_tecnica")
+    cliente_id = _criar_cliente(client, header)
+    fp_id = _criar_forma_pagamento(client, header)
+    numero = _criar_e_finalizar_os(client, header, cliente_id, fp_id, "SERIAL-JZ", 14000)
+
+    r = client.get(f"/api/v1/ordens-servico/{numero}", headers=header)
+    assert r.status_code == 200, r.text
+    pgto = r.json()["pagamentos"][0]
+    assert pgto["juros_valor"] == 0
+    assert pgto["juros_responsavel"] == "CLIENTE"
+
+
+# =========================
+# ESTOQUE: peca aplicada na OS sai do estoque
+# =========================
+
+def _criar_produto(client, header, codigo: str, quantidade: int, valor: int = 5000) -> int:
+    r = client.post("/api/v1/produtos/", json={
+        "nome": f"Peça {codigo}", "codigo_produto": codigo, "unidade_medida": "UN",
+        "estoque": {"valor_varejo": valor, "quantidade": quantidade},
+    }, headers=header)
+    assert r.status_code == status.HTTP_201_CREATED, r.text
+    return r.json()["id"]
+
+
+def _estoque_atual(db_session, produto_id: int) -> int:
+    """Le a quantidade direto do banco: nao existe GET /produtos/{id} na API."""
+    from app.db.models.produto import Produto
+    db_session.expire_all()
+    produto = db_session.query(Produto).filter(Produto.id == produto_id).first()
+    return produto.estoque.quantidade
+
+
+def _item_produto(produto_id: int, nome: str, valor: int, quantidade: int = 1, **extra) -> dict:
+    base = {
+        "tipo": "PRODUTO", "item_id": produto_id, "nome": nome,
+        "unidade_medida": "UN", "quantidade": quantidade, "valor_unitario": valor,
+    }
+    base.update(extra)
+    return base
+
+
+def _os_com_produto(client, header, cliente_id, serie, produto_id, valor=5000, quantidade=1, **item_extra):
+    itens = [_item_produto(produto_id, "Peça aplicada", valor, quantidade, **item_extra)]
+    r = client.post("/api/v1/ordens-servico/", json=_os_payload(cliente_id, serie, itens=itens), headers=header)
+    assert r.status_code == status.HTTP_201_CREATED, r.text
+    return r.json()["numero_os"]
+
+
+def _finalizar(client, header, numero, valor):
+    # OS de valor zero (ex.: todos os itens reprovados) finaliza sem pagamento —
+    # o schema recusa pagamento com valor 0.
+    pagamentos = [{"forma_pagamento_id": _FP_ID["id"], "valor": valor}] if valor > 0 else []
+    fin = {
+        "situacao_equipamento": "REPARADO", "garantia": "90 dias",
+        "pagamentos": pagamentos,
+    }
+    r = client.put(f"/api/v1/ordens-servico/{numero}/finalizar", json=fin, headers=header)
+    assert r.status_code == 200, r.text
+    return r
+
+
+_FP_ID = {}
+
+
+def test_os_finalizada_da_baixa_no_estoque(client, db_session):
+    """O bug: peça aplicada na OS saía do estoque no papel mas não no sistema."""
+    header = _autenticar_e_criar_empresa(client, "assistencia_tecnica")
+    cliente_id = _criar_cliente(client, header)
+    _FP_ID["id"] = _criar_forma_pagamento(client, header)
+    produto_id = _criar_produto(client, header, "PECA-1", quantidade=10)
+
+    numero = _os_com_produto(client, header, cliente_id, "SERIAL-E1", produto_id, valor=5000, quantidade=3)
+    assert _estoque_atual(db_session, produto_id) == 10, "criar a OS não movimenta estoque"
+
+    _finalizar(client, header, numero, 15000)
+    assert _estoque_atual(db_session, produto_id) == 7, "finalizar tira as 3 peças do estoque"
+
+
+def test_os_item_reprovado_nao_da_baixa(client, db_session):
+    """Peça recusada pelo cliente continua na prateleira — não entra no total
+    da OS e também não pode sair do estoque."""
+    header = _autenticar_e_criar_empresa(client, "assistencia_tecnica")
+    cliente_id = _criar_cliente(client, header)
+    _FP_ID["id"] = _criar_forma_pagamento(client, header)
+    produto_id = _criar_produto(client, header, "PECA-2", quantidade=10)
+
+    numero = _os_com_produto(
+        client, header, cliente_id, "SERIAL-E2", produto_id,
+        valor=5000, quantidade=2, status_aprovacao="REPROVADO",
+    )
+    _finalizar(client, header, numero, 0)
+    assert _estoque_atual(db_session, produto_id) == 10
+
+
+def test_os_reaberta_devolve_a_peca_ao_estoque(client, db_session):
+    """Reabrir desfaz a baixa. Sem isso, reabrir e refinalizar tiraria a mesma
+    peça duas vezes do estoque."""
+    header = _autenticar_e_criar_empresa(client, "assistencia_tecnica")
+    cliente_id = _criar_cliente(client, header)
+    _FP_ID["id"] = _criar_forma_pagamento(client, header)
+    produto_id = _criar_produto(client, header, "PECA-3", quantidade=10)
+
+    numero = _os_com_produto(client, header, cliente_id, "SERIAL-E3", produto_id, valor=5000, quantidade=2)
+    _finalizar(client, header, numero, 10000)
+    assert _estoque_atual(db_session, produto_id) == 8
+
+    rr = client.put(f"/api/v1/ordens-servico/{numero}/reabrir", json={"cliente_pagou": True}, headers=header)
+    assert rr.status_code == 200, rr.text
+    assert _estoque_atual(db_session, produto_id) == 10, "reabrir devolve a peça"
+
+    _finalizar(client, header, numero, 10000)
+    assert _estoque_atual(db_session, produto_id) == 8, "refinalizar tira UMA vez, não duas"
+
+
+def test_os_cancelada_apos_finalizar_devolve_estoque_uma_vez_so(client, db_session):
+    """Cancelar uma OS finalizada estorna. Reabrir depois NÃO pode estornar de
+    novo — a peça já voltou no cancelamento."""
+    header = _autenticar_e_criar_empresa(client, "assistencia_tecnica")
+    cliente_id = _criar_cliente(client, header)
+    _FP_ID["id"] = _criar_forma_pagamento(client, header)
+    produto_id = _criar_produto(client, header, "PECA-4", quantidade=10)
+
+    numero = _os_com_produto(client, header, cliente_id, "SERIAL-E4", produto_id, valor=5000, quantidade=4)
+    _finalizar(client, header, numero, 20000)
+    assert _estoque_atual(db_session, produto_id) == 6
+
+    rc = client.put(f"/api/v1/ordens-servico/{numero}/cancelar", json={"motivo": "desistiu"}, headers=header)
+    assert rc.status_code == 200, rc.text
+    assert _estoque_atual(db_session, produto_id) == 10, "cancelar devolve"
+
+    rr = client.put(f"/api/v1/ordens-servico/{numero}/reabrir", json={"cliente_pagou": False}, headers=header)
+    assert rr.status_code == 200, rr.text
+    assert _estoque_atual(db_session, produto_id) == 10, "reabrir de CANCELADA não estorna de novo"
+
+
+def test_os_cancelada_sem_finalizar_nao_mexe_no_estoque(client, db_session):
+    """OS que nunca foi finalizada não consumiu estoque; cancelar não pode
+    inventar peça que nunca saiu."""
+    header = _autenticar_e_criar_empresa(client, "assistencia_tecnica")
+    cliente_id = _criar_cliente(client, header)
+    _FP_ID["id"] = _criar_forma_pagamento(client, header)
+    produto_id = _criar_produto(client, header, "PECA-5", quantidade=10)
+
+    numero = _os_com_produto(client, header, cliente_id, "SERIAL-E5", produto_id, valor=5000, quantidade=2)
+    rc = client.put(f"/api/v1/ordens-servico/{numero}/cancelar", json={"motivo": "desistiu"}, headers=header)
+    assert rc.status_code == 200, rc.text
+    assert _estoque_atual(db_session, produto_id) == 10
+
+
+def test_os_estoque_insuficiente_finaliza_e_fica_negativo(client, db_session):
+    """Decisão de negócio: a peça já foi instalada, então a OS não pode ficar
+    presa. O saldo negativo é o sinal de que falta acertar a contagem."""
+    header = _autenticar_e_criar_empresa(client, "assistencia_tecnica")
+    cliente_id = _criar_cliente(client, header)
+    _FP_ID["id"] = _criar_forma_pagamento(client, header)
+    produto_id = _criar_produto(client, header, "PECA-6", quantidade=1)
+
+    numero = _os_com_produto(client, header, cliente_id, "SERIAL-E6", produto_id, valor=5000, quantidade=3)
+    _finalizar(client, header, numero, 15000)
+    assert _estoque_atual(db_session, produto_id) == -2

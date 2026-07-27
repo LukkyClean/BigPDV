@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Optional
 
 from app.db.base import Base
-from app.core.enum import MovimentacaoTipo
+from app.core.enum import MovimentacaoTipo, MovimentacaoOrigem
 
 
 class MovimentacaoEstoque(Base):
@@ -72,6 +72,33 @@ class MovimentacaoEstoque(Base):
         Integer,
         nullable=False,
         doc="Quantidade em estoque após a movimentação"
+    )
+
+    # --- Origem (de onde veio a movimentação) ---
+    # Esta tabela é o livro-razão ÚNICO do estoque. `origem` diz quem causou a
+    # movimentação e os dois FKs abaixo apontam para o documento correspondente,
+    # de forma consultável — antes o vínculo só existia em texto na observação.
+    origem: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        server_default=MovimentacaoOrigem.LEGADO.value,
+        default=MovimentacaoOrigem.MANUAL.value,
+        index=True,
+        doc="Origem: LEGADO, MANUAL, CADASTRO, VENDA ou ORDEM_SERVICO"
+    )
+    venda_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("vendas.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        doc="Venda que causou a movimentação (quando origem = VENDA)"
+    )
+    ordem_servico_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("ordens_servico.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        doc="OS que causou a movimentação (quando origem = ORDEM_SERVICO)"
     )
 
     observacao: Mapped[Optional[str]] = mapped_column(

@@ -164,6 +164,124 @@ def test_faturamento_soma_os_finalizada(client, db_session):
     assert any(f["nome"] == "Dinheiro" and f["valor_total"] == 14000 for f in body["formas_pagamento"]), body["formas_pagamento"]
 
 
+def _os_finalizada_com_juros(client, header, cliente_id, fp_id, serie, base, juros, responsavel):
+    """OS finalizada com juros de cartão, repassado ou absorvido pela loja."""
+    payload = {
+        "cliente_id": cliente_id, "prioridade": "NORMAL", "defeito_relatado": "Não liga",
+        "dados_adicionais": {},
+        "objeto": {"marca": "Dell", "modelo": "Inspiron", "numero_serie": serie, "dados_adicionais": {}},
+        "itens": [{"tipo": "SERVICO", "nome": "Reparo", "unidade_medida": "UN",
+                   "quantidade": 1, "valor_unitario": base}],
+    }
+    r = client.post("/api/v1/ordens-servico/", json=payload, headers=header)
+    assert r.status_code == status.HTTP_201_CREATED, r.text
+    numero = r.json()["numero_os"]
+
+    repassa = responsavel == "CLIENTE"
+    fin = {
+        "situacao_equipamento": "REPARADO", "garantia": "90 dias",
+        "acrescimo": juros if repassa else 0,
+        "pagamentos": [{
+            "forma_pagamento_id": fp_id,
+            "valor": base + juros if repassa else base,
+            "juros_valor": juros,
+            "juros_responsavel": responsavel,
+        }],
+    }
+    rf = client.put(f"/api/v1/ordens-servico/{numero}/finalizar", json=fin, headers=header)
+    assert rf.status_code == 200, rf.text
+    return numero
+
+
+def test_faturamento_juros_absorvido_reduz_o_liquido(client, db_session):
+    """LOJA: o cliente pagou 14000 (o bruto não muda), mas 700 saíram do caixa
+    da loja para a operadora — o líquido tem que refletir isso."""
+    header = _auth(client)
+    cliente_id = _cliente(client, header)
+    fp_id = _forma_pagamento(client, header)
+    _os_finalizada_com_juros(client, header, cliente_id, fp_id, "SERIAL-JA", 14000, 700, "LOJA")
+
+    hoje = datetime.utcnow().date().isoformat()
+    r = client.get(f"/api/v1/relatorios/faturamento?inicio={hoje}&fim={hoje}", headers=header)
+    assert r.status_code == 200, r.text
+    body = r.json()
+
+    assert body["faturamento_total"] == 14000, "bruto não muda: o cliente não foi cobrado a mais"
+    assert body["juros_absorvido"] == 700
+    assert body["juros_repassado"] == 0
+    assert body["faturamento_liquido"] == 13300, "o juros bancado pela loja sai do líquido"
+
+
+def test_faturamento_juros_repassado_sai_do_liquido(client, db_session):
+    """CLIENTE: o bruto sobe (o cliente pagou a mais), mas o juros vai para a
+    operadora — então não pode ficar contado como receita da loja."""
+    header = _auth(client)
+    cliente_id = _cliente(client, header)
+    fp_id = _forma_pagamento(client, header)
+    _os_finalizada_com_juros(client, header, cliente_id, fp_id, "SERIAL-JR", 14000, 700, "CLIENTE")
+
+    hoje = datetime.utcnow().date().isoformat()
+    r = client.get(f"/api/v1/relatorios/faturamento?inicio={hoje}&fim={hoje}", headers=header)
+    assert r.status_code == 200, r.text
+    body = r.json()
+
+    assert body["faturamento_total"] == 14700, "bruto inclui o acréscimo cobrado do cliente"
+    assert body["juros_repassado"] == 700
+    assert body["juros_absorvido"] == 0
+    assert body["faturamento_liquido"] == 14000, "a loja fica com a base, não com o juros"
+
+
+def test_faturamento_sem_juros_liquido_igual_ao_bruto(client, db_session):
+    """Loja que não cobra juros: líquido e bruto são o mesmo número, e as duas
+    linhas de juros ficam zeradas."""
+    header = _auth(client)
+    cliente_id = _cliente(client, header)
+    fp_id = _forma_pagamento(client, header)
+    _os_finalizada(client, header, cliente_id, fp_id, "SERIAL-SJ", 14000)
+
+    hoje = datetime.utcnow().date().isoformat()
+    r = client.get(f"/api/v1/relatorios/faturamento?inicio={hoje}&fim={hoje}", headers=header)
+    body = r.json()
+
+    assert body["juros_repassado"] == 0 and body["juros_absorvido"] == 0
+    assert body["faturamento_liquido"] == body["faturamento_total"] == 14000
+
+
+def test_faturamento_conta_no_dia_da_FINALIZACAO_nao_no_da_abertura(client, db_session):
+    """Bug real: OS aberta em 23/07 e finalizada em 27/07 aparecia como
+    faturamento do dia 23 — receita lançada num dia em que ela nem tinha sido
+    cobrada. O dinheiro entra quando a OS fecha."""
+    from datetime import timedelta
+    from app.db.models.ordem_servico import OrdemServico as OSModel
+
+    header = _auth(client)
+    cliente_id = _cliente(client, header)
+    fp_id = _forma_pagamento(client, header)
+    numero = _os_finalizada(client, header, cliente_id, fp_id, "SERIAL-DT", 14000)
+
+    # Empurra a abertura para 5 dias atrás, mantendo a finalização hoje.
+    os_db = db_session.query(OSModel).filter(OSModel.numero_os == numero).first()
+    os_db.data_criacao = datetime.utcnow() - timedelta(days=5)
+    db_session.commit()
+
+    hoje = datetime.utcnow().date()
+    abertura = (hoje - timedelta(days=5)).isoformat()
+
+    # Período que contém SÓ o dia da abertura: não pode ter faturamento.
+    r = client.get(f"/api/v1/relatorios/faturamento?inicio={abertura}&fim={abertura}", headers=header)
+    assert r.status_code == 200, r.text
+    assert r.json()["faturamento_os"] == 0, "abertura não é faturamento"
+
+    # Período que contém só o dia da finalização: é aqui que a receita entra.
+    r = client.get(f"/api/v1/relatorios/faturamento?inicio={hoje.isoformat()}&fim={hoje.isoformat()}", headers=header)
+    body = r.json()
+    assert body["faturamento_os"] == 14000, body
+    assert body["qtd_os"] == 1
+
+    dia = next((d for d in body["por_dia"] if d["dia"] == hoje.isoformat()), None)
+    assert dia is not None and dia["total_os"] == 14000, "a série por dia usa a mesma âncora"
+
+
 def test_faturamento_periodo_vazio_zera(client, db_session):
     header = _auth(client)
     # sem nenhuma transação, faturamento zerado e ticket 0 (sem divisão por zero)

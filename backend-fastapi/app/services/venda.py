@@ -57,7 +57,11 @@ def _payments_valid(db: Session, payments: Sequence[PagamentoVendaCreate]) -> Se
             raise BadRequestException(detail="Pagamentos parcelados devem ter no mínimo 1 parcela")
         if not payment.parcelado and payment.qtd_parcelas is not None:
             raise BadRequestException(detail="Pagamentos a vista não deve ter parcelas")
-        sale_payments.append(PagamentoVenda(**payment.model_dump()))
+        dados = payment.model_dump()
+        # O enum é str-subclass, mas gravamos o `.value` explicitamente para que a
+        # coluna String nunca dependa da representação do Enum.
+        dados["juros_responsavel"] = payment.juros_responsavel.value
+        sale_payments.append(PagamentoVenda(**dados))
     return sale_payments
 
 def create_sale(db: Session, sale: VendaCreate) -> VendaRead:
