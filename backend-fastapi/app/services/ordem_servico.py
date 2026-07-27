@@ -791,7 +791,12 @@ def finalizar_ordem_servico(
     os_in_db.garantia = data.garantia
     os_in_db.solucao = data.solucao
     os_in_db.status = OrdemServicoStatus.FINALIZADA
-    os_in_db.data_finalizacao = datetime.now()
+    # UTC, não hora local. Todo o resto do sistema grava em UTC (func.now()) e os
+    # filtros de período do dashboard/relatórios comparam em UTC. Com hora local
+    # (UTC-3), uma OS finalizada depois das 21h caía no dia seguinte pela régua
+    # do relatório — e desde que o faturamento passou a ancorar em
+    # data_finalizacao, isso virou dinheiro no dia errado.
+    os_in_db.data_finalizacao = datetime.utcnow()
 
     if data.observacoes:
         os_in_db.observacoes = data.observacoes

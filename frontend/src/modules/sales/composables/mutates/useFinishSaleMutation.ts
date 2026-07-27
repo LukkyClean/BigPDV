@@ -3,6 +3,7 @@ import type { AxiosError } from "axios";
 
 import { useToast } from "@/shared/composables/useToast";
 import { getErrorMessage } from "@/shared/utils/error.utils";
+import { invalidarRelatorios } from "@/shared/utils/invalidarRelatorios";
 import type { ApiError } from "@/shared/types/axios.types";
 
 import { saleService } from "../../api.service";
@@ -29,6 +30,7 @@ export function useFinishSaleMutation() {
           queryClient.invalidateQueries({
             queryKey: saleKeys.status(),
           });
+          invalidarRelatorios(queryClient);
         },
         onError: (error) => {
           toast.error(getErrorMessage(error, 'Erro ao finalizar venda'));

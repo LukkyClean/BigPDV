@@ -333,9 +333,10 @@ def get_estoque(db: Session, inicio: date, fim: date, empresa_id: int) -> Relato
 def _duracao_horas(criacao: datetime, finalizacao: datetime) -> float:
     """(finalização - criação) em horas, com piso em 0.
 
-    data_criacao é gravada em UTC (func.now()) e data_finalizacao em horário local
-    (datetime.now()) — a diferença de fuso pode dar negativa em conclusões rápidas.
-    Clampar em 0 evita média negativa sem mascarar OS realmente longas.
+    Hoje as duas são UTC. Mas as OS finalizadas ANTES da correção do fuso têm
+    data_finalizacao em horário local (UTC-3), o que dá diferença negativa em
+    conclusões rápidas. Clampar em 0 evita média negativa nesses registros
+    antigos sem mascarar OS realmente longas.
     """
     segundos = (finalizacao - criacao).total_seconds()
     return max(segundos, 0) / 3600

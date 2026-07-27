@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/vue-query';
 import type { AxiosError } from 'axios';
 
 import { useToast } from '@/shared/composables/useToast';
+import { invalidarRelatorios } from '@/shared/utils/invalidarRelatorios';
 import { getErrorMessage } from '@/shared/utils/error.utils';
 import type { ApiError } from '@/shared/types/axios.types';
 
@@ -28,6 +29,7 @@ export function useCancelSaleMutation() {
       queryClient.invalidateQueries({
         queryKey: saleKeys.status(),
       });
+      invalidarRelatorios(queryClient);
     },
     onError: (error) => {
       toast.error(getErrorMessage(error, 'Erro ao cancelar venda'));

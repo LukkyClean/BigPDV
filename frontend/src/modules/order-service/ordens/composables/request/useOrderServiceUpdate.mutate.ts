@@ -4,6 +4,7 @@ import { AxiosError } from 'axios';
 import { ApiError } from '@/shared/types/axios.types';
 import { getErrorMessage } from '@/shared/utils/error.utils';
 import { useToast } from '@/shared/composables/useToast';
+import { invalidarRelatorios } from '@/shared/utils/invalidarRelatorios';
 
 import {
   updateOrderService,
@@ -88,6 +89,7 @@ export function useReadyOrderServiceMutation() {
       toast.success(`${data.numero_os} finalizada com sucesso`);
       queryClient.invalidateQueries({ queryKey: [ORDER_SERVICE_QUERY_KEY] });
       queryClient.invalidateQueries({ queryKey: [OS_CUSTOMER_QUERY_KEY] });
+      invalidarRelatorios(queryClient);
     },
     onError: (error) => {
       toast.error(getErrorMessage(error, 'Erro ao finalizar a ordem de serviço') as string);
@@ -105,6 +107,7 @@ export function useCancelOrderServiceMutation() {
       toast.success(`${data.numero_os} cancelada com sucesso`);
       queryClient.invalidateQueries({ queryKey: [ORDER_SERVICE_QUERY_KEY] });
       queryClient.invalidateQueries({ queryKey: [OS_CUSTOMER_QUERY_KEY] });
+      invalidarRelatorios(queryClient);
     },
     onError: (error) => {
       const detail = (error?.response?.data as any)?.detail;
@@ -123,6 +126,7 @@ export function useReopenOrderServiceMutation() {
     onSuccess: (data) => {
       toast.success(`${data.numero_os} reaberta com sucesso`);
       queryClient.invalidateQueries({ queryKey: [ORDER_SERVICE_QUERY_KEY] });
+      invalidarRelatorios(queryClient);
     },
     onError: (error) => {
       const detail = (error?.response?.data as any)?.detail;
