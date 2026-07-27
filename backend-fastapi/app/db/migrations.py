@@ -11,6 +11,7 @@ import sys
 from alembic import command
 from alembic.config import Config
 from alembic.migration import MigrationContext
+from alembic.script import ScriptDirectory
 from sqlalchemy import inspect
 
 from app.core.config import settings
@@ -54,6 +55,16 @@ def _obter_revisao_atual() -> str | None:
         return context.get_current_revision()
 
 
+def _revisao_existe_no_script(alembic_cfg: Config, revisao: str) -> bool:
+    """Verifica se a revisão armazenada no banco existe nos scripts de migração."""
+    script = ScriptDirectory.from_config(alembic_cfg)
+    try:
+        script.get_revision(revisao)
+        return True
+    except Exception:
+        return False
+
+
 def aplicar_migracoes():
     """
     Aplica migrações Alembic automaticamente na inicialização.
@@ -78,7 +89,19 @@ def aplicar_migracoes():
     else:
         revisao_atual = _obter_revisao_atual()
         logger.info("Revisão atual do banco: %s", revisao_atual)
-        command.upgrade(alembic_cfg, "head")
+
+        # Se a revisão armazenada no banco não existe nos scripts de migração
+        # (ex: o código voltou para uma versão anterior), re-stampa para head.
+        if revisao_atual and not _revisao_existe_no_script(alembic_cfg, revisao_atual):
+            logger.warning(
+                "Revisão %s não encontrada nos scripts de migração. "
+                "Re-stampando para head...",
+                revisao_atual,
+            )
+            command.stamp(alembic_cfg, "head")
+        else:
+            command.upgrade(alembic_cfg, "head")
+
         revisao_nova = _obter_revisao_atual()
         if revisao_nova != revisao_atual:
             logger.info("Banco atualizado: %s -> %s", revisao_atual, revisao_nova)
