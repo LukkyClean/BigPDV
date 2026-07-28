@@ -55,20 +55,20 @@ export async function getCustomerById(id: number): Promise<CustomerUnionReadSche
   return safeParseCustomer(data, 'getCustomerById');
 }
 
-// ── GET Equipamentos (histórico de equipamentos do cliente) ────────────────
+// ── GET Objetos (histórico de objetos do cliente) ────────────────
 
-export interface EquipamentoHistorico {
-  equipamento: string;
+export interface ObjetoHistorico {
+  objeto: string;
   marca: string | null;
   modelo: string | null;
   numero_serie: string | null;
 }
 
-export async function getClientEquipments(
+export async function getClientObjetos(
   clienteId: number,
-): Promise<EquipamentoHistorico[]> {
-  const { data } = await api.get<EquipamentoHistorico[]>(
-    `${BASE_CUSTOMER_URL}/${clienteId}/equipamentos`,
+): Promise<ObjetoHistorico[]> {
+  const { data } = await api.get<ObjetoHistorico[]>(
+    `${BASE_CUSTOMER_URL}/${clienteId}/objetos`,
   );
   return data;
 }

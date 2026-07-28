@@ -1,0 +1,12 @@
+[BUG]: no found input "app"
+
+## Command Line
+C:\dev\bigpdv\backend-fastapi\.venv\Scripts\pyarmor gen -r app
+
+## Environments
+Python 3.14.3
+Pyarmor 9.2.5 (trial), 000000, non-profits
+Platform windows.x86_64
+Native windows.amd64
+Home C:\Users\Candé\.pyarmor
+

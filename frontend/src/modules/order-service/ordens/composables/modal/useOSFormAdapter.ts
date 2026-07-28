@@ -3,8 +3,8 @@ import { computed, type ComputedRef } from 'vue';
 import type { OSFormContext } from '../../types/context.type';
 import type { OsPriorityEnumDataType, OsStatusEnumDataType } from '../../schemas/enums/osEnums.schema';
 
-export interface EquipamentoFormData {
-  equipamento: string;
+export interface ObjetoFormData {
+  objeto: string;
   marca: string;
   modelo: string;
   numero_serie: string;
@@ -22,16 +22,16 @@ interface UseOSFormAdapterParams {
 }
 
 export function useOSFormAdapter({ form, isCreateMode }: UseOSFormAdapterParams) {
-  const equipamentoFormData = computed<EquipamentoFormData>({
+  const objetoFormData = computed<ObjetoFormData>({
     get: () => {
       if (isCreateMode.value) {
         return {
-          equipamento: form.criar.equipamento_tipo_equipamento.value ?? '',
-          marca: form.criar.equipamento_marca.value ?? '',
-          modelo: form.criar.equipamento_modelo.value ?? '',
-          numero_serie: form.criar.equipamento_numero_serie.value ?? '',
-          imei: form.criar.equipamento_imei.value ?? '',
-          cor: form.criar.equipamento_cor.value ?? '',
+          objeto: form.criar.objeto_tipo_equipamento.value ?? '',
+          marca: form.criar.objeto_marca.value ?? '',
+          modelo: form.criar.objeto_modelo.value ?? '',
+          numero_serie: form.criar.objeto_numero_serie.value ?? '',
+          imei: form.criar.objeto_imei.value ?? '',
+          cor: form.criar.objeto_cor.value ?? '',
           senha_aparelho: form.criar.senha_aparelho.value ?? '',
           acessorios: form.criar.acessorios.value ?? '',
           defeito_relatado: form.criar.defeito_relatado.value ?? '',
@@ -40,12 +40,12 @@ export function useOSFormAdapter({ form, isCreateMode }: UseOSFormAdapterParams)
       }
 
       return {
-        equipamento: form.atualizarEquipamento.tipo_equipamento.value ?? '',
-        marca: form.atualizarEquipamento.marca.value ?? '',
-        modelo: form.atualizarEquipamento.modelo.value ?? '',
-        numero_serie: form.atualizarEquipamento.numero_serie.value ?? '',
-        imei: form.atualizarEquipamento.imei.value ?? '',
-        cor: form.atualizarEquipamento.cor.value ?? '',
+        objeto: form.atualizarObjeto.tipo_equipamento.value ?? '',
+        marca: form.atualizarObjeto.marca.value ?? '',
+        modelo: form.atualizarObjeto.modelo.value ?? '',
+        numero_serie: form.atualizarObjeto.numero_serie.value ?? '',
+        imei: form.atualizarObjeto.imei.value ?? '',
+        cor: form.atualizarObjeto.cor.value ?? '',
         senha_aparelho: form.atualizarGeral.senha_aparelho.value ?? '',
         acessorios: form.atualizarGeral.acessorios.value ?? '',
         defeito_relatado: form.atualizarGeral.defeito_relatado.value ?? '',
@@ -54,12 +54,12 @@ export function useOSFormAdapter({ form, isCreateMode }: UseOSFormAdapterParams)
     },
     set: (value) => {
       if (isCreateMode.value) {
-        form.criar.equipamento_tipo_equipamento.value = value.equipamento;
-        form.criar.equipamento_marca.value = value.marca;
-        form.criar.equipamento_modelo.value = value.modelo;
-        form.criar.equipamento_numero_serie.value = value.numero_serie;
-        form.criar.equipamento_imei.value = value.imei;
-        form.criar.equipamento_cor.value = value.cor;
+        form.criar.objeto_tipo_equipamento.value = value.objeto;
+        form.criar.objeto_marca.value = value.marca;
+        form.criar.objeto_modelo.value = value.modelo;
+        form.criar.objeto_numero_serie.value = value.numero_serie;
+        form.criar.objeto_imei.value = value.imei;
+        form.criar.objeto_cor.value = value.cor;
         form.criar.senha_aparelho.value = value.senha_aparelho;
         form.criar.acessorios.value = value.acessorios;
         form.criar.defeito_relatado.value = value.defeito_relatado;
@@ -67,16 +67,44 @@ export function useOSFormAdapter({ form, isCreateMode }: UseOSFormAdapterParams)
         return;
       }
 
-      form.atualizarEquipamento.tipo_equipamento.value = value.equipamento;
-      form.atualizarEquipamento.marca.value = value.marca;
-      form.atualizarEquipamento.modelo.value = value.modelo;
-      form.atualizarEquipamento.numero_serie.value = value.numero_serie;
-      form.atualizarEquipamento.imei.value = value.imei;
-      form.atualizarEquipamento.cor.value = value.cor;
+      form.atualizarObjeto.tipo_equipamento.value = value.objeto;
+      form.atualizarObjeto.marca.value = value.marca;
+      form.atualizarObjeto.modelo.value = value.modelo;
+      form.atualizarObjeto.numero_serie.value = value.numero_serie;
+      form.atualizarObjeto.imei.value = value.imei;
+      form.atualizarObjeto.cor.value = value.cor;
       form.atualizarGeral.senha_aparelho.value = value.senha_aparelho;
       form.atualizarGeral.acessorios.value = value.acessorios;
       form.atualizarGeral.defeito_relatado.value = value.defeito_relatado;
       form.atualizarGeral.condicoes_aparelho.value = value.condicoes_aparelho;
+    },
+  });
+
+  // dados_adicionais do OBJETO (ex: oficina → chassi, ano).
+  const objetoDados = computed<Record<string, unknown>>({
+    get: () => (isCreateMode.value
+      ? form.criar.objeto_dados_adicionais.value
+      : form.atualizarObjeto.dados_adicionais.value) ?? {},
+    set: (value) => {
+      if (isCreateMode.value) {
+        form.criar.objeto_dados_adicionais.value = value;
+        return;
+      }
+      form.atualizarObjeto.dados_adicionais.value = value;
+    },
+  });
+
+  // dados_adicionais da OS / check-in (ex: oficina → km_entrada, combustível, vistoria).
+  const osDados = computed<Record<string, unknown>>({
+    get: () => (isCreateMode.value
+      ? form.criar.dados_adicionais.value
+      : form.atualizarGeral.dados_adicionais.value) ?? {},
+    set: (value) => {
+      if (isCreateMode.value) {
+        form.criar.dados_adicionais.value = value;
+        return;
+      }
+      form.atualizarGeral.dados_adicionais.value = value;
     },
   });
 
@@ -147,7 +175,9 @@ export function useOSFormAdapter({ form, isCreateMode }: UseOSFormAdapterParams)
   }
 
   return {
-    equipamentoFormData,
+    objetoFormData,
+    objetoDados,
+    osDados,
     controlsStatus,
     controlsFuncionarioId,
     controlsPrioridade,

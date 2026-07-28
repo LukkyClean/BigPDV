@@ -17,7 +17,7 @@ from app.db.models.empresa import Empresa  # noqa: F401
 from app.db.models.empresa_fiscal_settings import EmpresaFiscalSettings  # noqa: F401
 from app.db.models.cargo import Cargo  # noqa: F401
 from app.db.models.ordem_servico import OrdemServico  # noqa: F401
-from app.db.models.ordem_servico_equipamento import OrdemServicoEquipamento  # noqa: F401
+from app.db.models.objeto_servico import ObjetoServico  # noqa: F401
 from app.db.models.ordem_servico_item import OrdemServicoItem  # noqa: F401
 from app.db.models.ordem_servico_pagamento import OrdemServicoPagamento  # noqa: F401
 from app.db.models.ordem_servico_foto import OrdemServicoFoto  # noqa: F401

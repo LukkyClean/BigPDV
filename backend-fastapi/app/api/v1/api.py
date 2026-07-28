@@ -21,10 +21,12 @@ from app.api.v1.endpoints import forma_pagamento
 from app.api.v1.endpoints import venda
 from app.api.v1.endpoints import orcamento
 from app.api.v1.endpoints import dashboard
+from app.api.v1.endpoints import relatorios
 from app.api.v1.endpoints import movimentacao_estoque
 from app.api.v1.endpoints import configuracao
 from app.api.v1.endpoints import comunicado
 from app.api.v1.endpoints import licenca
+from app.api.v1.endpoints import checklist_mobile
 
 # Cria a instância principal do roteador para a V1
 router = APIRouter()
@@ -80,6 +82,10 @@ router.include_router(orcamento.router, prefix="/orcamentos", tags=["Orcamentos"
 # Inclui o roteador do Dashboard sob o prefixo /dashboard
 # Endpoints read-only para metricas, OS vencendo, estoque e vendas recentes
 router.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboard"])
+
+# Inclui o roteador de Relatorios sob o prefixo /relatorios
+# Endpoints read-only de faturamento/analytics, protegidos por permissao
+router.include_router(relatorios.router, prefix="/relatorios", tags=["Relatórios"])
 # Inclui o roteador de movimentações de estoque sob o prefixo /produtos
 # Contém sub-recursos: registrar movimentação e listar movimentações
 router.include_router(movimentacao_estoque.router, prefix="/produtos", tags=["Movimentações de Estoque"])
@@ -91,3 +97,7 @@ router.include_router(comunicado.router, prefix="/comunicados", tags=["Comunicad
 # Inclui o roteador de licença sob o prefixo /licenca
 # Endpoint público (sem autenticação) para verificação de licença no boot
 router.include_router(licenca.router, prefix="/licenca", tags=["Licença"])
+
+# Inclui o roteador do checklist mobile (formulario web via QR code)
+# Endpoints publicos autenticados por token HMAC + gerador de token via JWT
+router.include_router(checklist_mobile.router, prefix="/checklist", tags=["Checklist Mobile"])

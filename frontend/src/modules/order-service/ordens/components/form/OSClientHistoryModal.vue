@@ -19,7 +19,7 @@ const props = defineProps<Props>();
 
 const emit = defineEmits<{
   close: [];
-  reutilizarEquipamento: [os: OrderServiceReadDataType];
+  reutilizarObjeto: [os: OrderServiceReadDataType];
 }>();
 
 const clienteIdRef = toRef(() => props.clienteId);
@@ -37,9 +37,9 @@ function formatDate(date: string | Date): string {
   });
 }
 
-function getEquipamentoLabel(os: OrderServiceReadDataType): string {
-  const equip = os.equipamento;
-  const parts = [equip.tipo_equipamento, equip.marca, equip.modelo].filter(Boolean);
+function getObjetoLabel(os: OrderServiceReadDataType): string {
+  const objeto = os.objeto;
+  const parts = [objeto.tipo_equipamento, objeto.marca, objeto.modelo].filter(Boolean);
   return parts.join(' · ') || '-';
 }
 
@@ -92,7 +92,7 @@ function getStatusClass(status: string): string {
             <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Nº OS</th>
             <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Data</th>
             <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Status</th>
-            <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Equipamento</th>
+            <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Objeto</th>
             <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Defeito</th>
             <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Ação</th>
           </tr>
@@ -117,7 +117,7 @@ function getStatusClass(status: string): string {
               </span>
             </td>
             <td class="px-4 py-3 text-slate-600">
-              {{ getEquipamentoLabel(os) }}
+              {{ getObjetoLabel(os) }}
             </td>
             <td class="px-4 py-3 text-slate-500 max-w-50">
               {{ truncate(os.defeito_relatado, 50) }}
@@ -126,7 +126,7 @@ function getStatusClass(status: string): string {
               <BaseButton
                 variant="ghost"
                 size="sm"
-                @click="emit('reutilizarEquipamento', os)"
+                @click="emit('reutilizarObjeto', os)"
               >
                 <ArrowDownToLine :size="14" class="mr-1" />
                 Reutilizar

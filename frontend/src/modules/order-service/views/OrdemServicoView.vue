@@ -10,24 +10,36 @@ import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
 
 import OrdensServicoTab from './tabs/OrdensServicoTab.vue';
 import ServicosTab from './tabs/ServicosTab.vue';
+import RevisoesPendentesTab from './tabs/RevisoesPendentesTab.vue';
 
 import { useServicoModal } from '../servicos/composables/useServicoModal';
 import { useOSCreateFlow } from '../ordens/composables/useOSCreateFlow';
+import { useCapacidades } from '../shared/segmento/useCapacidades';
 
 const { openCreateModal } = useServicoModal();
 const { openNovaOS } = useOSCreateFlow();
+const { temRevisoes } = useCapacidades();
 
 const activeTab = ref('ordens');
 
-const pageTitle = computed(() =>
-  activeTab.value === 'ordens' ? 'Ordens de Serviço' : 'Cadastro de Serviços',
+// Aba "Revisões" (pós-venda): só para segmentos que declaram a capacidade.
+const tabOptions = computed(() =>
+  temRevisoes.value
+    ? [...TAB_OPTIONS, { id: 'revisoes', label: 'Revisões' }]
+    : TAB_OPTIONS,
 );
 
-const pageDescription = computed(() =>
-  activeTab.value === 'ordens'
-    ? 'Gerencie as ordens de serviço da sua assistência.'
-    : 'Gerencie o catálogo de serviços da sua organização.',
-);
+const pageTitle = computed(() => {
+  if (activeTab.value === 'revisoes') return 'Revisões Pendentes';
+  return activeTab.value === 'ordens' ? 'Ordens de Serviço' : 'Cadastro de Serviços';
+});
+
+const pageDescription = computed(() => {
+  if (activeTab.value === 'revisoes') return 'Veículos com revisão vencida por data e/ou KM.';
+  return activeTab.value === 'ordens'
+    ? 'Gerencie as ordens de serviço da sua organização.'
+    : 'Gerencie o catálogo de serviços da sua organização.';
+});
 
 function handleAddClick() {
   if (activeTab.value === 'ordens') {
@@ -47,8 +59,9 @@ function handleAddClick() {
       />
 
       <div class="flex gap-5">
-        <BaseTab2 :options="TAB_OPTIONS" v-model="activeTab" />
+        <BaseTab2 :options="tabOptions" v-model="activeTab" />
         <BaseButton
+          v-if="activeTab !== 'revisoes'"
           variant="primary"
           size="md"
           type="button"
@@ -61,12 +74,8 @@ function handleAddClick() {
       </div>
     </div>
 
-    <template v-if="activeTab === 'ordens'">
-      <OrdensServicoTab />
-    </template>
-
-    <template v-else>
-      <ServicosTab />
-    </template>
+    <OrdensServicoTab v-if="activeTab === 'ordens'" />
+    <RevisoesPendentesTab v-else-if="activeTab === 'revisoes'" />
+    <ServicosTab v-else />
   </div>
 </template>

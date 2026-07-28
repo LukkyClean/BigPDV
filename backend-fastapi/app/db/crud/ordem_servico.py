@@ -17,10 +17,11 @@ from app.db.models.ordem_servico import OrdemServico as OSModel
 from app.db.models.ordem_servico_item import OrdemServicoItem as OSItemModel
 from app.db.models.ordem_servico_pagamento import OrdemServicoPagamento as OSPagamentoModel
 from app.db.models.ordem_servico_foto import OrdemServicoFoto as OSFotoModel
-from app.db.models.ordem_servico_equipamento import OrdemServicoEquipamento as OSEquipamentoModel
+from app.db.models.objeto_servico import ObjetoServico as OSEquipamentoModel
 
 from app.db.models.cliente import Cliente as ClienteModel, ClientePF as ClientePFModel, ClientePJ as ClientePJModel
 
+from app.core.busca import filtro_busca
 from app.core.enum import OrdemServicoStatus, OrdemServicoPrioridade
 
 
@@ -36,6 +37,44 @@ def get_ordem_servico_by_id(db: Session, os_id: int) -> OSModel | None:
 def get_ordem_servico_by_numero_os(db: Session, numero_os: str) -> OSModel | None:
     """Busca OS pelo número sequencial público (ex: OS-2026-000001)."""
     return db.scalar(select(OSModel).where(OSModel.numero_os == numero_os))
+
+
+def get_ordens_by_objeto_id(db: Session, objeto_id: int) -> Sequence[OSModel]:
+    """Retorna todas as OS de um objeto/veículo, da mais antiga para a mais recente."""
+    stmt = (
+        select(OSModel)
+        .where(OSModel.objeto_id == objeto_id)
+        .order_by(OSModel.data_criacao.asc())
+    )
+    return db.scalars(stmt).all()
+
+
+def get_objetos_com_revisao_agendada(db: Session) -> Sequence[OSEquipamentoModel]:
+    """Objetos ativos que têm alguma revisão agendada (por data e/ou KM)."""
+    stmt = select(OSEquipamentoModel).where(
+        OSEquipamentoModel.ativo == True,  # noqa: E712
+        or_(
+            OSEquipamentoModel.proxima_revisao_data.isnot(None),
+            OSEquipamentoModel.proxima_revisao_km.isnot(None),
+        ),
+    )
+    return db.scalars(stmt).all()
+
+
+def get_objeto_ativo_by_cliente_e_serie(
+    db: Session, cliente_id: int, numero_serie: str
+) -> OSEquipamentoModel | None:
+    """
+    Objeto ativo do cliente com o mesmo identificador (placa/serial), se existir.
+    Base do reuso: o mesmo bem físico é UM registro que acumula histórico entre OSs
+    (KM, revisão), em vez de ser duplicado a cada nova OS. Match case-insensitive.
+    """
+    stmt = select(OSEquipamentoModel).where(
+        OSEquipamentoModel.cliente_id == cliente_id,
+        OSEquipamentoModel.ativo == True,  # noqa: E712
+        func.lower(OSEquipamentoModel.numero_serie) == numero_serie.strip().lower(),
+    )
+    return db.scalars(stmt).first()
 
 
 def get_ordens_servico_by_search(
@@ -62,23 +101,25 @@ def get_ordens_servico_by_search(
 
         query = (
             query
-            .join(OSModel.equipamento)
+            .join(OSModel.objeto)
             .join(OSEquipamentoModel.cliente)
             .outerjoin(client_pj, ClienteModel.id == client_pj.id)
             .outerjoin(client_pf, ClienteModel.id == client_pf.id)
         )
 
-        like_search = f"%{search}%"
-        query = query.where(
-            or_(
-                OSModel.numero_os.ilike(like_search),
-                OSEquipamentoModel.numero_serie.ilike(like_search),
-                OSEquipamentoModel.modelo.ilike(like_search),
-                client_pf.nome.ilike(like_search),
-                client_pj.razao_social.ilike(like_search),
-                client_pj.nome_fantasia.ilike(like_search)
-            )
-        )
+        # Busca por palavras soltas e sem acento: "silva honda" encontra a OS
+        # do cliente Silva com a moto Honda, mesmo os dois vindo de campos
+        # (e tabelas) diferentes.
+        filtro = filtro_busca(search, (
+            OSModel.numero_os,
+            OSEquipamentoModel.numero_serie,
+            OSEquipamentoModel.modelo,
+            client_pf.nome,
+            client_pj.razao_social,
+            client_pj.nome_fantasia,
+        ))
+        if filtro is not None:
+            query = query.where(filtro)
 
     funcionario_id = filters.get("funcionario_id")
     if funcionario_id:
@@ -127,7 +168,7 @@ def get_ordens_servico_by_cliente_id(
     """
     query = (
         select(OSModel)
-        .join(OSModel.equipamento)
+        .join(OSModel.objeto)
         .where(OSEquipamentoModel.cliente_id == cliente_id)
         .order_by(OSModel.data_criacao.desc())
     )

@@ -89,11 +89,13 @@ export interface ClienteAction {
   variant: 'primary' | 'secondary' | 'outline';
 }
 
-export interface EquipamentoHistorico {
-  equipamento: string;
+export interface ObjetoHistorico {
+  objeto: string;
   marca: string | null;
   modelo: string | null;
   numero_serie: string | null;
+  cor?: string | null;
+  dados_adicionais?: Record<string, unknown> | null;
 }
 
 // ── Constantes ─────────────────────────────────────────────────────────────

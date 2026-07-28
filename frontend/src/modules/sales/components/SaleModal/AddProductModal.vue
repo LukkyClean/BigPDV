@@ -8,6 +8,7 @@ import AvisoEstoqueNegativoModal from './AvisoEstoqueNegativoModal.vue';
 
 import { useProductSearch } from '../../composables/flows/useProductSearch';
 import { formatCurrency } from '@/shared/utils/finance';
+import { getImageUrl } from '@/shared/utils/print.utils';
 import type { ProductSaleRead } from '../../schemas/productSale.schema';
 
 const props = defineProps<{
@@ -46,8 +47,6 @@ const {
   addItemToSale,
   resetSelection,
 } = useProductSearch(props.isOrcamento, currentItemsRef, searchContainerRef);
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 watch(
   () => props.isOpen,
@@ -162,7 +161,7 @@ function confirmarVendaNegativa() {
           >
             <img
               v-if="product.imagem_url"
-              :src="`${API_BASE_URL}/${product.imagem_url}`"
+              :src="getImageUrl(product.imagem_url) ?? ''"
               :alt="product.nome"
               class="h-full w-full object-cover"
             />

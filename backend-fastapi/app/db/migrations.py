@@ -13,6 +13,7 @@ from alembic.config import Config
 from alembic.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from sqlalchemy import inspect
+from sqlalchemy.exc import OperationalError
 
 from app.core.config import settings
 from app.db.session import engine
@@ -89,19 +90,26 @@ def aplicar_migracoes():
     else:
         revisao_atual = _obter_revisao_atual()
         logger.info("Revisão atual do banco: %s", revisao_atual)
-
-        # Se a revisão armazenada no banco não existe nos scripts de migração
-        # (ex: o código voltou para uma versão anterior), re-stampa para head.
-        if revisao_atual and not _revisao_existe_no_script(alembic_cfg, revisao_atual):
-            logger.warning(
-                "Revisão %s não encontrada nos scripts de migração. "
-                "Re-stampando para head...",
-                revisao_atual,
-            )
-            command.stamp(alembic_cfg, "head")
-        else:
+        try:
             command.upgrade(alembic_cfg, "head")
-
+        except OperationalError as exc:
+            # create_all roda ANTES das migrações e já cria o schema completo a
+            # partir dos models. Quando o histórico tem galhos unidos depois
+            # (ex.: merge de heads oficina/vendas), o upgrade pode tentar recriar
+            # tabelas/colunas que o create_all já criou -> "already exists". Nesse
+            # caso o schema já está correto; basta registrar o banco na head, do
+            # mesmo jeito que já fazemos para bancos sem alembic_version. Qualquer
+            # outro erro sobe (não mascaramos falha real de migração).
+            msg = str(exc).lower()
+            if "already exists" in msg or "duplicate column" in msg:
+                logger.warning(
+                    "Upgrade encontrou schema já existente (create_all): %s. "
+                    "Registrando o banco na head via stamp.",
+                    exc,
+                )
+                command.stamp(alembic_cfg, "head")
+            else:
+                raise
         revisao_nova = _obter_revisao_atual()
         if revisao_nova != revisao_atual:
             logger.info("Banco atualizado: %s -> %s", revisao_atual, revisao_nova)

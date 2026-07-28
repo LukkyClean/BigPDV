@@ -282,7 +282,8 @@ def finalizar_venda(
         db,
         venda_service.finish_sale,
         venda_id,
-        payload.pagamentos
+        payload.pagamentos,
+        payload.acrescimo or 0
     )
 
 @router.get(

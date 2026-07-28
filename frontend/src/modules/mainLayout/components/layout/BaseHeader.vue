@@ -10,8 +10,7 @@ import { useNotificacoesStore } from '@/shared/stores/notificacoes.store';
 import { useAuthStore } from '@/shared/stores/auth.store';
 import { onClickOutside } from '@vueuse/core';
 import { useQueryClient } from '@tanstack/vue-query';
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+import { getImageUrl } from '@/shared/utils/print.utils';
 
 const layoutStore = useLayoutStore();
 const { pageTitle, pageSubtitle, isMobile, isSettingsOpen } = storeToRefs(layoutStore);
@@ -25,7 +24,14 @@ const notifPanelRef = ref<HTMLElement | null>(null);
 const isNotifOpen = ref(false);
 const queryClient = useQueryClient();
 
-onClickOutside([notifButtonRef, notifPanelRef] as any, () => { isNotifOpen.value = false; });
+// O alvo é o painel; o botão entra em `ignore` para o clique nele apenas alternar
+// (senão fecharia aqui e reabriria no @click do próprio botão).
+// Passar um array como alvo quebra: o `unrefElement` não devolve um Element, o
+// VueUse cai no `hasMultipleRoots`, lê `vm.$.subTree` de um array e lança —
+// antes do handler, então o painel nunca fechava ao clicar fora.
+onClickOutside(notifPanelRef, () => { isNotifOpen.value = false; }, {
+  ignore: [notifButtonRef],
+});
 
 watch(isNotifOpen, (open) => {
   if (open) {
@@ -114,7 +120,7 @@ const notifStyle = computed((): Record<string, string> => {
         <div class="w-8 h-8 rounded-lg bg-brand-primary flex items-end justify-center overflow-hidden shrink-0">
           <img
             v-if="userData?.url_perfil"
-            :src="`${API_BASE_URL}/${userData.url_perfil}`"
+            :src="getImageUrl(userData.url_perfil) ?? ''"
             alt="Foto do usuário"
             class="w-full h-full object-cover"
           />

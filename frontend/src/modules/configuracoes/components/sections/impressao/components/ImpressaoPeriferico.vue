@@ -101,13 +101,7 @@ async function testarGaveta() {
 
 const OPCOES_AUTO = [
   { value: 'automatico', label: 'Imprimir automaticamente' },
-  { value: 'perguntar', label: 'Perguntar o formato' },
   { value: 'nao', label: 'Não imprimir' },
-] as const
-
-const OPCOES_FORMATO = [
-  { value: 'cupom', label: 'Cupom térmico (bobina)' },
-  { value: 'a4', label: 'Folha A4 (recibo)' },
 ] as const
 
 // ── Compartilhamento da impressora na LAN ──
@@ -310,7 +304,7 @@ function usarServidor(servidor: ServidorDescoberto) {
       </div>
 
       <!-- Teste -->
-      <div class="py-2">
+      <div class="py-2 flex flex-wrap gap-2">
         <BaseButton variant="secondary" size="sm" :disabled="!podeTestar" :is-loading="testando" @click="imprimirTeste">
           <Printer :size="14" class="mr-1.5" />
           Imprimir Cupom de Teste
@@ -388,15 +382,6 @@ function usarServidor(servidor: ServidorDescoberto) {
         <p class="text-sm font-medium text-zinc-800 mb-1.5">Vendas</p>
         <div class="flex gap-2">
           <div class="flex-1">
-            <label class="text-xs font-medium text-zinc-600">Documento padrão</label>
-            <select
-              v-model="form.formato_venda"
-              class="mt-1.5 w-full border border-zinc-200 rounded-lg px-3 py-2.5 bg-zinc-50 text-sm text-zinc-700 focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
-            >
-              <option v-for="op in OPCOES_FORMATO" :key="op.value" :value="op.value">{{ op.label }}</option>
-            </select>
-          </div>
-          <div class="flex-1">
             <label class="text-xs font-medium text-zinc-600">Ao finalizar a venda</label>
             <select
               v-model="form.auto_imprimir_venda"
@@ -411,15 +396,6 @@ function usarServidor(servidor: ServidorDescoberto) {
       <div class="py-2 border-b border-zinc-100">
         <p class="text-sm font-medium text-zinc-800 mb-1.5">Ordens de Serviço</p>
         <div class="flex gap-2">
-          <div class="flex-1">
-            <label class="text-xs font-medium text-zinc-600">Documento padrão</label>
-            <select
-              v-model="form.formato_os"
-              class="mt-1.5 w-full border border-zinc-200 rounded-lg px-3 py-2.5 bg-zinc-50 text-sm text-zinc-700 focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
-            >
-              <option v-for="op in OPCOES_FORMATO" :key="op.value" :value="op.value">{{ op.label }}</option>
-            </select>
-          </div>
           <div class="flex-1">
             <label class="text-xs font-medium text-zinc-600">Ao criar ou finalizar a OS</label>
             <select

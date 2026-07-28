@@ -4,11 +4,12 @@
  * @description Modal for creating/editing cargos with permission matrix
  */
 
-import { computed, onMounted, onUnmounted, watch } from 'vue';
-import { Check, X, XCircle } from 'lucide-vue-next';
+import { computed, ref, onMounted, onUnmounted, watch } from 'vue';
+import { Check, X, XCircle, ShieldCheck } from 'lucide-vue-next';
 
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
 import BaseInput from '@/shared/components/ui/BaseInput/BaseInput.vue';
+import BaseMoneyInput from '@/shared/components/ui/BaseMoneyInput/MoneyInput.vue';
 
 import { usePositionModal } from '../composables/usePositionModal';
 import { usePositionFormProvider } from '../composables/usePositionForm';
@@ -32,6 +33,10 @@ const {
 const {
   nome,
   permissoes,
+  comissaoVenda,
+  comissaoServico,
+  metaMensal,
+  comissaoModo,
   errors,
   submitCount,
   apiError,
@@ -43,6 +48,39 @@ const {
 
 const deleteMutation = useDeletePositionMutation();
 
+// Conversão só na exibição: form guarda basis points (500=5%) e centavos.
+function bpParaStr(bp: number | null | undefined): string {
+  return bp != null ? String(bp / 100) : '';
+}
+function strParaBp(v: string): number | null {
+  const n = parseFloat(String(v).replace(',', '.'));
+  return isNaN(n) ? null : Math.round(n * 100);
+}
+const comissaoVendaPct = computed<string>({
+  get: () => bpParaStr(comissaoVenda.value),
+  set: (v) => { comissaoVenda.value = strParaBp(v); },
+});
+const comissaoServicoPct = computed<string>({
+  get: () => bpParaStr(comissaoServico.value),
+  set: (v) => { comissaoServico.value = strParaBp(v); },
+});
+const metaReais = computed<number>({
+  get: () => (metaMensal.value != null ? metaMensal.value / 100 : 0),
+  set: (v) => { metaMensal.value = v ? Math.round(Number(v) * 100) : null; },
+});
+
+// Modo de comissão: null é tratado como 'direto' na UI (retrocompatível).
+const modoAtual = computed<'direto' | 'meta'>(() =>
+  comissaoModo.value === 'meta' ? 'meta' : 'direto',
+);
+function setModo(modo: 'direto' | 'meta') {
+  comissaoModo.value = modo;
+}
+// Aviso: modo 'meta' sem meta definida não trava nada (cai em 'direto' no cálculo).
+const metaExigidaSemvalor = computed(
+  () => modoAtual.value === 'meta' && !metaMensal.value,
+);
+
 const totalPermissions = computed(() => PERMISSION_KEYS.length);
 const permissionStats = computed(() => getPermissionStats(permissoes.value));
 const enabledPermissions = computed(() => permissionStats.value.enabled);
@@ -52,14 +90,36 @@ const isAllSelected = computed(
   () => enabledPermissions.value === totalPermissions.value && totalPermissions.value > 0,
 );
 
+// Cargo Master / de acesso total (permissão 'all'): a matriz é PROTEGIDA — não dá
+// para desmarcar nada, senão o acesso quebraria (o backend concede tudo via 'all',
+// ver depends.py). Detecta pela permissão 'all' ou pelo nome "master".
+const cargoAcessoTotal = computed(
+  () =>
+    permissoes.value?.all === true ||
+    selectedPosition.value?.nome?.toLowerCase() === 'master',
+);
+// Matriz somente-leitura: no modo visualização OU quando é cargo de acesso total.
+const matrizBloqueada = computed(() => isViewMode.value || cargoAcessoTotal.value);
+
 function togglePermission(key: string) {
-  if (isViewMode.value) return;
+  if (matrizBloqueada.value) return;
   const currentValue = !!permissoes.value?.[key];
   setPermission(key, !currentValue);
 }
 
+/**
+ * A célula deve aparecer marcada quando a permissão específica está ligada OU
+ * quando o cargo tem acesso total (`all`) — é como o backend concede acesso
+ * (depends.py: `permissoes.get("all")`). Sem isso, um cargo com `{all:true}`
+ * (ex.: Master/admin) mostrava a matriz inteira em branco, mesmo com acesso total.
+ */
+function permissaoMarcada(key?: string): boolean {
+  if (!key) return false;
+  return !!(permissoes.value?.[key] || permissoes.value?.all);
+}
+
 function toggleAllPermissions() {
-  if (isViewMode.value) return;
+  if (matrizBloqueada.value) return;
   setAllPermissions(!isAllSelected.value);
 }
 
@@ -83,10 +143,26 @@ function handleKeydown(event: KeyboardEvent) {
   }
 }
 
+const gestoComecouNoFundo = ref(false);
+
+function handleBackdropMousedown(event: MouseEvent) {
+  gestoComecouNoFundo.value = (event.target as HTMLElement).classList.contains('modal-backdrop');
+}
+
+/**
+ * Fecha ao clicar no fundo — mas só quando o clique COMEÇOU no fundo.
+ *
+ * Decidir pelo `click` fechava o modal no meio da edição: ao arrastar o mouse
+ * para selecionar o texto de um campo e soltar fora dele, o navegador dispara o
+ * `click` no ancestral comum entre onde apertou e onde soltou — o próprio
+ * backdrop. Só acontecia com o mouse; com teclado nunca.
+ */
 function handleBackdropClick(event: MouseEvent) {
-  if ((event.target as HTMLElement).classList.contains('modal-backdrop')) {
+  const terminouNoFundo = (event.target as HTMLElement).classList.contains('modal-backdrop');
+  if (gestoComecouNoFundo.value && terminouNoFundo) {
     closeModal();
   }
+  gestoComecouNoFundo.value = false;
 }
 
 onMounted(() => {
@@ -115,6 +191,7 @@ watch(isOpen, (open) => {
       <div
         v-if="isOpen"
         class="modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+        @mousedown="handleBackdropMousedown"
         @click="handleBackdropClick"
       >
         <Transition
@@ -175,6 +252,69 @@ watch(isOpen, (open) => {
                     </div>
                   </div>
 
+                  <div class="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+                    <h3 class="text-sm font-semibold text-zinc-800">Comissão</h3>
+                    <p class="mt-1 text-xs text-zinc-400">
+                      Padrão deste cargo. Deixe vazio para "sem comissão".
+                    </p>
+                    <div class="mt-5 grid grid-cols-2 gap-3">
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-zinc-600">% sobre vendas</label>
+                        <div class="flex items-center gap-1.5">
+                          <BaseInput v-model="comissaoVendaPct" type="number" placeholder="0" :disabled="isViewMode" />
+                          <span class="text-sm font-medium text-zinc-400">%</span>
+                        </div>
+                      </div>
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-zinc-600">% sobre serviços</label>
+                        <div class="flex items-center gap-1.5">
+                          <BaseInput v-model="comissaoServicoPct" type="number" placeholder="0" :disabled="isViewMode" />
+                          <span class="text-sm font-medium text-zinc-400">%</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="mt-5">
+                      <label class="mb-1.5 block text-xs font-medium text-zinc-600">Quando pagar a comissão</label>
+                      <div class="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          :disabled="isViewMode"
+                          class="rounded-xl border px-3 py-2.5 text-left transition disabled:opacity-60"
+                          :class="modoAtual === 'direto'
+                            ? 'border-indigo-500 bg-indigo-50 ring-1 ring-indigo-500'
+                            : 'border-zinc-200 bg-white hover:border-zinc-300'"
+                          @click="setModo('direto')"
+                        >
+                          <span class="block text-xs font-semibold text-zinc-800">Direto</span>
+                          <span class="mt-0.5 block text-[11px] leading-tight text-zinc-500">Paga em toda venda/serviço</span>
+                        </button>
+                        <button
+                          type="button"
+                          :disabled="isViewMode"
+                          class="rounded-xl border px-3 py-2.5 text-left transition disabled:opacity-60"
+                          :class="modoAtual === 'meta'
+                            ? 'border-indigo-500 bg-indigo-50 ring-1 ring-indigo-500'
+                            : 'border-zinc-200 bg-white hover:border-zinc-300'"
+                          @click="setModo('meta')"
+                        >
+                          <span class="block text-xs font-semibold text-zinc-800">Só ao bater a meta</span>
+                          <span class="mt-0.5 block text-[11px] leading-tight text-zinc-500">Trava até atingir a meta</span>
+                        </button>
+                      </div>
+                    </div>
+                    <div class="mt-4">
+                      <label class="mb-1 block text-xs font-medium text-zinc-600">
+                        Meta mensal
+                        <span v-if="modoAtual === 'meta'" class="text-indigo-600">(usada como gatilho)</span>
+                        <span v-else>(opcional)</span>
+                      </label>
+                      <BaseMoneyInput v-model="metaReais" :disabled="isViewMode" />
+                      <p v-if="metaExigidaSemvalor" class="mt-1.5 text-[11px] leading-tight text-amber-600">
+                        Sem meta definida, o modo "Só ao bater a meta" não trava nada — a comissão sai como no modo direto.
+                      </p>
+                    </div>
+                  </div>
+
                   <div
                     class="rounded-2xl bg-linear-to-br p-5 text-white shadow-lg"
                     :class="accessLevel.gradient"
@@ -204,12 +344,23 @@ watch(isOpen, (open) => {
                       </p>
                     </div>
                     <button
+                      v-if="!cargoAcessoTotal"
                       type="button"
                       class="text-xs font-semibold text-brand-primary hover:text-brand-primary/80"
+                      :disabled="isViewMode"
+                      :class="isViewMode ? 'cursor-not-allowed opacity-50' : ''"
                       @click="toggleAllPermissions"
                     >
                       {{ isAllSelected ? 'Desmarcar tudo' : 'Marcar tudo' }}
                     </button>
+                  </div>
+
+                  <div
+                    v-if="cargoAcessoTotal"
+                    class="mt-3 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700"
+                  >
+                    <ShieldCheck :size="14" class="shrink-0" />
+                    Cargo com acesso total (Master). As permissões são fixas e não podem ser alteradas — protege o acesso do sistema.
                   </div>
 
                   <div class="mt-6 overflow-hidden rounded-xl border border-zinc-100">
@@ -238,17 +389,17 @@ watch(isOpen, (open) => {
                       <div class="flex items-center justify-center">
                         <button
                           type="button"
-                          :disabled="isViewMode"
+                          :disabled="matrizBloqueada"
                           :class="[
                             'flex h-9 w-9 items-center justify-center rounded-full border transition-all',
-                            permissoes?.[item.viewKey]
+                            permissaoMarcada(item.viewKey)
                               ? 'border-emerald-200 bg-emerald-50 text-emerald-600'
                               : 'border-zinc-200 bg-zinc-50 text-zinc-400',
-                            isViewMode ? 'cursor-not-allowed opacity-60' : 'hover:border-emerald-300',
+                            matrizBloqueada ? 'cursor-not-allowed opacity-60' : 'hover:border-emerald-300',
                           ]"
                           @click="togglePermission(item.viewKey)"
                         >
-                          <Check v-if="permissoes?.[item.viewKey]" :size="16" />
+                          <Check v-if="permissaoMarcada(item.viewKey)" :size="16" />
                           <XCircle v-else :size="16" />
                         </button>
                       </div>
@@ -256,37 +407,39 @@ watch(isOpen, (open) => {
                       <div class="flex items-center justify-center">
                         <button
                           type="button"
-                          :disabled="isViewMode"
+                          :disabled="matrizBloqueada"
                           :class="[
                             'flex h-9 w-9 items-center justify-center rounded-full border transition-all',
-                            permissoes?.[item.manageKey]
+                            permissaoMarcada(item.manageKey)
                               ? 'border-emerald-200 bg-emerald-50 text-emerald-600'
                               : 'border-zinc-200 bg-zinc-50 text-zinc-400',
-                            isViewMode ? 'cursor-not-allowed opacity-60' : 'hover:border-emerald-300',
+                            matrizBloqueada ? 'cursor-not-allowed opacity-60' : 'hover:border-emerald-300',
                           ]"
                           @click="togglePermission(item.manageKey)"
                         >
-                          <Check v-if="permissoes?.[item.manageKey]" :size="16" />
+                          <Check v-if="permissaoMarcada(item.manageKey)" :size="16" />
                           <XCircle v-else :size="16" />
                         </button>
                       </div>
 
                       <div class="flex items-center justify-center">
                         <button
+                          v-if="item.deleteKey"
                           type="button"
-                          :disabled="isViewMode"
+                          :disabled="matrizBloqueada"
                           :class="[
                             'flex h-9 w-9 items-center justify-center rounded-full border transition-all',
-                            permissoes?.[item.deleteKey]
+                            permissaoMarcada(item.deleteKey)
                               ? 'border-emerald-200 bg-emerald-50 text-emerald-600'
                               : 'border-zinc-200 bg-zinc-50 text-zinc-400',
-                            isViewMode ? 'cursor-not-allowed opacity-60' : 'hover:border-emerald-300',
+                            matrizBloqueada ? 'cursor-not-allowed opacity-60' : 'hover:border-emerald-300',
                           ]"
                           @click="togglePermission(item.deleteKey)"
                         >
-                          <Check v-if="permissoes?.[item.deleteKey]" :size="16" />
+                          <Check v-if="permissaoMarcada(item.deleteKey)" :size="16" />
                           <XCircle v-else :size="16" />
                         </button>
+                        <span v-else class="text-zinc-300">—</span>
                       </div>
                     </div>
                   </div>

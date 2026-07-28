@@ -2,7 +2,7 @@ import { inject, provide } from 'vue';
 import type { ComputedRef, InjectionKey, Ref } from 'vue';
 
 import type { SelectOption } from '@/shared/components/ui/BaseSelect/BaseSelect.vue';
-import type { EquipamentoHistorico } from '@/modules/customers/types/clientes.types';
+import type { ObjetoHistorico } from '@/modules/customers/types/clientes.types';
 import type { OrderServiceReadDataType } from '../schemas/orderServiceQuery.schema';
 import type { CustomerUnionReadSchemaDataType } from '../schemas/relationship/customer/customer.schema';
 import type {
@@ -14,7 +14,7 @@ import type {
   OsStatusEnumDataType,
 } from '../schemas/enums/osEnums.schema';
 import type { PendingPhoto } from '../components/form/OSFotoGallery.vue';
-import type { EquipamentoFormData } from '../composables/modal/useOSFormAdapter';
+import type { ObjetoFormData } from '../composables/modal/useOSFormAdapter';
 import type { OSReopenMode } from '../composables/modal/useOSStatusLocks';
 import type { PrintFormat } from '../composables/modal/useOSPrintFlow';
 
@@ -50,8 +50,10 @@ export interface OSFormViewContext {
   displayValorEntrada: ComputedRef<number>;
   displayValorAcrescimo: ComputedRef<number>;
   formErrors: ComputedRef<Record<string, string | undefined>>;
-  equipamentoFormData: ComputedRef<EquipamentoFormData>;
-  equipamentosHistorico: Ref<EquipamentoHistorico[]>;
+  objetoFormData: ComputedRef<ObjetoFormData>;
+  objetoDados: ComputedRef<Record<string, unknown>>;
+  osDados: ComputedRef<Record<string, unknown>>;
+  objetosHistorico: Ref<ObjetoHistorico[]>;
   selectedHistorico: Ref<string>;
   currentDiagnostico: ComputedRef<string>;
   pendingPhotos: Ref<PendingPhoto[]>;
@@ -62,12 +64,14 @@ export interface OSFormViewContext {
   isFinalizarModalOpen: Ref<boolean>;
   isItemModalOpen: Ref<boolean>;
   editingItem: Ref<OsItemCreateSchemaDataType | null>;
-  isEquipSelectModalOpen: Ref<boolean>;
+  isObjetoSelectModalOpen: Ref<boolean>;
   handleClose: () => void;
   handleLocalSubmit: () => void;
   handleFinalizarOS: () => void;
   printEntrada: () => void;
   printSaida: () => void;
+  imprimirFicha: (tipo: 'ENTRADA' | 'SAIDA', preenchimento?: Record<string, unknown> | null) => void;
+  imprimirVistoriaPreenchida: () => void;
   handleReopenClick: () => void;
   handleChangeCliente: () => void;
   handleUpdateCliente: (cliente: CustomerUnionReadSchemaDataType) => void;
@@ -79,9 +83,11 @@ export interface OSFormViewContext {
   handleValorEntregaUpdate: (value: number) => void;
   handleUsarCredito: () => void;
   saldoCreditoCliente: ComputedRef<number>;
-  setEquipamentoFormData: (value: EquipamentoFormData) => void;
+  setObjetoFormData: (value: ObjetoFormData) => void;
+  setObjetoDados: (value: Record<string, unknown>) => void;
+  setOsDados: (value: Record<string, unknown>) => void;
   setSelectedHistorico: (value: string) => void;
-  applyEquipamentoHistorico: () => void;
+  applyObjetoHistorico: () => void;
   handleDiagnosticoUpdate: (value: string) => void;
   handleAddPhoto: (file: File) => void;
   handleRemovePending: (index: number) => void;
@@ -91,19 +97,20 @@ export interface OSFormViewContext {
   handleRemoveItem: (index: number) => void;
   handleReopenCancel: () => void;
   handleReopenTextOnly: () => void;
-  handleReopenFull: () => void;
+  handleReopenFull: (clientePagou?: boolean) => void;
   closeFinalizarModal: () => void;
   onFinalized: (payload: { shouldPrint: boolean }) => void;
+  refreshCurrentOSData: () => Promise<void>;
   handlePrintFormatSelected: (format: PrintFormat) => void;
   closePrintSelectModal: () => void;
   closeItemModal: () => void;
   handleSaveItem: (item: OsItemCreateSchemaDataType) => void;
-  closeEquipamentoModal: () => void;
-  handleEquipamentoSelected: (equipamento: EquipamentoHistorico) => void;
+  closeObjetoModal: () => void;
+  handleObjetoSelected: (objeto: ObjetoHistorico) => void;
   isHistoricoModalOpen: Ref<boolean>;
   openHistoricoModal: () => void;
   closeHistoricoModal: () => void;
-  reutilizarEquipamento: (os: OrderServiceReadDataType) => void;
+  reutilizarObjeto: (os: OrderServiceReadDataType) => void;
 }
 
 export const OS_FORM_VIEW_CONTEXT_KEY: InjectionKey<OSFormViewContext> = Symbol('os-form-view-context');

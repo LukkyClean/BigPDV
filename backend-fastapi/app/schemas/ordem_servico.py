@@ -20,16 +20,18 @@
 # ---------------------------------------------------------------------------
 
 from datetime import datetime, date
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 from typing import Optional, Sequence, List
 
 from app.core.enum import (
     OrdemServicoItemTipo,
+    OrdemServicoItemAprovacao,
     UnidadeMedida,
     OrdemServicoStatus,
     TipoEquipamento,
     OrdemServicoPrioridade,
     SituacaoEquipamento,
+    JurosResponsavel,
 )
 
 from app.schemas.cliente import ClienteRead
@@ -52,6 +54,15 @@ class OSItemBase(BaseModel):
     quantidade: int = Field(..., gt=0, description="Quantidade")
     valor_unitario: int = Field(..., gt=0, description="Valor unitário em centavos")
 
+    # Aprovação e garantia por item (fluxo de orçamento / oficina).
+    # Default APROVADO preserva o comportamento atual (item conta no total).
+    status_aprovacao: OrdemServicoItemAprovacao = Field(
+        OrdemServicoItemAprovacao.APROVADO,
+        description="Status de aprovação do item. REPROVADO não entra no total da OS."
+    )
+    garantia_dias: Optional[int] = Field(None, ge=0, description="Garantia do item em dias (opcional)")
+    garantia_km: Optional[int] = Field(None, ge=0, description="Garantia do item em KM, ex: oficina (opcional)")
+
     model_config = ConfigDict(from_attributes=True)
 
 class OSItemCreate(OSItemBase):
@@ -72,6 +83,9 @@ class OSItemUpdate(BaseModel):
     unidade_medida: Optional[UnidadeMedida] = Field(None, description="Nova unidade de medida")
     quantidade: Optional[int] = Field(None, gt=0, description="Nova quantidade")
     valor_unitario: Optional[int] = Field(None, gt=0, description="Novo valor unitário em centavos")
+    status_aprovacao: Optional[OrdemServicoItemAprovacao] = Field(None, description="Novo status de aprovação do item")
+    garantia_dias: Optional[int] = Field(None, ge=0, description="Nova garantia do item em dias")
+    garantia_km: Optional[int] = Field(None, ge=0, description="Nova garantia do item em KM")
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -80,43 +94,65 @@ class OSItemUpdate(BaseModel):
 # EQUIPAMENTO DA OS
 # ===========================================================================
 
-class OSEquipamentoCreate(BaseModel):
-    """Payload para registrar um equipamento ao abrir uma OS."""
-    tipo_equipamento: TipoEquipamento = Field(..., description="Tipo do equipamento")
-    marca: str = Field(..., max_length=100, description="Marca do equipamento")
-    modelo: str = Field(..., max_length=100, description="Modelo do equipamento")
-    numero_serie: str = Field(..., max_length=100, description="Número de série")
-    imei: Optional[str] = Field(None, max_length=20, description="IMEI do equipamento (opcional)")
-    cor: Optional[str] = Field(None, max_length=50, description="Cor do equipamento")
+class OSObjetoCreate(BaseModel):
+    """Payload para registrar um objeto de serviço ao abrir uma OS."""
+    tipo_equipamento: Optional[TipoEquipamento] = Field(None, description="Tipo do equipamento (opcional - compatibilidade)")
+    marca: str = Field(..., max_length=100, description="Marca do objeto (ex: Fiat, Samsung)")
+    modelo: str = Field(..., max_length=100, description="Modelo do objeto (ex: Uno, S20)")
+    numero_serie: str = Field(..., max_length=100, description="Número de série ou identificador principal (ex: Placa, Serial)")
+    imei: Optional[str] = Field(None, max_length=20, description="IMEI (opcional - compatibilidade)")
+    cor: Optional[str] = Field(None, max_length=50, description="Cor do objeto")
+    proxima_revisao_data: Optional[date] = Field(None, description="Data agendada da próxima revisão (oficina)")
+    proxima_revisao_km: Optional[int] = Field(None, ge=0, description="KM alvo da próxima revisão (oficina)")
+    dados_adicionais: Optional[dict] = Field(default_factory=dict, description="Campos dinâmicos adicionais (JSON)")
 
     model_config = ConfigDict(from_attributes=True)
 
 
-class OSEquipamentoRead(OSEquipamentoCreate):
-    """Resposta completa do equipamento de uma OS."""
-    id: int = Field(..., description="ID único do equipamento")
-    cliente_id: int = Field(..., description="ID do cliente proprietário do equipamento")
-    ativo: bool = Field(..., description="Status ativo do equipamento")
+class OSObjetoRead(OSObjetoCreate):
+    """Resposta completa do objeto de serviço de uma OS."""
+    id: int = Field(..., description="ID único do objeto")
+    cliente_id: int = Field(..., description="ID do cliente proprietário do objeto")
+    ativo: bool = Field(..., description="Status ativo do objeto")
     data_criacao: datetime = Field(..., description="Data de cadastro")
     data_atualizacao: datetime = Field(..., description="Data da última atualização")
 
+    # Na resposta, o tipo é livre por segmento (ex: 'COMPUTADOR' para informática,
+    # 'Veículo' para oficina). Relaxamos o enum de TI para str e coagimos o valor
+    # vindo da property/shim do modelo. A informática segue recebendo os mesmos
+    # valores de sempre (ex: 'COMPUTADOR').
+    tipo_equipamento: Optional[str] = Field(
+        None, description="Tipo do objeto (livre por segmento; ex: COMPUTADOR, Veículo)"
+    )
 
-class OSEquipamentoUpdate(BaseModel):
-    """
-    Payload para atualização parcial do equipamento de uma OS.
-    Permite também trocar o cliente proprietário via cliente_id.
-    Somente aplicável em OS com status não-finalizado e não-cancelado.
-    """
+    @field_validator("tipo_equipamento", mode="before")
+    @classmethod
+    def _coagir_tipo_equipamento(cls, v):
+        if v is None:
+            return None
+        return getattr(v, "value", None) or str(v)
+
+
+class OSObjetoUpdate(BaseModel):
+    """Payload para atualização parcial do objeto de serviço."""
     tipo_equipamento: Optional[TipoEquipamento] = Field(None, description="Novo tipo de equipamento")
     marca: Optional[str] = Field(None, max_length=100, description="Nova marca")
     modelo: Optional[str] = Field(None, max_length=100, description="Novo modelo")
-    numero_serie: Optional[str] = Field(None, max_length=100, description="Novo número de série")
+    numero_serie: Optional[str] = Field(None, max_length=100, description="Novo identificador/placa")
     imei: Optional[str] = Field(None, max_length=20, description="Novo IMEI")
     cor: Optional[str] = Field(None, max_length=50, description="Nova cor")
-    cliente_id: Optional[int] = Field(None, description="Novo ID do cliente proprietário do equipamento")
+    cliente_id: Optional[int] = Field(None, description="Novo ID do cliente proprietário")
+    proxima_revisao_data: Optional[date] = Field(None, description="Nova data da próxima revisão")
+    proxima_revisao_km: Optional[int] = Field(None, ge=0, description="Novo KM alvo da próxima revisão")
+    dados_adicionais: Optional[dict] = Field(None, description="Novos dados adicionais (JSON)")
 
     model_config = ConfigDict(from_attributes=True)
 
+
+# Aliases de compatibilidade
+OSEquipamentoCreate = OSObjetoCreate
+OSEquipamentoRead = OSObjetoRead
+OSEquipamentoUpdate = OSObjetoUpdate
 
 # ===========================================================================
 # PAGAMENTOS DA OS
@@ -130,7 +166,12 @@ class OSPagamentoCreate(BaseModel):
     A soma dos valores deve ser exatamente igual ao valor_total da OS.
     """
     forma_pagamento_id: int = Field(..., description="ID da forma de pagamento do catálogo")
-    valor: int = Field(..., gt=0, description="Valor pago nesta forma de pagamento (centavos)")
+    valor: int = Field(..., gt=0, description="Valor pago pelo cliente nesta forma de pagamento (centavos)")
+    juros_valor: int = Field(0, ge=0, description="Juros calculados neste pagamento (centavos)")
+    juros_responsavel: JurosResponsavel = Field(
+        JurosResponsavel.CLIENTE,
+        description="CLIENTE: juros embutido em `valor`. LOJA: juros absorvido, fora de `valor`.",
+    )
     parcelas: int = Field(1, ge=1, description="Número de parcelas (mínimo 1)")
     bandeira_cartao: Optional[str] = Field(None, max_length=50, description="Bandeira do cartão (VISA, MASTERCARD, etc.)")
     vencimento: Optional[date] = Field(None, description="Data de vencimento do pagamento (ex: boletos)")
@@ -144,7 +185,11 @@ class OSPagamentoRead(BaseModel):
     id: int = Field(..., description="ID único do pagamento")
     ordem_servico_id: int = Field(..., description="ID da OS associada")
     forma_pagamento: FormaPagamentoRead = Field(..., description="Forma de pagamento utilizada")
-    valor: int = Field(..., description="Valor pago (centavos)")
+    valor: int = Field(..., description="Valor pago pelo cliente (centavos)")
+    juros_valor: int = Field(0, description="Juros calculados neste pagamento (centavos)")
+    juros_responsavel: JurosResponsavel = Field(
+        JurosResponsavel.CLIENTE, description="Quem arca com o juros deste pagamento"
+    )
     parcelas: int = Field(..., description="Número de parcelas")
     bandeira_cartao: Optional[str] = Field(None, description="Bandeira do cartão")
     vencimento: Optional[date] = Field(None, description="Data de vencimento do pagamento")
@@ -184,10 +229,13 @@ class OrdemServicoBase(BaseModel):
     solucao: Optional[str] = Field(None, max_length=500, description="Solução aplicada")
 
     # Observações operacionais
-    senha_aparelho: Optional[str] = Field(None, max_length=100, description="Senha de desbloqueio do aparelho")
-    acessorios: Optional[str] = Field(None, max_length=500, description="Acessórios entregues junto ao equipamento")
-    condicoes_aparelho: Optional[str] = Field(None, max_length=500, description="Estado físico do aparelho na entrada")
+    senha_aparelho: Optional[str] = Field(None, max_length=100, description="Senha de desbloqueio do aparelho (retrocompatibilidade)")
+    acessorios: Optional[str] = Field(None, max_length=500, description="Acessórios entregues (retrocompatibilidade)")
+    condicoes_aparelho: Optional[str] = Field(None, max_length=500, description="Estado físico do aparelho (retrocompatibilidade)")
     observacoes: Optional[str] = Field(None, max_length=500, description="Observações gerais")
+
+    # Esquema Dinâmico
+    dados_adicionais: Optional[dict] = Field(default_factory=dict, description="Dados adicionais específicos do segmento (JSON)")
 
     # Financeiro
     desconto: Optional[int] = Field(None, ge=0, description="Desconto aplicado em centavos")
@@ -205,14 +253,15 @@ class OrdemServicoBase(BaseModel):
 class OrdemServicoCreate(OrdemServicoBase):
     """
     Payload completo para abertura de uma nova OS.
-    Cria a OS, o equipamento associado e os itens iniciais em uma única transação.
+    Cria a OS, o objeto associado e os itens iniciais em uma única transação.
     """
     # Vínculos
-    cliente_id: int = Field(..., description="ID do cliente que trouxe o equipamento")
+    cliente_id: int = Field(..., description="ID do cliente que trouxe o objeto/equipamento")
     funcionario_id: Optional[int] = Field(None, description="ID do funcionário responsável. Se omitido, fica sem responsável.")
 
     # Dados aninhados criados junto com a OS
-    equipamento: OSEquipamentoCreate = Field(..., description="Dados do equipamento a ser cadastrado")
+    objeto: Optional[OSObjetoCreate] = Field(None, description="Dados do objeto a ser cadastrado")
+    equipamento: Optional[OSEquipamentoCreate] = Field(None, description="Dados do equipamento a ser cadastrado (retrocompatibilidade)")
     itens: Sequence[OSItemCreate] = Field(default_factory=list, description="Lista de itens/serviços da OS")
 
     # Crédito
@@ -249,6 +298,7 @@ class OrdemServicoUpdate(BaseModel):
     acessorios: Optional[str] = Field(None, max_length=500, description="Novos acessórios")
     condicoes_aparelho: Optional[str] = Field(None, max_length=500, description="Novas condições do aparelho")
     observacoes: Optional[str] = Field(None, max_length=500, description="Novas observações gerais")
+    dados_adicionais: Optional[dict] = Field(None, description="Novos dados adicionais específicos do segmento (JSON)")
 
     # Financeiro e datas
     desconto: Optional[int] = Field(None, ge=0, description="Novo desconto em centavos (recalcula valor_total automaticamente)")
@@ -287,9 +337,10 @@ class OrdemServicoRead(OrdemServicoBase):
     ativo: bool = Field(..., description="Indica se a OS está ativa (False = cancelada/desativada)")
 
     # Relacionamentos
-    cliente: ClienteRead = Field(..., description="Cliente proprietário do equipamento")
+    cliente: ClienteRead = Field(..., description="Cliente proprietário")
     funcionario: Optional[FuncionarioRead] = Field(None, description="Funcionário responsável")
-    equipamento: OSEquipamentoRead = Field(..., description="Equipamento em serviço")
+    objeto: OSObjetoRead = Field(..., description="Objeto de serviço associado")
+    equipamento: Optional[OSEquipamentoRead] = Field(None, description="Equipamento em serviço (retrocompatibilidade)")
     itens: Sequence[OSItemRead] = Field(..., description="Itens e serviços da OS")
     pagamentos: Sequence[OSPagamentoRead] = Field(default=[], description="Pagamentos registrados (populado após finalização)")
     fotos: Sequence[OSFotoRead] = Field(default=[], description="Fotos de diagnóstico da OS")
@@ -355,6 +406,15 @@ class OrdemServicoCancelar(BaseModel):
 class OrdemServicoReabrir(BaseModel):
     """Payload para reabrir uma OS."""
     codigo_gerente: Optional[str] = Field(None, description="PIN do gerente para aprovar reabertura")
+    cliente_pagou: bool = Field(
+        True,
+        description=(
+            "Se o cliente já pagou o valor da finalização anterior. True (padrão): o "
+            "valor pago é preservado como crédito da OS e abatido do novo total. False: "
+            "o pagamento não era real (ex.: reaberta na hora, antes de o cliente pagar) — "
+            "os pagamentos são apagados e a OS recobra o valor cheio."
+        ),
+    )
 
 
 # ===========================================================================

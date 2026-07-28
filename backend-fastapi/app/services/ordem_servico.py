@@ -14,7 +14,7 @@
 #   Finalização só é permitida se sum(pagamentos) + valor_entrada == valor_total
 # ---------------------------------------------------------------------------
 
-from datetime import datetime
+from datetime import datetime, date
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -31,7 +31,7 @@ from app.schemas.ordem_servico import (
 )
 
 from app.db.models.ordem_servico import OrdemServico as OSModel
-from app.db.models.ordem_servico_equipamento import OrdemServicoEquipamento as OSEquipamentoModel
+from app.db.models.objeto_servico import ObjetoServico as OSEquipamentoModel
 from app.db.models.ordem_servico_item import OrdemServicoItem as OSItemModel
 from app.db.models.ordem_servico_pagamento import OrdemServicoPagamento as OSPagamentoModel
 
@@ -40,8 +40,19 @@ from app.db.crud import cliente as cliente_crud
 from app.db.crud import funcionario as funcionario_crud
 from app.db.crud import forma_pagamento as fp_crud
 from app.db.crud import configuracao_seguranca as config_seg_crud
+from app.db.crud import produto as produto_crud
 
-from app.core.enum import OrdemServicoItemTipo, OrdemServicoStatus, SituacaoEquipamento
+from app.services.segmentos import validar_objeto_por_segmento
+from app.services import movimentacao_estoque as mov_service
+
+from app.core.enum import (
+    OrdemServicoItemTipo,
+    OrdemServicoStatus,
+    SituacaoEquipamento,
+    OrdemServicoItemAprovacao,
+    MovimentacaoTipo,
+    MovimentacaoOrigem,
+)
 from app.core.security import verify_password
 from app.helpers.set_pagination import _set_pagination
 
@@ -114,12 +125,21 @@ def _assert_os_editavel(os_in_db: OSModel) -> None:
         raise os_fechada_exce
 
 
+def _item_conta_no_total(status: OrdemServicoItemAprovacao) -> bool:
+    """Um item entra no total da OS a menos que esteja REPROVADO."""
+    return status != OrdemServicoItemAprovacao.REPROVADO
+
+
 def _recalcular_valor_total_os(os_in_db: OSModel) -> None:
     """
     Recalcula valor_bruto e valor_total com base nos itens atuais da OS.
+    Itens REPROVADO são excluídos do total (fluxo de orçamento/oficina).
     Deve ser chamado sempre que itens ou desconto forem alterados.
     """
-    valor_bruto = sum(item.valor_total for item in os_in_db.itens)
+    valor_bruto = sum(
+        item.valor_total for item in os_in_db.itens
+        if _item_conta_no_total(item.status_aprovacao)
+    )
     os_in_db.valor_bruto = valor_bruto
     os_in_db.valor_total = max(0, valor_bruto - (os_in_db.desconto or 0) + (os_in_db.taxa_entrega or 0) + (os_in_db.acrescimo or 0))
 
@@ -151,7 +171,9 @@ def create_ordem_servico(db: Session, os_to_create: OrdemServicoCreate) -> OSMod
 
     for item in os_to_create.itens:
         valor_item = item.quantidade * item.valor_unitario
-        valor_bruto_os += valor_item
+        # Itens REPROVADO não entram no total (default APROVADO conta, como hoje).
+        if _item_conta_no_total(item.status_aprovacao):
+            valor_bruto_os += valor_item
         item_data = item.model_dump(exclude={"item_id"}, exclude_unset=True)
         itens_model.append(OSItemModel(
             **item_data,
@@ -161,10 +183,66 @@ def create_ordem_servico(db: Session, os_to_create: OrdemServicoCreate) -> OSMod
         ))
 
     desconto = os_to_create.desconto or 0
-    valor_total_os = max(0, valor_bruto_os - desconto)
+    # Mesma fórmula de _recalcular_valor_total_os (inclui taxa de entrega e acréscimo),
+    # para o total na criação bater com o total após qualquer recálculo posterior.
+    valor_total_os = max(
+        0,
+        valor_bruto_os - desconto
+        + (os_to_create.taxa_entrega or 0)
+        + (os_to_create.acrescimo or 0),
+    )
 
-    equipamento_data = os_to_create.equipamento.model_dump(exclude_unset=True)
-    equipamento_to_db = OSEquipamentoModel(**equipamento_data, cliente=cliente_in_db)
+    # Suporta tanto 'objeto' quanto 'equipamento' (para retrocompatibilidade)
+    objeto_schema = os_to_create.objeto or os_to_create.equipamento
+    if not objeto_schema:
+        raise HTTPException(
+            status_code=400,
+            detail="É necessário fornecer os dados do objeto/equipamento de serviço."
+        )
+
+    objeto_data = objeto_schema.model_dump(exclude_unset=True)
+
+    # Extrai campos legados do objeto/equipamento e move para dados_adicionais
+    obj_dados_adicionais = objeto_data.get("dados_adicionais") or {}
+    for legacy_field in ["tipo_equipamento", "imei"]:
+        if legacy_field in objeto_data:
+            val = objeto_data.pop(legacy_field)
+            if val:
+                obj_dados_adicionais[legacy_field] = val.value if hasattr(val, 'value') else val
+
+    objeto_data["dados_adicionais"] = obj_dados_adicionais
+
+    # Validacao especifica de segmento (ex: placa para oficina). Gated: e no-op
+    # para segmentos sem regra dedicada, entao o fluxo de informatica permanece intacto.
+    validar_objeto_por_segmento(
+        db,
+        numero_serie=objeto_data.get("numero_serie"),
+        dados_adicionais=obj_dados_adicionais,
+    )
+
+    # Reutiliza o objeto existente do cliente (mesma placa/serial) em vez de duplicar:
+    # um bem físico é UM registro que acumula histórico (KM, revisão) entre as OSs.
+    # Se não existir, cria um novo. Agnóstico de segmento.
+    numero_serie = objeto_data.get("numero_serie")
+    equipamento_existente = (
+        os_crud.get_objeto_ativo_by_cliente_e_serie(db, cliente_in_db.id, numero_serie)
+        if numero_serie else None
+    )
+    if equipamento_existente:
+        # Atualiza os detalhes informados, mas PRESERVA a próxima revisão já agendada.
+        for campo in ("marca", "modelo", "cor"):
+            valor = objeto_data.get(campo)
+            if valor:
+                setattr(equipamento_existente, campo, valor)
+        novos_dados = objeto_data.get("dados_adicionais") or {}
+        if novos_dados:
+            equipamento_existente.dados_adicionais = {
+                **(equipamento_existente.dados_adicionais or {}),
+                **novos_dados,
+            }
+        equipamento_to_db = equipamento_existente
+    else:
+        equipamento_to_db = OSEquipamentoModel(**objeto_data, cliente=cliente_in_db)
 
     valor_entrada = os_to_create.valor_entrada or 0
     if os_to_create.usar_credito_cliente and valor_entrada > 0:
@@ -176,16 +254,27 @@ def create_ordem_servico(db: Session, os_to_create: OrdemServicoCreate) -> OSMod
         cliente_in_db.saldo_credito = (cliente_in_db.saldo_credito or 0) - valor_entrada
 
     os_data = os_to_create.model_dump(
-        exclude={"cliente_id", "itens", "equipamento", "valor_bruto", "usar_credito_cliente"},
+        exclude={"cliente_id", "itens", "objeto", "equipamento", "valor_bruto", "usar_credito_cliente"},
         exclude_unset=True
     )
+
+    # Extrai campos legados da OS e move para dados_adicionais
+    dados_adicionais = os_data.get("dados_adicionais") or {}
+    for legacy_field in ["senha_aparelho", "acessorios", "condicoes_aparelho"]:
+        if legacy_field in os_data:
+            val = os_data.pop(legacy_field)
+            if val:
+                dados_adicionais[legacy_field] = val
+
+    os_data["dados_adicionais"] = dados_adicionais
+
     os_to_db = OSModel(
         **os_data,
         status=OrdemServicoStatus.ABERTA,
         valor_total=valor_total_os,
         valor_bruto=valor_bruto_os,
         numero_os=next_number,
-        equipamento=equipamento_to_db,
+        objeto=equipamento_to_db,
         itens=itens_model,
         funcionario=funcionario_in_db,
     )
@@ -267,7 +356,8 @@ def get_ordem_servico_stats(db: Session, funcionario_id: int | None = None) -> O
 
 _CAMPOS_TEXTO = frozenset({
     'defeito_relatado', 'diagnostico', 'solucao',
-    'observacoes', 'senha_aparelho', 'acessorios', 'condicoes_aparelho'
+    'observacoes', 'senha_aparelho', 'acessorios', 'condicoes_aparelho',
+    'dados_adicionais'
 })
 
 def update_ordem_servico(db: Session, numero_os: str, data: OrdemServicoUpdate) -> OSModel:
@@ -283,6 +373,28 @@ def update_ordem_servico(db: Session, numero_os: str, data: OrdemServicoUpdate) 
     os_in_db = _get_os_or_raise(db, numero_os)
 
     update_data = data.model_dump(exclude_unset=True)
+
+    # Extrai campos legados e move para dados_adicionais.
+    # dict(...) cria um novo objeto para que o SQLAlchemy detecte a mudança
+    # (JSON não é rastreado in-place; reatribuir a mesma referência não persiste).
+    dados_adicionais = dict(getattr(os_in_db, "dados_adicionais", None) or {})
+    if "dados_adicionais" in update_data:
+        sent_data = update_data.pop("dados_adicionais") or {}
+        dados_adicionais.update(sent_data)
+
+    # O campo legado `acessorios` (texto, da informática) colide de nome com o
+    # `dados_adicionais.acessorios` (Record de checkboxes da vistoria da oficina):
+    # um "" vindo do form apagava o Record a cada update. Guarda: não sobrescreve
+    # quando o valor já existente é um Record (dict) — condição que só a oficina
+    # tem. Para a informática (sempre texto), o comportamento fica idêntico ao de
+    # antes (inclusive continua podendo limpar o campo com string vazia).
+    for legacy_field in ["senha_aparelho", "acessorios", "condicoes_aparelho"]:
+        if legacy_field in update_data:
+            val = update_data.pop(legacy_field)
+            if val is not None and not isinstance(dados_adicionais.get(legacy_field), dict):
+                dados_adicionais[legacy_field] = val
+
+    os_in_db.dados_adicionais = dados_adicionais
 
     is_texto_only = update_data.keys() <= _CAMPOS_TEXTO
     if not is_texto_only:
@@ -333,10 +445,122 @@ def update_equipamento_os(db: Session, numero_os: str, data: OSEquipamentoUpdate
             raise cliente_not_found_exce
         equipamento.cliente = cliente_in_db
 
+    # Extrai dados_adicionais e campos de retrocompatibilidade do objeto.
+    # dict(...) garante um novo objeto para o SQLAlchemy detectar a mudança.
+    obj_dados_adicionais = dict(getattr(equipamento, "dados_adicionais", None) or {})
+    if "dados_adicionais" in update_data:
+        sent_data = update_data.pop("dados_adicionais") or {}
+        obj_dados_adicionais.update(sent_data)
+
+    for legacy_field in ["tipo_equipamento", "imei"]:
+        if legacy_field in update_data:
+            val = update_data.pop(legacy_field)
+            if val is not None:
+                obj_dados_adicionais[legacy_field] = val.value if hasattr(val, 'value') else val
+
+    equipamento.dados_adicionais = obj_dados_adicionais
+
     for key, value in update_data.items():
         setattr(equipamento, key, value)
 
+    # Validacao especifica de segmento sobre o estado final do objeto (gated).
+    validar_objeto_por_segmento(
+        db,
+        numero_serie=equipamento.numero_serie,
+        dados_adicionais=equipamento.dados_adicionais,
+    )
+
     return os_crud.update_ordem_servico(db, os_to_update=os_in_db)
+
+
+# ===========================================================================
+# HISTÓRICO DE KM (oficina)
+# ===========================================================================
+
+def get_historico_km(db: Session, objeto_id: int) -> list[dict]:
+    """
+    Histórico de quilometragem de um objeto/veículo ao longo das suas OS.
+
+    Lê o KM de entrada gravado em dados_adicionais["km_entrada"] de cada OS,
+    da mais antiga para a mais recente. Retorna apenas as OS que registraram KM.
+    """
+    ordens = os_crud.get_ordens_by_objeto_id(db, objeto_id)
+    historico = []
+    for o in ordens:
+        km = (o.dados_adicionais or {}).get("km_entrada")
+        if km is None:
+            continue
+        historico.append({
+            "numero_os": o.numero_os,
+            "data": o.data_criacao,
+            "km_entrada": km,
+        })
+    return historico
+
+
+def _ultimo_km_conhecido(db: Session, objeto_id: int) -> int | None:
+    """Maior km_entrada registrado nas OS de um objeto (KM atual estimado)."""
+    kms = [
+        (o.dados_adicionais or {}).get("km_entrada")
+        for o in os_crud.get_ordens_by_objeto_id(db, objeto_id)
+    ]
+    kms = [k for k in kms if isinstance(k, int)]
+    return max(kms) if kms else None
+
+
+def get_revisoes_pendentes(db: Session) -> list[dict]:
+    """
+    Veículos com revisão vencida — por data (proxima_revisao_data <= hoje) e/ou
+    por KM (km atual >= proxima_revisao_km). Objetos sem revisão agendada (ex:
+    informática) não aparecem, pois têm ambos os campos nulos.
+    """
+    hoje = date.today()
+    pendentes = []
+    for obj in os_crud.get_objetos_com_revisao_agendada(db):
+        km_atual = _ultimo_km_conhecido(db, obj.id)
+        venc_data = obj.proxima_revisao_data is not None and obj.proxima_revisao_data <= hoje
+        venc_km = (
+            obj.proxima_revisao_km is not None
+            and km_atual is not None
+            and km_atual >= obj.proxima_revisao_km
+        )
+        if not (venc_data or venc_km):
+            continue
+        cliente_nome, cliente_telefone = _cliente_contato(obj.cliente)
+        # Já existe uma OS em aberto (não finalizada/cancelada) para este veículo?
+        # Usado pela UI para bloquear "Nova OS" e avisar o usuário.
+        tem_os_aberta = any(
+            o.status not in (OrdemServicoStatus.FINALIZADA, OrdemServicoStatus.CANCELADA)
+            for o in os_crud.get_ordens_by_objeto_id(db, obj.id)
+        )
+        pendentes.append({
+            "objeto_id": obj.id,
+            "cliente_id": obj.cliente_id,
+            "cliente_nome": cliente_nome,
+            "cliente_telefone": cliente_telefone,
+            "tem_os_aberta": tem_os_aberta,
+            "numero_serie": obj.numero_serie,
+            "marca": obj.marca,
+            "modelo": obj.modelo,
+            "proxima_revisao_data": obj.proxima_revisao_data,
+            "proxima_revisao_km": obj.proxima_revisao_km,
+            "km_atual": km_atual,
+            "motivo": "data" if venc_data else "km",
+        })
+    return pendentes
+
+
+def _cliente_contato(cliente) -> tuple[str | None, str | None]:
+    """Nome de exibição e telefone do cliente (PF usa nome, PJ usa razão social)."""
+    if cliente is None:
+        return None, None
+    nome = (
+        getattr(cliente, "nome", None)
+        or getattr(cliente, "razao_social", None)
+        or getattr(cliente, "nome_fantasia", None)
+    )
+    telefone = getattr(cliente, "celular", None) or getattr(cliente, "telefone", None)
+    return (nome.strip() if isinstance(nome, str) else nome), telefone
 
 
 # ===========================================================================
@@ -423,10 +647,72 @@ def remove_item_from_os(db: Session, numero_os: str, item_id: int) -> None:
 
 
 # ===========================================================================
+# ESTOQUE
+#
+# Peça aplicada numa OS sai do estoque igual peça vendida no balcão — o que
+# mudava era só que ninguém dava a baixa. A baixa acontece na FINALIZAÇÃO (é
+# quando a OS vira fato consumado, mesmo padrão da venda) e é desfeita se a OS
+# for cancelada ou reaberta, senão reabrir e refinalizar tirava a peça duas
+# vezes do estoque.
+# ===========================================================================
+
+def _itens_de_produto(os_in_db: OSModel) -> list[OSItemModel]:
+    """Itens que consomem estoque: produto do catálogo e APROVADO.
+
+    Item PENDENTE ou REPROVADO não entra no valor_total da OS, então também não
+    pode sair do estoque — o cliente recusou a peça e ela continua na prateleira.
+    Item avulso (sem produto_id) não tem estoque para movimentar.
+    """
+    return [
+        item for item in os_in_db.itens
+        if item.tipo == OrdemServicoItemTipo.PRODUTO
+        and item.produto_id is not None
+        and item.status_aprovacao == OrdemServicoItemAprovacao.APROVADO
+        and (item.quantidade or 0) > 0
+    ]
+
+
+def _movimentar_estoque_os(
+    db: Session,
+    os_in_db: OSModel,
+    saida: bool,
+    usuario_token: dict | None = None,
+) -> None:
+    """Aplica (saida=True) ou estorna (saida=False) o estoque dos itens da OS.
+
+    Delega ao registro central em services/movimentacao_estoque, que é quem
+    altera a quantidade e grava o histórico na mesma operação. `permitir_negativo`
+    é a regra específica da OS (ver o helper).
+    """
+    usuario_token = usuario_token or {}
+    sub = usuario_token.get("sub")
+
+    for item in _itens_de_produto(os_in_db):
+        produto = produto_crud.get_produto_by_id(db, produto_id=item.produto_id)
+        mov_service.registrar_movimentacao(
+            db,
+            produto=produto,
+            tipo=MovimentacaoTipo.SAIDA if saida else MovimentacaoTipo.ENTRADA,
+            quantidade=item.quantidade or 0,
+            origem=MovimentacaoOrigem.ORDEM_SERVICO,
+            usuario_id=int(sub) if sub else None,
+            usuario_nome=usuario_token.get("nome", "Sistema"),
+            ordem_servico_id=os_in_db.id,
+            observacao=f"{'Baixa' if saida else 'Estorno'} pela OS {os_in_db.numero_os}",
+            permitir_negativo=True,
+        )
+
+
+# ===========================================================================
 # AÇÕES DE STATUS
 # ===========================================================================
 
-def finalizar_ordem_servico(db: Session, numero_os: str, data: OrdemServicoFinalizar) -> OSModel:
+def finalizar_ordem_servico(
+    db: Session,
+    numero_os: str,
+    data: OrdemServicoFinalizar,
+    usuario_token: dict | None = None,
+) -> OSModel:
     """
     Finaliza uma OS registrando a solução e os pagamentos.
 
@@ -479,6 +765,8 @@ def finalizar_ordem_servico(db: Session, numero_os: str, data: OrdemServicoFinal
             ordem_servico_id=os_in_db.id,
             forma_pagamento_id=pagamento_data.forma_pagamento_id,
             valor=pagamento_data.valor,
+            juros_valor=pagamento_data.juros_valor,
+            juros_responsavel=pagamento_data.juros_responsavel.value,
             parcelas=pagamento_data.parcelas,
             bandeira_cartao=pagamento_data.bandeira_cartao,
             vencimento=pagamento_data.vencimento,
@@ -494,12 +782,21 @@ def finalizar_ordem_servico(db: Session, numero_os: str, data: OrdemServicoFinal
             if cliente:
                 cliente.saldo_credito = (cliente.saldo_credito or 0) + excedente
 
+    # Baixa das peças aplicadas. Vai aqui, junto da mudança de status, para que
+    # a OS só consuma estoque quando de fato fecha — e para que reabrir devolva.
+    _movimentar_estoque_os(db, os_in_db, saida=True, usuario_token=usuario_token)
+
     # Aplica finalização
     os_in_db.situacao_equipamento = data.situacao_equipamento
     os_in_db.garantia = data.garantia
     os_in_db.solucao = data.solucao
     os_in_db.status = OrdemServicoStatus.FINALIZADA
-    os_in_db.data_finalizacao = datetime.now()
+    # UTC, não hora local. Todo o resto do sistema grava em UTC (func.now()) e os
+    # filtros de período do dashboard/relatórios comparam em UTC. Com hora local
+    # (UTC-3), uma OS finalizada depois das 21h caía no dia seguinte pela régua
+    # do relatório — e desde que o faturamento passou a ancorar em
+    # data_finalizacao, isso virou dinheiro no dia errado.
+    os_in_db.data_finalizacao = datetime.utcnow()
 
     if data.observacoes:
         os_in_db.observacoes = data.observacoes
@@ -507,7 +804,12 @@ def finalizar_ordem_servico(db: Session, numero_os: str, data: OrdemServicoFinal
     return os_crud.update_ordem_servico(db, os_to_update=os_in_db)
 
 
-def cancelar_ordem_servico(db: Session, numero_os: str, data: OrdemServicoCancelar) -> OSModel:
+def cancelar_ordem_servico(
+    db: Session,
+    numero_os: str,
+    data: OrdemServicoCancelar,
+    usuario_token: dict | None = None,
+) -> OSModel:
     """
     Cancela uma OS.
 
@@ -531,6 +833,12 @@ def cancelar_ordem_servico(db: Session, numero_os: str, data: OrdemServicoCancel
             if not verify_password(data.codigo_gerente, config_seg.pin_gerente):
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="PIN_GERENTE_INVALIDO")
 
+    # Só devolve peça ao estoque se ela chegou a sair — ou seja, se a OS estava
+    # FINALIZADA. Cancelar uma OS que nunca foi finalizada não movimenta nada;
+    # estornar aqui inventaria estoque que nunca saiu.
+    if os_in_db.status == OrdemServicoStatus.FINALIZADA:
+        _movimentar_estoque_os(db, os_in_db, saida=False, usuario_token=usuario_token)
+
     os_in_db.status = OrdemServicoStatus.CANCELADA
 
     if data.motivo:
@@ -547,12 +855,25 @@ def cancelar_ordem_servico(db: Session, numero_os: str, data: OrdemServicoCancel
     return os_crud.update_ordem_servico(db, os_to_update=os_in_db)
 
 
-def reabrir_ordem_servico(db: Session, numero_os: str, codigo_gerente: str | None = None) -> OSModel:
+def reabrir_ordem_servico(
+    db: Session,
+    numero_os: str,
+    codigo_gerente: str | None = None,
+    cliente_pagou: bool = True,
+    usuario_token: dict | None = None,
+) -> OSModel:
     """
     Reabre uma OS FINALIZADA ou CANCELADA.
 
-    Limpa: status → EM_ANDAMENTO, data_finalizacao → None, solucao → None.
-    Remove os pagamentos existentes (necessário pois os valores podem ser renegociados).
+    Limpa: status → EM_ANDAMENTO, data_finalizacao → None.
+
+    cliente_pagou:
+      - True (padrão): o valor já pago é preservado como crédito da OS
+        (credito_anterior) e será abatido do novo total ao refinalizar.
+      - False: o pagamento não era real (ex.: OS reaberta na hora, antes de o
+        cliente pagar). Apaga os pagamentos e zera o crédito, então a OS recobra
+        o valor cheio. Só use quando tiver certeza de que o dinheiro NÃO entrou —
+        senão o registro do pagamento do cliente é perdido.
     """
     os_in_db = _get_os_or_raise(db, numero_os)
 
@@ -568,11 +889,25 @@ def reabrir_ordem_servico(db: Session, numero_os: str, codigo_gerente: str | Non
             if not verify_password(codigo_gerente, config_seg.pin_gerente):
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="PIN_GERENTE_INVALIDO")
 
-    total_bruto = sum(p.valor for p in os_in_db.pagamentos) + (os_in_db.valor_entrada or 0)
-    valor_total = os_in_db.valor_total or 0
-    os_in_db.credito_anterior = min(total_bruto, valor_total) or None
-    os_in_db.valor_entrada = 0
+    # Devolve as peças ao estoque, mas SÓ se elas tinham saído. Vindo de
+    # FINALIZADA, saíram na finalização. Vindo de CANCELADA, o cancelamento já
+    # estornou — estornar de novo aqui criaria estoque do nada, e o erro só
+    # apareceria muito depois, na contagem física.
+    if os_in_db.status == OrdemServicoStatus.FINALIZADA:
+        _movimentar_estoque_os(db, os_in_db, saida=False, usuario_token=usuario_token)
 
+    if cliente_pagou:
+        # Preserva o que foi pago como crédito abatido do novo total.
+        total_bruto = sum(p.valor for p in os_in_db.pagamentos) + (os_in_db.valor_entrada or 0)
+        valor_total = os_in_db.valor_total or 0
+        os_in_db.credito_anterior = min(total_bruto, valor_total) or None
+    else:
+        # Pagamento não era real: apaga os pagamentos (cascade delete-orphan) e
+        # zera o crédito, para a OS recobrar o valor cheio.
+        os_in_db.pagamentos.clear()
+        os_in_db.credito_anterior = None
+
+    os_in_db.valor_entrada = 0
     os_in_db.status = OrdemServicoStatus.EM_ANDAMENTO
     os_in_db.data_finalizacao = None
 

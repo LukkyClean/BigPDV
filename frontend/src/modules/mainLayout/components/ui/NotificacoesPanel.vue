@@ -201,7 +201,7 @@ function abrirOS(os: OrderServiceReadDataType) {
             OS atrasada · {{ os.numero_os }}
           </p>
           <p class="text-xs text-zinc-500 mt-0.5 truncate">
-            {{ os.equipamento?.marca }} {{ os.equipamento?.modelo }}
+            {{ os.objeto?.marca }} {{ os.objeto?.modelo }}
           </p>
           <p class="text-[11px] text-red-600 mt-1 font-medium">
             Previsão {{ formatarData(os.data_previsao) }} · {{ Math.abs(diasAte(os.data_previsao)) }} dias em atraso
@@ -225,7 +225,7 @@ function abrirOS(os: OrderServiceReadDataType) {
             Equipamento em abandono · {{ os.numero_os }}
           </p>
           <p class="text-xs text-zinc-500 mt-0.5 truncate">
-            {{ os.equipamento?.marca }} {{ os.equipamento?.modelo }}
+            {{ os.objeto?.marca }} {{ os.objeto?.modelo }}
           </p>
           <p class="text-[11px] text-amber-600 mt-1 font-medium">
             Criada {{ formatarData(os.data_criacao) }} · há {{ diasDesde(os.data_criacao) }} dias sem resolução

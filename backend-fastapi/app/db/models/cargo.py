@@ -7,7 +7,7 @@
 from sqlalchemy import Integer, String, JSON, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
-from typing import TYPE_CHECKING, Dict
+from typing import TYPE_CHECKING, Dict, Optional
 
 # Previne circular import para type checking
 if TYPE_CHECKING:
@@ -31,6 +31,24 @@ class Cargo(Base):
     
     # Campo JSON para armazenar permissões dinâmicas
     permissoes: Mapped[Dict[str, bool]] = mapped_column(JSON, nullable=False, default={}, doc="Objeto JSON contendo as permissões de acesso e operação")
+
+    # --- Comissão (padrão do cargo; o Funcionário pode sobrescrever) ---
+    # Percentuais em BASIS POINTS (int): 500 = 5,00%. Meta mensal em centavos.
+    # Nullable: cargo sem comissão configurada = herda o padrão da empresa/sem comissão.
+    comissao_venda_percentual: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True, doc="Comissão padrão sobre vendas (basis points: 500 = 5,00%)"
+    )
+    comissao_servico_percentual: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True, doc="Comissão padrão sobre serviços/OS (basis points: 500 = 5,00%)"
+    )
+    meta_mensal: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True, doc="Meta mensal de faturamento do cargo (centavos)"
+    )
+    # Modo de comissão: 'direto' paga a taxa sobre tudo (padrão); 'meta' só paga
+    # ao bater a meta_mensal (gatilho). Nullable -> herda; sem nada = 'direto'.
+    comissao_modo: Mapped[Optional[str]] = mapped_column(
+        String(10), nullable=True, doc="Modo de comissão: 'direto' | 'meta' (gatilho por meta)"
+    )
 
     # =========================
     # RELACIONAMENTOS

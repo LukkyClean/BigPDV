@@ -28,6 +28,18 @@ def get_empresa_by_id(db: Session, empresa_id: int) -> Optional[EmpresaModel]:
     stmt = select(EmpresaModel).where(EmpresaModel.id == empresa_id)
     return db.scalars(stmt).first()
 
+
+def get_empresa_atual(db: Session) -> Optional[EmpresaModel]:
+    """
+    Retorna a empresa da instalação (aplicação single-tenant: existe uma
+    única empresa criada no setup). Usada para descobrir o segmento de negócio.
+
+    Returns:
+        Optional[EmpresaModel]: A primeira/única empresa, ou None se ainda não houver setup.
+    """
+    stmt = select(EmpresaModel).order_by(EmpresaModel.id).limit(1)
+    return db.scalars(stmt).first()
+
 # ===========================================================================
 # ESCRITA (CREATE)
 # ===========================================================================

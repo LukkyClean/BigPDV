@@ -1,13 +1,13 @@
 import { ref } from 'vue';
 
-import type { EquipamentoFormData } from './useOSFormAdapter';
+import type { ObjetoFormData } from './useOSFormAdapter';
 import type { OrderServiceReadDataType } from '../../schemas/orderServiceQuery.schema';
 
 interface UseOSClientHistoryParams {
-  setEquipamentoFormData: (value: EquipamentoFormData) => void;
+  setObjetoFormData: (value: ObjetoFormData) => void;
 }
 
-export function useOSClientHistory({ setEquipamentoFormData }: UseOSClientHistoryParams) {
+export function useOSClientHistory({ setObjetoFormData }: UseOSClientHistoryParams) {
   const isHistoricoModalOpen = ref(false);
 
   function openHistoricoModal() {
@@ -18,15 +18,15 @@ export function useOSClientHistory({ setEquipamentoFormData }: UseOSClientHistor
     isHistoricoModalOpen.value = false;
   }
 
-  function reutilizarEquipamento(os: OrderServiceReadDataType) {
-    const equip = os.equipamento;
-    setEquipamentoFormData({
-      equipamento: equip.tipo_equipamento,
-      marca: equip.marca ?? '',
-      modelo: equip.modelo ?? '',
-      numero_serie: equip.numero_serie ?? '',
-      imei: equip.imei ?? '',
-      cor: equip.cor ?? '',
+  function reutilizarObjeto(os: OrderServiceReadDataType) {
+    const objeto = os.objeto;
+    setObjetoFormData({
+      objeto: objeto.tipo_equipamento ?? '',
+      marca: objeto.marca ?? '',
+      modelo: objeto.modelo ?? '',
+      numero_serie: objeto.numero_serie ?? '',
+      imei: objeto.imei ?? '',
+      cor: objeto.cor ?? '',
       senha_aparelho: '',
       acessorios: '',
       defeito_relatado: '',
@@ -39,6 +39,6 @@ export function useOSClientHistory({ setEquipamentoFormData }: UseOSClientHistor
     isHistoricoModalOpen,
     openHistoricoModal,
     closeHistoricoModal,
-    reutilizarEquipamento,
+    reutilizarObjeto,
   };
 }

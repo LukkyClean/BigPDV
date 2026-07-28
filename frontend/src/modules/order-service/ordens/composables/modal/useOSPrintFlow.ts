@@ -4,6 +4,9 @@ import { useImpressao } from '@/shared/composables/useImpressao';
 import { useImpressaoStore } from '@/shared/stores/impressao.store';
 import { useCompanyPrintInfo } from '@/shared/utils/print.utils';
 import { osToEscPos } from '../../components/osToEscPos';
+import { DOTS } from '@/shared/services/escpos';
+import { carregarLogoRaster } from '@/shared/services/escposImagem';
+import { useObjetoLabels } from '@/modules/order-service/shared/segmento/useObjetoLabels';
 import type { OrderServiceReadDataType } from '../../schemas/orderServiceQuery.schema';
 import type { PrintFormat } from '@/shared/components/print/print.types';
 
@@ -20,7 +23,6 @@ export function useOSPrintFlow({ onClose, getOS }: UseOSPrintFlowParams) {
     printType,
     printFormat,
     isPrintSelectModalOpen,
-    openPrintSelect,
     printDirect,
     handlePrintFormatSelected: handlePrintFormatSelectedBase,
     closePrintSelectModal,
@@ -31,23 +33,22 @@ export function useOSPrintFlow({ onClose, getOS }: UseOSPrintFlowParams) {
   const impressao = useImpressao();
   const impressaoStore = useImpressaoStore();
   const { companyInfo } = useCompanyPrintInfo();
+  const { labelSingular } = useObjetoLabels();
 
   /** Manda o cupom térmico direto pra impressora configurada; false = sem impressora/falhou */
   async function imprimirEscPosDireto(tipo: 'ENTRADA' | 'SAIDA'): Promise<boolean> {
     if (!impressao.podeImprimirDireto.value) return false;
     const os = getOS?.();
     if (!os) return false;
+    const bobina = impressaoStore.config.bobina;
+    const logoRaster = await carregarLogoRaster(companyInfo.value.logo, DOTS[bobina]);
     const dados = osToEscPos(os, tipo, {
-      bobina: impressaoStore.config.bobina,
+      bobina,
       empresa: companyInfo.value,
+      logoRaster,
+      rotuloObjeto: labelSingular.value,
     });
     return impressao.imprimirCupom(dados);
-  }
-
-  /** Tenta o cupom térmico direto conforme a config local; false = usar o modal */
-  async function tentarImpressaoDireta(tipo: 'ENTRADA' | 'SAIDA'): Promise<boolean> {
-    if (impressaoStore.config.auto_imprimir_os !== 'automatico') return false;
-    return imprimirEscPosDireto(tipo);
   }
 
   /**
@@ -64,25 +65,31 @@ export function useOSPrintFlow({ onClose, getOS }: UseOSPrintFlowParams) {
     handlePrintFormatSelectedBase(format);
   }
 
+  /**
+   * Regra única de impressão (sem perguntar formato):
+   * - Impressora térmica configurada → cupom ESC/POS direto (silencioso).
+   * - Sem térmica (ou falha) → recibo A4 abrindo o diálogo do sistema.
+   * `imprimirEscPosDireto` já devolve false quando não há térmica configurada.
+   */
+  async function imprimir(tipo: 'ENTRADA' | 'SAIDA', afterPrint?: () => void) {
+    if (await imprimirEscPosDireto(tipo)) {
+      afterPrint?.();
+      return;
+    }
+    printDirect(tipo, 'A4', afterPrint);
+  }
+
   function printEntrada() {
-    openPrintSelect('ENTRADA');
+    imprimir('ENTRADA');
   }
 
   function printSaida() {
-    openPrintSelect('SAIDA');
+    imprimir('SAIDA');
   }
 
-  /** Imprime conforme a config (A4 direto, cupom silencioso ou modal) e fecha */
+  /** Impressão automática pós-criação/finalização: segue a regra única e fecha. */
   async function imprimirAutomaticoEFechar(tipo: 'ENTRADA' | 'SAIDA') {
-    if (impressaoStore.config.auto_imprimir_os === 'automatico' && impressaoStore.config.formato_os === 'a4') {
-      printDirect(tipo, 'A4', () => onClose());
-      return;
-    }
-    if (await tentarImpressaoDireta(tipo)) {
-      onClose();
-      return;
-    }
-    openPrintSelect(tipo, () => onClose());
+    await imprimir(tipo, () => onClose());
   }
 
   async function printEntradaAndClose() {

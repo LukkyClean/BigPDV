@@ -34,6 +34,10 @@ function getDefaultFormValues(): PositionFormData {
   return {
     nome: '',
     permissoes: buildPermissionDefaults(),
+    comissao_venda_percentual: null,
+    comissao_servico_percentual: null,
+    meta_mensal: null,
+    comissao_modo: null,
   };
 }
 
@@ -47,6 +51,10 @@ function normalizePermissions(permissoes?: Record<string, boolean>) {
 export interface PositionFormContext {
   nome: Ref<string>;
   permissoes: Ref<Record<string, boolean>>;
+  comissaoVenda: Ref<number | null | undefined>;
+  comissaoServico: Ref<number | null | undefined>;
+  metaMensal: Ref<number | null | undefined>;
+  comissaoModo: Ref<'direto' | 'meta' | null | undefined>;
 
   errors: Ref<Record<string, string | undefined>>;
   submitCount: Ref<number>;
@@ -87,6 +95,10 @@ export function usePositionFormProvider() {
 
   const [nome] = defineField('nome');
   const [permissoes] = defineField('permissoes');
+  const [comissaoVenda] = defineField('comissao_venda_percentual');
+  const [comissaoServico] = defineField('comissao_servico_percentual');
+  const [metaMensal] = defineField('meta_mensal');
+  const [comissaoModo] = defineField('comissao_modo');
 
   const apiError = ref<string | null>(null);
 
@@ -94,6 +106,10 @@ export function usePositionFormProvider() {
     setValues({
       nome: position.nome,
       permissoes: normalizePermissions(position.permissoes),
+      comissao_venda_percentual: position.comissao_venda_percentual ?? null,
+      comissao_servico_percentual: position.comissao_servico_percentual ?? null,
+      meta_mensal: position.meta_mensal ?? null,
+      comissao_modo: position.comissao_modo ?? null,
     });
   }
 
@@ -136,6 +152,10 @@ export function usePositionFormProvider() {
       const payload: CargoCreate = {
         nome: formData.nome,
         permissoes: applyEndpointPermissions(formData.permissoes),
+        comissao_venda_percentual: formData.comissao_venda_percentual,
+        comissao_servico_percentual: formData.comissao_servico_percentual,
+        meta_mensal: formData.meta_mensal,
+        comissao_modo: formData.comissao_modo,
       };
 
       if (isCreateMode.value) {
@@ -149,6 +169,10 @@ export function usePositionFormProvider() {
         const updateData: CargoUpdate = {
           nome: formData.nome,
           permissoes: applyEndpointPermissions(formData.permissoes),
+          comissao_venda_percentual: formData.comissao_venda_percentual,
+          comissao_servico_percentual: formData.comissao_servico_percentual,
+          meta_mensal: formData.meta_mensal,
+          comissao_modo: formData.comissao_modo,
         };
 
         updateMutation.mutate(
@@ -174,6 +198,10 @@ export function usePositionFormProvider() {
   const context: PositionFormContext = {
     nome,
     permissoes,
+    comissaoVenda,
+    comissaoServico,
+    metaMensal,
+    comissaoModo,
     errors,
     submitCount,
     values,

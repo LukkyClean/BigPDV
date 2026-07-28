@@ -1,6 +1,6 @@
 import z from 'zod';
 
-import { OsItemTypeEnum, OsItemMeasureEnum } from '../enums/osEnums.schema';
+import { OsItemTypeEnum, OsItemMeasureEnum, OsItemAprovacaoEnum } from '../enums/osEnums.schema';
 
 const OsItemBaseSchema = z.object({
   tipo: OsItemTypeEnum,
@@ -16,6 +16,11 @@ const OsItemBaseSchema = z.object({
     .number({ required_error: 'O valor unitário é obrigatório' })
     .int()
     .min(0, 'O valor unitário deve ser maior ou igual a 0'),
+  // Aprovação/garantia por item. Opcional: o backend já default APROVADO,
+  // então não enviar preserva o comportamento atual (informática intacta).
+  status_aprovacao: OsItemAprovacaoEnum.optional(),
+  garantia_dias: z.number().int().min(0).optional().nullable(),
+  garantia_km: z.number().int().min(0).optional().nullable(),
 });
 
 export const OsItemCreateSchema = z.object({
@@ -39,6 +44,9 @@ export const OsItemUpdateSchema = z.object({
   unidade_medida: OsItemMeasureEnum.optional(),
   quantidade: z.number().int().min(0, 'A quantidade deve ser maior ou igual a 0').optional(),
   valor_unitario: z.number().min(0, 'O valor unitário deve ser maior ou igual a 0').optional(),
+  status_aprovacao: OsItemAprovacaoEnum.optional(),
+  garantia_dias: z.number().int().min(0).optional().nullable(),
+  garantia_km: z.number().int().min(0).optional().nullable(),
 });
 
 export type OsItemUpdateSchemaDataType = z.infer<typeof OsItemUpdateSchema>

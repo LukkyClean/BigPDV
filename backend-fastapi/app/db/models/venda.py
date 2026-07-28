@@ -92,6 +92,7 @@ class Venda(Base):
     # --- Financeiro (valores em centavos) ---
     subtotal: Mapped[int] = mapped_column(Integer, default=0, nullable=False, doc="Soma dos itens sem descontos e fretes (centavos)")
     entrega: Mapped[int] = mapped_column(Integer, default=0, nullable=False, doc="Valor do frete/motoboy (centavos)")
+    acrescimo: Mapped[int] = mapped_column(Integer, default=0, nullable=False, server_default="0", doc="Acrescimo de juros/cartao aplicado no checkout (centavos)")
     @property
     def total_bruto(self):
         total_itens = sum(item.subtotal for item in self.itens)
@@ -99,7 +100,7 @@ class Venda(Base):
     @property
     def descontos(self):
         return sum(item.desconto for item in self.itens)
-    total: Mapped[int] = mapped_column(Integer, default=0, nullable=False, doc="(subtotal + entrega) - (descontos) (centavos)")
+    total: Mapped[int] = mapped_column(Integer, default=0, nullable=False, doc="(subtotal + entrega) - (descontos) + acrescimo (centavos)")
     @property
     def troco(self):
         total_pago = sum(pagamento.valor for pagamento in self.pagamentos)

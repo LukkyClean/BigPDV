@@ -5,7 +5,7 @@
 # ---------------------------------------------------------------------------
 
 from datetime import date
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from typing import Optional, List, Annotated, Sequence, Union, Literal
 from app.core.enum import Gender, ClientType, TipoEquipamento
 from app.schemas.endereco import Endereco, EnderecoRead, EnderecoUpdate
@@ -249,13 +249,25 @@ ClienteUpdate = Annotated[
 
 class EquipamentoHistoricoRead(BaseModel):
     """Equipamento resumido para seleção rápida no formulário de OS."""
-    equipamento: TipoEquipamento = Field(
+    # String livre (agnóstico de segmento): TI manda "COMPUTADOR"/"CELULAR"...,
+    # oficina manda "Veículo". Antes era o enum de TI e a oficina quebrava a leitura.
+    equipamento: str = Field(
         ...,
         validation_alias="tipo_equipamento",
-        description="Tipo do equipamento (alias de tipo_equipamento)"
+        description="Tipo do equipamento/objeto (livre por segmento)"
     )
     marca: str
     modelo: str
     numero_serie: str
+    # Detalhes reaproveitados ao reutilizar o objeto numa nova OS (cor + campos
+    # dinâmicos do segmento, ex.: oficina → chassi, ano).
+    cor: Optional[str] = None
+    dados_adicionais: Optional[dict] = None
+
+    @field_validator("equipamento", mode="before")
+    @classmethod
+    def _normalizar_equipamento(cls, v):
+        # tipo_equipamento vem como shim/enum/str — normaliza para string.
+        return getattr(v, "value", v)
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)

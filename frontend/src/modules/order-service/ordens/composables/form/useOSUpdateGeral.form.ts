@@ -35,6 +35,7 @@ export function useOSUpdateGeralForm(opts: {
   const [acessorios] = defineField('acessorios');
   const [condicoes_aparelho] = defineField('condicoes_aparelho');
   const [funcionario_id] = defineField('funcionario_id');
+  const [dados_adicionais] = defineField('dados_adicionais');
 
   const populateForm = (os: OrderServiceReadDataType) => {
     setValues({
@@ -53,6 +54,7 @@ export function useOSUpdateGeralForm(opts: {
       acessorios: os.acessorios ?? undefined,
       condicoes_aparelho: os.condicoes_aparelho ?? undefined,
       funcionario_id: os.funcionario?.id ?? undefined,
+      dados_adicionais: os.dados_adicionais ?? undefined,
     });
   };
 
@@ -102,6 +104,7 @@ export function useOSUpdateGeralForm(opts: {
     acessorios,
     condicoes_aparelho,
     funcionario_id,
+    dados_adicionais,
     errors,
     isPending,
     onSubmit,

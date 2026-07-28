@@ -91,7 +91,7 @@ function getOSSequence(numero_os: string): string {
         <thead>
           <tr class="bg-zinc-50/50 text-[10px] uppercase tracking-wider text-zinc-500 font-bold border-b border-zinc-100">
             <th class="px-4 md:px-6 py-3 md:py-4">OS</th>
-            <th class="px-4 md:px-6 py-3 md:py-4">Cliente / Equipamento</th>
+            <th class="px-4 md:px-6 py-3 md:py-4">Cliente / Objeto</th>
             <th class="px-4 md:px-6 py-3 md:py-4">Status</th>
             <th class="px-4 md:px-6 py-3 md:py-4">Data</th>
             <th class="px-4 md:px-6 py-3 md:py-4">Valor</th>
@@ -117,7 +117,7 @@ function getOSSequence(numero_os: string): string {
                 <span class="text-sm font-semibold text-zinc-900 group-hover:text-brand-primary transition-colors">
                   {{ getClienteNome(os.cliente) }}
                 </span>
-                <span class="text-[10px] text-zinc-400 mt-0.5">{{ os.equipamento.tipo_equipamento }}</span>
+                <span class="text-[10px] text-zinc-400 mt-0.5">{{ os.objeto.tipo_equipamento }}</span>
               </div>
             </td>
 

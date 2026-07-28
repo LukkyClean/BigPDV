@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional
 from datetime import datetime
 
-from app.core.enum import MovimentacaoTipo
+from app.core.enum import MovimentacaoTipo, MovimentacaoOrigem
 
 
 class MovimentacaoCreate(BaseModel):
@@ -30,6 +30,12 @@ class MovimentacaoRead(BaseModel):
     quantidade: int
     quantidade_anterior: int
     quantidade_posterior: int
+    origem: MovimentacaoOrigem = Field(
+        MovimentacaoOrigem.LEGADO,
+        description="De onde veio: LEGADO, MANUAL, CADASTRO, VENDA ou ORDEM_SERVICO",
+    )
+    venda_id: Optional[int] = Field(None, description="Venda que causou (origem = VENDA)")
+    ordem_servico_id: Optional[int] = Field(None, description="OS que causou (origem = ORDEM_SERVICO)")
     observacao: Optional[str]
     created_at: datetime
 

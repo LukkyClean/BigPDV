@@ -26,6 +26,7 @@ import type {
 } from '../types/employees.types';
 import { useCreateEmployeeMutation, useUpdateEmployeeMutation } from './useEmployeesQuery';
 import { useEmployeeModal } from './useEmployeeModal';
+import { useToast } from '@/shared/composables/useToast';
 import { unmaskDocument, unmaskPhone, unmaskCep } from '@/shared/utils/unmask.utils';
 
 // =============================================
@@ -41,6 +42,58 @@ export const DEFAULT_ENDERECO: EnderecoFormData = {
   cidade: '',
   estado: '',
 };
+
+/**
+ * Rótulo de cada campo como ele aparece na TELA. Usado para dizer ao usuário
+ * qual campo reprovou — a chave técnica ("cargo_id", "mae") não ajuda ninguém.
+ */
+const ROTULOS: Record<string, string> = {
+  nome: 'Nome Completo',
+  cpf: 'CPF',
+  data_nascimento: 'Data Nascimento',
+  jornada_trabalho: 'Jornada',
+  genero: 'Gênero',
+  rg: 'RG',
+  telefone: 'Telefone',
+  celular: 'Celular',
+  email: 'E-mail',
+  cnh: 'CNH',
+  carteira_trabalho: 'Carteira de Trabalho',
+  salario_bruto: 'Salário Bruto',
+  tipo_contrato: 'Tipo de Contrato',
+  data_admissao: 'Data Admissão',
+  cargo_id: 'Cargo',
+  mae: 'Nome da Mãe',
+  pai: 'Nome do Pai',
+  titular_conta: 'Titular da Conta',
+  tipo_conta: 'Tipo da Conta',
+  banco: 'Banco',
+  agencia: 'Agência',
+  conta: 'Conta',
+  observacao: 'Observações',
+  usuario_nome: 'Nome de Usuário',
+  usuario_email: 'E-mail do Usuário',
+  usuario_senha: 'Senha',
+  // Endereço (array) — a seção não exibe erro por campo, então o toast é a
+  // ÚNICA forma de o usuário saber que o problema está aqui.
+  cep: 'CEP',
+  logradouro: 'Logradouro',
+  numero: 'Número',
+  complemento: 'Complemento',
+  bairro: 'Bairro',
+  cidade: 'Cidade',
+  estado: 'Estado',
+};
+
+/** "enderecos[0].cep" -> "Endereço 1: CEP"; "nome" -> "Nome Completo". */
+function rotuloDoCampo(chave: string): string {
+  const endereco = chave.match(/^enderecos\[(\d+)\]\.(.+)$/);
+  if (endereco) {
+    const [, indice, campo] = endereco;
+    return `Endereço ${Number(indice) + 1}: ${ROTULOS[campo] ?? campo}`;
+  }
+  return ROTULOS[chave] ?? chave;
+}
 
 const DEFAULT_FORM_VALUES: EmployeeFormData = {
   // Dados Funcionario
@@ -77,6 +130,12 @@ const DEFAULT_FORM_VALUES: EmployeeFormData = {
   banco: '',
   agencia: '',
   conta: '',
+
+  // Comissão (override do cargo). null = herda.
+  comissao_venda_percentual: null,
+  comissao_servico_percentual: null,
+  meta_mensal: null,
+  comissao_modo: null,
 
   // Observacoes
   observacao: '',
@@ -118,6 +177,12 @@ export interface EmployeeFormContext {
   agencia: Ref<string>;
   conta: Ref<string>;
 
+  // Comissão (override do cargo)
+  comissao_venda_percentual: Ref<number | null | undefined>;
+  comissao_servico_percentual: Ref<number | null | undefined>;
+  meta_mensal: Ref<number | null | undefined>;
+  comissao_modo: Ref<'direto' | 'meta' | null | undefined>;
+
   // Observacoes
   observacao: Ref<string>;
 
@@ -147,6 +212,7 @@ export const EMPLOYEE_FORM_KEY: InjectionKey<EmployeeFormContext> = Symbol('empl
 
 export function useEmployeeFormProvider() {
   const { selectedEmployee, isCreateMode, closeModal } = useEmployeeModal();
+  const toast = useToast();
 
   // Initialize form
   const { handleSubmit, errors, defineField, setValues, resetForm, submitCount, values, setErrors } =
@@ -187,6 +253,11 @@ export function useEmployeeFormProvider() {
   const [banco] = defineField('banco');
   const [agencia] = defineField('agencia');
   const [conta] = defineField('conta');
+
+  const [comissao_venda_percentual] = defineField('comissao_venda_percentual');
+  const [comissao_servico_percentual] = defineField('comissao_servico_percentual');
+  const [meta_mensal] = defineField('meta_mensal');
+  const [comissao_modo] = defineField('comissao_modo');
 
   const [observacao] = defineField('observacao');
 
@@ -246,6 +317,10 @@ export function useEmployeeFormProvider() {
       banco: employee.banco || '',
       agencia: employee.agencia || '',
       conta: employee.conta || '',
+      comissao_venda_percentual: employee.comissao_venda_percentual ?? null,
+      comissao_servico_percentual: employee.comissao_servico_percentual ?? null,
+      meta_mensal: employee.meta_mensal ?? null,
+      comissao_modo: employee.comissao_modo ?? null,
       observacao: employee.observacao || '',
     });
   }
@@ -289,6 +364,11 @@ export function useEmployeeFormProvider() {
       tipo_contrato: formData.tipo_contrato || undefined,
       data_admissao: formData.data_admissao || undefined,
       cargo_id: formData.cargo_id || undefined,
+      // Comissão (override do cargo). null = herda -> omite.
+      comissao_venda_percentual: formData.comissao_venda_percentual ?? undefined,
+      comissao_servico_percentual: formData.comissao_servico_percentual ?? undefined,
+      meta_mensal: formData.meta_mensal ?? undefined,
+      comissao_modo: formData.comissao_modo ?? undefined,
       usuario: {
         nome: formData.usuario_nome,
         email: formData.usuario_email,
@@ -366,6 +446,12 @@ export function useEmployeeFormProvider() {
           tipo_contrato: formData.tipo_contrato || undefined,
           data_admissao: formData.data_admissao || undefined,
 
+          // Comissão (override). Envia null explícito p/ permitir LIMPAR e voltar a herdar.
+          comissao_venda_percentual: formData.comissao_venda_percentual,
+          comissao_servico_percentual: formData.comissao_servico_percentual,
+          meta_mensal: formData.meta_mensal,
+          comissao_modo: formData.comissao_modo,
+
           // Observações
           observacao: formData.observacao || undefined,
 
@@ -396,8 +482,20 @@ export function useEmployeeFormProvider() {
         );
       }
     },
-    (validationErrors) => {
-      console.log('[DEBUG] Validation errors:', validationErrors);
+    ({ errors: camposInvalidos }) => {
+      // O handleSubmit do vee-validate falha CALADO: se a validação reprova, ele
+      // não chama a mutation e não avisa ninguém. Antes aqui só havia um
+      // console.log('[DEBUG]'), então o usuário clicava em Salvar, nada
+      // acontecia, e não dava para saber o motivo — ainda mais porque a seção de
+      // Endereço não exibe erro por campo.
+      const nomes = Object.keys(camposInvalidos).map(rotuloDoCampo);
+      const unicos = [...new Set(nomes)];
+      toast.error(
+        unicos.length === 1
+          ? `Verifique o campo: ${unicos[0]}`
+          : `Verifique ${unicos.length} campos`,
+        unicos.join(' • '),
+      );
     },
   );
 
@@ -432,6 +530,10 @@ export function useEmployeeFormProvider() {
     banco,
     agencia,
     conta,
+    comissao_venda_percentual,
+    comissao_servico_percentual,
+    meta_mensal,
+    comissao_modo,
     observacao,
     enderecos,
     handleAddEndereco,

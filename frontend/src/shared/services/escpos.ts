@@ -8,6 +8,20 @@ export type Bobina = '58' | '80'
 
 export const COLUNAS: Record<Bobina, number> = { '58': 32, '80': 48 }
 
+/** Largura útil de impressão em pontos (dots) por bobina — limite do raster. */
+export const DOTS: Record<Bobina, number> = { '58': 384, '80': 576 }
+
+/**
+ * Imagem monocromática pronta para o comando raster (GS v 0).
+ * `data` é 1 bit por pixel, MSB primeiro, cada linha alinhada a byte;
+ * bit 1 = ponto preto (impresso).
+ */
+export interface RasterImage {
+  width: number
+  height: number
+  data: Uint8Array
+}
+
 const ESC = 0x1b
 const GS = 0x1d
 
@@ -55,9 +69,11 @@ export function codificarTexto(texto: string): number[] {
 export class EscPosBuilder {
   private bytes: number[] = []
   readonly colunas: number
+  readonly larguraDots: number
 
   constructor(bobina: Bobina) {
     this.colunas = COLUNAS[bobina]
+    this.larguraDots = DOTS[bobina]
     this.init()
   }
 
@@ -79,6 +95,22 @@ export class EscPosBuilder {
 
   tamanhoDuplo(on: boolean): this {
     this.bytes.push(GS, 0x21, on ? 0x11 : 0x00)
+    return this
+  }
+
+  /**
+   * Imprime uma imagem raster monocromática (GS v 0). A centralização respeita
+   * o `alinhar()` corrente. A largura da imagem deve caber em `larguraDots`
+   * (garantido por quem gera o bitmap) — acima disso a impressora corta/embaralha.
+   */
+  raster(img: RasterImage): this {
+    const larguraBytes = Math.ceil(img.width / 8)
+    this.bytes.push(
+      GS, 0x76, 0x30, 0x00, // GS v 0, modo normal
+      larguraBytes & 0xff, (larguraBytes >> 8) & 0xff, // xL xH — largura em bytes
+      img.height & 0xff, (img.height >> 8) & 0xff, // yL yH — altura em pontos
+    )
+    for (const byte of img.data) this.bytes.push(byte)
     return this
   }
 

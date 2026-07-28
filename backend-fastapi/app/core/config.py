@@ -11,6 +11,10 @@ from pydantic import ConfigDict
 
 app_name = "StartBigERP"
 
+# Diretório raiz do backend (backend-fastapi), calculado a partir deste arquivo:
+# config.py -> core -> app -> backend-fastapi
+BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 # .db path
 
 if platform.system() == "Windows":
@@ -21,8 +25,49 @@ else:
 data_dir = os.path.join(BASE_DIR, "data")
 os.makedirs(data_dir, exist_ok=True)
 
-database_path = os.path.join(data_dir, "startbig.db")
-sql_url = f"sqlite:///{database_path}"
+database_path = os.path.join(data_dir, "start_big.db")
+
+
+def _resolve_sqlite_relative(url: str, base_dir: str) -> str:
+    """Converte um caminho SQLite relativo (ex: sqlite:///./start_big.db) em
+    absoluto, ancorado em base_dir. Assim o banco sempre cai no mesmo lugar,
+    independentemente do diretório de onde a aplicação é executada."""
+    prefix = "sqlite:///"
+    if not url.startswith(prefix):
+        return url
+    path = url[len(prefix):]
+    if path.startswith("./"):
+        path = path[2:]
+    if not os.path.isabs(path):
+        path = os.path.normpath(os.path.join(base_dir, path))
+    return f"{prefix}{path}"
+
+
+def _load_database_url_override() -> str | None:
+    """Lê SOMENTE a variável DATABASE_URL (do ambiente ou do .env do backend),
+    sem carregar o restante do .env — evitando sobrescrever a SECRET_KEY gerada.
+
+    Em desenvolvimento, o .env aponta para ./start_big.db, deixando o banco
+    visível na pasta do backend. Em produção (sem .env), usa o LOCALAPPDATA."""
+    if os.getenv("DATABASE_URL"):
+        return os.getenv("DATABASE_URL")
+
+    env_path = os.path.join(BACKEND_DIR, ".env")
+    if os.path.exists(env_path):
+        with open(env_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("DATABASE_URL=") and not line.startswith("#"):
+                    valor = line.split("=", 1)[1].strip().strip('"').strip("'")
+                    return valor or None
+    return None
+
+
+_db_override = _load_database_url_override()
+if _db_override:
+    sql_url = _resolve_sqlite_relative(_db_override, BACKEND_DIR)
+else:
+    sql_url = f"sqlite:///{database_path}"
 
 
 def _load_or_create_secret_key(path: str) -> str:

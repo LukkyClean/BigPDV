@@ -15,7 +15,7 @@ from app.db.models.produto_fotos import ProdutoFoto
 from app.db.models.empresa import Empresa
 from app.db.models.cargo import Cargo
 from app.db.models.ordem_servico import OrdemServico
-from app.db.models.ordem_servico_equipamento import OrdemServicoEquipamento
+from app.db.models.objeto_servico import ObjetoServico
 from app.db.models.ordem_servico_item import OrdemServicoItem
 from app.db.models.ordem_servico_pagamento import OrdemServicoPagamento
 from app.db.models.ordem_servico_foto import OrdemServicoFoto

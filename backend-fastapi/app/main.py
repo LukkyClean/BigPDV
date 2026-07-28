@@ -18,14 +18,22 @@ from fastapi.staticfiles import StaticFiles
 
 from app.core.exceptions import setup_exception_handlers
 from app.core.tarefas import lifespan
-from app.core.config import BASE_DIR
+from app.core.config import BASE_DIR, BACKEND_DIR
 
 import app.db.models  # noqa: F401 — registra todos os modelos no Base.metadata
-    
+
 STATIC_DIR = os.path.join(BASE_DIR, 'static')
 
 if not os.path.exists(STATIC_DIR):
     os.makedirs(STATIC_DIR, exist_ok=True)
+
+# Diretorio do formulario mobile (extend-form)
+# Em producao (PyInstaller --onefile): arquivos extraidos em sys._MEIPASS/form/
+# Em dev: arquivos buildados em backend-fastapi/extend-form/dist/
+if getattr(sys, 'frozen', False):
+    FORM_DIR = os.path.join(sys._MEIPASS, 'form')
+else:
+    FORM_DIR = os.path.join(BACKEND_DIR, 'extend-form', 'dist')
     
 app = FastAPI(
     title="BigPDV Backend API",
@@ -47,6 +55,11 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 app.include_router(api.router, prefix="/api/v1")
+
+# Monta o formulario mobile APOS o include_router para nao interceptar rotas da API.
+# html=True serve index.html para qualquer rota SPA que nao case com um arquivo.
+if os.path.exists(FORM_DIR):
+    app.mount("/form", StaticFiles(directory=FORM_DIR, html=True), name="form")
 
 @app.get("/api/health", tags=["Health"])
 def health_check():

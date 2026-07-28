@@ -15,7 +15,7 @@ from app.core.enum import Gender, ClientType
 from app.db.models.endereco import Endereco
 
 if TYPE_CHECKING:
-    from .ordem_servico_equipamento import OrdemServicoEquipamento
+    from .objeto_servico import ObjetoServico
     from .venda import Venda
 
 
@@ -48,10 +48,10 @@ class Cliente(Base):
         doc="Lista de enderecos associados a este cliente"
     )
 
-    equipamentos: Mapped[List["OrdemServicoEquipamento"]] = relationship(
-        "OrdemServicoEquipamento",
+    objetos: Mapped[List["ObjetoServico"]] = relationship(
+        "ObjetoServico",
         back_populates="cliente",
-        doc="Equipamentos cadastrados para este cliente"
+        doc="Objetos de serviço cadastrados para este cliente"
     )
 
     vendas: Mapped[List["Venda"]] = relationship(

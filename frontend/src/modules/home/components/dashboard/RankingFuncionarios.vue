@@ -40,7 +40,7 @@ const medalha: Record<number, string> = {
             <th class="px-4 md:px-5 py-3">#</th>
             <th class="px-4 md:px-5 py-3">Funcionário</th>
             <th class="px-4 md:px-5 py-3 text-right">Vendas</th>
-            <th class="px-4 md:px-5 py-3 text-right">Qtd</th>
+            <th class="px-4 md:px-5 py-3 text-right">Serviços</th>
             <th class="px-4 md:px-5 py-3 text-right">OS Fechadas</th>
           </tr>
         </thead>
@@ -55,8 +55,8 @@ const medalha: Record<number, string> = {
             <td class="px-4 md:px-5 py-3 text-sm font-semibold text-zinc-700 text-right whitespace-nowrap">
               {{ formatCurrency(item.total_vendas_valor) }}
             </td>
-            <td class="px-4 md:px-5 py-3 text-sm text-zinc-500 text-right">
-              {{ item.qtd_vendas }}
+            <td class="px-4 md:px-5 py-3 text-sm font-semibold text-zinc-700 text-right whitespace-nowrap">
+              {{ formatCurrency(item.total_os_valor) }}
             </td>
             <td class="px-4 md:px-5 py-3 text-sm text-zinc-500 text-right">
               {{ item.qtd_os_fechadas }}

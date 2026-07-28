@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session, aliased, joinedload
-from sqlalchemy import select, func, or_, cast, String, extract, nullslast
+from sqlalchemy import select, func, cast, String, extract, nullslast
 from datetime import datetime
 
 from app.db.models.venda import Venda
@@ -10,6 +10,7 @@ from app.db.models.funcionario import Funcionario
 
 from app.schemas.vendas import VendaStatusSummary
 
+from app.core.busca import filtro_busca
 from app.core.enum import VendaStatus
 
 from typing import Sequence
@@ -80,17 +81,18 @@ def get_sales_by_search(
             .outerjoin(cliente_pf, cliente_pf.id == Venda.cliente_id)
         )
 
-        like_search = f"%{search}%"
-        query = query.where(
-            or_(
-                cast(Venda.numero_venda, String).startswith(like_search),
-                cast(Venda.id, String).startswith(like_search),
-                cliente_pf.nome.ilike(like_search),
-                cliente_pj.razao_social.ilike(like_search),
-                cliente_pj.nome_fantasia.ilike(like_search),
-                Funcionario.nome.ilike(like_search)
-            )
-        )
+        # Os números são convertidos para texto porque a busca é uma só: o
+        # operador digita "312" ou "maria" no mesmo campo.
+        filtro = filtro_busca(search, (
+            cast(Venda.numero_venda, String),
+            cast(Venda.id, String),
+            cliente_pf.nome,
+            cliente_pj.razao_social,
+            cliente_pj.nome_fantasia,
+            Funcionario.nome,
+        ))
+        if filtro is not None:
+            query = query.where(filtro)
 
     status = filters.get("status")
     if status:

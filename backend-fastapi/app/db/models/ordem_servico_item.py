@@ -9,7 +9,7 @@ from typing import Optional, TYPE_CHECKING
 
 from app.db.base import Base
 
-from app.core.enum import OrdemServicoItemTipo, UnidadeMedida
+from app.core.enum import OrdemServicoItemTipo, UnidadeMedida, OrdemServicoItemAprovacao
 
 if TYPE_CHECKING:
     from .ordem_servico import OrdemServico
@@ -57,6 +57,24 @@ class OrdemServicoItem(Base):
     quantidade: Mapped[int] = mapped_column(Integer, nullable=False, doc="Quantidade")
     valor_unitario: Mapped[int] = mapped_column(Integer, nullable=False, doc="Valor unitario (centavos)")
     valor_total: Mapped[int] = mapped_column(Integer, nullable=False, doc="Valor total (centavos)")
+
+    # --- Aprovacao (fluxo de orcamento) ---
+    # Default APROVADO preserva o comportamento atual: itens contam no total.
+    status_aprovacao: Mapped[OrdemServicoItemAprovacao] = mapped_column(
+        SqlAlchemyEnum(OrdemServicoItemAprovacao),
+        default=OrdemServicoItemAprovacao.APROVADO,
+        server_default=OrdemServicoItemAprovacao.APROVADO.value,
+        nullable=False,
+        doc="Status de aprovacao do item (PENDENTE/APROVADO/REPROVADO). REPROVADO nao entra no total."
+    )
+
+    # --- Garantia por item (prazo em dias e/ou limite de KM) ---
+    garantia_dias: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True, doc="Prazo de garantia do item em dias (opcional)"
+    )
+    garantia_km: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True, doc="Limite de garantia do item em KM, ex: oficina (opcional)"
+    )
 
     # --- Relacionamentos ---
     ordem_servico: Mapped["OrdemServico"] = relationship(back_populates="itens")

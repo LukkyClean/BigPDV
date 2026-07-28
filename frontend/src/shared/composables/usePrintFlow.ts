@@ -1,4 +1,5 @@
 import { ref } from 'vue';
+import { imprimirComPagina } from '@/shared/utils/print.utils';
 import type { PrintFormat } from '@/shared/components/print/print.types';
 
 export function usePrintFlow<T extends string>() {
@@ -18,7 +19,7 @@ export function usePrintFlow<T extends string>() {
     isPrintSelectModalOpen.value = false;
 
     setTimeout(() => {
-      window.print();
+      imprimirComPagina(format);
       printFormat.value = '' as PrintFormat;
       pendingPrintAction.value?.();
       pendingPrintAction.value = null;

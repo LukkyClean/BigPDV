@@ -6,6 +6,7 @@ import {
   Building,
   IdCard,
   Wrench,
+  ChartColumn,
 } from 'lucide-vue-next';
 
 import { SidebarSection } from '../types/layout.types';
@@ -44,6 +45,12 @@ export const SIDEBAR_SECTIONS: SidebarSection[] = [
         icon: Tags,
         label: 'Produtos',
         requiredPermission: PERMISSIONS.products,
+      },
+      {
+        id: 'reports',
+        icon: ChartColumn,
+        label: 'Relatórios',
+        requiredPermission: PERMISSIONS.reports,
       },
     ],
   },

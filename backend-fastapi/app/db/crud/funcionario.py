@@ -27,16 +27,21 @@ def verify_funcionario_conflict(
 
     funcionario_in_db = search_method(db, value)
 
+    # Nenhum registro com esse valor: não há conflito.
+    # (Precisa vir ANTES de acessar .id — senão, ao editar e enviar um valor
+    #  único inédito, o None.id derrubava o update com 500.)
+    if not funcionario_in_db:
+        return None
+
+    # O valor pertence ao próprio funcionário sendo editado: não é conflito.
     if funcionario_id and funcionario_in_db.id == funcionario_id:
         return None
-    
-    if funcionario_in_db:
-        if not funcionario_in_db.ativo: 
-            return "disabled funcionario"
-        formated_search = search_name.replace("_", " ")
-        return f"{formated_search.upper()} já cadastrado"
 
-    return None
+    if not funcionario_in_db.ativo:
+        return "disabled funcionario"
+
+    formated_search = search_name.replace("_", " ")
+    return f"{formated_search.upper()} já cadastrado"
 
 # ===========================================================================
 # LEITURA (READ)

@@ -16,6 +16,16 @@ interface InputProps {
   error?: string;
   disabled?: boolean;
   id?: string;
+  /** Só para type="number". Sem `step`, o padrão do navegador é 1 e qualquer casa decimal vira valor inválido. */
+  step?: string | number;
+  min?: string | number;
+  max?: string | number;
+  /**
+   * Teclado sugerido em telas de toque. Use `decimal` num campo `text` que
+   * recebe número com vírgula — `type="number"` não serve para isso, porque
+   * aceita só o separador decimal do locale do navegador.
+   */
+  inputmode?: 'text' | 'decimal' | 'numeric' | 'tel' | 'email' | 'url' | 'search';
 }
 
 const props = withDefaults(defineProps<InputProps>(), {
@@ -24,6 +34,11 @@ const props = withDefaults(defineProps<InputProps>(), {
 });
 
 const model = defineModel();
+
+// `blur` não borbulha, então o listener que o Vue jogaria na div raiz nunca
+// dispararia. Emitir explicitamente é o que permite normalizar um campo
+// numérico só quando o usuário termina de digitar.
+const emit = defineEmits<{ blur: [event: FocusEvent] }>();
 
 const showPassword = ref(false);
 const uniqueId = props.id || `input-${Math.random().toString(36).slice(2, 7)}`;
@@ -78,7 +93,12 @@ function togglePasswordVisibility() {
         :placeholder="placeholder"
         :required="required"
         :disabled="disabled"
+        :inputmode="inputmode"
+        :step="type === 'number' ? step : undefined"
+        :min="type === 'number' ? min : undefined"
+        :max="type === 'number' ? max : undefined"
         :class="inputClasses"
+        @blur="emit('blur', $event)"
       />
 
       <button

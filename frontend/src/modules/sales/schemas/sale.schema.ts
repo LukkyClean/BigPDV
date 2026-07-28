@@ -70,6 +70,7 @@ export const SaleReadSchema = SaleSimpleReadSchema.extend({
   entrega: z.number(),
   descontos: z.number(),
   subtotal: z.number(),
+  acrescimo: z.number(),
   troco: z.number(),
 
   observacao: z.string().nullable().optional(),

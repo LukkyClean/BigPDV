@@ -10,7 +10,7 @@ import {
   CustomerPJReadSchema,
 } from './relationship/customer/customer.schema';
 import { EmployeeReadSchema } from './relationship/employee/employee.schema';
-import { OsEquipReadSchema } from './relationship/osEquip.schema';
+import { OsObjetoReadSchema } from './relationship/osObjeto.schema';
 import { OsItemReadSchema } from './relationship/osItem.schema';
 import { OsPaymentReadSchema } from './relationship/osPayment.schema';
 import { OsImageReadSchema } from './relationship/osPhoto.schema';
@@ -56,7 +56,7 @@ export const OrderServiceReadSchema = z.object({
   // Relacionamentos
   cliente: z.union([CustomerPFReadSchema, CustomerPJReadSchema]),
   funcionario: EmployeeReadSchema,
-  equipamento: OsEquipReadSchema,
+  objeto: OsObjetoReadSchema,
   itens: z.array(OsItemReadSchema),
   pagamentos: z.array(OsPaymentReadSchema),
   fotos: z.array(OsImageReadSchema),

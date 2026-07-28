@@ -14,6 +14,10 @@ export const OS_EMPLOYEE_QUERY_STALE_TIME = 1000 * 60
 export const OS_CUSTOMER_QUERY_KEY = "os-customer-query"
 export const OS_CUSTOMER_QUERY_STALE_TIME = 1000 * 60
 
+// Definição de campos por segmento (metadados): muda raramente -> stale time longo.
+export const OS_FIELD_DEFINITION_QUERY_KEY = "os-field-definition-query"
+export const OS_FIELD_DEFINITION_STALE_TIME = 1000 * 60 * 30
+
 export const ORDER_SERVICE_REFETCH_INTERVAL = REFETCH_REALTIME
 
 export const DEFAULT_OS_CREATE_VALUES = {
@@ -31,14 +35,19 @@ export const DEFAULT_OS_CREATE_VALUES = {
   data_previsao: undefined,
   cliente_id: undefined,
   funcionario_id: undefined,
-  equipamento: {
+  objeto: {
     tipo_equipamento: undefined,
     marca: '',
     modelo: '',
     numero_serie: '',
     imei: '',
     cor: undefined,
+    proxima_revisao_data: undefined,
+    proxima_revisao_km: undefined,
+    dados_adicionais: {} as Record<string, unknown>,
   },
+  // Check-in dinâmico no nível da OS (km_entrada, combustível, vistoria)
+  dados_adicionais: {} as Record<string, unknown>,
   itens: [] as never[],
 }
 

@@ -40,7 +40,15 @@ class OrdemServicoPagamento(Base):
         nullable=False,
         doc="ID da forma de pagamento"
     )
-    valor: Mapped[int] = mapped_column(Integer, nullable=False, doc="Valor pago (centavos)")
+    valor: Mapped[int] = mapped_column(Integer, nullable=False, doc="Valor pago pelo cliente neste metodo (centavos)")
+    juros_valor: Mapped[int] = mapped_column(
+        Integer, default=0, nullable=False, server_default="0",
+        doc="Juros calculados neste pagamento (centavos). Ver juros_responsavel para saber quem paga."
+    )
+    juros_responsavel: Mapped[str] = mapped_column(
+        String(10), default="CLIENTE", nullable=False, server_default="CLIENTE",
+        doc="CLIENTE = juros repassado (embutido em valor); LOJA = juros absorvido pela loja (fora de valor)"
+    )
     parcelas: Mapped[int] = mapped_column(Integer, default=1, nullable=False, doc="Numero de parcelas")
     bandeira_cartao: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, doc="Bandeira do cartao (VISA, MASTERCARD, etc)")
     vencimento: Mapped[Optional[date]] = mapped_column(Date, nullable=True, doc="Data de vencimento do pagamento (boletos ou combinado)")

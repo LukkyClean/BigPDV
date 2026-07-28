@@ -10,22 +10,38 @@ import {
   getClienteNome,
   getClienteDoc,
   getClientePhone,
+  getClienteEndereco,
   getPaymentDisplayName,
   formatPrintDate,
   formatPrintDoc,
+  tipoObjetoRelevante,
 } from '@/shared/utils/print.utils'
-import type { Bobina } from '@/shared/services/escpos'
+import type { Bobina, RasterImage } from '@/shared/services/escpos'
 import type { CompanyPrintInfo } from '@/shared/components/print/print.types'
 import type { OrderServiceReadDataType } from '../schemas/orderServiceQuery.schema'
 
 export interface OsEscPosOptions {
   bobina: Bobina
   empresa: CompanyPrintInfo
+  /** Logo já convertido em bitmap 1-bit; omitido = cupom sem logo. */
+  logoRaster?: RasterImage | null
+  /** Rótulo do objeto por segmento (ex.: "Veículo", "Equipamento"). Padrão: "Objeto". */
+  rotuloObjeto?: string
+}
+
+/**
+ * Motivo do cancelamento — não é coluna: fica embutido em `observacoes` com o
+ * prefixo [CANCELAMENTO]. Mesma extração do OSPrintCupom.vue, para as duas vias
+ * dizerem a mesma coisa.
+ */
+function extrairMotivoCancelamento(observacoes: string | null | undefined): string {
+  const match = (observacoes ?? '').match(/\[CANCELAMENTO\]\s*([\s\S]+)/)
+  return match ? match[1].trim() : 'Motivo nao informado.'
 }
 
 export function osToEscPos(
   os: OrderServiceReadDataType,
-  tipo: 'ENTRADA' | 'SAIDA',
+  tipo: 'ENTRADA' | 'SAIDA' | 'CANCELAMENTO',
   opts: OsEscPosOptions,
 ): Uint8Array {
   const b = new EscPosBuilder(opts.bobina)
@@ -37,17 +53,20 @@ export function osToEscPos(
   const titulo =
     tipo === 'ENTRADA'
       ? 'COMPROVANTE DE ENTRADA'
-      : situacao === 'SEM_REPARO'
-        ? 'ENTREGA SEM REPARO'
-        : situacao === 'CONDENADO'
-          ? 'EQUIPAMENTO CONDENADO'
-          : 'RECIBO E GARANTIA'
+      : tipo === 'CANCELAMENTO'
+        ? 'CANCELAMENTO DE OS'
+        : situacao === 'SEM_REPARO'
+          ? 'ENTREGA SEM REPARO'
+          : situacao === 'CONDENADO'
+            ? 'OBJETO CONDENADO'
+            : 'RECIBO E GARANTIA'
 
   const dataStr = tipo === 'SAIDA' ? ((os.data_finalizacao as string) || os.data_criacao) : os.data_criacao
 
   // Cabeçalho da empresa
   b.alinhar('centro')
-    .tamanhoDuplo(true)
+  if (opts.logoRaster) b.raster(opts.logoRaster).pular()
+  b.tamanhoDuplo(true)
     .linha(empresa.nome.toUpperCase())
     .tamanhoDuplo(false)
   if (empresa.cnpj) b.linha(empresa.cnpj)
@@ -72,19 +91,30 @@ export function osToEscPos(
   if (doc) b.linha(`Doc: ${formatPrintDoc(doc)}`)
   const tel = getClientePhone(os.cliente)
   if (tel) b.linha(`Tel: ${tel}`)
+  const endCli = getClienteEndereco(os.cliente)
+  if (endCli) b.linha(endCli)
   b.separador()
 
-  // Equipamento
-  b.negrito(true).linha('EQUIPAMENTO').negrito(false)
+  // Objeto — título por segmento (Veículo/Equipamento/...), cai em "OBJETO"
+  b.negrito(true).linha((opts.rotuloObjeto || 'Objeto').toUpperCase()).negrito(false)
+  // Em MAIÚSCULA para bater com a via em papel: lá o mesmo texto sai com a
+  // classe `uppercase`, então imprimia "(REPARADO)" enquanto a térmica saía
+  // "(Reparado)" — mesmo documento, duas grafias.
   const sufixoSituacao =
     tipo === 'SAIDA' && situacao
-      ? ` (${situacao === 'REPARADO' ? 'Reparado' : situacao === 'SEM_REPARO' ? 'Sem Reparo' : 'Condenado'})`
+      ? ` (${(situacao === 'REPARADO' ? 'Reparado' : situacao === 'SEM_REPARO' ? 'Sem Reparo' : 'Condenado').toUpperCase()})`
       : ''
-  b.linha(`${os.equipamento.tipo_equipamento}${sufixoSituacao}`)
-  if (os.equipamento.marca) b.linha(`Marca: ${os.equipamento.marca}`)
-  if (os.equipamento.modelo) b.linha(`Modelo: ${os.equipamento.modelo}`)
-  if (os.equipamento.numero_serie) b.linha(`N/S: ${os.equipamento.numero_serie}`)
-  if (os.equipamento.cor) b.linha(`Cor: ${os.equipamento.cor}`)
+  // O "tipo" só sai quando acrescenta info (informática: "COMPUTADOR"). Em oficina
+  // ele é o próprio rótulo ("Veículo") e repetir sob o cabeçalho "VEÍCULO" é redundante.
+  if (tipoObjetoRelevante(os.objeto.tipo_equipamento, opts.rotuloObjeto)) {
+    b.linha(`${os.objeto.tipo_equipamento}${sufixoSituacao}`)
+  } else if (sufixoSituacao) {
+    b.linha(sufixoSituacao.trim())
+  }
+  if (os.objeto.marca) b.linha(`Marca: ${os.objeto.marca}`)
+  if (os.objeto.modelo) b.linha(`Modelo: ${os.objeto.modelo}`)
+  if (os.objeto.numero_serie) b.linha(`N/S: ${os.objeto.numero_serie}`)
+  if (os.objeto.cor) b.linha(`Cor: ${os.objeto.cor}`)
   b.separador()
 
   // Defeito relatado
@@ -143,26 +173,55 @@ export function osToEscPos(
     if (adiantamento > 0) b.parLados('Adiantamento:', `-${formatCurrency(adiantamentoUtilizado)}`)
     b.negrito(true).parLados('TOTAL PAGO:', formatCurrency(totalRecebido)).negrito(false)
 
+    // Devolução (quando há juros): faltava aqui e existia só na via em papel,
+    // então a mesma OS saía com a quebra do estorno num comprovante e sem ela
+    // no outro. Espelha o bloco do OSPrintCupom.vue.
+    if ((os.acrescimo ?? 0) > 0) {
+      b.separador().negrito(true).linha('DEVOLUCAO').negrito(false)
+      b.parLados('Servico (dinheiro):', formatCurrency(paymentTotal - (os.acrescimo ?? 0)))
+      b.parLados('Estorno cartao:', formatCurrency(paymentTotal))
+    }
+
     // Garantia / sem reparo
     if (!isSemReparo && os.garantia) {
       b.separador().negrito(true).linha(`GARANTIA: ${os.garantia}`).negrito(false)
       b.linha('Cobre servicos prestados e pecas substituidas neste documento. Nao cobre mau uso, liquidos, quedas ou intervencao de terceiros.')
     } else if (isSemReparo) {
-      b.separador().linha('Equipamento devolvido sem reparo. Sem garantia aplicavel a esta OS.')
+      b.separador().linha('Objeto devolvido sem reparo. Sem garantia aplicavel a esta OS.')
     }
+  } else if (tipo === 'CANCELAMENTO') {
+    // CANCELAMENTO: motivo + termo (espelha o OSPrintCupom.vue)
+    b.separador()
+      .negrito(true)
+      .linha('MOTIVO DO CANCELAMENTO')
+      .negrito(false)
+      .linha(extrairMotivoCancelamento(os.observacoes))
+    b.separador()
+    b.linha('A OS acima foi cancelada nesta data. Objeto devolvido ao cliente sem reparos ou com reparos parciais, isentando a assistencia de garantias sobre servicos nao concluidos.')
   } else {
     // ENTRADA: termos
     b.separador()
-    b.linha('O cliente declara estar ciente que a empresa nao se responsabiliza por perda de dados nem por chips/cartoes deixados no aparelho. Autorizo a analise tecnica do equipamento.')
+    b.linha('O cliente declara estar ciente que a empresa nao se responsabiliza por perda de dados nem por chips/cartoes deixados no aparelho. Autorizo a analise tecnica do objeto.')
     b.separador()
-    b.linha('PRAZO DE RETIRADA: Equipamentos nao retirados em 90 dias apos aviso de conclusao serao considerados abandonados, conforme Art. 1.275 do Codigo Civil Brasileiro.')
+    b.linha('PRAZO DE RETIRADA: Objetos nao retirados em 90 dias apos aviso de conclusao serao considerados abandonados, conforme Art. 1.275 do Codigo Civil Brasileiro.')
   }
 
-  // Assinaturas
-  b.pular(3)
+  // Assinaturas — as duas, como na via em papel (lá elas são blocos empilhados,
+  // não colunas, então cabem na bobina). Antes só existia a do cliente, e sem
+  // o nome embaixo da linha.
+  const linhaAssinatura = '_'.repeat(Math.min(28, b.colunas - 4))
+  b.pular(2)
     .alinhar('centro')
-    .linha('_'.repeat(Math.min(28, b.colunas - 4)))
+    .linha(linhaAssinatura)
+    .negrito(true)
+    .linha('Tecnico Responsavel')
+    .negrito(false)
+    .pular(2)
+    .linha(linhaAssinatura)
+    .negrito(true)
     .linha('Assinatura do Cliente')
+    .negrito(false)
+  if (os.cliente) b.linha(getClienteNome(os.cliente))
 
   // Rodapé
   b.separador()

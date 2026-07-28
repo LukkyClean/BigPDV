@@ -6,5 +6,6 @@ export const AddressReadSchema = z.object({
     bairro: z.string().max(100, 'Bairro deve ter no máximo 255 caracteres'),
     cidade: z.string().max(100, 'Cidade deve ter no máximo 255 caracteres'),
     estado: z.string().max(2, 'Estado deve ter no máximo 255 caracteres'),
+    cep: z.string().max(10, 'CEP deve ter no máximo 10 caracteres').optional().nullable(),
     complemento: z.string().max(100, 'Complemento deve ter no máximo 255 caracteres').optional().nullable()
 })

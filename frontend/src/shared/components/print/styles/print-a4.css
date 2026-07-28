@@ -1,7 +1,25 @@
 @media print {
   @page {
     size: A4;
-    margin: 1.5cm;
+    /* Margem 0 no @page: este motor de impressão (diálogo do app, "Margens:
+       Nenhuma") ignora a margem do @page, então o conteúdo encostava nas quatro
+       bordas. Toda a margem do documento passa a vir do padding do
+       .print-container — determinística, independe do diálogo. */
+    margin: 0;
+  }
+
+  /* Destrava a rolagem do body na impressão.
+     BaseModal põe `document.body.style.overflow = 'hidden'` (INLINE) enquanto
+     há modal aberto, e só devolve quando o último fecha. Como as impressões de
+     OS e de venda são disparadas de dentro do modal, o body chega ao
+     window.print() travado — o que corta ou zera o conteúdo. Precisa de
+     !important: estilo inline vence folha de estilo.
+     `height: auto` pelo mesmo motivo: a altura fixa do shell (h-screen) não
+     pode limitar um documento que corre por várias páginas. */
+  html,
+  body {
+    overflow: visible !important;
+    height: auto !important;
   }
 
   body {
@@ -11,8 +29,14 @@
     padding: 0;
   }
 
-  /* Oculta tudo que não é o template de impressão (remove do layout, não só da visibilidade) */
-  body > *:not(.print-container) {
+  /* Oculta tudo que não é template de impressão (remove do layout, não só da
+     visibilidade).
+     Precisa excluir o cupom TAMBÉM: este arquivo é global (o <style> que o
+     importa não é scoped) e fica ativo mesmo quando quem imprime é o cupom,
+     porque os dois templates são importados juntos. Sem a exceção, esta regra
+     escondia o .print-cupom-container e o cupom saía em branco — o
+     `visibility: visible` do print-cupom.css não vence `display: none`. */
+  body > *:not(.print-container):not(.print-cupom-container) {
     display: none !important;
   }
 
@@ -20,6 +44,10 @@
     visibility: visible;
     display: block !important;
     width: 100%;
+    /* Margem do documento nas quatro bordas (única fonte da verdade — ver @page
+       acima). box-sizing evita que o padding estoure a largura útil da página. */
+    box-sizing: border-box;
+    padding: 1cm;
     background: white;
     font-size: 12px;
   }

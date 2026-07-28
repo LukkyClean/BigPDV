@@ -4,7 +4,8 @@ import type { OSReopenMode } from './useOSStatusLocks';
 
 interface UseOSReopenStateParams {
   osNumber: ComputedRef<string | null>;
-  onReopenRequest: (osNumber: string) => void;
+  /** clientePagou: false quando o operador confirma que o cliente NÃO pagou o valor anterior. */
+  onReopenRequest: (osNumber: string, clientePagou: boolean) => void;
   onFullReopen: () => void;
 }
 
@@ -30,13 +31,13 @@ export function useOSReopenState({
     isReopenOptionsOpen.value = false;
   }
 
-  function handleReopenFull() {
+  function handleReopenFull(clientePagou: boolean = true) {
     const currentOsNumber = osNumber.value;
     if (!currentOsNumber) return;
 
     reopenMode.value = 'FULL';
     isReopenOptionsOpen.value = false;
-    onReopenRequest(currentOsNumber);
+    onReopenRequest(currentOsNumber, clientePagou);
   }
 
   function resetReopenState() {

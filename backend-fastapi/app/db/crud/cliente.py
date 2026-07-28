@@ -6,11 +6,35 @@
 # ---------------------------------------------------------------------------
 
 from sqlalchemy.orm import Session, with_polymorphic
-from sqlalchemy import and_, select, func, or_
+from sqlalchemy import and_, select, func
 from typing import Sequence, Callable, Optional
 
+from app.core.busca import filtro_busca
 from app.db.models.cliente import Cliente as ClienteModel, ClientePF, ClientePJ
-from app.db.models.ordem_servico_equipamento import OrdemServicoEquipamento
+from app.db.models.objeto_servico import ObjetoServico
+
+
+def _campos_busca(poly) -> tuple:
+    """
+    Campos varridos na busca de cliente.
+
+    Recebe o `with_polymorphic` já montado porque PF e PJ vivem em tabelas
+    filhas: as colunas precisam vir da mesma entidade polimórfica usada no
+    SELECT, senão o SQLAlchemy repete o JOIN.
+
+    Não há resgate por similaridade aqui, de propósito: confundir "José Silva"
+    com "Josué Silva" custa caro num campo que decide quem vai ser cobrado.
+    Ignorar acentos e ordem das palavras já resolve o caso real ("joao" achar
+    "João").
+    """
+    return (
+        poly.ClientePF.nome,
+        poly.ClientePF.cpf,
+        poly.ClientePJ.razao_social,
+        poly.ClientePJ.nome_fantasia,
+        poly.ClientePJ.cnpj,
+        poly.email,
+    )
 
 # ===========================================================================
 # VERIFICAÇÕES (AUXILIARES)
@@ -91,18 +115,9 @@ def get_cliente_by_search(
         query = query.where(poly.ativo == True)
 
     search = filters.get("search")
-    if search:
-        like_search = f"%{search}%"
-        query = query.where(
-            or_(
-                poly.ClientePF.nome.ilike(like_search),
-                poly.ClientePF.cpf.ilike(like_search),
-                poly.ClientePJ.razao_social.ilike(like_search),
-                poly.ClientePJ.nome_fantasia.ilike(like_search),
-                poly.ClientePJ.cnpj.ilike(like_search),
-                poly.ClienteModel.email.ilike(like_search),
-            )
-        )
+    filtro = filtro_busca(search, _campos_busca(poly))
+    if filtro is not None:
+        query = query.where(filtro)
 
     count_stmt = select(func.count()).select_from(query.subquery())
     total = db.scalar(count_stmt) or 0
@@ -116,17 +131,9 @@ def get_cliente_simple_by_search(db: Session, search: Optional[str]) -> Sequence
 
     customers = with_polymorphic(ClienteModel, [ClientePF, ClientePJ])
 
-    if search:
-        conditions = or_(
-            customers.ClientePF.nome.ilike(f"%{search}%"),
-            customers.ClientePF.cpf.ilike(f"%{search}%"),
-            customers.ClientePJ.razao_social.ilike(f"%{search}%"),
-            customers.ClientePJ.nome_fantasia.ilike(f"%{search}%"),
-            customers.ClientePJ.cnpj.ilike(f"%{search}%"),
-            customers.email.ilike(f"%{search}%"),
-        )
-
-        return db.scalars(select(customers).where(and_(conditions, customers.ativo == True))).all()
+    filtro = filtro_busca(search, _campos_busca(customers))
+    if filtro is not None:
+        return db.scalars(select(customers).where(and_(filtro, customers.ativo == True))).all()
 
     return db.scalars(select(customers).where(customers.ativo == True)).all()
 
@@ -154,19 +161,19 @@ def deactivate_cliente(db: Session, cliente: ClienteModel) -> None:
 
 
 # ===========================================================================
-# EQUIPAMENTOS DO CLIENTE
+# OBJETOS DO CLIENTE
 # ===========================================================================
 
-def get_equipamentos_by_cliente_id(
+def get_objetos_by_cliente_id(
     db: Session, cliente_id: int
-) -> Sequence[OrdemServicoEquipamento]:
-    """Retorna todos os equipamentos ativos de um cliente, ordenados do mais recente ao mais antigo."""
+) -> Sequence[ObjetoServico]:
+    """Retorna todos os objetos ativos de um cliente, ordenados do mais recente ao mais antigo."""
     stmt = (
-        select(OrdemServicoEquipamento)
+        select(ObjetoServico)
         .where(
-            OrdemServicoEquipamento.cliente_id == cliente_id,
-            OrdemServicoEquipamento.ativo == True,
+            ObjetoServico.cliente_id == cliente_id,
+            ObjetoServico.ativo == True,
         )
-        .order_by(OrdemServicoEquipamento.data_criacao.desc())
+        .order_by(ObjetoServico.data_criacao.desc())
     )
     return db.scalars(stmt).all()

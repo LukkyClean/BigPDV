@@ -9,6 +9,7 @@ import {
   getClienteNome,
   getClienteDoc,
   getClientePhone,
+  getClienteEndereco,
   formatPrintDate,
   formatPrintPhone,
   formatPrintDoc,
@@ -74,6 +75,7 @@ const totalPago = computed(() => {
             <p v-if="getClienteDoc(saleData?.cliente as any)"><span class="font-bold text-slate-600">CPF/CNPJ:</span> {{ formatPrintDoc(getClienteDoc(saleData?.cliente as any)) }}</p>
             <p v-if="getClientePhone(saleData?.cliente as any)"><span class="font-bold text-slate-600">Telefone:</span> {{ formatPrintPhone(getClientePhone(saleData?.cliente as any)) }}</p>
           </div>
+          <p v-if="getClienteEndereco(saleData?.cliente as any)"><span class="font-bold text-slate-600">Endereço:</span> {{ getClienteEndereco(saleData?.cliente as any) }}</p>
           <p v-if="saleData?.cliente?.id"><span class="font-bold text-slate-600">Cód. Cliente:</span> #{{ saleData.cliente.id }}</p>
         </div>
       </div>
@@ -128,7 +130,12 @@ const totalPago = computed(() => {
           <div v-else class="text-xs text-slate-400 italic py-2">Nenhum pagamento registrado.</div>
         </div>
 
+        <!-- Resumo financeiro -->
         <div class="space-y-1 text-right">
+          <!-- O cabeçalho não é enfeite: sem ele esta coluna começava no topo da
+               linha do grid e o "Subtotal" alinhava com o TÍTULO da coluna de
+               pagamentos, não com o conteúdo dela. -->
+          <p class="text-[10px] font-bold text-slate-500 uppercase mb-2 border-b border-slate-200 pb-1 text-left">Resumo Financeiro</p>
           <div class="flex justify-between text-xs text-slate-500">
             <span>Subtotal:</span>
             <span>{{ formatCurrency(sale.subtotal) }}</span>
@@ -140,6 +147,10 @@ const totalPago = computed(() => {
           <div v-if="sale.entrega > 0" class="flex justify-between text-xs text-green-600">
             <span>Entrega:</span>
             <span>+ {{ formatCurrency(sale.entrega) }}</span>
+          </div>
+          <div v-if="(saleData?.acrescimo ?? 0) > 0" class="flex justify-between text-xs text-amber-600">
+            <span>Juros:</span>
+            <span>+ {{ formatCurrency(saleData?.acrescimo ?? 0) }}</span>
           </div>
           <div class="border-t border-slate-800 my-1 pt-1 flex justify-between items-end">
             <span class="text-sm font-bold text-slate-900 uppercase">Total:</span>

@@ -14,7 +14,7 @@ import CustomerSearchModal from '@/modules/sales/components/CustomerSearchModal.
 import SaleModal from '@/modules/sales/components/SaleModal.vue';
 import OSClienteSearchModal from '@/modules/order-service/ordens/components/OSClienteSearchModal.vue';
 import OSFormModal from '@/modules/order-service/ordens/components/OSFormModal.vue';
-import OSEquipamentoSelectModal from '@/modules/order-service/ordens/components/form/OSEquipamentoSelectModal.vue';
+import OSObjetoSelectModal from '@/modules/order-service/ordens/components/form/OSObjetoSelectModal.vue';
 import OSCreditoAlertModal from '@/modules/order-service/ordens/components/OSCreditoAlertModal.vue';
 
 import { useLayoutStore } from '../store/layout.store';
@@ -82,19 +82,20 @@ const { openCustomerModal } = useCustomerSearchModal();
 const {
   isClienteSearchOpen,
   isFormModalOpen,
-  isEquipSelectOpen,
+  isObjetoSelectOpen,
   isCreditAlertOpen,
   selectedCliente,
   selectedOS,
-  equipamentosHistoricoFlow,
-  selectedEquipamento,
+  objetosHistoricoFlow,
+  selectedObjeto,
+  autoOpenReopen,
   autoUsarCredito,
   openNovaOS,
   handleClienteSelected,
   handleCreditoUsado,
   handleCreditoIgnorado,
-  handleEquipamentoSelectedFlow,
-  skipEquipamentoSelectFlow,
+  handleObjetoSelectedFlow,
+  skipObjetoSelectFlow,
   handleChangeCliente,
   closeClienteSearch,
   closeFormModal,
@@ -206,19 +207,20 @@ whenever(Ctrl_K, () => {
       @fechar="handleCreditoIgnorado"
     />
 
-    <OSEquipamentoSelectModal
-      :is-open="isEquipSelectOpen"
-      :equipamentos="equipamentosHistoricoFlow"
-      @close="skipEquipamentoSelectFlow"
-      @select="handleEquipamentoSelectedFlow"
+    <OSObjetoSelectModal
+      :is-open="isObjetoSelectOpen"
+      :objetos="objetosHistoricoFlow"
+      @close="skipObjetoSelectFlow"
+      @select="handleObjetoSelectedFlow"
     />
 
     <OSFormModal
       :is-open="isFormModalOpen"
       :ordem-servico="selectedOS"
       :selected-cliente="selectedCliente"
-      :initial-equipamento="selectedEquipamento"
+      :initial-objeto="selectedObjeto"
       :auto-usar-credito="autoUsarCredito"
+      :auto-open-reopen="autoOpenReopen"
       @close="closeFormModal"
       @change-cliente="handleChangeCliente"
     />

@@ -16,6 +16,7 @@ export const PERMISSIONS = {
   employees: 'funcionario',
   positions: 'cargo',
   suppliers: 'fornecedor',
+  reports: 'view_reports',
 } as const;
 
 export type PermissionKey = typeof PERMISSIONS[keyof typeof PERMISSIONS];
@@ -41,4 +42,5 @@ export const PERMISSION_ALIASES: Partial<Record<PermissionKey, string[]>> = {
   [PERMISSIONS.enterprise]: ['view_enterprise', 'manage_enterprise', 'delete_enterprise'],
   [PERMISSIONS.employees]: ['view_employees', 'manage_employees', 'delete_employees'],
   [PERMISSIONS.positions]: ['view_positions', 'manage_positions', 'delete_positions'],
+  [PERMISSIONS.reports]: ['view_reports', 'manage_reports'],
 };

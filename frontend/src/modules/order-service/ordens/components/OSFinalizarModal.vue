@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
-import { CheckCircle2, AlertTriangle, XCircle, ShieldCheck, User, Cpu, Calendar, Banknote, BookmarkCheck } from 'lucide-vue-next';
+import { ref, computed, watch, nextTick } from 'vue';
+import { CheckCircle2, AlertTriangle, XCircle, ShieldCheck, User, Cpu, Calendar, Banknote, BookmarkCheck, CalendarClock, Gauge, ChevronDown } from 'lucide-vue-next';
 
 import BaseModal from '@/shared/components/commons/BaseModal/BaseModal.vue';
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
@@ -8,10 +8,15 @@ import BaseTextarea from '@/shared/components/ui/BaseInput/BaseTextarea.vue';
 import BaseMoneyInput from '@/shared/components/ui/BaseMoneyInput/MoneyInput.vue';
 import BaseCheckbox from '@/shared/components/ui/BaseCheckbox/BaseCheckbox.vue';
 import BaseInput from '@/shared/components/ui/BaseInput/BaseInput.vue';
+import BaseDateInput from '@/shared/components/ui/BaseDateInput/BaseDateInput.vue';
 
 import type { OrderServiceReadDataType } from '../schemas/orderServiceQuery.schema';
 import type { OsEquipSituacaoEnumDataType } from '../schemas/enums/osEnums.schema';
 import { formatCurrency } from '@/shared/utils/finance';
+import { useCapacidades } from '@/modules/order-service/shared/segmento/useCapacidades';
+import { useToast } from '@/shared/composables/useToast';
+import { useImpressaoStore } from '@/shared/stores/impressao.store';
+import { updateObjetoOS } from '../services/orderServiceUpdate.service';
 
 
 export interface DadosFinalizacaoOS {
@@ -36,6 +41,81 @@ const emit = defineEmits<{
   close: [];
   advance: [data: DadosFinalizacaoOS];
 }>();
+
+const { temRevisoes } = useCapacidades();
+const toast = useToast();
+const impressaoStore = useImpressaoStore();
+
+// ─── Próxima revisão (oficina) — agendamento por intervalo ("o que vencer primeiro") ──
+const proximaRevisaoData = ref<string>('');
+const proximaRevisaoKm = ref<number | null>(null);
+const revisaoAberta = ref(false); // colapsado por padrão (campo opcional)
+const revisaoBlock = ref<HTMLElement | null>(null);
+
+// Abre/fecha o bloco de revisão; ao abrir, rola até ele (a barra de ação fica sticky).
+function toggleRevisao() {
+  revisaoAberta.value = !revisaoAberta.value;
+  if (revisaoAberta.value) {
+    nextTick(() => {
+      revisaoBlock.value?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    });
+  }
+}
+
+// Resumo exibido na barra quando o bloco está fechado (ex: "12/10/2026 · 105.000 km").
+const revisaoResumo = computed(() => {
+  const partes: string[] = [];
+  if (proximaRevisaoData.value) {
+    const [y, m, d] = proximaRevisaoData.value.split('-');
+    if (y && m && d) partes.push(`${d}/${m}/${y}`);
+  }
+  if (proximaRevisaoKm.value != null) partes.push(`${proximaRevisaoKm.value.toLocaleString('pt-BR')} km`);
+  return partes.join(' · ');
+});
+
+// Só faz sentido agendar retorno quando o objeto foi reparado (não em condenado/sem reparo).
+const mostrarRevisao = computed(
+  () => temRevisoes.value && situacao_equipamento.value === 'REPARADO',
+);
+
+// KM base para os presets = KM de entrada registrado nesta OS (último conhecido do veículo).
+const kmBaseRevisao = computed<number>(() => {
+  const km = (props.ordemServico?.dados_adicionais as Record<string, unknown> | undefined)?.['km_entrada'];
+  return typeof km === 'number' ? km : 0;
+});
+
+function agendarRevisaoMeses(meses: number) {
+  const d = new Date();
+  d.setMonth(d.getMonth() + meses);
+  proximaRevisaoData.value = d.toISOString().slice(0, 10);
+}
+
+function agendarRevisaoKm(delta: number) {
+  proximaRevisaoKm.value = kmBaseRevisao.value + delta;
+}
+
+function onProximaRevisaoKmInput(v: string) {
+  const digitos = String(v).replace(/\D/g, '');
+  proximaRevisaoKm.value = digitos ? Number(digitos) : null;
+}
+
+// Grava o alvo no veículo (endpoint de objeto, update parcial) ANTES de finalizar,
+// enquanto a OS ainda está editável. Desacoplado do fluxo de finalização.
+async function salvarProximaRevisao() {
+  if (!mostrarRevisao.value || !props.osNumero) return;
+  if (!proximaRevisaoData.value && proximaRevisaoKm.value == null) return;
+  try {
+    await updateObjetoOS({
+      osNumber: props.osNumero,
+      updatedObjeto: {
+        proxima_revisao_data: proximaRevisaoData.value || null,
+        proxima_revisao_km: proximaRevisaoKm.value ?? null,
+      },
+    });
+  } catch {
+    toast.error('OS finalizada, mas não foi possível agendar a próxima revisão.');
+  }
+}
 
 // ─── Estado ──────────────────────────────────────────────────────────────────
 const situacao_equipamento = ref<OsEquipSituacaoEnumDataType | undefined>('REPARADO');
@@ -74,10 +154,11 @@ const pagoAnteriormente = computed(() => props.ordemServico?.credito_anterior ??
 
 const taxaEntrega = computed(() => props.ordemServico?.taxa_entrega ?? 0);
 
-// Desconto já gravado na OS (de finalizações anteriores) — somente leitura, acumulado no backend
-const existingDesconto = computed(() =>
-  props.ordemServico?.credito_anterior ? (props.ordemServico?.desconto ?? 0) : 0
-);
+// Desconto já gravado na OS — somente leitura; o backend ACUMULA o desconto novo em
+// cima deste, então ele precisa ser sempre o os.desconto atual. NÃO condicionar ao
+// credito_anterior: numa reabertura "não pagou" o crédito é zerado mas o desconto
+// permanece, e amarrar ao crédito fazia o modal ignorar o desconto existente.
+const existingDesconto = computed(() => props.ordemServico?.desconto ?? 0);
 
 const valorEntrada = computed(() => props.ordemServico?.valor_entrada ?? 0);
 
@@ -134,7 +215,19 @@ const adiantamentoParaDecisao = computed(() => excedente.value > 0);
 // ─── Reset ───────────────────────────────────────────────────────────────────
 watch(() => props.isOpen, (open) => {
   if (open) {
-    // Desconto anterior é preservado via existingDesconto — campo começa vazio
+    // Desconto anterior é preservado via existingDesconto — campo começa vazio.
+    // Pré-preenche a próxima revisão com o alvo já cadastrado no veículo (se houver).
+    const obj = props.ordemServico?.objeto as
+      | { proxima_revisao_data?: string | null; proxima_revisao_km?: number | null }
+      | undefined;
+    proximaRevisaoData.value = obj?.proxima_revisao_data ?? '';
+    proximaRevisaoKm.value = obj?.proxima_revisao_km ?? null;
+    // Abre o bloco só se já houver um alvo agendado; senão fica colapsado.
+    revisaoAberta.value = !!(obj?.proxima_revisao_data || obj?.proxima_revisao_km != null);
+    // "Imprimir Comprovante" segue a config de impressão da OS: 'automatico'
+    // (ou 'perguntar') já vem marcado; 'nao' começa desmarcado. Antes começava
+    // sempre desmarcado e a impressão automática pós-finalização não saía.
+    shouldPrint.value = impressaoStore.config.auto_imprimir_os !== 'nao';
   } else {
     situacao_equipamento.value = 'REPARADO';
     garantia.value = undefined;
@@ -147,6 +240,9 @@ watch(() => props.isOpen, (open) => {
     descontoDisplay.value = 0;
     descontoPercentual.value = 0;
     descontoTipo.value = 'valor';
+    proximaRevisaoData.value = '';
+    proximaRevisaoKm.value = null;
+    revisaoAberta.value = false;
   }
 });
 
@@ -159,7 +255,7 @@ function buildDesconto() {
     : Math.round(descontoDisplay.value * 100);
 }
 
-function handleAdvance() {
+async function handleAdvance() {
   hasAttemptedAdvance.value = true;
   if (garantiaObrigatoria.value && !garantia.value) return;
 
@@ -174,16 +270,22 @@ function handleAdvance() {
     return;
   }
 
+  await salvarProximaRevisao();
   emit('advance', {
     situacao_equipamento: situacao_equipamento.value,
     garantia: garantia.value,
     solucao: solucao.value || undefined,
     observacoes: observacoes.value || undefined,
     desconto: buildDesconto(),
+    // Sem isto o checkbox "Imprimir Comprovante" se perdia no caminho do
+    // pagamento (dadosOs.shouldPrint vinha undefined → false), e a finalização
+    // COM pagamento nunca imprimia automaticamente. A via de entrega já mandava.
+    shouldPrint: shouldPrint.value,
   });
 }
 
-function handleEmitEntrega(zerarAdiantamento: boolean) {
+async function handleEmitEntrega(zerarAdiantamento: boolean) {
+  await salvarProximaRevisao();
   emit('advance', {
     situacao_equipamento: situacao_equipamento.value,
     garantia: garantia.value,
@@ -202,7 +304,7 @@ function handleEmitEntrega(zerarAdiantamento: boolean) {
     :title="stepAdiantamento ? 'Adiantamento recebido' : 'Finalizar Ordem de Serviço'"
     :subtitle="stepAdiantamento ? '' : (osNumero ? `OS: ${osNumero}` : '')"
     :size="stepAdiantamento ? 'sm' : 'xl'"
-    overflow="hidden"
+    overflow="auto"
     @close="emit('close')"
   >
     <!-- ── Step adiantamento: substitui todo o conteúdo ── -->
@@ -247,13 +349,10 @@ function handleEmitEntrega(zerarAdiantamento: boolean) {
       </button>
     </div>
 
-    <!-- ── Formulário principal ── -->
-    <div v-else class="flex flex-col h-full overflow-hidden">
+    <!-- ── Formulário principal (o corpo do BaseModal rola; a barra fica sticky) ── -->
+    <div v-else class="flex flex-col gap-4">
 
-      <!-- ── Área scrollável (informações, campos e opções) ── -->
-      <div class="flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden flex flex-col gap-4 pb-2">
-
-      <!-- ── Linha 1: Cliente + Equipamento + Previsão ── -->
+      <!-- ── Linha 1: Cliente + Objeto + Previsão ── -->
       <div class="grid grid-cols-3 gap-3">
         <div class="bg-zinc-50 border border-zinc-200 rounded-xl p-3 flex items-center gap-3">
           <div class="p-2 bg-brand-primary/10 rounded-lg shrink-0">
@@ -271,11 +370,11 @@ function handleEmitEntrega(zerarAdiantamento: boolean) {
             <Cpu :size="16" class="text-brand-primary" />
           </div>
           <div class="min-w-0">
-            <p class="text-[10px] font-semibold text-zinc-400 uppercase tracking-wide">Equipamento</p>
+            <p class="text-[10px] font-semibold text-zinc-400 uppercase tracking-wide">Objeto</p>
             <p class="font-semibold text-zinc-800 text-sm truncate leading-tight">
-              {{ ordemServico?.equipamento?.marca }} {{ ordemServico?.equipamento?.modelo }}
+              {{ ordemServico?.objeto?.marca }} {{ ordemServico?.objeto?.modelo }}
             </p>
-            <p class="mt-0.5 text-xs text-zinc-400">Série: {{ ordemServico?.equipamento?.numero_serie }}</p>
+            <p class="mt-0.5 text-xs text-zinc-400">Série: {{ ordemServico?.objeto?.numero_serie }}</p>
           </div>
         </div>
 
@@ -349,11 +448,11 @@ function handleEmitEntrega(zerarAdiantamento: boolean) {
         </div>
       </div>
 
-      <!-- ── Linha 3: Situação do Equipamento ── -->
+      <!-- ── Linha 3: Situação do Objeto ── -->
       <div>
         <div class="flex items-center gap-1.5 mb-2">
           <ShieldCheck :size="14" class="text-brand-primary" />
-          <span class="text-xs font-semibold text-zinc-500 uppercase tracking-wide">Situação do Equipamento</span>
+          <span class="text-xs font-semibold text-zinc-500 uppercase tracking-wide">Situação do Objeto</span>
           <span class="text-[10px] text-zinc-400">(opcional)</span>
         </div>
         <div class="grid grid-cols-3 gap-2">
@@ -403,10 +502,73 @@ function handleEmitEntrega(zerarAdiantamento: boolean) {
         </p>
       </div>
 
-      </div><!-- fim da área scrollável -->
+      <!-- ── Linha 5: Próxima Revisão (oficina) — colapsável ── -->
+      <div v-if="mostrarRevisao" ref="revisaoBlock" class="bg-brand-primary/5 border border-brand-primary/15 rounded-xl scroll-mb-28">
+        <button
+          type="button"
+          class="w-full flex items-center gap-2 px-3 py-2.5 text-left cursor-pointer"
+          @click="toggleRevisao"
+        >
+          <CalendarClock :size="14" class="text-brand-primary shrink-0" />
+          <span class="text-xs font-semibold text-zinc-600 uppercase tracking-wide">Agendar Próxima Revisão</span>
+          <span v-if="!revisaoAberta && revisaoResumo" class="text-[11px] font-semibold text-brand-primary truncate">· {{ revisaoResumo }}</span>
+          <span v-else class="text-[10px] text-zinc-400">(opcional)</span>
+          <ChevronDown
+            :size="15"
+            class="ml-auto text-zinc-400 shrink-0 transition-transform"
+            :class="revisaoAberta ? 'rotate-180' : ''"
+          />
+        </button>
+        <div v-if="revisaoAberta" class="px-3 pb-3">
+          <p class="text-[10px] text-zinc-400 mb-2">Vale o que vencer primeiro — data ou KM.</p>
+          <div class="grid grid-cols-2 gap-4">
+          <!-- Por data -->
+          <div>
+            <p class="text-[11px] font-semibold text-zinc-500 mb-1.5 flex items-center gap-1">
+              <Calendar :size="12" /> Por data
+            </p>
+            <div class="flex flex-wrap gap-1.5 mb-2">
+              <button
+                v-for="p in [{ l: '3 meses', m: 3 }, { l: '6 meses', m: 6 }, { l: '1 ano', m: 12 }]"
+                :key="p.m"
+                type="button"
+                class="px-2.5 py-1 rounded-lg border text-[11px] font-medium border-zinc-200 bg-white text-zinc-600 hover:border-brand-primary hover:text-brand-primary transition-all cursor-pointer"
+                @click="agendarRevisaoMeses(p.m)"
+              >
+                {{ p.l }}
+              </button>
+            </div>
+            <BaseDateInput v-model="proximaRevisaoData" />
+          </div>
+          <!-- Por KM -->
+          <div>
+            <p class="text-[11px] font-semibold text-zinc-500 mb-1.5 flex items-center gap-1">
+              <Gauge :size="12" /> Por KM
+              <span v-if="kmBaseRevisao" class="text-zinc-400 font-normal">· atual {{ kmBaseRevisao.toLocaleString('pt-BR') }}</span>
+            </p>
+            <div class="flex flex-wrap gap-1.5 mb-2">
+              <button
+                v-for="d in [5000, 10000, 20000]"
+                :key="d"
+                type="button"
+                class="px-2.5 py-1 rounded-lg border text-[11px] font-medium border-zinc-200 bg-white text-zinc-600 hover:border-brand-primary hover:text-brand-primary transition-all cursor-pointer"
+                @click="agendarRevisaoKm(d)"
+              >
+                +{{ d.toLocaleString('pt-BR') }}
+              </button>
+            </div>
+            <BaseInput
+              :model-value="proximaRevisaoKm != null ? String(proximaRevisaoKm) : ''"
+              placeholder="Ex: 50000"
+              @update:model-value="onProximaRevisaoKmInput"
+            />
+          </div>
+          </div>
+        </div>
+      </div>
 
-      <!-- ── Barra financeira fixa na base ── -->
-      <div class="bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3 shrink-0 mt-2 space-y-2">
+      <!-- ── Barra financeira (fixa no rodapé do modal via sticky) ── -->
+      <div class="sticky bottom-0 z-10 bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3 space-y-2 shadow-[0_-6px_16px_-4px_rgba(0,0,0,0.08)]">
 
         <!-- Resumo expandido (toggle) -->
         <div v-if="showResumo" class="flex items-center gap-2 text-xs pb-2 border-b border-zinc-200 flex-wrap">
@@ -455,9 +617,9 @@ function handleEmitEntrega(zerarAdiantamento: boolean) {
               {{ aCobrar === 0 ? 'Nada a cobrar' : formatCurrency(aCobrar) }}
             </p>
           </div>
-          <div v-else-if="desconto > 0" class="shrink-0">
+          <div v-else-if="desconto > 0 || existingDesconto > 0" class="shrink-0">
             <p class="text-[10px] font-semibold text-zinc-400 uppercase tracking-wide leading-none mb-0.5">Total</p>
-            <p class="text-xl font-bold text-brand-primary">{{ formatCurrency(subtotalItens - desconto + taxaEntrega) }}</p>
+            <p class="text-xl font-bold text-brand-primary">{{ formatCurrency(subtotalItens - existingDesconto - desconto + taxaEntrega) }}</p>
           </div>
 
           <!-- Link ver/ocultar resumo -->
@@ -503,7 +665,7 @@ function handleEmitEntrega(zerarAdiantamento: boolean) {
           Não é possível finalizar como <span class="font-bold text-emerald-600">Reparado</span> sem nenhum serviço ou peça cadastrado.
         </p>
         <p class="text-xs text-zinc-500">
-          Volte ao cadastro da OS e declare o que foi realizado, ou altere a situação do equipamento.
+          Volte ao cadastro da OS e declare o que foi realizado, ou altere a situação do objeto.
         </p>
       </div>
 
@@ -520,7 +682,7 @@ function handleEmitEntrega(zerarAdiantamento: boolean) {
           class="w-full"
           @click="showOsVaziaModal = false"
         >
-          Alterar situação do equipamento
+          Alterar situação do objeto
         </BaseButton>
       </div>
     </div>

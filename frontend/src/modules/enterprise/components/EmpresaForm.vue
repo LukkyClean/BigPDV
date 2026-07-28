@@ -6,8 +6,8 @@
  * Todas as sections injetam context diretamente
  */
 
-import { Building, Save, Globe } from 'lucide-vue-next';
-import { onBeforeRouteLeave } from 'vue-router';
+import { Building, Save, Globe, FileText, Lock, ChevronRight } from 'lucide-vue-next';
+import { onBeforeRouteLeave, useRouter } from 'vue-router';
 
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
 import BaseConfirmModal from '@/shared/components/commons/BaseConfirmModal/BaseConfirmModal.vue';
@@ -17,11 +17,13 @@ import { useConfirmacao } from '@/shared/composables/useConfirmacao';
 import IdentificationSection from './form/IdentificationSection.vue';
 import AddressSection from './form/AddressSection.vue';
 import TaxDataSection from './form/TaxDataSection.vue';
-import EmissaoSection from './form/EmissaoSection.vue';
-import CertificateSection from './form/CertificateSection.vue';
 import ContactSection from './form/ContactSection.vue';
+// Emissão/Certificado (fiscal) saíram desta tela: a v1 é não-fiscal. A parte
+// fiscal vive na tela separada /fiscal (gated por plano). Os componentes fiscais
+// seguem preservados em ./form/, prontos para o módulo fiscal do próximo release.
 
 import { useEmpresaFormProvider } from '../composables/useEmpresaFormProvider';
+import { recursoDisponivel } from '@/shared/config/planos';
 
 // =============================================
 // Provider Setup
@@ -42,6 +44,8 @@ const {
 // =============================================
 
 const confirmacao = useConfirmacao();
+const router = useRouter();
+const nfeDisponivel = recursoDisponivel('nfe');
 
 async function handleSave(e?: Event) {
   e?.preventDefault();
@@ -134,9 +138,36 @@ onBeforeRouteLeave(async () => {
           <IdentificationSection />
           <AddressSection />
           <TaxDataSection />
-          <EmissaoSection />
-          <CertificateSection />
           <ContactSection />
+
+          <!-- Acesso à tela fiscal (separada). Na v1 (plano Start) é um upsell
+               bloqueado; toca em /fiscal onde fica o CTA de upgrade. -->
+          <button
+            type="button"
+            class="w-full flex items-center gap-4 bg-white p-5 rounded-xl shadow-sm border border-gray-100 hover:border-brand-primary/40 hover:shadow transition-all text-left"
+            @click="router.push('/fiscal')"
+          >
+            <div class="w-11 h-11 rounded-xl bg-brand-primary-light flex items-center justify-center shrink-0">
+              <FileText :size="20" class="text-brand-primary" />
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2">
+                <h3 class="text-sm font-bold text-gray-800">Emissão de Notas Fiscais</h3>
+                <span
+                  v-if="!nfeDisponivel"
+                  class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 text-[10px] font-bold uppercase"
+                >
+                  <Lock :size="10" /> Plano superior
+                </span>
+              </div>
+              <p class="text-xs text-gray-500 mt-0.5">
+                {{ nfeDisponivel
+                  ? 'Configure a emissão de NF-e, NFC-e e NFS-e.'
+                  : 'Não incluído no seu plano. Toque para fazer upgrade.' }}
+              </p>
+            </div>
+            <ChevronRight :size="18" class="text-gray-400 shrink-0" />
+          </button>
         </div>
 
         <!-- Right Column: Actions -->

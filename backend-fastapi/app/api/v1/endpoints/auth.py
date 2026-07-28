@@ -5,7 +5,7 @@
 #            Gerencia o ciclo de vida do Token (emissão e revogação).
 # ---------------------------------------------------------------------------
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, status, Request, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.depends import get_token, _handle_db_transaction
@@ -26,10 +26,41 @@ router = APIRouter()
     status_code=status.HTTP_200_OK,
     summary="Login com retorno de JWT Bearer Token"
 )
-def login(
-    usuario_credentials: UsuarioLogin,
-    db: Session = Depends(get_db)
-):
+async def login(request: Request, db: Session = Depends(get_db)):
+    """
+    Aceita as credenciais tanto em JSON (usado pelo frontend) quanto em
+    form-data (útil no Swagger). Monta o UsuarioLogin e emite o token JWT.
+    """
+    content_type = request.headers.get("content-type", "")
+
+    if "application/json" in content_type:
+        dados = await request.json()
+        email = dados.get("email")
+        senha = dados.get("senha")
+        hwid = dados.get("hwid")
+    else:
+        form = await request.form()
+        email = form.get("username") or form.get("email")
+        senha = form.get("password") or form.get("senha")
+        hwid = form.get("hwid")
+
+    if not email or not senha:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Credenciais de login inválidas",
+        )
+
+    # O HWID identifica o terminal e e o que faz o limite da licenca valer.
+    # Sem ele, o login nao acontece: aceitar hwid vazio permitia burlar o
+    # limite de terminais (a API de licenca aceita string vazia), entao um
+    # cliente que simplesmente omitisse o campo logava sem ocupar vaga.
+    if not (hwid or "").strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Terminal não identificado. Atualize o aplicativo e tente novamente.",
+        )
+
+    usuario_credentials = UsuarioLogin(email=email, senha=senha, hwid=hwid.strip())
 
     token_value = _handle_db_transaction(
         db,

@@ -4,6 +4,9 @@
 # DESCRIÇÃO: Gerencia o ciclo de vida da entidade Empresa (Tenant).
 # ---------------------------------------------------------------------------
 
+import base64
+import mimetypes
+import os
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, Path, UploadFile, HTTPException, status
@@ -17,6 +20,7 @@ from app.schemas.empresa import (
     CertificadoWindowsVincular,
 )
 from app.db.models.usuario import Usuario as UsuarioModel
+from app.core.config import BASE_DIR
 from app.core.depends import get_current_master_user, get_current_user, _handle_db_transaction
 from app.db.session import get_db
 from app.services import empresa as empresa_service
@@ -126,6 +130,45 @@ def get_empresa_data(
         db.refresh(empresa)
 
     return empresa
+
+@router.get(
+    "/logo-base64",
+    status_code=status.HTTP_200_OK,
+    summary="Logo da empresa como data URL base64",
+    description=(
+        "Devolve a logo da empresa em base64 (data URL). Usado pela impressão "
+        "térmica (ESC/POS), que precisa LER os pixels da imagem para gerar o "
+        "raster monocromático. O `<img>`/`fetch` cru contra o /static falha em "
+        "modo CORS dentro do webview do Tauri (origem tauri.localhost != backend "
+        "127.0.0.1:porta); este endpoint trafega pelo mesmo canal /api já "
+        "autenticado, entregando os bytes em JSON sem depender de CORS no /static."
+    ),
+)
+def get_logo_base64(
+    user_token: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    empresa_id = user_token.get('empresa_id')
+    empresa = empresa_service.get_empresa_by_id(db, empresa_id)
+
+    if not empresa or not empresa.url_logo:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Empresa sem logo cadastrada.",
+        )
+
+    caminho = os.path.join(BASE_DIR, empresa.url_logo)
+    if not os.path.isfile(caminho):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Arquivo da logo não encontrado no servidor.",
+        )
+
+    mime = mimetypes.guess_type(caminho)[0] or "image/webp"
+    with open(caminho, "rb") as f:
+        b64 = base64.b64encode(f.read()).decode("ascii")
+
+    return {"data_url": f"data:{mime};base64,{b64}"}
 
 @router.put(
     '/',

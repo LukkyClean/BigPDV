@@ -2,7 +2,7 @@ import api from '@/api/axios';
 
 import { OrderServiceReadSchema, OrderServiceReadDataType } from '../schemas/orderServiceQuery.schema';
 
-import { OrderServiceUpdateRequest, OsCancelUpdateRequest, OsEquipUpdateRequest, OsItemUpdateRequest, OsReadyUpdateRequest } from '../types/requests.type';
+import { OrderServiceUpdateRequest, OsCancelUpdateRequest, OsObjetoUpdateRequest, OsItemUpdateRequest, OsReadyUpdateRequest } from '../types/requests.type';
 
 import { BASE_ORDER_SERVICE_URL } from '../constants/core.constant';
 import { safeParseResponse } from '@/shared/utils/parse.utils';
@@ -12,9 +12,9 @@ export async function updateOrderService(orderService: OrderServiceUpdateRequest
     return safeParseResponse(OrderServiceReadSchema, data, 'updateOrderService');
 }
 
-export async function updateEquipOS(equipOs: OsEquipUpdateRequest): Promise<OrderServiceReadDataType> {
-    const { data } = await api.put<OrderServiceReadDataType>(`${BASE_ORDER_SERVICE_URL}/${equipOs.osNumber}/equipamento`, equipOs.updatedEquip)
-    return safeParseResponse(OrderServiceReadSchema, data, 'updateEquipOS');
+export async function updateObjetoOS(objetoOs: OsObjetoUpdateRequest): Promise<OrderServiceReadDataType> {
+    const { data } = await api.put<OrderServiceReadDataType>(`${BASE_ORDER_SERVICE_URL}/${objetoOs.osNumber}/objeto`, objetoOs.updatedObjeto)
+    return safeParseResponse(OrderServiceReadSchema, data, 'updateObjetoOS');
 }
 
 export async function updateItemOS(itemOs: OsItemUpdateRequest): Promise<OrderServiceReadDataType> {
@@ -32,8 +32,18 @@ export async function updateCancelOS(cancelOs: OsCancelUpdateRequest): Promise<O
     return safeParseResponse(OrderServiceReadSchema, data, 'updateCancelOS');
 }
 
-export async function updateReopen({ osNumber, codigoGerente }: { osNumber: string; codigoGerente?: string }): Promise<OrderServiceReadDataType> {
-    const body = codigoGerente ? { codigo_gerente: codigoGerente } : undefined;
-    const { data } = await api.put<OrderServiceReadDataType>(`${BASE_ORDER_SERVICE_URL}/${osNumber}/reabrir`, body)
+export async function updateReopen(
+    { osNumber, codigoGerente, clientePagou }:
+    { osNumber: string; codigoGerente?: string; clientePagou?: boolean },
+): Promise<OrderServiceReadDataType> {
+    const body: Record<string, unknown> = {};
+    if (codigoGerente) body.codigo_gerente = codigoGerente;
+    // Só envia quando explicitamente "não pagou" — o backend assume true (mantém
+    // o crédito) por padrão, preservando o comportamento atual.
+    if (clientePagou === false) body.cliente_pagou = false;
+    const { data } = await api.put<OrderServiceReadDataType>(
+        `${BASE_ORDER_SERVICE_URL}/${osNumber}/reabrir`,
+        Object.keys(body).length ? body : undefined,
+    )
     return safeParseResponse(OrderServiceReadSchema, data, 'updateReopen');
 }

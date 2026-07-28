@@ -8,6 +8,7 @@ import {
   getClienteNome,
   getClienteDoc,
   getClientePhone,
+  getClienteEndereco,
   formatPrintDate,
   formatPrintDoc,
 } from '@/shared/utils/print.utils';
@@ -48,6 +49,10 @@ const clientePhone = computed(() => {
   return getClientePhone(saleData.value?.cliente as any);
 });
 
+const clienteEndereco = computed(() => {
+  return getClienteEndereco(saleData.value?.cliente as any);
+});
+
 const totalPago = computed(() => {
   if (!saleData.value?.pagamentos) return 0;
   return saleData.value.pagamentos.reduce((acc, pg) => acc + pg.valor, 0);
@@ -78,6 +83,7 @@ const totalPago = computed(() => {
         <div>{{ getClienteNome(saleData?.cliente as any) }}</div>
         <div v-if="clienteDoc">Doc: {{ clienteDoc }}</div>
         <div v-if="clientePhone">Tel: {{ clientePhone }}</div>
+        <div v-if="clienteEndereco">{{ clienteEndereco }}</div>
       </div>
 
       <div class="separator">{{ SEPARATOR }}</div>
@@ -136,6 +142,10 @@ const totalPago = computed(() => {
       <div v-if="sale.entrega > 0" class="flex justify-between">
         <span>Entrega:</span>
         <span>+{{ formatCurrency(sale.entrega) }}</span>
+      </div>
+      <div v-if="isVenda && (saleData?.acrescimo ?? 0) > 0" class="flex justify-between">
+        <span>Juros:</span>
+        <span>+{{ formatCurrency(saleData?.acrescimo ?? 0) }}</span>
       </div>
       <div class="flex justify-between font-bold text-sm mt-1">
         <span>TOTAL:</span>

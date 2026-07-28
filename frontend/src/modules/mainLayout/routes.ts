@@ -75,6 +75,17 @@ const homeRoutes: RouteRecordRaw[] = [
         },
       },
       {
+        path: '/fiscal',
+        name: 'fiscal',
+        component: () => import('@/modules/fiscal/views/FiscalView.vue'),
+        meta: {
+          title: 'Emissão de Notas Fiscais',
+          subtitle: 'Configuração fiscal e emissão de documentos.',
+          tabId: 'enterprise',
+          requiresAuth: true,
+        },
+      },
+      {
         path: '/servicos',
         name: 'services',
         component: () => import('@/modules/order-service/views/OrdemServicoView.vue'),
@@ -95,6 +106,17 @@ const homeRoutes: RouteRecordRaw[] = [
           tabId: 'sales',
           requiresAuth: true,
         }
+      },
+      {
+        path: '/relatorios',
+        name: 'reports',
+        component: () => import('@/modules/reports/views/ReportsDashboard.vue'),
+        meta: {
+          title: 'Relatórios',
+          subtitle: 'Faturamento e desempenho no período.',
+          tabId: 'reports',
+          requiresAuth: true,
+        },
       },
     ],
   },

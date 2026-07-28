@@ -85,6 +85,15 @@ class Funcionario(Base):
     salario_bruto: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, doc="Salário bruto mensal")
     tipo_contrato: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, doc="Tipo de contrato do funcionário")
     data_admissao: Mapped[Optional[Date]] = mapped_column(Date, nullable=True, doc="Data de admissão no cargo")
+
+    # --- Comissão (override do padrão do Cargo) ---
+    # Percentuais em BASIS POINTS (int): 500 = 5,00%. Meta mensal em centavos.
+    # Nullable: vazio = herda do cargo (cascata funcionário -> cargo -> empresa).
+    comissao_venda_percentual: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, doc="Comissão sobre vendas (basis points); vazio herda do cargo")
+    comissao_servico_percentual: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, doc="Comissão sobre serviços/OS (basis points); vazio herda do cargo")
+    meta_mensal: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, doc="Meta mensal de faturamento (centavos); vazio herda do cargo")
+    # Modo de comissão: 'direto' | 'meta'. Vazio herda do cargo (cascata); sem nada = 'direto'.
+    comissao_modo: Mapped[Optional[str]] = mapped_column(String(10), nullable=True, doc="Modo de comissão: 'direto' | 'meta'; vazio herda do cargo")
      # --- Outros ---
     data_nascimento: Mapped[Optional[date]] = mapped_column(Date, nullable=True, doc="Data de nascimento do funcionário")
     mae: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, doc="Nome completo da mãe")

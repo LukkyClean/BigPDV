@@ -2,19 +2,22 @@
 # ARQUIVO: endpoints/dashboard.py
 # DESCRICAO: Endpoints read-only para o Dashboard.
 #
-# Estrutura:
-#   GET /stats?periodo=hoje|semana|mes  → Metricas com variacao
-#   GET /os-vencendo                    → OS proximas/passadas do prazo
-#   GET /estoque-baixo                  → Produtos com estoque critico
-#   GET /ultimas-vendas                 → Vendas recentes
+# SEPARACAO DE ACESSO (regra do dono):
+#   - VISAO GERAL da loja (stats, ranking, os-por-status, formas-pagamento,
+#     os-atrasadas-empresa, estoque-baixo, os-vencendo, ultimas-vendas) e
+#     EXCLUSIVA do Master -> Depends(get_current_master_user) (403 se nao for).
+#   - Endpoints PESSOAIS (meu-resumo, minha-fila, minhas-*, os-aguardando-retirada,
+#     minha-atividade-hoje) ficam com get_current_active_user e filtram pelo
+#     funcionario_id do proprio token. Periodo limitado a hoje|semana|mes (teto 1 mes).
 # ---------------------------------------------------------------------------
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
-from app.core.depends import get_current_active_user, get_db
+from app.core.depends import get_current_active_user, get_current_master_user, get_db
 from app.schemas.dashboard import (
     DashboardStats,
+    TendenciaResponse,
     OSVencendoResponse,
     EstoqueBaixoResponse,
     UltimasVendasResponse,
@@ -40,12 +43,27 @@ router = APIRouter()
     description="Retorna vendas totais, OS criadas, novos clientes e ticket medio com variacao percentual.",
 )
 def obter_stats(
-    user_token: dict = Depends(get_current_active_user),
+    user_token: dict = Depends(get_current_master_user),
     *,
     db: Session = Depends(get_db),
     periodo: str = Query("hoje", pattern="^(hoje|semana|mes)$", description="Periodo de filtragem"),
 ):
     return dashboard_service.get_dashboard_stats(db, periodo, user_token["empresa_id"])
+
+
+@router.get(
+    "/tendencia",
+    response_model=TendenciaResponse,
+    summary="Tendencia de faturamento da loja (serie diaria)",
+    description="Faturamento (vendas + OS finalizadas) por dia no periodo. Visao geral — Master.",
+)
+def obter_tendencia(
+    user_token: dict = Depends(get_current_master_user),
+    *,
+    db: Session = Depends(get_db),
+    periodo: str = Query("hoje", pattern="^(hoje|semana|mes)$", description="Periodo de filtragem"),
+):
+    return dashboard_service.get_tendencia(db, periodo, user_token["empresa_id"])
 
 
 @router.get(
@@ -55,7 +73,7 @@ def obter_stats(
     description="Retorna ordens de servico ativas ordenadas por urgencia de prazo.",
 )
 def obter_os_vencendo(
-    user_token: dict = Depends(get_current_active_user),
+    user_token: dict = Depends(get_current_master_user),
     *,
     db: Session = Depends(get_db),
 ):
@@ -69,7 +87,7 @@ def obter_os_vencendo(
     description="Retorna produtos com estoque zerado ou abaixo da quantidade minima.",
 )
 def obter_estoque_baixo(
-    user_token: dict = Depends(get_current_active_user),
+    user_token: dict = Depends(get_current_master_user),
     *,
     db: Session = Depends(get_db),
 ):
@@ -92,6 +110,24 @@ def obter_meu_resumo(
     if not funcionario_id:
         return MeuResumoStats()
     return dashboard_service.get_meu_resumo(db, periodo, funcionario_id)
+
+
+@router.get(
+    "/minha-tendencia",
+    response_model=TendenciaResponse,
+    summary="Minha tendencia de faturamento (serie diaria pessoal)",
+    description="Faturamento (minhas vendas + minhas OS finalizadas) por dia no periodo.",
+)
+def obter_minha_tendencia(
+    user_token: dict = Depends(get_current_active_user),
+    *,
+    db: Session = Depends(get_db),
+    periodo: str = Query("hoje", pattern="^(hoje|semana|mes)$"),
+):
+    funcionario_id = user_token.get("funcionario_id")
+    if not funcionario_id:
+        return TendenciaResponse()
+    return dashboard_service.get_minha_tendencia(db, periodo, funcionario_id)
 
 
 @router.get(
@@ -180,7 +216,7 @@ def obter_minha_atividade_hoje(
     summary="Ranking de funcionarios por desempenho",
 )
 def obter_ranking_funcionarios(
-    user_token: dict = Depends(get_current_active_user),
+    user_token: dict = Depends(get_current_master_user),
     *,
     db: Session = Depends(get_db),
     periodo: str = Query("mes", pattern="^(hoje|semana|mes)$"),
@@ -194,7 +230,7 @@ def obter_ranking_funcionarios(
     summary="Contagem de OS agrupadas por status",
 )
 def obter_os_por_status(
-    user_token: dict = Depends(get_current_active_user),
+    user_token: dict = Depends(get_current_master_user),
     *,
     db: Session = Depends(get_db),
 ):
@@ -207,7 +243,7 @@ def obter_os_por_status(
     summary="Total por forma de pagamento no periodo",
 )
 def obter_formas_pagamento(
-    user_token: dict = Depends(get_current_active_user),
+    user_token: dict = Depends(get_current_master_user),
     *,
     db: Session = Depends(get_db),
     periodo: str = Query("mes", pattern="^(hoje|semana|mes)$"),
@@ -221,7 +257,7 @@ def obter_formas_pagamento(
     summary="OS com prazo vencido em toda a empresa",
 )
 def obter_os_atrasadas_empresa(
-    user_token: dict = Depends(get_current_active_user),
+    user_token: dict = Depends(get_current_master_user),
     *,
     db: Session = Depends(get_db),
 ):
@@ -235,7 +271,7 @@ def obter_os_atrasadas_empresa(
     description="Retorna as ultimas vendas e orcamentos realizados.",
 )
 def obter_ultimas_vendas(
-    user_token: dict = Depends(get_current_active_user),
+    user_token: dict = Depends(get_current_master_user),
     *,
     db: Session = Depends(get_db),
 ):

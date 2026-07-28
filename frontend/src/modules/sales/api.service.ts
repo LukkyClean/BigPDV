@@ -66,8 +66,11 @@ export const saleService = {
     return parseSchema(ProductAlterationSchema, data, 'saleService.updateItemInSale.response');
   },
 
-  async finishSale(sale_id: number, payments: PaymentSaleCreate[]): Promise<SaleRead> {
-    const { data } = await api.post<SaleRead>(`${SALE_ENDPOINT}/${sale_id}/finalizar`, { pagamentos: payments });
+  async finishSale(sale_id: number, payments: PaymentSaleCreate[], acrescimo = 0): Promise<SaleRead> {
+    const { data } = await api.post<SaleRead>(`${SALE_ENDPOINT}/${sale_id}/finalizar`, {
+      pagamentos: payments,
+      acrescimo,
+    });
     return parseSchema(SaleReadSchema, data, 'saleService.finishSale.response');
   },
 

@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session, aliased, joinedload
-from sqlalchemy import select, func, or_, cast, String
+from sqlalchemy import select, func, cast, String
 
+from app.core.busca import filtro_busca
 from app.db.models.orcamento import Orcamento
 from app.db.models.orcamento_produto import OrcamentoProduto
 from app.db.models.funcionario import Funcionario
@@ -79,13 +80,12 @@ def get_orcamentos_by_search(
     if search:
         query = query.join(Funcionario, Funcionario.id == Orcamento.funcionario_id)
 
-        like_search = f"%{search}%"
-        query = query.where(
-            or_(
-                cast(Orcamento.id, String).startswith(like_search),
-                Funcionario.nome.ilike(like_search)
-            )
-        )
+        filtro = filtro_busca(search, (
+            cast(Orcamento.id, String),
+            Funcionario.nome,
+        ))
+        if filtro is not None:
+            query = query.where(filtro)
 
     convertido = filters.get("convertido")
     if convertido is not None:
