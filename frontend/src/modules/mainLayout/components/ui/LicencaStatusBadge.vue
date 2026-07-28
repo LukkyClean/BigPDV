@@ -14,15 +14,20 @@
  * NOTA: os estados de trial só aparecem quando o backend enviar `trial` na
  * resposta de /licenca/status (hoje esse campo vem da API StartBig e ainda não
  * é repassado). Sem ele, a badge cai nos estados de licença paga.
+ *
+ * DESTINOS:
+ *  - trial     → página de planos. Quem está testando ainda vai ESCOLHER um plano.
+ *  - renovar   → planos TAMBÉM, mas só provisoriamente. O destino certo do
+ *                cliente pagante é o link de pagamento (Stripe) gerado na hora,
+ *                porque ele renova o que já tem em vez de escolher plano de
+ *                novo — fluxo ainda a desenhar. Ver TODO(renovacao) abaixo.
  */
 
 import { computed } from 'vue';
 import { Zap, AlertTriangle, Clock } from 'lucide-vue-next';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { useLicencaStatusQuery } from '@/shared/composables/useLicencaStatusQuery';
-
-// TODO(licenca): trocar pela URL real de compra/renovação da StartBig.
-const URL_COMPRA = 'https://api.startbig.com.br/comprar-placeholder';
+import { LINKS } from '@/shared/config/links';
 
 const { data, isLoading, isError } = useLicencaStatusQuery();
 
@@ -42,6 +47,9 @@ const estado = computed((): BadgeEstado | null => {
   return 'ativo';
 });
 
+/** Para onde o clique leva. `null` = badge informativa, sem ação. */
+type Destino = 'planos' | 'renovacao' | null;
+
 const config = computed(() => {
   const dias = data.value?.dias_restantes;
 
@@ -51,35 +59,40 @@ const config = computed(() => {
         label: `Trial • ${dias} dias`,
         icon: Zap,
         classes: 'bg-brand-primary/10 text-brand-primary hover:bg-brand-primary/20',
-        showCta: true,
+        destino: 'planos' as Destino,
+        titulo: 'Ver planos em startbig.com.br',
       };
     case 'trial-urgente':
       return {
         label: `Trial • ${dias} dias`,
         icon: Clock,
         classes: 'bg-orange-50 text-orange-600 hover:bg-orange-100 animate-pulse',
-        showCta: true,
+        destino: 'planos' as Destino,
+        titulo: 'Seu teste está acabando — ver planos',
       };
     case 'renovar':
       return {
         label: `Renovar • ${dias} dias`,
         icon: AlertTriangle,
         classes: 'bg-yellow-50 text-yellow-700 hover:bg-yellow-100',
-        showCta: true,
+        destino: 'renovacao' as Destino,
+        titulo: 'Renovar assinatura em startbig.com.br',
       };
     case 'renovar-urgente':
       return {
         label: `Renovar • ${dias} dias`,
         icon: AlertTriangle,
         classes: 'bg-red-50 text-red-600 hover:bg-red-100 animate-pulse',
-        showCta: true,
+        destino: 'renovacao' as Destino,
+        titulo: 'Sua assinatura está vencendo — renovar em startbig.com.br',
       };
     case 'ativo':
       return {
         label: 'Assinatura Ativa',
         icon: Zap,
         classes: 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100',
-        showCta: false,
+        destino: null as Destino,
+        titulo: 'Licença ativa',
       };
     default:
       return null;
@@ -87,8 +100,17 @@ const config = computed(() => {
 });
 
 function handleClick() {
-  if (config.value?.showCta) {
-    openUrl(URL_COMPRA);
+  switch (config.value?.destino) {
+    case 'planos':
+      openUrl(LINKS.planos);
+      break;
+    case 'renovacao':
+      // TODO(renovacao): trocar pelo fluxo de renovação — gerar o link de
+      // pagamento (Stripe) na hora e abrir o checkout direto, sem passar pela
+      // tabela de planos. Até lá, o site resolve: a página de planos já está
+      // no ar e funcionando.
+      openUrl(LINKS.planos);
+      break;
   }
 }
 </script>
@@ -98,8 +120,8 @@ function handleClick() {
     v-if="config"
     type="button"
     class="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors"
-    :class="[config.classes, config.showCta ? 'cursor-pointer' : 'cursor-default']"
-    :title="config.showCta ? 'Clique para fazer upgrade' : 'Licença ativa'"
+    :class="[config.classes, config.destino ? 'cursor-pointer' : 'cursor-default']"
+    :title="config.titulo"
     @click="handleClick"
   >
     <component :is="config.icon" :size="13" />

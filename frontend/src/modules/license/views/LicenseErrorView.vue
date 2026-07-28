@@ -7,9 +7,11 @@
 
 import { ref, computed } from 'vue';
 import { useRouter } from 'vue-router';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
 import BaseFooter from '@/shared/components/layout/BaseFooter.vue';
 import { verificarLicenca } from '@/shared/services/licenca.service';
+import { LINKS } from '@/shared/config/links';
 
 import AppLogo from '@/shared/components/AppLogo.vue';
 
@@ -58,6 +60,34 @@ const icone = computed(() => {
   }
 });
 
+/**
+ * Códigos em que o caminho de saída é comercial (pagar), não técnico.
+ *
+ * Os demais (clonagem, falta de internet, bloqueio administrativo) ficam de
+ * fora de propósito: mandar para pagamento quem só está sem conexão, ou quem
+ * já pagou e foi bloqueado, joga a pessoa no lugar errado.
+ *
+ * Todos vão para a página de planos por enquanto — ela já está no ar e resolve
+ * tanto quem nunca assinou quanto quem precisa renovar.
+ *
+ * TODO(renovacao): esta tela NÃO consegue separar trial de licença paga — o
+ * erro 403 carrega só `codigo` e `mensagem`, e o flag `trial` existe apenas no
+ * GET /licenca/status (e ainda não é preenchido pela API StartBig). Quando der
+ * para distinguir, o cliente pagante deve pular a tabela de planos e ir direto
+ * ao link de pagamento (Stripe) gerado na hora.
+ */
+const CODIGOS_COMERCIAIS = ['LICENCA_EXPIRADA', 'LICENCA_NAO_ENCONTRADA'];
+
+const casoComercial = computed(() => CODIGOS_COMERCIAIS.includes(props.codigo));
+
+function verPlanos() {
+  openUrl(LINKS.planos);
+}
+
+function falarComSuporte() {
+  openUrl(LINKS.whatsapp);
+}
+
 async function tentarNovamente() {
   isRetrying.value = true;
   retryError.value = '';
@@ -103,20 +133,45 @@ async function tentarNovamente() {
         {{ retryError }}
       </div>
 
-      <!-- Botão Tentar Novamente -->
+      <!-- Ação principal quando o que falta é pagar -->
+      <BaseButton
+        v-if="casoComercial"
+        type="button"
+        variant="primary"
+        class="w-full mb-2"
+        @click="verPlanos"
+      >
+        Ver planos e renovar
+      </BaseButton>
+
+      <!-- Revalidação.
+           Esta tela NÃO revalida sozinha: a rota tem skipLicenseCheck, senão
+           o guard do router a recarregaria em laço. Para quem acabou de pagar
+           este botão é a ÚNICA saída — esperar não adianta —, então o rótulo
+           precisa dizer isso com todas as letras. -->
       <BaseButton
         type="button"
+        :variant="casoComercial ? 'secondary' : 'primary'"
         class="w-full"
         :disabled="isRetrying"
         @click="tentarNovamente"
       >
-        {{ isRetrying ? 'Verificando...' : 'Tentar Novamente' }}
+        {{ isRetrying ? 'Verificando...' : (casoComercial ? 'Já paguei — liberar acesso' : 'Tentar Novamente') }}
       </BaseButton>
 
       <!-- Orientação -->
-      <p class="text-xs text-gray-400 text-center mt-4">
-        Se o problema persistir, entre em contato com o suporte técnico.
+      <p v-if="casoComercial" class="text-xs text-gray-500 text-center mt-4">
+        Depois de pagar, a liberação é automática: basta estar conectado à
+        internet e clicar em <strong>Já paguei — liberar acesso</strong>.
       </p>
+
+      <button
+        type="button"
+        class="text-xs text-gray-400 hover:text-gray-600 underline text-center mt-4 cursor-pointer"
+        @click="falarComSuporte"
+      >
+        {{ casoComercial ? 'Precisa de ajuda? Falar com o suporte' : 'Se o problema persistir, fale com o suporte técnico' }}
+      </button>
     </div>
 
     <BaseFooter />
