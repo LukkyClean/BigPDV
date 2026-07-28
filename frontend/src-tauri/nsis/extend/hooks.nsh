@@ -20,12 +20,21 @@
 !macroend
 
 !macro NSIS_HOOK_POSTUNINSTALL
+    ; 1. Para e desinstala o servico do backend
+    DetailPrint "Parando e desinstalando o servico do backend..."
+    nsExec::Exec '"$INSTDIR\erp-api.exe" --stop --uninstall'
+    Pop $0
+    ${If} $0 != 0
+        DetailPrint "AVISO: Nao foi possivel parar/desinstalar o servico do backend."
+    ${EndIf}
+
+    ; 2. Remove as regras do Firewall
     DetailPrint "Removendo regras do Firewall..."
-    
+
     ; Remove a regra da API
     nsExec::Exec 'netsh advfirewall firewall delete rule name="${FIREWALL_RULE_NAME}"'
     Pop $0
-    
+
     ; Remove a regra do Ping
     nsExec::Exec 'netsh advfirewall firewall delete rule name="${FIREWALL_PING_RULE_NAME}"'
     Pop $0
