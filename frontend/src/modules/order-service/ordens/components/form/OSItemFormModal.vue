@@ -56,11 +56,14 @@ const STATUS_APROVACAO: { value: OsItemAprovacaoEnumDataType; label: string; sel
 const catalogSearch = ref('');
 const debouncedCatalogSearch = refDebounced(catalogSearch, 400);
 
+// O limite espelha o dos serviços (logo abaixo): as duas abas da busca do
+// catálogo devem devolver o mesmo tanto de sugestões.
 const { data: produtosData, isLoading: isLoadingProdutos } = useProductsQuery(
   computed(() => tipo.value === 'PRODUTO' && debouncedCatalogSearch.value
     ? debouncedCatalogSearch.value
     : null
   ),
+  20,
 );
 
 const { data: servicosData, isLoading: isLoadingServicos } = useQuery({

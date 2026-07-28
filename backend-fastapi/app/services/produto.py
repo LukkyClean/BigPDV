@@ -122,13 +122,21 @@ def create_produto_image(db: Session, produto_id: int, image_file: UploadFile, p
 # LÓGICA DE LEITURA (READ)
 # ===========================================================================
 
-def get_produto_by_search(db: Session, produto_search: str | None) -> Sequence[ProdutoModel]:
+def get_produto_by_search(
+    db: Session,
+    produto_search: str | None,
+    limite: int | None = None,
+) -> Sequence[ProdutoModel]:
     """Intermediário para busca de produtos via CRUD."""
-    return produto_crud.get_produto_by_search(db, search=produto_search)
+    return produto_crud.get_produto_by_search(db, search=produto_search, limite=limite)
 
-def get_produto_simple_by_search(db: Session, search: str | None) -> Sequence[ProdutoSimpleRead]:
+def get_produto_simple_by_search(
+    db: Session,
+    search: str | None,
+    limite: int | None = None,
+) -> Sequence[ProdutoSimpleRead]:
     """Intermediário para busca rápida de produtos."""
-    return produto_crud.get_produto_simple_by_search(db, search=search)
+    return produto_crud.get_produto_simple_by_search(db, search=search, limite=limite)
 
 # ===========================================================================
 # LÓGICA DE ATUALIZAÇÃO (UPDATE)

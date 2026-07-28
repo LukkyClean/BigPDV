@@ -59,14 +59,20 @@ def create_new_produto(
     response_model=Sequence[ProdutoRead],
     status_code=status.HTTP_200_OK,
     summary="Listar ou Buscar Produtos",
-    description="Retorna produtos ativos. Permite filtro por nome ou código."
+    description="Retorna produtos ativos. Permite filtro por nome, código, código de barras, marca ou categoria."
 )
-def get_produto_by_search( 
+def get_produto_by_search(
     user_token: dict = Depends(check_permission(required_permission="produto")),
     *,
     buscar: Optional[str] = Query(
         None,
-        description="Termo de busca (Nome ou Código SKU). Se vazio, retorna todos."
+        description="Termo de busca (nome, código, código de barras, marca ou categoria). Se vazio, retorna todos."
+    ),
+    limite: Optional[int] = Query(
+        None,
+        ge=1,
+        le=200,
+        description="Teto de resultados. Sem valor, devolve tudo — a tela de Produtos depende disso para listar o catálogo."
     ),
     db: Session = Depends(get_db)
 ):
@@ -74,14 +80,16 @@ def get_produto_by_search(
     Endpoint de busca polivalente.
 
     Args:
-        buscar (Optional[str]): String parcial para nome ou código.
+        buscar (Optional[str]): Termo de busca; palavras em qualquer ordem.
+        limite (Optional[int]): Teto de resultados para quem usa auto-complete.
         db (Session): Sessão de banco de dados.
     """
     # CORREÇÃO: Passando a referência da função (sem parênteses)
     return _handle_db_transaction(
        db,
        produto_service.get_produto_by_search,
-       buscar 
+       buscar,
+       limite
    )
 
 @router.get(
@@ -96,14 +104,21 @@ def get_produto_simple_by_search(
     *,
     search: Optional[str] = Query(
         None,
-        description="Termo de busca para nome ou código. Retorna todos se vazio."
+        description="Termo de busca (nome, código, código de barras, marca ou categoria). Vazio não retorna nada."
+    ),
+    limite: int = Query(
+        30,
+        ge=1,
+        le=200,
+        description="Teto de resultados do auto-complete."
     ),
     db: Session = Depends(get_db)
 ):
     return _handle_db_transaction(
         db,
         produto_service.get_produto_simple_by_search,
-        search
+        search,
+        limite
 )
 
 # ===========================================================================

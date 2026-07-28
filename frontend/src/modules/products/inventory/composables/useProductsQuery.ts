@@ -30,13 +30,15 @@ import { MOVIMENTACOES_QUERY_KEY } from './useMovimentacoesQuery';
 /**
  * Query for listing products
  * @param searchTerm - Optional reactive search term
+ * @param limite - Teto de resultados. Use em auto-complete; a listagem da
+ *                 tela de Produtos deve omitir para receber o catálogo todo.
  */
-export function useProductsQuery(searchTerm?: Ref<string | null>) {
+export function useProductsQuery(searchTerm?: Ref<string | null>, limite?: number) {
   const cleanSearch = computed(() => searchTerm?.value?.trim() || undefined);
 
   return useQuery({
-    queryKey: [QUERY_KEY, cleanSearch],
-    queryFn: () => getProdutos(cleanSearch.value),
+    queryKey: [QUERY_KEY, cleanSearch, limite],
+    queryFn: () => getProdutos(cleanSearch.value, limite),
     staleTime: STALE_TIME,
     refetchInterval: PRODUTOS_REFETCH_INTERVAL,
   });

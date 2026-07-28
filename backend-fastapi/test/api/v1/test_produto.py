@@ -104,6 +104,126 @@ def test_buscar_produto_por_termo(client: TestClient, header_with_token, valid_p
     assert len(data) == 1
     assert data[0]["codigo_produto"] == "BUSCA-ESPECIFICA"
 
+# ==================================================
+# 2.1 Testes: Busca inteligente (core/busca.py)
+# ==================================================
+
+@pytest.fixture
+def catalogo_de_busca(client: TestClient, header_with_token, valid_product_payload):
+    """
+    Cria um mini-catálogo com os casos que o balcão vive: nome composto,
+    acento, marca e código de barras.
+    """
+    produtos = [
+        {"nome": "Tinta Azul Metálica", "codigo_produto": "TNT-001",
+         "codigo_barras": "7891234567890", "marca": "Suvinil", "categoria": "Pintura"},
+        {"nome": "Açúcar Refinado 1kg", "codigo_produto": "ACU-001",
+         "codigo_barras": "7899999999999", "marca": "União", "categoria": "Alimentos"},
+        {"nome": "Pincel Cerda Macia", "codigo_produto": "PNC-001",
+         "codigo_barras": "7890000000000", "marca": "Tigre", "categoria": "Pintura"},
+    ]
+
+    for extra in produtos:
+        payload = {**valid_product_payload, **extra}
+        resposta = client.post("/api/v1/produtos/", json=payload, headers=header_with_token)
+        assert resposta.status_code == status.HTTP_201_CREATED
+
+    return produtos
+
+
+def _nomes(resposta) -> list[str]:
+    return [item["nome"] for item in resposta.json()]
+
+
+def test_busca_encontra_palavra_no_meio_do_nome(client, header_with_token, catalogo_de_busca):
+    """O caso que originou a refatoração: 'azul' tem que achar 'Tinta Azul'."""
+    resposta = client.get("/api/v1/produtos/?buscar=azul", headers=header_with_token)
+
+    assert resposta.status_code == status.HTTP_200_OK
+    assert "Tinta Azul Metálica" in _nomes(resposta)
+
+
+def test_busca_ignora_a_ordem_das_palavras(client, header_with_token, catalogo_de_busca):
+    resposta = client.get("/api/v1/produtos/?buscar=azul tinta", headers=header_with_token)
+
+    assert "Tinta Azul Metálica" in _nomes(resposta)
+
+
+def test_busca_ignora_acentos(client, header_with_token, catalogo_de_busca):
+    resposta = client.get("/api/v1/produtos/?buscar=acucar", headers=header_with_token)
+
+    assert "Açúcar Refinado 1kg" in _nomes(resposta)
+
+
+def test_busca_exige_todas_as_palavras(client, header_with_token, catalogo_de_busca):
+    """'tinta pincel' não pode trazer os dois: nenhum produto tem as duas palavras."""
+    resposta = client.get("/api/v1/produtos/?buscar=tinta pincel", headers=header_with_token)
+
+    assert _nomes(resposta) == []
+
+
+def test_busca_por_codigo_de_barras(client, header_with_token, catalogo_de_busca):
+    """Bipar o leitor tem que achar — antes o código de barras nem era varrido."""
+    resposta = client.get("/api/v1/produtos/?buscar=7891234567890", headers=header_with_token)
+
+    assert _nomes(resposta) == ["Tinta Azul Metálica"]
+
+
+def test_busca_por_marca(client, header_with_token, catalogo_de_busca):
+    resposta = client.get("/api/v1/produtos/?buscar=suvinil", headers=header_with_token)
+
+    assert _nomes(resposta) == ["Tinta Azul Metálica"]
+
+
+def test_codigo_exato_vem_em_primeiro(client, header_with_token, catalogo_de_busca):
+    """
+    Quem digita o SKU inteiro tem que receber AQUELE item no topo, nunca um
+    parecido — é o que protege o operador no balcão.
+    """
+    resposta = client.get("/api/v1/produtos/?buscar=TNT-001", headers=header_with_token)
+
+    assert _nomes(resposta)[0] == "Tinta Azul Metálica"
+
+
+def test_busca_tolera_erro_de_digitacao(client, header_with_token, catalogo_de_busca):
+    """'tnta' não casa com nada no LIKE; o resgate por similaridade assume."""
+    resposta = client.get("/api/v1/produtos/?buscar=tnta", headers=header_with_token)
+
+    assert "Tinta Azul Metálica" in _nomes(resposta)
+
+
+def test_busca_sem_resultado_continua_vazia(client, header_with_token, catalogo_de_busca):
+    """O resgate não pode virar desculpa para devolver qualquer coisa."""
+    resposta = client.get("/api/v1/produtos/?buscar=geladeira", headers=header_with_token)
+
+    assert _nomes(resposta) == []
+
+
+def test_busca_vazia_devolve_o_catalogo(client, header_with_token, catalogo_de_busca):
+    """A tela de Produtos depende disso para listar tudo."""
+    resposta = client.get("/api/v1/produtos/", headers=header_with_token)
+
+    assert len(resposta.json()) >= 3
+
+
+def test_limite_corta_os_resultados(client, header_with_token, catalogo_de_busca):
+    resposta = client.get("/api/v1/produtos/?buscar=001&limite=2", headers=header_with_token)
+
+    assert len(resposta.json()) == 2
+
+
+def test_autocomplete_sem_termo_nao_devolve_nada(client, header_with_token, catalogo_de_busca):
+    """O campo do PDV não pode despejar o catálogo ao ganhar foco."""
+    resposta = client.get("/api/v1/produtos/search", headers=header_with_token)
+
+    assert resposta.json() == []
+
+
+def test_autocomplete_encontra_palavra_no_meio(client, header_with_token, catalogo_de_busca):
+    resposta = client.get("/api/v1/produtos/search?search=azul", headers=header_with_token)
+
+    assert "Tinta Azul Metálica" in _nomes(resposta)
+
 # =========================
 # 3. Testes: Atualização (PUT)
 # =========================

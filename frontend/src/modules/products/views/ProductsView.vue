@@ -23,6 +23,7 @@ import FornecedorTable from '../suppliers/components/FornecedorTable.vue';
 import FornecedorStats from '../suppliers/components/FornecedorStats.vue';
 import FornecedorFormModal from '../suppliers/components/FornecedorFormModal.vue';
 
+import { correspondeBusca } from '@/shared/utils/busca';
 import { FILTER_CONFIG, SORT_FILTER_CONFIG } from '@/modules/products/inventory/constants/product.constants';
 import { TAB_OPTIONS } from '@/modules/products/shared/constants/tabs.constants';
 import { useProductModal } from '../inventory/composables/useProductModal';
@@ -112,15 +113,21 @@ const categoryFilterConfig = computed(() => {
 });
 
 const filteredProducts = computed(() => {
-  const term = (searchTerm.value || '').trim().toLowerCase();
+  const term = (searchTerm.value || '').trim();
   let list = mergedProducts.value;
 
   if (term) {
-    list = list.filter((product) => {
-      const nameMatch = product.nome?.toLowerCase().includes(term);
-      const codeMatch = product.codigo_produto?.toLowerCase().startsWith(term);
-      return nameMatch || codeMatch;
-    });
+    // Mesmas regras do backend (shared/utils/busca) — se divergirem, este
+    // filtro descarta em silêncio o que o servidor já tinha encontrado.
+    list = list.filter((product) =>
+      correspondeBusca(term, [
+        product.nome,
+        product.codigo_produto,
+        product.codigo_barras,
+        product.marca,
+        product.categoria,
+      ]),
+    );
   }
 
   if (selectedFilter.value === 'active') {

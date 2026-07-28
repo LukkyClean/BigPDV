@@ -7,6 +7,12 @@
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 from app.core.config import settings # <-- Importa a instância das configurações
+from app.core.busca import (
+    FUNCAO_SQL_COMPACTAR,
+    FUNCAO_SQL_NORMALIZAR,
+    compactar,
+    normalizar,
+)
 
 # --- INÍCIO DA MUDANÇA ---
 # Precisamos do 'Engine' do SQLAlchemy para adicionar o listener
@@ -22,6 +28,34 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
         cursor = dbapi_connection.cursor()
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.close()
+
+@event.listens_for(Engine, "connect")
+def registrar_funcoes_busca(dbapi_connection, connection_record):
+    """
+    Ensina o SQLite a comparar texto ignorando caixa, acentos e pontuação.
+
+    O LIKE do SQLite só é case-insensitive para ASCII e não sabe nada de
+    acentos — "Açúcar" e "acucar" são strings sem relação para ele. Como não
+    há extensão ICU no banco embarcado, registramos a normalização feita em
+    Python como função SQL e a aplicamos dos dois lados da comparação
+    (ver core/busca.py).
+
+    O listener fica na classe Engine, e não na engine da aplicação, para
+    valer também na engine em memória usada pelos testes.
+    """
+    if dbapi_connection.__class__.__module__ != "sqlite3":
+        return
+
+    for nome, funcao in (
+        (FUNCAO_SQL_NORMALIZAR, normalizar),
+        (FUNCAO_SQL_COMPACTAR, compactar),
+    ):
+        try:
+            # 'deterministic' permite ao SQLite reaproveitar o resultado
+            # dentro da mesma query; exige SQLite >= 3.8.3.
+            dbapi_connection.create_function(nome, 1, funcao, deterministic=True)
+        except Exception:
+            dbapi_connection.create_function(nome, 1, funcao)
 # --- FIM DA MUDANÇA ---
 
 # 1. CRIAÇÃO DA ENGINE

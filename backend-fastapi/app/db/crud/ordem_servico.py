@@ -21,6 +21,7 @@ from app.db.models.objeto_servico import ObjetoServico as OSEquipamentoModel
 
 from app.db.models.cliente import Cliente as ClienteModel, ClientePF as ClientePFModel, ClientePJ as ClientePJModel
 
+from app.core.busca import filtro_busca
 from app.core.enum import OrdemServicoStatus, OrdemServicoPrioridade
 
 
@@ -106,17 +107,19 @@ def get_ordens_servico_by_search(
             .outerjoin(client_pf, ClienteModel.id == client_pf.id)
         )
 
-        like_search = f"%{search}%"
-        query = query.where(
-            or_(
-                OSModel.numero_os.ilike(like_search),
-                OSEquipamentoModel.numero_serie.ilike(like_search),
-                OSEquipamentoModel.modelo.ilike(like_search),
-                client_pf.nome.ilike(like_search),
-                client_pj.razao_social.ilike(like_search),
-                client_pj.nome_fantasia.ilike(like_search)
-            )
-        )
+        # Busca por palavras soltas e sem acento: "silva honda" encontra a OS
+        # do cliente Silva com a moto Honda, mesmo os dois vindo de campos
+        # (e tabelas) diferentes.
+        filtro = filtro_busca(search, (
+            OSModel.numero_os,
+            OSEquipamentoModel.numero_serie,
+            OSEquipamentoModel.modelo,
+            client_pf.nome,
+            client_pj.razao_social,
+            client_pj.nome_fantasia,
+        ))
+        if filtro is not None:
+            query = query.where(filtro)
 
     funcionario_id = filters.get("funcionario_id")
     if funcionario_id:
