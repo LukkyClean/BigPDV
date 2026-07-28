@@ -92,7 +92,6 @@ pub fn load_config(app: &AppHandle) -> AppConfig {
 #[tauri::command]
 pub fn set_role_server(
     app: AppHandle,
-    estado: tauri::State<'_, EstadoDescoberta>,
     custom_port: Option<u16>,
 ) -> Result<AppConfig, String> {
     let mut config = load_config(&app);
@@ -126,12 +125,32 @@ pub fn set_role_server(
     let json = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
     fs::write(&path, json).map_err(|e| e.to_string())?;
 
-    crate::backend::setup_sidecar(&app, &config.server_ip, config.server_port)
-        .map_err(|e| e.to_string())?;
+    #[cfg(not(debug_assertions))]
+    {
+        match crate:: backend::install_backend_config(&config.server_ip, config.server_port) {
+            Ok(()) => {
+                crate::backend::ensure_backend(&app, &config.server_ip, config.server_port)
+                    .map_err(|e| e.to_string())?;
+            }
+            Err(e) => {
+                eprintln!(
+                    "[backend] Instalação do serviço não concluída ({}). Usando sidecar de fallback.",
+                    e
+                );
+                crate::backend::ensure_backend(&app, &config.server_ip, config.server_port)
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+    }
+
+    #[cfg(debug_assertions)]
+    {
+        crate::backend::ensure_backend(&app, &config.server_ip, config.server_port)
+            .map_err(|e| e.to_string())?;
+    }
 
     let ip_local = crate::impressao::obter_ip_local().unwrap_or_default();
     gen_network_config_txt(&app, ip_local.clone(), config.server_port);
-    super::discovery::start_discovery(&estado, ip_local, config.server_port);
 
     Ok(config)
 }
@@ -171,11 +190,14 @@ pub fn get_api_url(app: AppHandle) -> String {
         return format!("http://127.0.0.1:8000/api")
     }
 
-    let config = load_config(&app);
+    #[cfg(not(debug_assertions))]
+    {
+        let config = load_config(&app);
 
-    if config.is_server {
-        return format!("http://127.0.0.1:{}/api", config.server_port);
+        if config.is_server {
+            return format!("http://127.0.0.1:{}/api", config.server_port);
+        }
+
+        format!("http://{}:{}/api", config.server_ip, config.server_port)
     }
-
-    format!("http://{}:{}/api", config.server_ip, config.server_port)
 }

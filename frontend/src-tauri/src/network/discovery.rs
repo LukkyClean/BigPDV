@@ -1,4 +1,4 @@
-use mdns_sd::{ServiceDaemon, ServiceEvent, ServiceInfo};
+use mdns_sd::{ServiceDaemon, ServiceEvent};
 use serde::{Deserialize, Serialize};
 use std::net::IpAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -26,24 +26,6 @@ pub struct EstadoDescoberta {
 }
 
 impl EstadoDescoberta {
-    fn parar_servidor(&self) {
-        let mut daemon_guard = self.daemon_servidor.lock().unwrap();
-        let mut nome_guard = self.nome_servico.lock().unwrap();
-
-        if let (Some(daemon), Some(nome)) = (daemon_guard.as_ref(), nome_guard.as_ref()) {
-            if let Err(e) = daemon.unregister(nome) {
-                eprintln!("[discovery] Erro ao desregistrar servico mDNS: {:?}", e);
-            }
-        }
-
-        if let Some(daemon) = daemon_guard.take() {
-            if let Err(e) = daemon.shutdown() {
-                eprintln!("[discovery] Erro ao encerrar daemon servidor: {:?}", e);
-            }
-        }
-
-        *nome_guard = None;
-    }
 
     fn parar_cliente(&self) {
         if let Some(flag) = self.parar_cliente.lock().unwrap().take() {
@@ -58,65 +40,8 @@ impl EstadoDescoberta {
     }
 
     pub fn shutdown(&self) {
-        self.parar_servidor();
         self.parar_cliente();
     }
-}
-
-pub fn start_discovery(estado: &EstadoDescoberta, server_ip: String, server_port: u16) {
-    estado.parar_servidor();
-
-    let ip = if server_ip == "0.0.0.0" {
-        crate::impressao::obter_ip_local()
-            .unwrap_or_else(|_| "127.0.0.1".to_string())
-    } else {
-        server_ip
-    };
-
-    let daemon = match ServiceDaemon::new() {
-        Ok(d) => d,
-        Err(e) => {
-            eprintln!("[discovery] Falha ao criar daemon mDNS: {:?}", e);
-            return;
-        }
-    };
-
-    let hostname = format!("{}.local.", gethostname());
-    let instance_name = "startbig-server";
-
-    let properties = [("app", "startbig"), ("role", "server")];
-
-    let service_info = match ServiceInfo::new(
-        TIPO_SERVICO,
-        instance_name,
-        &hostname,
-        &ip,
-        server_port,
-        &properties[..],
-    ) {
-        Ok(info) => info,
-        Err(e) => {
-            eprintln!("[discovery] Falha ao criar ServiceInfo: {:?}", e);
-            let _ = daemon.shutdown();
-            return;
-        }
-    };
-
-    let fullname = service_info.get_fullname().to_string();
-
-    if let Err(e) = daemon.register(service_info) {
-        eprintln!("[discovery] Falha ao registrar servico mDNS: {:?}", e);
-        let _ = daemon.shutdown();
-        return;
-    }
-
-    println!(
-        "[discovery] Servico mDNS registrado: {} ({}:{})",
-        fullname, ip, server_port
-    );
-
-    *estado.daemon_servidor.lock().unwrap() = Some(daemon);
-    *estado.nome_servico.lock().unwrap() = Some(fullname);
 }
 
 pub fn discover_servers(estado: &EstadoDescoberta, handle: AppHandle) {

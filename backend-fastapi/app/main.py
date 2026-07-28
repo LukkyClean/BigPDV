@@ -1,7 +1,15 @@
+import logging
 import os
 import sys
 
 # Entrada do FastAPI
+
+_APP_ENV = os.getenv("APP_ENV", "development").lower()
+_LOG_LEVEL = logging.DEBUG if _APP_ENV == "development" else logging.INFO
+logging.basicConfig(
+    level=_LOG_LEVEL,
+    format="%(levelname)-8s %(name)s — %(message)s",
+)
 
 from fastapi import FastAPI # type: ignore
 from app.api.v1 import api

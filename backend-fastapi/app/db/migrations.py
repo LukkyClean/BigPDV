@@ -11,6 +11,7 @@ import sys
 from alembic import command
 from alembic.config import Config
 from alembic.migration import MigrationContext
+from alembic.script import ScriptDirectory
 from sqlalchemy import inspect
 from sqlalchemy.exc import OperationalError
 
@@ -53,6 +54,16 @@ def _obter_revisao_atual() -> str | None:
     with engine.connect() as conn:
         context = MigrationContext.configure(conn)
         return context.get_current_revision()
+
+
+def _revisao_existe_no_script(alembic_cfg: Config, revisao: str) -> bool:
+    """Verifica se a revisão armazenada no banco existe nos scripts de migração."""
+    script = ScriptDirectory.from_config(alembic_cfg)
+    try:
+        script.get_revision(revisao)
+        return True
+    except Exception:
+        return False
 
 
 def aplicar_migracoes():

@@ -46,16 +46,16 @@ pub fn run() {
         ])
         .setup(move |app| {
             app.manage(AppState {
-                process: std::sync::Mutex::new(None),
+                mode: std::sync::Mutex::new(backend::BackendMode::Nothing),
             });
 
             app.manage(EstadoServidorImpressao::default());
 
             app.manage(network::EstadoDescoberta::default());
 
-            use crate::backend::setup_sidecar;
+            use crate::backend::ensure_backend;
             use network::{
-                discover_servers, gen_network_config_txt, load_config, start_discovery,
+                discover_servers, gen_network_config_txt, load_config
             };
 
             let handle = app.app_handle();
@@ -65,18 +65,13 @@ pub fn run() {
             {
                 if server_config.configured {
                     if server_config.is_server {
-                        setup_sidecar(
+                        ensure_backend(
                             &handle,
                             &server_config.server_ip,
                             server_config.server_port,
                         )?;
                         gen_network_config_txt(
                             &handle,
-                            obter_ip_local().unwrap_or_default(),
-                            server_config.server_port,
-                        );
-                        start_discovery(
-                            &handle.state::<network::EstadoDescoberta>(),
                             obter_ip_local().unwrap_or_default(),
                             server_config.server_port,
                         );
