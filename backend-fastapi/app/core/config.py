@@ -21,7 +21,7 @@ else:
 data_dir = os.path.join(BASE_DIR, "data")
 os.makedirs(data_dir, exist_ok=True)
 
-database_path = os.path.join(data_dir, "pdv.db")
+database_path = os.path.join(data_dir, "startbig.db")
 sql_url = f"sqlite:///{database_path}"
 
 

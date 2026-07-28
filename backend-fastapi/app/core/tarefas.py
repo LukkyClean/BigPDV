@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -12,6 +13,8 @@ from app.db.models.forma_pagamento import FormaPagamento
 from app.services.limpeza_temporal import cancelar_vendas_ativas_expiradas, limpar_orcamentos_expirados, limpar_temp_data
 from app.services.licenca import enviar_heartbeat, renovar_licenca_background, desconectar_terminal
 from app.db.crud import terminal_conectado as terminal_crud
+
+from app.core.discovery import register_service, stop_discovery
 
 logger = logging.getLogger(__name__)
 
@@ -132,18 +135,28 @@ async def lifespan(app: FastAPI):
     aplicar_migracoes()
     _seed_formas_pagamento()
     _seed_contador_venda()
-    logger.info("Iniciando tarefa de limpeza automatica temporal...")
+    print("Iniciando tarefa de limpeza automatica temporal...")
     tarefa_limpeza = asyncio.create_task(_loop_limpeza_temporal())
 
-    logger.info("Iniciando tarefa de heartbeat de licenca...")
+    print("Iniciando tarefa de heartbeat de licenca...")
     tarefa_heartbeat = asyncio.create_task(_loop_heartbeat_licenca())
 
-    logger.info("Iniciando tarefa de renovação de licença...")
+    print("Iniciando tarefa de renovação de licença...")
     tarefa_renovacao = asyncio.create_task(_loop_renovacao_licenca())
+
+    host = os.getenv("STARTBIG_HOST", "0.0.0.0")
+    port = int(os.getenv("STARTBIG_PORT", "8080"))
+    
+    print(f"Iniciando mDNS em {host}:{port}")
+    
+    await asyncio.to_thread(register_service, host, port)
 
     yield
 
-    logger.info("Encerrando tarefas em segundo plano...")
+    print("Encerrando mDNS...")
+    await asyncio.to_thread(stop_discovery)
+    
+    print("Encerrando tarefas em segundo plano...")
     tarefa_limpeza.cancel()
     tarefa_heartbeat.cancel()
     tarefa_renovacao.cancel()
@@ -154,7 +167,7 @@ async def lifespan(app: FastAPI):
             pass
 
     # Desconectar todos os terminais na API externa antes de encerrar
-    logger.info("Desconectando terminais na API externa...")
+    print("Desconectando terminais na API externa...")
     db = SessionLocal()
     try:
         terminais = terminal_crud.get_todos_terminais(db)
@@ -162,8 +175,8 @@ async def lifespan(app: FastAPI):
             await desconectar_terminal(db, terminal.hwid)
         terminal_crud.limpar_todos_terminais(db)
         db.commit()
-        logger.info("Todos os %d terminais desconectados.", len(terminais))
+        print(f"Todos os {len(terminais)} terminais desconectados.")
     except Exception:
-        logger.exception("Erro ao desconectar terminais no shutdown.")
+        print("Erro ao desconectar terminais no shutdown.")
     finally:
         db.close()
