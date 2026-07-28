@@ -199,6 +199,8 @@ def install(host: str, port: int) -> int:
     firewall_cfg(port)
     install_autostart(host, port)
     
+    init_now()
+    
     print("\n" + "=" * 60)
     print("\n[OK] Instalação concluída com sucesso.")
     print("\nO serviço StartBig Server foi instalado e subira automaticamente no proximo boot.")

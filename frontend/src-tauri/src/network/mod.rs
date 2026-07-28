@@ -6,6 +6,5 @@ pub use config::{
     set_role_server
 };
 pub use discovery::{
-    discover_servers, iniciar_descoberta_servidores, parar_descoberta_servidores, start_discovery,
-    EstadoDescoberta,
+    discover_servers, iniciar_descoberta_servidores, parar_descoberta_servidores, EstadoDescoberta,
 };

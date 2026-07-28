@@ -59,10 +59,10 @@ def register_service(server_ip: str, server_port: int) -> None:
     )
     
     try:
-        _zeroconf.register_service(_service_info)
+        _zeroconf.register_service(_service_info, allow_name_change=True)
         print(f"[discovery] Servidor anunciado via mDNS: {INSTANCE_NAME} em {ip}:{server_port}")
     except Exception as e:
-        print("[discovery] Falha ao registrar serviço mDNS: {e}")
+        print(f"[discovery] Falha ao registrar serviço mDNS: {e}")
         stop_discovery()
         
 def stop_discovery() -> None:
@@ -75,7 +75,7 @@ def stop_discovery() -> None:
             _zeroconf.close()
             print("[discovery] Serviço mDNS encerrado")
         except Exception as e:
-            print("[discovery] Erro ao encerrar mDNS: {e}")
+            print(f"[discovery] Erro ao encerrar mDNS: {e}")
             
     _zeroconf = None
     _service_info = None
