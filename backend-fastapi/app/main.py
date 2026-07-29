@@ -26,6 +26,14 @@ STATIC_DIR = os.path.join(BASE_DIR, 'static')
 
 if not os.path.exists(STATIC_DIR):
     os.makedirs(STATIC_DIR, exist_ok=True)
+
+# Diretorio do formulario mobile (extend-form)
+# Em producao (PyInstaller --onefile): arquivos extraidos em sys._MEIPASS/form/
+# Em dev: arquivos buildados em backend-fastapi/extend-form/dist/
+if getattr(sys, 'frozen', False):
+    FORM_DIR = os.path.join(sys._MEIPASS, 'form')
+else:
+    FORM_DIR = os.path.join(os.path.dirname(__file__), 'extend-form', 'dist')
     
 app = FastAPI(
     title="BigPDV Backend API",
