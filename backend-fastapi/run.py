@@ -43,6 +43,8 @@ def mount_parser() -> argparse.ArgumentParser:
     
     p.add_argument("--host", default=None, help="Endereço IP do servidor (padrão: 0.0.0.0)")
     p.add_argument("--port", type=int, default=None, help="Porta do servidor (padrão: 8080)")
+    p.add_argument("--data-dir", default=None,
+                   help="Caminho absoluto do diretório de dados (sobrescreve LOCALAPPDATA)")
 
     p.add_argument("--install", action="store_true",
                    help="Configura firewall e inicializacao automatica")
@@ -58,7 +60,12 @@ def mount_parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = mount_parser().parse_args()
-    
+
+    # Setar BIGPDV_DATA_DIR antes de qualquer import de app.*
+    # para que config.py use o diretório correto (ex.: task SYSTEM no boot)
+    if args.data_dir:
+        os.environ["BIGPDV_DATA_DIR"] = args.data_dir
+
     host = args.host or args.host_pos or "0.0.0.0"
     port = args.port or (int(args.port_pos) if args.port_pos else None) or 8080
 
