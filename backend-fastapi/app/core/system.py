@@ -139,10 +139,15 @@ def install_autostart(host: str, port: int) -> None:
 
     exe = exec_path()
     exe_dir = os.path.dirname(exe)
-    
+
+    # Captura o data_dir do usuário que roda --install (o correto).
+    # Quando a task rodar como SYSTEM, o --data-dir garante que o
+    # backend use este mesmo diretório em vez do LOCALAPPDATA do SYSTEM.
+    from app.core.config import data_dir
+
     xml = _XML_TASK.format(
         comando=exe,
-        argumentos=f"--host {host} --port {port}",
+        argumentos=f'--host {host} --port {port} --data-dir "{data_dir}"',
         pasta=exe_dir
     )
     

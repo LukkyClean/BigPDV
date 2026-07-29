@@ -33,7 +33,7 @@ if not os.path.exists(STATIC_DIR):
 if getattr(sys, 'frozen', False):
     FORM_DIR = os.path.join(sys._MEIPASS, 'form')
 else:
-    FORM_DIR = os.path.join(BACKEND_DIR, 'extend-form', 'dist')
+    FORM_DIR = os.path.join(os.path.dirname(__file__), 'extend-form', 'dist')
     
 app = FastAPI(
     title="BigPDV Backend API",
