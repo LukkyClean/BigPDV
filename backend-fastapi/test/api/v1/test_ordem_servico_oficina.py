@@ -303,6 +303,68 @@ def test_atualizar_dados_adicionais_persiste(client, db_session):
     assert dados.get("combustivel_nivel") == "CHEIO", "chave nova deve persistir"
 
 
+def test_imei_volta_na_resposta_e_sobrevive_ao_update(client, db_session):
+    """REGRESSÃO (informática): o IMEI era GRAVADO mas nunca devolvido.
+
+    `imei` não é coluna — vive em objeto.dados_adicionais desde a refatoração
+    Equipamento->ObjetoServico, e o modelo não tinha a property correspondente.
+    O Pydantic não achava o atributo no ORM e devolvia null calado: o campo
+    reabria em branco ("não salvou") e o save seguinte mandava "" por cima,
+    destruindo o dado de verdade.
+    """
+    header = _autenticar_e_criar_empresa(client, "assistencia_tecnica")
+    cliente_id = _criar_cliente(client, header)
+
+    r = client.post(
+        "/api/v1/ordens-servico/",
+        json=_os_payload(cliente_id, "SERIAL-IMEI-1",
+                         objeto_extra={"imei": "352415001234567"}),
+        headers=header,
+    )
+    assert r.status_code == status.HTTP_201_CREATED, r.text
+    numero_os = r.json()["numero_os"]
+    assert r.json()["objeto"]["imei"] == "352415001234567", "criação deve devolver o IMEI"
+
+    # Reabrir a OS (é aqui que o campo aparecia vazio)
+    g = client.get(f"/api/v1/ordens-servico/{numero_os}", headers=header)
+    assert g.status_code == 200, g.text
+    assert g.json()["objeto"]["imei"] == "352415001234567", "GET deve devolver o IMEI gravado"
+
+    # Editar OUTRO campo do objeto sem tocar no IMEI não pode apagá-lo
+    up = client.put(f"/api/v1/ordens-servico/{numero_os}/objeto",
+                    json={"cor": "Preto"}, headers=header)
+    assert up.status_code == 200, up.text
+
+    g2 = client.get(f"/api/v1/ordens-servico/{numero_os}", headers=header)
+    assert g2.json()["objeto"]["cor"] == "Preto"
+    assert g2.json()["objeto"]["imei"] == "352415001234567", "IMEI deve sobreviver ao update"
+
+
+def test_imei_vazio_limpa_sem_gravar_string_vazia(client, db_session):
+    """Limpar o IMEI de propósito ("") remove a chave em vez de gravar "" —
+    string vazia no JSON é lixo que reaparece como valor 'preenchido'."""
+    header = _autenticar_e_criar_empresa(client, "assistencia_tecnica")
+    cliente_id = _criar_cliente(client, header)
+
+    r = client.post(
+        "/api/v1/ordens-servico/",
+        json=_os_payload(cliente_id, "SERIAL-IMEI-2",
+                         objeto_extra={"imei": "352415001234567"}),
+        headers=header,
+    )
+    assert r.status_code == status.HTTP_201_CREATED, r.text
+    numero_os = r.json()["numero_os"]
+
+    up = client.put(f"/api/v1/ordens-servico/{numero_os}/objeto",
+                    json={"imei": ""}, headers=header)
+    assert up.status_code == 200, up.text
+
+    g = client.get(f"/api/v1/ordens-servico/{numero_os}", headers=header)
+    objeto = g.json()["objeto"]
+    assert objeto["imei"] is None, "IMEI limpo deve voltar como null"
+    assert "imei" not in (objeto["dados_adicionais"] or {}), "chave deve sumir do JSON"
+
+
 # =========================
 # ONDA 3A — lembrete de revisão
 # =========================

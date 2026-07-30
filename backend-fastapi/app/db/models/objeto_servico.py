@@ -77,6 +77,30 @@ class ObjetoServico(Base):
         doc="Ordens de servico associadas a este objeto"
     )
 
+    def _set_dado_adicional(self, chave: str, valor: Optional[str]) -> None:
+        """Grava um campo legado de forma transparente na coluna JSON dados_adicionais."""
+        # Cria um novo dict para garantir que o SQLAlchemy detecte a mutacao (JSON nao e rastreado in-place).
+        dados = dict(self.dados_adicionais or {})
+        # Vazio ("") significa "sem valor": remove a chave em vez de gravar string vazia,
+        # senao um form que devolve "" apaga o dado real do cliente.
+        if not valor:
+            dados.pop(chave, None)
+        else:
+            dados[chave] = valor
+        self.dados_adicionais = dados
+
+    @property
+    def imei(self) -> Optional[str]:
+        # `imei` nao e coluna: vive em dados_adicionais desde a refatoracao
+        # Equipamento->ObjetoServico. Sem esta property o Pydantic nao acha o
+        # atributo no ORM e devolve null calado — o valor fica gravado mas
+        # invisivel, e o proximo save do form o sobrescreve.
+        return (self.dados_adicionais or {}).get("imei")
+
+    @imei.setter
+    def imei(self, value: Optional[str]) -> None:
+        self._set_dado_adicional("imei", value)
+
     @property
     def tipo_equipamento(self):
         class TipoEquipamentoShim:

@@ -453,10 +453,19 @@ def update_equipamento_os(db: Session, numero_os: str, data: OSEquipamentoUpdate
         obj_dados_adicionais.update(sent_data)
 
     for legacy_field in ["tipo_equipamento", "imei"]:
-        if legacy_field in update_data:
-            val = update_data.pop(legacy_field)
-            if val is not None:
-                obj_dados_adicionais[legacy_field] = val.value if hasattr(val, 'value') else val
+        if legacy_field not in update_data:
+            continue
+        val = update_data.pop(legacy_field)
+        if val is None:
+            # Nao informado: preserva o que ja existe (semantica de PATCH).
+            continue
+        valor = val.value if hasattr(val, 'value') else val
+        if valor == "":
+            # String vazia = limpar de proposito. Gravar "" era o bug: o form
+            # devolve "" para campo nao preenchido e isso sobrescrevia o dado real.
+            obj_dados_adicionais.pop(legacy_field, None)
+        else:
+            obj_dados_adicionais[legacy_field] = valor
 
     equipamento.dados_adicionais = obj_dados_adicionais
 
