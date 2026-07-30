@@ -82,7 +82,7 @@ function reloadPage() {
     <!-- Header -->
     <header class="bg-brand-primary text-white px-4 py-4 shadow-md">
       <div class="max-w-xl mx-auto flex items-center gap-3">
-        <img :src="logoImage" alt="BigPDV" class="h-9 rounded-full" />
+        <img :src="logoImage" alt="StartBig" class="h-9 rounded-full" />
         <div>
           <h1 class="text-lg font-bold">Vistoria de Entrada</h1>
           <p v-if="checklistData" class="text-sm text-white/80 mt-0.5">

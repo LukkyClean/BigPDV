@@ -31,7 +31,10 @@ export interface ConfigImpressao {
   nome_terminal: string
 }
 
-const STORAGE_KEY = 'bigpdv-impressao'
+const STORAGE_KEY = 'startbig-impressao'
+// Chave anterior ao rename do produto. Lida uma unica vez na migracao para o caixa
+// nao perder a impressora ja configurada ao atualizar.
+const STORAGE_KEY_LEGADA = 'bigpdv-impressao'
 
 const CONFIG_PADRAO: ConfigImpressao = {
   tipo_conexao: 'windows',
@@ -55,8 +58,13 @@ export const useImpressaoStore = defineStore('impressao', () => {
 
   function carregar() {
     try {
-      const salvo = localStorage.getItem(STORAGE_KEY)
-      if (salvo) config.value = { ...CONFIG_PADRAO, ...JSON.parse(salvo) }
+      const salvo = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(STORAGE_KEY_LEGADA)
+      if (salvo) {
+        config.value = { ...CONFIG_PADRAO, ...JSON.parse(salvo) }
+        // Regrava na chave nova e descarta a antiga.
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(config.value))
+        localStorage.removeItem(STORAGE_KEY_LEGADA)
+      }
     } catch {
       config.value = { ...CONFIG_PADRAO }
     }

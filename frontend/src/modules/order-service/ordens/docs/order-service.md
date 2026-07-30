@@ -6,7 +6,7 @@
 
 ## Visão Geral
 
-O módulo `order-service/ordens` gerencia o ciclo de vida das Ordens de Serviço no frontend da aplicação BigPDV. Ele conecta a interface do usuário à API REST do backend, cobrindo criação, edição, gerenciamento de itens, upload de fotos, finalização com pagamentos e cancelamento.
+O módulo `order-service/ordens` gerencia o ciclo de vida das Ordens de Serviço no frontend da aplicação StartBig. Ele conecta a interface do usuário à API REST do backend, cobrindo criação, edição, gerenciamento de itens, upload de fotos, finalização com pagamentos e cancelamento.
 
 O módulo é **feature-completo em infraestrutura**: schemas, services, mutations e queries estão todos implementados. A camada de formulário (form composables + context) encapsula a lógica VeeValidate + Zod e é consumida pelos componentes via `provide/inject`.
 

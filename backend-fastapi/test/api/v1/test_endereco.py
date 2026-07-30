@@ -35,7 +35,7 @@ def test_deletar_endereco(client: TestClient, header_with_token: dict):
     # --- ARRANGE (Preparação) ---
     # Define o payload (corpo da requisição JSON) para o novo cliente PF
     data_client = {
-        "email": "joao.silva@meu-pdv.com",
+        "email": "joao.silva@startbig.com.br",
         "contato": "11987654321",
         "observacoes": "Cliente novo, aceita e-mail marketing.",
         "endereco": [

@@ -5,7 +5,7 @@
     DetailPrint "Configurando o Firewall do Windows para o Servidor API de Rede e Ping..."
     
     ; 1. Regra de Entrada TCP para a API (erp-api.exe)
-    nsExec::Exec 'netsh advfirewall firewall add rule name="${FIREWALL_RULE_NAME}" dir=in action=allow program="$INSTDIR\erp-api.exe" profile=any description="Regra de Entrada TCP para permitir conexoes de terminais ao servidor BigPDV."'
+    nsExec::Exec 'netsh advfirewall firewall add rule name="${FIREWALL_RULE_NAME}" dir=in action=allow program="$INSTDIR\erp-api.exe" profile=any description="Regra de Entrada TCP para permitir conexoes de terminais ao servidor StartBig."'
     Pop $0
     ${If} $0 != 0
         DetailPrint "AVISO: Nao foi possivel criar a regra de firewall da API automaticamente."

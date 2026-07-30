@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-BigPDV is a Point of Sale (PDV) system built as a desktop application using Tauri with a Vue 3 frontend and FastAPI Python backend.
+StartBig is an ERP / Point of Sale system built as a desktop application using Tauri with a Vue 3 frontend and FastAPI Python backend.
 
 ## Development Commands
 
@@ -68,13 +68,20 @@ Notas: o PyArmor está em licença **trial** (`pyarmor-trial`) — revisar antes
 release comercial. O `dist/` é *build artifact* (gitignored), não a fonte.
 
 ### Atualização de cliente (o banco é preservado)
-O banco fica em `%LOCALAPPDATA%\StartBigERP\data\pdv.db`, **fora** da pasta de
+O banco fica em `%LOCALAPPDATA%\StartBigERP\data\start_big.db`, **fora** da pasta de
 instalação — o desinstalador não o alcança, e os hooks NSIS só mexem em firewall.
 No startup, `app/core/tarefas.py` roda `create_all()` e **depois** `aplicar_migracoes()`
 (`upgrade("head")`). Migrations novas devem decidir pela presença do **schema antigo**,
 não pela ausência do novo — senão o `create_all` já criou a tabela vazia e a migração
 não roda (a `965c71a2da9a` faz isso certo e serve de modelo). Não há backup automático
 antes de migrar.
+
+⚠️ **Nunca renomeie o arquivo do banco.** O `create_all()` do startup não reclama de
+um nome inexistente: ele cria um banco **vazio** ao lado do de verdade, e o sintoma
+que chega é "o sistema não reconhece mais meu usuário e senha". Foi o que derrubou o
+servidor da loja em 28/07/2026, quando o `7b8d129` trocou o nome para `startbig.db`
+(sem underscore). Se um rename for inevitável, acrescente o nome antigo em
+`LEGACY_DB_FILENAMES` (`app/core/config.py`) no mesmo commit.
 
 ## Architecture
 

@@ -14,7 +14,6 @@ __pycache__/
 # Ignora seu arquivo de banco de dados SQLite local
 *.db
 *.sqlite
-pdv.db
 
 # 4. Configurações de IDE e Outros Temporários
 # Ignora o arquivo .env (crucial para segredos como a SECRET_KEY)
@@ -25,7 +24,6 @@ pdv.db
 # 5. Ignorar caches de testes (como os arquivos .cpython-313.pyc do Pytest)
 # Isso deve ser coberto por *.pyc e __pycache__
 .pytest_cache/
-backend-fastapi/pdv.db
 backend-fastapi/nota.txt
 /.claude
 /.github

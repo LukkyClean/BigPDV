@@ -38,7 +38,7 @@ def valid_pf_payload():
         "rg": "12345678",
         "genero": "MASCULINO",
         "data_nascimento": "1995-12-15",
-        "email": "joao.silva@meu-pdv.com",
+        "email": "joao.silva@startbig.com.br",
         "celular": "11987654321",
         "observacoes": "Cliente novo.",
         "tipo": "PF",
