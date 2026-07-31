@@ -3,7 +3,7 @@
 # DESCRICAO: Modelo SQLAlchemy para a tabela 'ordem_servico_itens'.
 # ---------------------------------------------------------------------------
 
-from sqlalchemy import Integer, String, ForeignKey, Enum as SqlAlchemyEnum, CheckConstraint
+from sqlalchemy import Integer, String, Boolean, ForeignKey, Enum as SqlAlchemyEnum, CheckConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from typing import Optional, TYPE_CHECKING
 
@@ -66,6 +66,43 @@ class OrdemServicoItem(Base):
         server_default=OrdemServicoItemAprovacao.APROVADO.value,
         nullable=False,
         doc="Status de aprovacao do item (PENDENTE/APROVADO/REPROVADO). REPROVADO nao entra no total."
+    )
+
+    # --- Custo declarado a mao (gasto sem produto de estoque) ---
+    # Na OS o comum e nao cadastrar peca: lanca-se so o servico ("Troca de
+    # conector — R$ 150"). Mas o conector custou R$ 40, e sem registrar isso em
+    # algum lugar o relatorio de lucro do mes fica errado para mais.
+    #
+    # Este campo e esse lugar. E INTERNO: nao sai em NENHUMA via impressa, por
+    # decisao explicita da loja — o cliente nunca deve ver quanto foi pago pela
+    # peca. Nao confundir com `valor_unitario`, que e o que o cliente paga.
+    #
+    # So vale para item SEM `produto_id`. Quando a peca vem do catalogo, o custo
+    # e o do livro de estoque (congelado na baixa) e contar os dois dobraria o
+    # CMV — ver crud/relatorio.get_custo_manual_os.
+    custo_unitario: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        doc="Custo unitario que a loja teve com este item, em centavos. Interno: nunca impresso."
+    )
+
+    # --- Visibilidade na via do cliente ---
+    # False = peça EMBUTIDA no serviço. Ela existe para a loja em tudo que
+    # importa — dá baixa no estoque, congela custo e entra no CMV do relatório —
+    # mas não é listada nas vias impressas. O caso real: cobrar R$ 150 pelo
+    # serviço sem expor que a peça usada custou R$ 40.
+    #
+    # Invariante: item embutido vale ZERO. As vias imprimem as linhas visíveis e
+    # o total da OS; uma linha escondida com valor faria as duas coisas
+    # divergirem, e o cliente receberia um documento que não fecha. O dinheiro
+    # fica na linha do serviço. Validado em schemas/ordem_servico.py e no
+    # serviço, na atualização parcial.
+    visivel_cliente: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        server_default="1",
+        nullable=False,
+        doc="Se False, a peca esta embutida no servico e nao sai nas vias do cliente"
     )
 
     # --- Garantia por item (prazo em dias e/ou limite de KM) ---

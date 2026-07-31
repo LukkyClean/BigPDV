@@ -1,17 +1,34 @@
-import type { OsStatusEnumDataType, OsPriorityEnumDataType } from '../../ordens/schemas/enums/osEnums.schema';
-import { OS_STATUS_OPTIONS, OS_PRIORIDADE_OPTIONS } from '../../ordens/constants/ordemServico.constants';
+import type {
+  OsStatusEnumDataType,
+  OsPriorityEnumDataType,
+  OsEquipSituacaoEnumDataType,
+} from '../../ordens/schemas/enums/osEnums.schema';
+import type { OsEstadoConfig } from '../../ordens/constants/ordemServico.constants';
+import { OS_ESTADO_CONFIG, OS_PRIORIDADE_OPTIONS } from '../../ordens/constants/ordemServico.constants';
 
 // Re-export shared utilities for backward compatibility
 export { getClienteNome, getPaymentDisplayName, inferPaymentType, inferPermiteParcelamento } from '@/shared/utils/print.utils';
 
-export function getStatusLabel(status: OsStatusEnumDataType): string {
-  const found = OS_STATUS_OPTIONS.find((s) => s.value === status);
-  return found?.label || status;
-}
-
-export function getStatusColor(status: OsStatusEnumDataType): string {
-  const found = OS_STATUS_OPTIONS.find((s) => s.value === status);
-  return found?.color || 'gray';
+/**
+ * Rótulo e cores do estado que a OS mostra ao usuário, cruzando o status do
+ * fluxo com o desfecho do objeto.
+ *
+ * É por aqui que "Condenado" e "Sem Reparo" chegam à tela: eles são gravados em
+ * `situacao_equipamento` e nunca aparecem em `status` (que fica FINALIZADA), então
+ * ler só o status faria uma OS condenada se anunciar como "Finalizada".
+ */
+export function getEstadoOS(
+  status: OsStatusEnumDataType | null | undefined,
+  situacao?: OsEquipSituacaoEnumDataType | null,
+): OsEstadoConfig {
+  // O desfecho só substitui o rótulo de uma OS de fato encerrada. Reabrir NÃO
+  // limpa `situacao_equipamento` (é o último desfecho conhecido do objeto), e sem
+  // esta guarda uma OS reaberta continuaria se exibindo como "Condenado" enquanto
+  // já está de volta à bancada.
+  if (status === 'FINALIZADA' && situacao && situacao !== 'REPARADO') {
+    return OS_ESTADO_CONFIG[situacao];
+  }
+  return OS_ESTADO_CONFIG[status ?? 'ABERTA'] ?? OS_ESTADO_CONFIG.ABERTA;
 }
 
 export function getPrioridadeLabel(prioridade: OsPriorityEnumDataType): string {

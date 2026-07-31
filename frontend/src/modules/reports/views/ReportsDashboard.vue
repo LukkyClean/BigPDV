@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import { Banknote, Receipt, ShoppingCart, Wrench, TriangleAlert, Download, Percent } from 'lucide-vue-next';
+import { Banknote, Receipt, ShoppingCart, Wrench, TriangleAlert, Download, Percent, Wallet, AlertTriangle } from 'lucide-vue-next';
 
 import { formatCurrency, formatCentsToInput } from '@/shared/utils/finance';
 import { saveCsv } from '@/shared/utils/csv';
@@ -30,6 +30,17 @@ const toast = useToast();
 const jurosTotal = computed(
   () => (data.value?.juros_repassado ?? 0) + (data.value?.juros_absorvido ?? 0),
 );
+
+/**
+ * O bloco de lucro só aparece quando há custo apurado OU um aviso a dar. Loja
+ * que só vende serviço não tem CMV, e um "Lucro = Faturamento" fixo na tela não
+ * informaria nada — só ocuparia espaço sugerindo margem de 100%.
+ */
+const temCusto = computed(
+  () => (data.value?.cmv ?? 0) > 0 || (data.value?.saidas_sem_custo ?? 0) > 0,
+);
+
+const lucroPositivo = computed(() => (data.value?.lucro_bruto ?? 0) >= 0);
 
 /** Exporta o detalhamento por dia (dias com movimento) como CSV e abre no Excel. */
 async function exportarCsv() {
@@ -154,6 +165,64 @@ async function exportarCsv() {
             </span>
           </div>
         </div>
+      </div>
+
+      <!--
+        Lucro. É a resposta para "vendi por 150, a peça me custou 40, quanto
+        sobrou?". O custo vem congelado do livro de estoque, do dia em que a peça
+        saiu — não do preço de hoje no cadastro, senão um reajuste do fornecedor
+        reescreveria o lucro do mês passado.
+      -->
+      <div v-if="temCusto" class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+        <h3 class="text-sm font-bold text-slate-700 mb-3 flex items-center gap-1.5">
+          <Wallet :size="14" class="text-slate-400" /> Lucro no período
+        </h3>
+        <div class="space-y-2 text-sm">
+          <div class="flex justify-between items-center">
+            <span class="text-slate-500">Faturamento líquido</span>
+            <span class="font-medium text-slate-700 tabular-nums">
+              {{ formatCurrency(data?.faturamento_liquido ?? data?.faturamento_total ?? 0) }}
+            </span>
+          </div>
+          <div class="flex justify-between items-center">
+            <span class="text-rose-600">
+              (−) Custo das peças vendidas
+              <span class="text-[11px] text-slate-400">· o que você pagou por elas</span>
+            </span>
+            <span class="font-medium text-rose-600 tabular-nums">
+              − {{ formatCurrency(data?.cmv ?? 0) }}
+            </span>
+          </div>
+          <div class="flex justify-between items-center border-t border-slate-200 pt-2">
+            <span class="font-bold text-slate-700">
+              Lucro bruto
+              <span class="text-[11px] font-normal text-slate-400">· não desconta despesa fixa</span>
+            </span>
+            <span class="text-lg font-bold tabular-nums" :class="lucroPositivo ? 'text-emerald-700' : 'text-rose-700'">
+              {{ formatCurrency(data?.lucro_bruto ?? 0) }}
+              <span class="text-xs font-semibold text-slate-400">
+                ({{ (data?.margem_percentual ?? 0).toFixed(1) }}%)
+              </span>
+            </span>
+          </div>
+        </div>
+
+        <!--
+          Honestidade sobre o dado: movimentação anterior ao registro de custo
+          entra como zero no CMV, então o lucro fica MAIOR do que foi. Melhor
+          avisar do que exibir um número bonito e errado.
+        -->
+        <p
+          v-if="(data?.saidas_sem_custo ?? 0) > 0"
+          class="mt-3 flex items-start gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2.5"
+        >
+          <AlertTriangle :size="14" class="shrink-0 mt-px" />
+          <span>
+            {{ data?.saidas_sem_custo }} movimentação(ões) deste período são anteriores ao
+            registro de custo e entraram como zero. <strong>O lucro acima está maior do que o
+            real</strong> — ele fica exato conforme as peças forem entrando com o valor pago.
+          </span>
+        </p>
       </div>
 
       <!-- Gráficos -->

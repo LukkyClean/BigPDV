@@ -16,6 +16,15 @@ class ProdutoVendaCreate(BaseModel):
     quantidade: int = Field(0, gt=0, description="Quantidade do produto, obrigatório")
     descricao_avulsa: Optional[str] = Field(None, max_length=100, description="Descrição do produto avulso, obrigatório se não for um produto cadastrado")
     valor_unitario: Optional[int] = Field(None, ge=0, description="Valor unitário do produto, obrigatório")
+    custo_unitario: Optional[int] = Field(
+        None,
+        ge=0,
+        description=(
+            "Quanto a loja PAGOU por unidade, em centavos. Só para item AVULSO — o "
+            "cadastrado tem o custo no livro de estoque, e contar os dois dobraria "
+            "o CMV. Campo interno: nunca sai em via impressa."
+        )
+    )
     desconto: int = Field(0, ge=0, description="Desconto do produto, obrigatório")
 
     @model_validator(mode='after')
@@ -37,7 +46,9 @@ class ProdutoVendaCreate(BaseModel):
         if self.descricao_avulsa is not None:
             raise ValueError("O campo 'descricao_avulsa' deve ser nulo quando o tipo de produto é 'CADASTRADO'.")
         if self.valor_unitario is not None:
-            raise ValueError("O campo 'valor_unitario' deve ser nulo quando o tipo de produto é 'CADASTRADO'.")    
+            raise ValueError("O campo 'valor_unitario' deve ser nulo quando o tipo de produto é 'CADASTRADO'.")
+        if self.custo_unitario is not None:
+            raise ValueError("O campo 'custo_unitario' deve ser nulo quando o tipo de produto é 'CADASTRADO': o custo vem do livro de estoque.")
         return self
         
 
@@ -74,6 +85,7 @@ class ProdutoVendaUpdate(BaseModel):
     quantidade: Optional[int] = Field(None, gt=0, description="Quantidade do produto")
     descricao_avulsa: Optional[str] = Field(None, max_length=100, description="Descrição do produto avulso")
     valor_unitario: Optional[int] = Field(None, ge=0, description="Valor unitário do produto")
+    custo_unitario: Optional[int] = Field(None, ge=0, description="Custo interno por unidade (item avulso). Nunca impresso.")
     desconto: Optional[int] = Field(None, ge=0, description="Desconto do produto")
     codigo_gerente: Optional[str] = Field(None, description="PIN do gerente para aprovar alteração de preço")
 
@@ -106,6 +118,10 @@ class ProdutoVendaRead(BaseModel):
     nome: str = Field(..., description="Nome do produto, preenchido automaticamente com base no tipo do produto e suas referências")
     quantidade: int = Field(0, gt=0, description="Quantidade do produto, obrigatório")
     valor_unitario: int = Field(0, ge=0, description="Valor unitário do produto, obrigatório")
+    custo_unitario: Optional[int] = Field(
+        None,
+        description="Custo interno por unidade (só item avulso). Nunca impresso na via do cliente."
+    )
     desconto: int = Field(0, ge=0, description="Desconto do produto, obrigatório")
     subtotal: int = Field(0, ge=0, description="Subtotal do produto (quantidade * valor_unitario - desconto)")
     total: int = Field(0, ge=0, description="Total do produto (subtotal - desconto)")

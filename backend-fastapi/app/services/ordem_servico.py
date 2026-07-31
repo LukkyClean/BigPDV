@@ -125,6 +125,24 @@ def _assert_os_editavel(os_in_db: OSModel) -> None:
         raise os_fechada_exce
 
 
+def _assert_item_coerente(item: OSItemModel) -> None:
+    """Peça embutida vale zero; item cobrado vale mais que zero.
+
+    Espelha o validador de OSItemBase, para a regra valer também no PATCH — ver
+    a explicação da invariante no modelo do item.
+    """
+    if not item.visivel_cliente and (item.valor_total or 0) != 0:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Peça embutida no serviço não é cobrada à parte: o valor dela deve ser zero",
+        )
+    if item.visivel_cliente and (item.valor_total or 0) <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Item cobrado do cliente precisa de valor maior que zero",
+        )
+
+
 def _item_conta_no_total(status: OrdemServicoItemAprovacao) -> bool:
     """Um item entra no total da OS a menos que esteja REPROVADO."""
     return status != OrdemServicoItemAprovacao.REPROVADO
@@ -625,6 +643,12 @@ def update_item_os(db: Session, numero_os: str, item_id: int, data: OSItemUpdate
     # Recalcula valor_total do item se quantidade ou valor_unitario mudarem
     if "quantidade" in update_data or "valor_unitario" in update_data:
         item_in_db.valor_total = item_in_db.quantidade * item_in_db.valor_unitario
+
+    # Visibilidade e valor precisam continuar coerentes DEPOIS do patch — os dois
+    # campos podem vir em requisições separadas, e só aqui dá para ver o estado
+    # final. Sem esta guarda, marcar uma peça como embutida sem zerar o valor
+    # deixaria a via do cliente com linhas que não somam o total impresso.
+    _assert_item_coerente(item_in_db)
 
     os_crud.update_os_item(db, item_to_update=item_in_db)
     db.refresh(os_in_db)

@@ -727,3 +727,68 @@ def test_os_estoque_insuficiente_finaliza_e_fica_negativo(client, db_session):
     numero = _os_com_produto(client, header, cliente_id, "SERIAL-E6", produto_id, valor=5000, quantidade=3)
     _finalizar(client, header, numero, 15000)
     assert _estoque_atual(db_session, produto_id) == -2
+
+
+# =========================
+# FILTRO POR DESFECHO (situacao_equipamento)
+# =========================
+
+def _finalizar_com_situacao(client, header, cliente_id, serie, situacao):
+    """Cria uma OS sem itens e a finaliza com o desfecho informado.
+
+    SEM_REPARO/CONDENADO não exigem pagamento — o serviço libera a cobrança
+    para esses desfechos.
+    """
+    r = client.post("/api/v1/ordens-servico/", json=_os_payload(cliente_id, serie), headers=header)
+    assert r.status_code == status.HTTP_201_CREATED, r.text
+    numero = r.json()["numero_os"]
+    rf = client.put(
+        f"/api/v1/ordens-servico/{numero}/finalizar",
+        json={"situacao_equipamento": situacao, "pagamentos": []},
+        headers=header,
+    )
+    assert rf.status_code == 200, rf.text
+    assert rf.json()["situacao_equipamento"] == situacao
+    assert rf.json()["status"] == "FINALIZADA", "desfecho não é status: a OS segue FINALIZADA"
+    return numero
+
+
+def test_filtro_por_desfecho_separa_condenado_de_sem_reparo(client, db_session):
+    """A listagem filtra por `situacao_equipamento` — é o que faz a OS condenada
+    ser encontrável, já que o `status` dela é FINALIZADA como o de qualquer outra."""
+    header = _autenticar_e_criar_empresa(client, "assistencia_tecnica")
+    cliente_id = _criar_cliente(client, header)
+
+    cond = _finalizar_com_situacao(client, header, cliente_id, "SERIAL-D1", "CONDENADO")
+    sem = _finalizar_com_situacao(client, header, cliente_id, "SERIAL-D2", "SEM_REPARO")
+    _finalizar_com_situacao(client, header, cliente_id, "SERIAL-D3", "REPARADO")
+
+    r = client.get("/api/v1/ordens-servico/", params={"situacao_equipamento": "CONDENADO"}, headers=header)
+    assert r.status_code == 200, r.text
+    assert [os["numero_os"] for os in r.json()["items"]] == [cond]
+
+    r = client.get("/api/v1/ordens-servico/", params={"situacao_equipamento": "SEM_REPARO"}, headers=header)
+    assert r.status_code == 200, r.text
+    assert [os["numero_os"] for os in r.json()["items"]] == [sem]
+
+    # O filtro de status continua enxergando as três: condenar não tira a OS
+    # de FINALIZADA, e o faturamento depende disso.
+    r = client.get("/api/v1/ordens-servico/", params={"status": "FINALIZADA"}, headers=header)
+    assert r.json()["total_items"] == 3, r.json()
+
+
+def test_filtro_por_desfecho_ignora_os_reaberta(client, db_session):
+    """Reabrir não limpa `situacao_equipamento` (é o último desfecho conhecido),
+    então o filtro exige FINALIZADA — senão o "Condenado" traria de volta uma OS
+    que a tela já mostra como EM_ANDAMENTO."""
+    header = _autenticar_e_criar_empresa(client, "assistencia_tecnica")
+    cliente_id = _criar_cliente(client, header)
+
+    numero = _finalizar_com_situacao(client, header, cliente_id, "SERIAL-D4", "CONDENADO")
+    rr = client.put(f"/api/v1/ordens-servico/{numero}/reabrir", json={"cliente_pagou": False}, headers=header)
+    assert rr.status_code == 200, rr.text
+    assert rr.json()["status"] == "EM_ANDAMENTO"
+
+    r = client.get("/api/v1/ordens-servico/", params={"situacao_equipamento": "CONDENADO"}, headers=header)
+    assert r.status_code == 200, r.text
+    assert r.json()["items"] == [], "OS reaberta não é mais um condenado entregue"

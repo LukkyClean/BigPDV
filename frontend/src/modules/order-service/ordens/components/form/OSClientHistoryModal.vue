@@ -6,7 +6,7 @@ import BaseModal from '@/shared/components/commons/BaseModal/BaseModal.vue';
 import BaseTableContainer from '@/shared/components/commons/BaseTableContainer/BaseTableContainer.vue';
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
 
-import { getStatusLabel, getStatusColor } from '../../../shared/utils/formatters';
+import { getEstadoOS } from '../../../shared/utils/formatters';
 import { useOrderServiceQueryByCliente } from '../../composables/request/useOrderServiceGet.queries';
 import type { OrderServiceReadDataType } from '../../schemas/orderServiceQuery.schema';
 
@@ -48,20 +48,6 @@ function truncate(text: string | null | undefined, maxLength: number): string {
   return text.length > maxLength ? text.slice(0, maxLength) + '…' : text;
 }
 
-const statusColorMap: Record<string, string> = {
-  blue: 'bg-brand-primary-light text-brand-primary',
-  yellow: 'bg-yellow-50 text-yellow-700',
-  orange: 'bg-orange-50 text-orange-700',
-  purple: 'bg-purple-50 text-purple-700',
-  indigo: 'bg-indigo-50 text-indigo-700',
-  green: 'bg-emerald-50 text-emerald-700',
-  red: 'bg-red-50 text-red-700',
-  gray: 'bg-zinc-50 text-zinc-700',
-};
-
-function getStatusClass(status: string): string {
-  return statusColorMap[getStatusColor(status as Parameters<typeof getStatusColor>[0])] || statusColorMap.gray;
-}
 </script>
 
 <template>
@@ -111,9 +97,12 @@ function getStatusClass(status: string): string {
             </td>
             <td class="px-4 py-3">
               <span
-                :class="['px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide', getStatusClass(os.status)]"
+                :class="[
+                  'px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide',
+                  getEstadoOS(os.status, os.situacao_equipamento).badge,
+                ]"
               >
-                {{ getStatusLabel(os.status) }}
+                {{ getEstadoOS(os.status, os.situacao_equipamento).label }}
               </span>
             </td>
             <td class="px-4 py-3 text-slate-600">

@@ -87,9 +87,10 @@ def get_ordens_servico_by_search(
     Busca avançada de OS com filtros dinâmicos e paginação.
 
     Filtros suportados:
-      search        → busca por numero_os, nome do cliente PF, razão social/nome fantasia PJ
-      status        → filtra por OrdemServicoStatus
-      priority_sort → se True, ordena por prioridade (URGENTE=1 → BAIXA=4)
+      search               → busca por numero_os, nome do cliente PF, razão social/nome fantasia PJ
+      status               → filtra por OrdemServicoStatus
+      situacao_equipamento → filtra pelo desfecho do objeto (só OS FINALIZADA)
+      priority_sort        → se True, ordena por prioridade (URGENTE=1 → BAIXA=4)
     """
     query = select(OSModel)
 
@@ -128,6 +129,17 @@ def get_ordens_servico_by_search(
     status = filters.get("status")
     if status:
         query = query.where(OSModel.status == status)
+
+    situacao = filters.get("situacao_equipamento")
+    if situacao:
+        # O desfecho só vale para uma OS de fato encerrada. Reabrir NÃO limpa
+        # `situacao_equipamento` (é o último desfecho conhecido do objeto), então
+        # sem o status junto o filtro "Condenado" devolveria também OS que já
+        # voltaram para a bancada — justo as que a tela mostra como EM_ANDAMENTO.
+        query = query.where(
+            OSModel.situacao_equipamento == situacao,
+            OSModel.status == OrdemServicoStatus.FINALIZADA,
+        )
 
     sort_by_priority = filters.get("priority_sort")
     if sort_by_priority:

@@ -71,10 +71,19 @@ const motivoCancelamento = computed(() => {
   return match ? match[1].trim() : 'Motivo não informado.';
 });
 
-const subtotal = computed(() => {
-  if (!props.ordemServico) return 0;
-  return props.ordemServico.itens.reduce((acc, item) => acc + item.valor_total, 0);
-});
+// Peça embutida no serviço não é listada para o cliente: ela existe na OS, dá
+// baixa no estoque e entra no custo, mas a via impressa mostra só o serviço.
+// `!== false` e não `=== true`: item antigo vem sem o campo e tem que continuar
+// aparecendo, exatamente como sempre apareceu.
+const itensVisiveis = computed(() =>
+  (props.ordemServico?.itens ?? []).filter((item) => item.visivel_cliente !== false),
+);
+
+// Somado sobre os visíveis para a via fechar por construção: o cliente consegue
+// conferir a conta com as linhas que ele tem na mão.
+const subtotal = computed(() =>
+  itensVisiveis.value.reduce((acc, item) => acc + item.valor_total, 0),
+);
 
 const adiantamento = computed(() => props.ordemServico?.valor_entrada ?? 0);
 
@@ -179,7 +188,7 @@ const totalRecebido = computed(() => adiantamentoUtilizado.value + totalPago.val
         </div>
       </div>
 
-      <div class="mb-4" v-if="ordemServico.itens?.length">
+      <div class="mb-4" v-if="itensVisiveis.length">
         <table class="w-full text-xs text-left">
           <thead>
             <tr class="border-b-2 border-slate-800">
@@ -190,7 +199,7 @@ const totalRecebido = computed(() => adiantamentoUtilizado.value + totalPago.val
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-200">
-            <tr v-for="item in ordemServico.itens" :key="item.id">
+            <tr v-for="item in itensVisiveis" :key="item.id">
               <td class="py-2 pl-2 text-slate-800">{{ item.nome }}</td>
               <td class="py-2 text-center text-slate-600">{{ item.quantidade }}</td>
               <td class="py-2 text-right text-slate-600">{{ formatCurrency(item.valor_unitario) }}</td>

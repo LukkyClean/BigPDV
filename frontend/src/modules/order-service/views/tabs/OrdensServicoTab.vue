@@ -21,7 +21,7 @@ import { useOrderServiceQueryAll, useOrderServiceQueryStats } from '../../ordens
 import { getUniqueOS } from '../../ordens/services/orderServiceGet.service';
 
 import type { OrderServiceReadDataType } from '../../ordens/schemas/orderServiceQuery.schema';
-import type { OsStatusEnumDataType } from '../../ordens/schemas/enums/osEnums.schema';
+import type { OsEstadoKey } from '../../ordens/constants/ordemServico.constants';
 import { useToast } from '@/shared/composables/useToast';
 import { useReadyOrderServiceMutation } from '../../ordens/composables/request/useOrderServiceUpdate.mutate';
 import { useOSCreateFlow } from '../../ordens/composables/useOSCreateFlow';
@@ -92,11 +92,11 @@ async function imprimirEscPosDireto(tipo: 'ENTRADA' | 'SAIDA' | 'CANCELAMENTO'):
   return impressao.imprimirCupom(dados);
 }
 
-// ─── Filtro de status ─────────────────────────────────────────────────────────
+// ─── Filtro de estado (status do fluxo + desfecho do objeto) ──────────────────
 const osActiveFilter = computed<string | null>({
   get: () => activeStatusFilterQuery.value ?? null,
   set: (val: string | null) => {
-    activeStatusFilterQuery.value = (val as OsStatusEnumDataType | null) ?? undefined;
+    activeStatusFilterQuery.value = (val as OsEstadoKey | null) ?? undefined;
   },
 });
 

@@ -346,7 +346,7 @@ import { useOsPaymentMethodsGet } from '../composables/request/relationship/useO
 | Parâmetro | Tipo | Descrição |
 |-----------|------|-----------|
 | `searchQuery` | `Ref<string>` | Busca por numero_os, nome do cliente, razão social |
-| `activeStatusFilterQuery` | `Ref<OsStatusEnumDataType \| undefined>` | Filtro por status |
+| `activeStatusFilterQuery` | `Ref<OsEstadoKey \| undefined>` | Filtro por estado: um status do fluxo (vira `status`) ou um desfecho SEM_REPARO/CONDENADO (vira `situacao_equipamento`) |
 | `activePriorityFilterQuery` | `Ref<boolean>` | Ordena por prioridade (URGENTE → BAIXA) |
 
 ### Retorno de `useOrderServiceQueryStats`

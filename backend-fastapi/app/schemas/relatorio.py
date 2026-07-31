@@ -45,6 +45,25 @@ class RelatorioFaturamento(BaseModel):
         description="faturamento_total − juros_repassado − juros_absorvido. É o que "
                     "efetivamente sobra para a loja (centavos)",
     )
+    cmv: int = Field(
+        0,
+        description="Custo da mercadoria vendida: Σ do custo congelado das pecas que "
+                    "sairam por venda e OS no periodo, menos os estornos (centavos)",
+    )
+    lucro_bruto: int = Field(
+        0,
+        description="faturamento_liquido − cmv. E o que sobra depois do custo das pecas "
+                    "e do juros de cartao. Nao desconta despesa fixa (centavos)",
+    )
+    margem_percentual: float = Field(
+        0.0,
+        description="lucro_bruto ÷ faturamento_total × 100. Zero quando nao houve faturamento",
+    )
+    saidas_sem_custo: int = Field(
+        0,
+        description="Movimentacoes do periodo sem custo apurado (anteriores ao registro de "
+                    "custo). Enquanto for > 0 o lucro esta SUBESTIMADO e a tela avisa",
+    )
     ticket_medio: int = Field(..., description="Faturamento / nº de transacoes finalizadas (centavos)")
     qtd_vendas: int = Field(..., description="Quantidade de vendas finalizadas")
     qtd_os: int = Field(..., description="Quantidade de OS finalizadas")

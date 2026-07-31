@@ -19,6 +19,7 @@ import { PaginationBaseSchema } from '@/shared/schemas/pagination/pagination.sch
 const OrderServiceParamsSchema = z.object({
   search: z.string().max(255, 'A busca pode ter no máximo 255 caracteres').optional().nullable(),
   status: OsStatusEnum.optional().nullable(),
+  situacao_equipamento: OsEquipSituacaoEnum.optional().nullable(),
   priority_sort: z.boolean().optional(),
   page: z.number().int().min(1).optional(),
   limit: z.number().int().min(1).max(100).optional(),

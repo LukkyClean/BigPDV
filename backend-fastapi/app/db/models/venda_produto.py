@@ -76,6 +76,17 @@ class ProdutoVenda(Base):
     )
     quantidade: Mapped[int] = mapped_column(Integer, nullable=False, doc="Quantidade do item vendido")
     valor_unitario: Mapped[int] = mapped_column(Integer, nullable=False, doc="Preco unitario congelado no ato da inclusao (centavos)")
+    # Custo declarado a mao, so faz sentido em item AVULSO. Produto CADASTRADO
+    # da baixa no estoque e tem o custo congelado no livro (movimentacoes_estoque);
+    # o avulso nao passa por la, entao sem este campo ele entrava no relatorio
+    # como receita sem custo nenhum e inflava o lucro.
+    #
+    # E INTERNO: nao sai em nenhuma via impressa, igual ao equivalente na OS.
+    custo_unitario: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        doc="Custo unitario que a loja teve com este item avulso (centavos). Interno: nunca impresso."
+    )
     desconto: Mapped[int] = mapped_column(Integer, default=0, nullable=False, doc="Desconto especifico deste item (centavos)")
     subtotal: Mapped[int] = mapped_column(Integer, nullable=False, doc="Subtotal calculado (quantidade * valor_unitario)")
     @property

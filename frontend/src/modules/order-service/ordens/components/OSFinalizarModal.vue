@@ -215,6 +215,10 @@ const adiantamentoParaDecisao = computed(() => excedente.value > 0);
 // ─── Reset ───────────────────────────────────────────────────────────────────
 watch(() => props.isOpen, (open) => {
   if (open) {
+    // Numa refinalização (OS reaberta) o desfecho anterior já está gravado.
+    // Sem isto o modal reabria sempre em "Reparado" e um Condenado virava
+    // Reparado no primeiro clique de finalizar, sem ninguém perceber.
+    situacao_equipamento.value = props.ordemServico?.situacao_equipamento ?? 'REPARADO';
     // Desconto anterior é preservado via existingDesconto — campo começa vazio.
     // Pré-preenche a próxima revisão com o alvo já cadastrado no veículo (se houver).
     const obj = props.ordemServico?.objeto as

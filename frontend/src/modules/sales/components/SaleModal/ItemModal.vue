@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { X, Info, Tag } from 'lucide-vue-next';
+import { X, Info, Tag, Lock } from 'lucide-vue-next';
 
 import BaseModal from '@/shared/components/commons/BaseModal/BaseModal.vue';
 import BaseInput from '@/shared/components/ui/BaseInput/BaseInput.vue';
@@ -22,7 +22,7 @@ const props = defineProps<{
   isOrcamento?: boolean;
 }>();
 
-const { closeItemModal, itemModalIsOpen, isCreateMode, selectedItem } = useItemModal();
+const { closeItemModal, itemModalIsOpen, isCreateMode, selectedItem, descricaoInicial } = useItemModal();
 const { requerPinAlterarPreco } = storeToRefs(useConfiguracoesStore());
 
 const canEditPrice = computed(() =>
@@ -38,6 +38,7 @@ const {
   valorUnitario,
   quantidade,
   desconto,
+  custo,
   subtotal,
   total,
   errors,
@@ -49,7 +50,23 @@ const {
   avisoEstoqueOpen,
   confirmarSalvarComEstoqueNegativo,
   gerentePreco,
-} = useItemSaleForm(props.saleId, selectedItem, onSucess, props.isOrcamento, requerPinAlterarPreco);
+} = useItemSaleForm(
+  props.saleId,
+  selectedItem,
+  onSucess,
+  props.isOrcamento,
+  requerPinAlterarPreco,
+  descricaoInicial,
+);
+
+// Custo interno só se aplica ao avulso: produto cadastrado tem o custo vindo do
+// livro de estoque, congelado na baixa.
+const isAvulso = computed(() => isCreateMode.value || selectedItem.value?.tipo_produto === 'AVULSO');
+
+const sobraItem = computed(() => {
+  if (custo.value <= 0) return null;
+  return (valorUnitario.value - custo.value) * quantidade.value;
+});
 
 const displaySubtotal = computed(() => {
   return formatCurrency(subtotal.value * 100);
@@ -167,6 +184,36 @@ function handleCloseModal() {
               :error="errors.desconto"
             />
           </div>
+        </div>
+
+        <!--
+          Custo interno. Item avulso não passa pelo estoque, então sem declarar
+          aqui ele entra no relatório como receita sem custo e infla o lucro.
+          NÃO aparece em nenhuma via impressa.
+        -->
+        <div v-if="isAvulso" class="mt-5 rounded-xl border border-zinc-200 bg-zinc-50/60 p-3">
+          <div class="flex items-center gap-1.5 mb-2">
+            <Lock :size="13" class="text-zinc-400" />
+            <span class="text-xs font-semibold text-zinc-500 uppercase tracking-wide">
+              Custo para a loja
+            </span>
+            <span class="text-[10px] text-zinc-400">(opcional)</span>
+          </div>
+          <div class="grid grid-cols-8 gap-5 items-end">
+            <div class="col-span-5">
+              <MoneyInput v-model="custo" label="" />
+            </div>
+            <p v-if="sobraItem !== null" class="col-span-3 text-xs text-zinc-500 pb-2">
+              Sobra
+              <strong :class="sobraItem >= 0 ? 'text-emerald-600' : 'text-red-600'">
+                {{ formatCurrency(Math.round(sobraItem * 100)) }}
+              </strong>
+            </p>
+          </div>
+          <p class="mt-1.5 text-[11px] text-zinc-400 leading-snug">
+            Quanto você pagou por este item. Fica só no relatório —
+            <strong class="text-zinc-500">o cliente nunca vê este valor</strong>.
+          </p>
         </div>
       </form>
 

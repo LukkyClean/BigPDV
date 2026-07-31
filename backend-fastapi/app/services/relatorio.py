@@ -8,7 +8,7 @@ from datetime import date, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
-from app.core.enum import SituacaoEquipamento
+from app.core.enum import SituacaoEquipamento, MovimentacaoTipo
 from app.db.crud import dashboard as dashboard_crud
 from app.db.crud import relatorio as relatorio_crud
 from app.schemas.relatorio import (
@@ -63,6 +63,32 @@ def get_faturamento(db: Session, inicio: date, fim: date, empresa_id: int) -> Re
     juros_absorvido = juros.get("LOJA", 0)
     faturamento_liquido = faturamento_total - juros_repassado - juros_absorvido
 
+    # CMV: o custo das pecas que sairam, congelado no livro de estoque no dia em
+    # que sairam. Saida soma, entrada (estorno) subtrai — assim uma venda
+    # cancelada ou uma OS reaberta devolve o custo sozinha, sem ninguem caçar
+    # estorno na mao.
+    cmv = 0
+    saidas_sem_custo = 0
+    for linhas in (
+        relatorio_crud.get_cmv_vendas(db, dt_inicio, dt_fim, empresa_id),
+        relatorio_crud.get_cmv_os(db, dt_inicio, dt_fim, empresa_id),
+    ):
+        for linha in linhas:
+            valor = linha.total or 0
+            cmv += valor if linha.tipo == MovimentacaoTipo.SAIDA else -valor
+            saidas_sem_custo += linha.sem_custo or 0
+
+    # Gasto declarado a mao, nos dois fluxos que nao passam pelo livro de estoque:
+    #   OS    -> o servico e lancado sem cadastrar a peca (o normal na oficina)
+    #   Venda -> item AVULSO, digitado na hora, fora do catalogo
+    # Sem estes dois, a receita entrava e o custo nao, inflando o lucro.
+    cmv += relatorio_crud.get_custo_manual_os(db, dt_inicio, dt_fim, empresa_id)
+    cmv += relatorio_crud.get_custo_manual_vendas(db, dt_inicio, dt_fim, empresa_id)
+    cmv = max(0, cmv)
+
+    lucro_bruto = faturamento_liquido - cmv
+    margem_percentual = (lucro_bruto / faturamento_total * 100) if faturamento_total else 0.0
+
     # Serie por dia — preenche dias sem movimento com zero para o grafico ficar continuo.
     vendas_dia = {
         str(r.dia): (r.total or 0)
@@ -104,6 +130,10 @@ def get_faturamento(db: Session, inicio: date, fim: date, empresa_id: int) -> Re
         juros_repassado=juros_repassado,
         juros_absorvido=juros_absorvido,
         faturamento_liquido=faturamento_liquido,
+        cmv=cmv,
+        lucro_bruto=lucro_bruto,
+        margem_percentual=round(margem_percentual, 2),
+        saidas_sem_custo=saidas_sem_custo,
         ticket_medio=ticket_medio,
         qtd_vendas=stats.vendas_count,
         qtd_os=stats.os_finalizadas_count,
@@ -238,7 +268,8 @@ def get_estoque(db: Session, inicio: date, fim: date, empresa_id: int) -> Relato
     ABC classifica pelo % ACUMULADO de faturamento: A ≤ 80%, B ≤ 95%, C o resto.
     Só entram produtos que venderam. "Parados" são o complemento: ativos com estoque
     e sem nenhuma venda no período. Valor imobilizado é a foto de agora (independe do
-    período) — custo usa valor_entrada; quando ausente, conta como 0 (não estima).
+    período) — custo usa o custo médio ponderado e cai para valor_entrada enquanto a
+    média não existir; sem nenhum dos dois, conta como 0 (não estima).
     """
     dt_inicio = datetime.combine(inicio, datetime.min.time())
     dt_fim = datetime.combine(fim, datetime.max.time())
@@ -280,7 +311,10 @@ def get_estoque(db: Session, inicio: date, fim: date, empresa_id: int) -> Relato
 
     for p in produtos:
         qtd = p.quantidade or 0
-        custo = p.valor_entrada or 0
+        # Capital imobilizado vale pelo custo contábil, não pelo último preço
+        # digitado no cadastro. A média só assume quando existe; até lá o
+        # comportamento é o de antes.
+        custo = p.custo_medio if p.custo_medio is not None else (p.valor_entrada or 0)
         valor_custo_total += qtd * custo
         valor_venda_total += qtd * (p.valor_varejo or 0)
 

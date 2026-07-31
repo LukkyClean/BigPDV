@@ -20,6 +20,7 @@ export async function getAllOs(
   if (query.search) params.search = query.search;
   if (query.priority_sort !== undefined) params.priority_sort = query.priority_sort;
   if (query.status) params.status = query.status;
+  if (query.situacao_equipamento) params.situacao_equipamento = query.situacao_equipamento;
   if (query.page) params.page = query.page;
   if (query.limit) params.limit = query.limit;
 

@@ -87,10 +87,15 @@ const motivoCancelamento = computed(() => {
   return match ? match[1].trim() : 'Motivo nao informado.';
 });
 
-const subTotal = computed(() => {
-  if (!props.orderService) return 0;
-  return props.orderService.itens.reduce((acc, item) => acc + item.valor_total, 0);
-});
+// Peça embutida no serviço não é listada para o cliente. `!== false` e não
+// `=== true`: item antigo vem sem o campo e tem que continuar aparecendo.
+const itensVisiveis = computed(() =>
+  (props.orderService?.itens ?? []).filter((item) => item.visivel_cliente !== false),
+);
+
+const subTotal = computed(() =>
+  itensVisiveis.value.reduce((acc, item) => acc + item.valor_total, 0),
+);
 
 const adiantamento = computed(() => props.orderService?.valor_entrada ?? 0);
 
@@ -187,12 +192,12 @@ const totalRecebido = computed(() => adiantamentoUtilizado.value + paymentTotal.
         </div>
       </template>
 
-      <template v-if="orderService.itens?.length">
+      <template v-if="itensVisiveis.length">
         <div class="separator">{{ SEPARATOR }}</div>
         <div class="section">
           <div class="font-bold mb-0.5">ITENS/SERVICOS</div>
           <div
-            v-for="item in orderService.itens"
+            v-for="item in itensVisiveis"
             :key="item.id"
             class="item-row"
           >

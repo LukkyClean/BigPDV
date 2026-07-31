@@ -133,16 +133,19 @@ export function osToEscPos(
       if (os.solucao) b.linha(`Solucao: ${os.solucao}`)
     }
 
-    // Itens/serviços
-    if (os.itens?.length) {
+    // Itens/serviços — peça embutida no serviço não é listada para o cliente.
+    // `!== false` e não `=== true`: item antigo vem sem o campo e tem que
+    // continuar aparecendo, exatamente como sempre apareceu.
+    const itensVisiveis = (os.itens ?? []).filter((item) => item.visivel_cliente !== false)
+    if (itensVisiveis.length) {
       b.separador().negrito(true).linha('ITENS/SERVICOS').negrito(false)
-      for (const item of os.itens) {
+      for (const item of itensVisiveis) {
         b.linha(item.nome)
         b.parLados(`${item.quantidade}x ${formatCurrency(item.valor_unitario)}`, formatCurrency(item.valor_total))
       }
     }
 
-    const subTotal = os.itens?.reduce((acc, item) => acc + item.valor_total, 0) ?? 0
+    const subTotal = itensVisiveis.reduce((acc, item) => acc + item.valor_total, 0)
     const adiantamento = os.valor_entrada ?? 0
     const adiantamentoUtilizado = Math.min(adiantamento, os.valor_total ?? 0)
     const paymentTotal = os.pagamentos?.reduce((acc, pay) => acc + pay.valor, 0) ?? 0

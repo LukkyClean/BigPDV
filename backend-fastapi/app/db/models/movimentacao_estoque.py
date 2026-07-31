@@ -24,6 +24,19 @@ class MovimentacaoEstoque(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
 
     # Referência ao produto
+    #
+    # ATENÇÃO ao CASCADE: apagar um produto apagaria junto todo o histórico de
+    # estoque dele — e, desde que este livro passou a carregar custo, também o
+    # lucro já apurado do período. Isso contradiz o `produto_nome` logo abaixo,
+    # que existe justamente para a linha sobreviver ao cadastro.
+    #
+    # Por que continua CASCADE: não existe delete de produto no sistema (a
+    # exclusão é lógica, via `ativo`), então a bomba não tem estopim. Trocar por
+    # RESTRICT no SQLite exige RECRIAR esta tabela, e uma migração que falha
+    # impede o backend de subir (ver db/migrations.py) — ou seja, loja parada.
+    # Não vale correr um risco real hoje para desarmar um risco que não existe.
+    # A guarda de verdade é o teste que falha se um hard delete aparecer:
+    # test_movimentacao_estoque.py::test_produto_nao_tem_delete_fisico.
     produto_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("produtos.id", ondelete="CASCADE"),
@@ -99,6 +112,19 @@ class MovimentacaoEstoque(Base):
         nullable=True,
         index=True,
         doc="OS que causou a movimentação (quando origem = ORDEM_SERVICO)"
+    )
+
+    # --- Custo (o que torna este livro capaz de responder sobre lucro) ---
+    # Numa ENTRADA de compra é o valor efetivamente PAGO por unidade; numa SAÍDA
+    # é o custo médio no instante em que a peça saiu — ou seja, o CMV daquela
+    # venda/OS. Congelado aqui de propósito: se o relatório fosse perguntar o
+    # custo ao cadastro do produto, todo reajuste do fornecedor reescreveria o
+    # lucro do passado. NULL nas linhas anteriores a este campo — o custo delas
+    # não é recuperável, e estimar seria inventar.
+    custo_unitario: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        doc="Custo unitário congelado no momento da movimentação (centavos)"
     )
 
     observacao: Mapped[Optional[str]] = mapped_column(

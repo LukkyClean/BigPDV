@@ -4,6 +4,10 @@ export const ProductSaleBaseSchema = z.object({
   tipo_produto: z.enum(['CADASTRADO', 'AVULSO']),
   produto_id: z.number().nullable().optional(),
   descricao_avulsa: z.string().max(100).optional(),
+  // Quanto a loja PAGOU por unidade. Só para item AVULSO — o cadastrado tem o
+  // custo no livro de estoque. Campo INTERNO: nenhum template de impressão o
+  // exibe, por decisão explícita.
+  custo_unitario: z.number().min(0).nullable().optional(),
   quantidade: z.number({ required_error: 'Quantidade é obrigatória' }).min(1),
   valor_unitario: z
     .number()
@@ -110,6 +114,10 @@ export const ItemSaleFormSchema = z.object({
   valor_unitario: z.number().min(0.01, 'Informe um valor unitário válido'),
   quantidade: z.number().min(1, 'A quantidade deve ser pelo menos 1'),
   desconto: z.number().min(0).default(0),
+  // Custo interno do avulso (em reais no form, centavos no envio). Opcional:
+  // deixar zerado só significa "não sei/não quero declarar", e aí o item entra
+  // no relatório sem custo.
+  custo: z.number().min(0).default(0),
 }).refine((data) => {
   return data.desconto <= data.valor_unitario * data.quantidade;
 }, {

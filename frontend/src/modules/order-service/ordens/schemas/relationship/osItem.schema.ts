@@ -21,6 +21,16 @@ const OsItemBaseSchema = z.object({
   status_aprovacao: OsItemAprovacaoEnum.optional(),
   garantia_dias: z.number().int().min(0).optional().nullable(),
   garantia_km: z.number().int().min(0).optional().nullable(),
+  // Peça EMBUTIDA no serviço: sai do estoque e entra no custo, mas não é
+  // listada nas vias do cliente. Exige valor zero — o dinheiro fica na linha do
+  // serviço, senão as linhas impressas não somam o total impresso.
+  // Opcional: o backend já default `true`, então não enviar mantém tudo como é hoje.
+  visivel_cliente: z.boolean().optional(),
+  // Quanto a loja PAGOU por unidade. Campo INTERNO — nenhum template de
+  // impressão o exibe, por decisão explícita: o cliente nunca vê o que foi pago
+  // pela peça. Só se aplica a item sem produto do catálogo; com produto, o custo
+  // vem do livro de estoque.
+  custo_unitario: z.number().int().min(0).optional().nullable(),
 });
 
 export const OsItemCreateSchema = z.object({
@@ -47,6 +57,8 @@ export const OsItemUpdateSchema = z.object({
   status_aprovacao: OsItemAprovacaoEnum.optional(),
   garantia_dias: z.number().int().min(0).optional().nullable(),
   garantia_km: z.number().int().min(0).optional().nullable(),
+  visivel_cliente: z.boolean().optional(),
+  custo_unitario: z.number().int().min(0).optional().nullable(),
 });
 
 export type OsItemUpdateSchemaDataType = z.infer<typeof OsItemUpdateSchema>

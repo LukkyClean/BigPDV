@@ -23,6 +23,13 @@ export const RelatorioFaturamentoSchema = z.object({
   juros_repassado: z.number().optional(),
   juros_absorvido: z.number().optional(),
   faturamento_liquido: z.number().optional(),
+  // Custo e lucro. Opcionais pelo mesmo motivo dos juros: um backend anterior
+  // não manda estes campos, e a tela precisa continuar abrindo.
+  cmv: z.number().optional(),
+  lucro_bruto: z.number().optional(),
+  margem_percentual: z.number().optional(),
+  /** Movimentações do período sem custo apurado — enquanto > 0, o lucro está inflado. */
+  saidas_sem_custo: z.number().optional(),
   ticket_medio: z.number(),
   qtd_vendas: z.number(),
   qtd_os: z.number(),

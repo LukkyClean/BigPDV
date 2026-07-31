@@ -219,6 +219,15 @@ def update_item_in_sale(db: Session, sale_id: int, item_id: int, item_update: Pr
     item_in_db.descricao_avulsa = item_update.descricao_avulsa or item_in_db.descricao_avulsa
     item_in_db.quantidade = quantidade
     item_in_db.valor_unitario = preco_unitario
+    # Custo interno só existe no avulso. No cadastrado o custo vem do livro de
+    # estoque, e aceitar um valor aqui criaria dois números divergentes para a
+    # mesma peça — com o relatório somando os dois.
+    if item_update.custo_unitario is not None:
+        if item_in_db.tipo_produto == TipoProdutoVenda.CADASTRADO:
+            raise BadRequestException(
+                detail="Produto cadastrado tem o custo vindo do estoque; não informe custo manual"
+            )
+        item_in_db.custo_unitario = item_update.custo_unitario
     item_in_db.desconto = desconto
     item_in_db.subtotal = subtotal
 

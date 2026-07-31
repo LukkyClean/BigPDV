@@ -13,7 +13,23 @@ from app.core.enum import MovimentacaoTipo, MovimentacaoOrigem
 class MovimentacaoCreate(BaseModel):
     """Dados de entrada para registrar uma movimentação de estoque."""
     tipo: MovimentacaoTipo = Field(..., description="Tipo: ENTRADA, SAIDA ou AJUSTE")
-    quantidade: int = Field(..., ge=0, description="Quantidade movimentada (mínimo 1; 0 para edição de dados)")
+    quantidade: int = Field(
+        ...,
+        ge=0,
+        description=(
+            "ENTRADA/SAIDA: unidades movimentadas (mínimo 1). "
+            "AJUSTE: a quantidade FINAL contada, não a diferença."
+        ),
+    )
+    custo_unitario: Optional[int] = Field(
+        None,
+        ge=0,
+        description=(
+            "Valor pago por unidade nesta compra, em centavos. Só faz sentido em "
+            "ENTRADA: é ele que recalcula a média ponderada do produto. Omitir "
+            "mantém a média intacta (caso de devolução, que não é compra)."
+        ),
+    )
     observacao: Optional[str] = Field(None, max_length=500, description="Motivo ou observação")
 
     model_config = ConfigDict(from_attributes=True)
@@ -36,6 +52,10 @@ class MovimentacaoRead(BaseModel):
     )
     venda_id: Optional[int] = Field(None, description="Venda que causou (origem = VENDA)")
     ordem_servico_id: Optional[int] = Field(None, description="OS que causou (origem = ORDEM_SERVICO)")
+    custo_unitario: Optional[int] = Field(
+        None,
+        description="Custo unitário congelado nesta movimentação (centavos). NULL nas linhas anteriores ao campo.",
+    )
     observacao: Optional[str]
     created_at: datetime
 

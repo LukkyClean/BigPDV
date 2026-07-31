@@ -2,7 +2,7 @@
 import { Ellipsis, Pencil, CheckCircle, XCircle, RotateCcw, Printer } from 'lucide-vue-next';
 import type { OrderServiceReadDataType } from '../schemas/orderServiceQuery.schema';
 import { OS_STATUS_FILTER_CONFIG } from '../constants/ordemServico.constants';
-import { getStatusLabel, getClienteNome } from '../../shared/utils/formatters';
+import { getEstadoOS, getClienteNome } from '../../shared/utils/formatters';
 import { formatCurrency } from '@/shared/utils/finance';
 import BaseTableContainer from '@/shared/components/commons/BaseTableContainer/BaseTableContainer.vue';
 import BaseSearchInput from '@/shared/components/ui/BaseSearchInput/BaseSearchInput.vue';
@@ -42,19 +42,6 @@ function formatDate(dateValue: string | Date): string {
     month: '2-digit',
     year: '2-digit',
   });
-}
-
-function getStatusConfig(status: string) {
-  const configs: Record<string, { bg: string; text: string }> = {
-    ABERTA:               { bg: 'bg-blue-50',    text: 'text-blue-600'    },
-    EM_ANDAMENTO:         { bg: 'bg-amber-50',   text: 'text-amber-700'   },
-    AGUARDANDO_PECAS:     { bg: 'bg-orange-50',  text: 'text-orange-700'  },
-    AGUARDANDO_APROVACAO: { bg: 'bg-purple-50',  text: 'text-purple-700'  },
-    AGUARDANDO_RETIRADA:  { bg: 'bg-indigo-50',  text: 'text-indigo-700'  },
-    FINALIZADA:           { bg: 'bg-emerald-50', text: 'text-emerald-700' },
-    CANCELADA:            { bg: 'bg-red-50',     text: 'text-red-700'     },
-  };
-  return configs[status] || { bg: 'bg-zinc-50', text: 'text-zinc-700' };
 }
 
 function getOSSequence(numero_os: string): string {
@@ -125,11 +112,10 @@ function getOSSequence(numero_os: string): string {
               <span
                 :class="[
                   'px-2 md:px-3 py-1 rounded-full text-[10px] md:text-[11px] font-bold whitespace-nowrap',
-                  getStatusConfig(os.status).bg,
-                  getStatusConfig(os.status).text,
+                  getEstadoOS(os.status, os.situacao_equipamento).badge,
                 ]"
               >
-                {{ getStatusLabel(os.status) }}
+                {{ getEstadoOS(os.status, os.situacao_equipamento).label }}
               </span>
             </td>
 

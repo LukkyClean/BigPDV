@@ -17,6 +17,7 @@ import type { FilterOption } from '@/shared/types/filter.types';
 import BasePagination from '@/shared/components/commons/BasePagination/BasePagination.vue';
 import MovimentacaoModal from './MovimentacaoModal.vue';
 import { useMovimentacoesQuery } from '../composables/useMovimentacoesQuery';
+import { formatCurrency } from '@/shared/utils/finance';
 import type { ProdutoRead } from '../types/products.types';
 
 interface Props {
@@ -225,6 +226,15 @@ function quantidadeClass(tipo: string) {
                       <span v-if="mov.tipo !== 'EDICAO_DADOS'"> un</span>
                     </p>
                     <p v-if="mov.tipo !== 'EDICAO_DADOS'" class="text-xs text-zinc-400">→ {{ mov.quantidade_posterior }} un</p>
+                    <!--
+                      Custo congelado nesta linha. É a trilha de auditoria do
+                      lucro: dá para conferir, movimento a movimento, com que
+                      custo cada peça entrou ou saiu — mesmo anos depois, e
+                      mesmo que o preço do fornecedor tenha mudado várias vezes.
+                    -->
+                    <p v-if="mov.custo_unitario != null" class="text-xs text-zinc-400 mt-0.5">
+                      {{ formatCurrency(mov.custo_unitario) }}/un
+                    </p>
                   </div>
                 </div>
 

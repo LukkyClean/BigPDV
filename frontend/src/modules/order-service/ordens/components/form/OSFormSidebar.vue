@@ -21,6 +21,7 @@ const view = useOSFormView();
       :credito-ao-reabrir="view.currentOSData.value?.credito_anterior ?? view.creditoAoReabrir.value"
       :saldo-credito-cliente="view.isCreateMode.value ? view.saldoCreditoCliente.value : 0"
       :status="view.currentOSData.value?.status"
+      :situacao-equipamento="view.currentOSData.value?.situacao_equipamento"
       :os-number="view.osNumber.value"
       :data-criacao="view.currentOSData.value?.data_criacao"
       :data-finalizacao="view.currentOSData.value?.data_finalizacao"

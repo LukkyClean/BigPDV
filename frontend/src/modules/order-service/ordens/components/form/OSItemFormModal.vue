@@ -2,7 +2,7 @@
 import { ref, computed, watch } from 'vue';
 import { refDebounced } from '@vueuse/core';
 import { useQuery } from '@tanstack/vue-query';
-import { Wrench, ShoppingBag, Save, Search, Loader2 } from 'lucide-vue-next';
+import { Wrench, ShoppingBag, Save, Search, Loader2, Lock } from 'lucide-vue-next';
 import BaseModal from '@/shared/components/commons/BaseModal/BaseModal.vue';
 import BaseSelect from '@/shared/components/ui/BaseSelect/BaseSelect.vue';
 import BaseInput from '@/shared/components/ui/BaseInput/BaseInput.vue';
@@ -38,6 +38,10 @@ const unidade_medida = ref<OsItemMeasureEnumDataType>('UN');
 const quantidade = ref(1);
 const valorUnitarioNum = ref(0);
 const selectedCatalogId = ref<number | null>(null);
+// Quanto a loja PAGOU por unidade. Campo interno — não sai em nenhuma via
+// impressa. É o que permite lançar só o serviço ("Troca de conector, R$ 150") e
+// mesmo assim o relatório saber que a peça custou R$ 40.
+const custoUnitarioNum = ref(0);
 
 // Aprovação/garantia por item (fluxo de orçamento): dirigidas por capacidade,
 // não por segmento — qualquer negócio de serviço pode querer orçar e garantir.
@@ -128,6 +132,20 @@ const medidaOptions = computed(() =>
 const total = computed(() => Math.round(quantidade.value * valorUnitarioNum.value * 100));
 const isValid = computed(() => nome.value.trim().length > 0 && quantidade.value > 0);
 
+// Produto do catálogo tem o custo vindo do livro de estoque, congelado na baixa.
+// Pedir o custo de novo aqui abriria espaço para dois números divergentes para a
+// mesma peça — e o relatório contaria os dois.
+const custoVemDoEstoque = computed(
+  () => tipo.value === 'PRODUTO' && selectedCatalogId.value != null,
+);
+
+const margemItem = computed(() => {
+  const receita = Math.round(quantidade.value * valorUnitarioNum.value * 100);
+  const custo = Math.round(quantidade.value * custoUnitarioNum.value * 100);
+  if (custo <= 0) return null;
+  return { lucro: receita - custo, custo };
+});
+
 // --- Watchers ---
 watch(tipo, () => {
   catalogSearch.value = '';
@@ -153,6 +171,7 @@ function reset(): void {
   unidade_medida.value = 'UN';
   quantidade.value = 1;
   valorUnitarioNum.value = 0;
+  custoUnitarioNum.value = 0;
   catalogSearch.value = '';
   selectedCatalogId.value = null;
   statusAprovacao.value = 'APROVADO';
@@ -166,6 +185,7 @@ function populate(item: OsItemCreateSchemaDataType): void {
   unidade_medida.value = item.unidade_medida;
   quantidade.value = item.quantidade;
   valorUnitarioNum.value = item.valor_unitario / 100;
+  custoUnitarioNum.value = (item.custo_unitario ?? 0) / 100;
   selectedCatalogId.value = item.item_id ?? null;
   statusAprovacao.value = item.status_aprovacao ?? 'APROVADO';
   garantiaDias.value = item.garantia_dias ?? null;
@@ -180,6 +200,11 @@ function handleSave(): void {
     unidade_medida: unidade_medida.value,
     quantidade: quantidade.value,
     valor_unitario: Math.round(valorUnitarioNum.value * 100),
+    // Só envia custo quando ele é desta linha. Com produto do catálogo, quem
+    // manda é o livro de estoque.
+    custo_unitario: custoVemDoEstoque.value || custoUnitarioNum.value <= 0
+      ? undefined
+      : Math.round(custoUnitarioNum.value * 100),
     status_aprovacao: statusAprovacao.value,
     garantia_dias: garantiaDias.value ?? undefined,
     garantia_km: garantiaKm.value ?? undefined,
@@ -314,6 +339,40 @@ function handleClose(): void {
           v-model="valorUnitarioNum"
           :label="tipo === 'SERVICO' ? 'Valor / Hora' : 'Valor Unitário'"
         />
+
+        <!--
+          Custo interno. Existe porque o normal é lançar só o serviço, sem
+          cadastrar a peça — e aí o gasto com ela não tem por onde entrar no
+          relatório. NÃO aparece em nenhuma via do cliente.
+        -->
+        <div v-if="!custoVemDoEstoque" class="rounded-xl border border-slate-200 bg-slate-50/60 p-3 space-y-2">
+          <div class="flex items-center gap-1.5">
+            <Lock :size="13" class="text-slate-400" />
+            <span class="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+              Custo para a loja
+            </span>
+            <span class="text-[10px] text-slate-400">(opcional)</span>
+          </div>
+          <BaseMoneyInput v-model="custoUnitarioNum" label="" />
+          <p v-if="margemItem" class="text-xs text-slate-500">
+            Custo {{ formatCurrency(margemItem.custo) }} · sobra
+            <strong :class="margemItem.lucro >= 0 ? 'text-emerald-600' : 'text-red-600'">
+              {{ formatCurrency(margemItem.lucro) }}
+            </strong>
+          </p>
+          <p class="text-[11px] text-slate-400 leading-snug">
+            Quanto você pagou pela peça. Fica só no relatório —
+            <strong class="text-slate-500">o cliente nunca vê este valor</strong>.
+          </p>
+        </div>
+
+        <p v-else class="flex items-start gap-1.5 text-[11px] text-slate-400 leading-snug">
+          <Lock :size="12" class="shrink-0 mt-0.5" />
+          <span>
+            Custo vem do estoque automaticamente, congelado no dia da baixa — não
+            precisa informar aqui.
+          </span>
+        </p>
 
         <!-- Aprovação e garantia por item: cada uma é uma capacidade independente
              do segmento. Item REPROVADO não entra no total. -->
