@@ -14,9 +14,14 @@ from app.db.base import Base
 # Importa todos os models para que o autogenerate detecte as tabelas
 import app.db.models.cargo
 import app.db.models.cliente
+import app.db.models.comunicado
 import app.db.models.configuracao_clientes
+import app.db.models.configuracao_licenca
 import app.db.models.configuracao_os
 import app.db.models.configuracao_produtos
+import app.db.models.configuracao_seguranca
+import app.db.models.configuracao_vendas
+import app.db.models.contador_venda
 import app.db.models.empresa
 import app.db.models.empresa_fiscal_settings
 import app.db.models.endereco
@@ -29,7 +34,7 @@ import app.db.models.movimentacao_estoque
 import app.db.models.orcamento
 import app.db.models.orcamento_produto
 import app.db.models.ordem_servico
-import app.db.models.objeto_servico
+import app.db.models.ordem_servico_equipamento
 import app.db.models.ordem_servico_foto
 import app.db.models.ordem_servico_item
 import app.db.models.ordem_servico_pagamento
@@ -37,6 +42,7 @@ import app.db.models.produto
 import app.db.models.produto_fotos
 import app.db.models.servico
 import app.db.models.sessao_caixa
+import app.db.models.terminal_conectado
 import app.db.models.token
 import app.db.models.usuario
 import app.db.models.venda

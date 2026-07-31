@@ -3,6 +3,8 @@ import logging
 import os
 from contextlib import asynccontextmanager
 
+from datetime import datetime, timedelta
+
 from fastapi import FastAPI
 
 from app.db.base import Base
@@ -12,6 +14,7 @@ from app.db.models.contador_venda import ContadorVenda
 from app.db.models.forma_pagamento import FormaPagamento
 from app.services.limpeza_temporal import cancelar_vendas_ativas_expiradas, limpar_orcamentos_expirados, limpar_temp_data
 from app.services.licenca import enviar_heartbeat, renovar_licenca_background, desconectar_terminal
+from app.services.backup import create_backup, list_backups, get_last_backup
 from app.db.crud import terminal_conectado as terminal_crud
 
 from app.core.discovery import register_service, stop_discovery
@@ -19,8 +22,13 @@ from app.core.discovery import register_service, stop_discovery
 logger = logging.getLogger(__name__)
 
 INTERVALO_LIMPEZA_HORAS = 6
+
 INTERVALO_HEARTBEAT_SEGUNDOS = 100  # 5 minutos
 INTERVALO_RENOVACAO_SEGUNDOS = 3600  # 1 hora
+
+ATRASO_INICIAL_BACKUP_SEGUNDOS = 180
+INTERVALO_BACKUP_SEGUNDOS = 3600
+INTERVALO_BACKUP_HORAS = 24
 
 
 async def _loop_limpeza_temporal():
@@ -37,7 +45,30 @@ async def _loop_limpeza_temporal():
             logger.exception("Erro na limpeza automatica temporal")
 
         await asyncio.sleep(INTERVALO_LIMPEZA_HORAS * 3600)
+        
+async def _loop_backup():
+    
+    await asyncio.sleep(ATRASO_INICIAL_BACKUP_SEGUNDOS)
 
+    
+    while True:
+        try:
+            last_backup = await asyncio.to_thread(get_last_backup)
+
+            need_backup = (
+                last_backup is None
+                or datetime.now() - last_backup >= timedelta(hours=INTERVALO_BACKUP_HORAS)
+            )
+            
+            if need_backup:
+                print(f"[BACKUP] Criando backup automático (último backup: {last_backup.isoformat() if last_backup else 'nenhum'})")
+                backup_info = await asyncio.to_thread(create_backup)
+                print(f'[BACKUP] Backup automático criado: {backup_info["arquivo"]} ({backup_info["tamanho_bytes"]} Bytes)')
+        except Exception as e:
+            print(f"[BACKUP] Erro ao criar backup automático: {type(e).__name__}: {e}")
+            print (f"[BACKUP] Próxima tentativa em 1 hora")
+            
+        await asyncio.sleep(INTERVALO_BACKUP_SEGUNDOS)
 
 async def _loop_heartbeat_licenca():
     """Loop em segundo plano que envia heartbeat à API StartBig periodicamente."""
@@ -137,6 +168,9 @@ async def lifespan(app: FastAPI):
     _seed_contador_venda()
     print("Iniciando tarefa de limpeza automatica temporal...")
     tarefa_limpeza = asyncio.create_task(_loop_limpeza_temporal())
+    
+    print("Iniciando tarefa de backup automático...")
+    tarefa_backup = asyncio.create_task(_loop_backup())
 
     print("Iniciando tarefa de heartbeat de licenca...")
     tarefa_heartbeat = asyncio.create_task(_loop_heartbeat_licenca())
@@ -158,9 +192,10 @@ async def lifespan(app: FastAPI):
     
     print("Encerrando tarefas em segundo plano...")
     tarefa_limpeza.cancel()
+    tarefa_backup.cancel()
     tarefa_heartbeat.cancel()
     tarefa_renovacao.cancel()
-    for tarefa in (tarefa_limpeza, tarefa_heartbeat, tarefa_renovacao):
+    for tarefa in (tarefa_limpeza, tarefa_backup, tarefa_heartbeat, tarefa_renovacao):
         try:
             await tarefa
         except asyncio.CancelledError:
