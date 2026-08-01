@@ -17,7 +17,11 @@ pub struct AppState {
 }
 
 pub fn check_backend_health(port: u16) -> bool {
-    let url = format!("http://127.0.0.1:{}/health", port);
+    // O endpoint e /api/health (app/main.py), nao /health. Enquanto isto apontou
+    // para /health o probe recebia 404 e devolvia `false` SEMPRE: o app nunca
+    // reconhecia o backend no ar, tentava subir um sidecar que morria com a porta
+    // ocupada, e `install_backend_config` sempre falhava o await_backend_health.
+    let url = format!("http://127.0.0.1:{}/api/health", port);
 
     let config = Config::builder()
         .timeout_global(Some(Duration::from_secs(2)))
