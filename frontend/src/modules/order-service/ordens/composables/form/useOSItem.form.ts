@@ -49,6 +49,7 @@ export function useOSItemForm(opts: {
       status_aprovacao: itemData.status_aprovacao,
       garantia_dias: itemData.garantia_dias,
       garantia_km: itemData.garantia_km,
+      custo_unitario: itemData.custo_unitario,
     });
   };
 
@@ -74,7 +75,14 @@ export function useOSItemForm(opts: {
         status_aprovacao: formData.status_aprovacao,
         garantia_dias: formData.garantia_dias,
         garantia_km: formData.garantia_km,
+        // Custo interno. Vem `undefined` para peça do catálogo (o custo é o
+        // congelado do livro de estoque) e nesse caso a chave nem sai no JSON —
+        // o `exclude_unset` do backend preserva o valor que já está lá.
+        custo_unitario: formData.custo_unitario,
       };
+      // `visivel_cliente` fica de fora DE PROPÓSITO: o modal não tem esse
+      // controle, entao formData carregaria o default do form e nao a escolha
+      // real do item — mandaria uma peça embutida de volta para visível.
       updateMutation.mutate(
         {
           osNumber: opts.osNumber.value,

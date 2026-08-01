@@ -2,7 +2,7 @@ import { computed, ref, type ComputedRef } from 'vue';
 
 import type { OSFormContext } from '../../types/context.type';
 import type { OrderServiceReadDataType } from '../../schemas/orderServiceQuery.schema';
-import type { OsItemCreateSchemaDataType } from '../../schemas/relationship/osItem.schema';
+import type { OsItemCreateSchemaDataType, OsItemReadSchemaDataType } from '../../schemas/relationship/osItem.schema';
 
 interface AddItemMutation {
   mutate: (
@@ -28,6 +28,17 @@ interface UseOSItemsManagerParams {
   deleteItemMutation: DeleteItemMutation;
   refreshCurrentOSData: () => Promise<void> | void;
   setCurrentOSData: (os: OrderServiceReadDataType) => void;
+}
+
+/**
+ * O vínculo com o catálogo tem dois nomes conforme a origem do item: `item_id`
+ * enquanto a OS está sendo criada (payload de escrita) e `produto_id`/`servico_id`
+ * depois de salva (resposta de leitura). É o mesmo dado — o backend converte um
+ * no outro. Sem esta ponte, editar um item de OS salva perderia o vínculo na tela.
+ */
+function vinculoCatalogo(item: OsItemCreateSchemaDataType | OsItemReadSchemaDataType): number | undefined {
+  const i = item as Partial<OsItemCreateSchemaDataType & OsItemReadSchemaDataType>;
+  return i.item_id ?? i.produto_id ?? i.servico_id ?? undefined;
 }
 
 export function useOSItemsManager({
@@ -75,6 +86,13 @@ export function useOSItemsManager({
       status_aprovacao: item.status_aprovacao,
       garantia_dias: item.garantia_dias,
       garantia_km: item.garantia_km,
+      // Custo interno: sem ele o campo reabre zerado e, numa OS ainda em
+      // criação, salvar grava custo 0 — o lucro do relatório sai inflado.
+      custo_unitario: item.custo_unitario,
+      // Vínculo com o catálogo: sem ele, editar a peça antes de salvar a OS a
+      // transforma num item de texto solto — não baixa do estoque e não puxa o
+      // custo congelado do livro (o backend deriva produto_id/servico_id daqui).
+      item_id: vinculoCatalogo(item),
     };
     isItemModalOpen.value = true;
   }
