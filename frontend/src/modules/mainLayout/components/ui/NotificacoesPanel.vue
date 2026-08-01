@@ -6,6 +6,7 @@ import { useAuthStore } from '@/shared/stores/auth.store'
 import { storeToRefs } from 'pinia'
 import { criarComunicado, marcarComunicadoLido } from '../../services/comunicado.service'
 import { useOSCreateFlow } from '@/modules/order-service/ordens/composables/useOSCreateFlow'
+import { useObjetoLabels } from '@/modules/order-service/shared/segmento/useObjetoLabels'
 import type { OrderServiceReadDataType } from '@/modules/order-service/ordens/schemas/orderServiceQuery.schema'
 
 defineProps<{ style?: Record<string, string> }>()
@@ -13,6 +14,8 @@ const emit = defineEmits<{ close: [] }>()
 
 const store = useNotificacoesStore()
 const authStore = useAuthStore()
+// Rótulo do objeto por segmento: a oficina lê "Veículo em abandono", não "Equipamento".
+const { labelSingular } = useObjetoLabels()
 const { osAbandono, osAtrasadas, comunicados, osVistos, temOsNaoVistas } = storeToRefs(store)
 
 const showForm = ref(false)
@@ -222,7 +225,7 @@ function abrirOS(os: OrderServiceReadDataType) {
         </div>
         <div class="flex-1 min-w-0">
           <p class="text-xs font-semibold text-zinc-800 truncate">
-            Equipamento em abandono · {{ os.numero_os }}
+            {{ labelSingular }} em abandono · {{ os.numero_os }}
           </p>
           <p class="text-xs text-zinc-500 mt-0.5 truncate">
             {{ os.objeto?.marca }} {{ os.objeto?.modelo }}

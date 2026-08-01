@@ -69,6 +69,12 @@ export function useOSItemsManager({
       unidade_medida: item.unidade_medida,
       quantidade: item.quantidade,
       valor_unitario: item.valor_unitario,
+      // Aprovação/garantia PRECISAM vir junto: o modal cai no default
+      // ('APROVADO' e sem garantia) quando não recebe o valor real, e ao salvar
+      // esse default sobrescreveria um item reprovado ou com garantia definida.
+      status_aprovacao: item.status_aprovacao,
+      garantia_dias: item.garantia_dias,
+      garantia_km: item.garantia_km,
     };
     isItemModalOpen.value = true;
   }

@@ -2,6 +2,7 @@
 import { ref } from 'vue';
 import { PackageCheck } from 'lucide-vue-next';
 import { useOSCreateFlow } from '@/modules/order-service/ordens/composables/useOSCreateFlow';
+import { useObjetoLabels } from '@/modules/order-service/shared/segmento/useObjetoLabels';
 import { getUniqueOS } from '@/modules/order-service/ordens/services/orderServiceGet.service';
 import { useToast } from '@/shared/composables/useToast';
 import type { OSAguardandoRetiradaItemData } from '../../schemas/dashboard.schema';
@@ -15,6 +16,8 @@ interface Props {
 defineProps<Props>();
 
 const { openExistingOS } = useOSCreateFlow();
+// Rótulo do objeto por segmento: a oficina lê "Veículo" no cabeçalho, não "Equipamento".
+const { labelSingular } = useObjetoLabels();
 const toast = useToast();
 const loadingOS = ref<string | null>(null);
 
@@ -61,7 +64,7 @@ function formatDate(dateStr: string | null): string {
           <tr class="bg-zinc-50/50 text-[10px] uppercase tracking-wider text-zinc-500 font-bold border-b border-zinc-100">
             <th class="px-4 py-3">N° OS</th>
             <th class="px-4 py-3">Cliente</th>
-            <th class="px-4 py-3">Equipamento</th>
+            <th class="px-4 py-3">{{ labelSingular }}</th>
             <th class="px-4 py-3">Finalizada</th>
           </tr>
         </thead>
