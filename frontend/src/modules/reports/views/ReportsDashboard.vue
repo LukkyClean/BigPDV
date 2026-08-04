@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
-import { Banknote, Receipt, ShoppingCart, Wrench, TriangleAlert, Download, Percent, Wallet, AlertTriangle } from 'lucide-vue-next';
+import { ref, computed, nextTick } from 'vue';
+import { Banknote, Receipt, ShoppingCart, Wrench, TriangleAlert, Percent, Wallet, AlertTriangle, Printer } from 'lucide-vue-next';
 
-import { formatCurrency, formatCentsToInput } from '@/shared/utils/finance';
-import { saveCsv } from '@/shared/utils/csv';
-import { useToast } from '@/shared/composables/useToast';
+import { formatCurrency } from '@/shared/utils/finance';
+import { imprimirComPagina } from '@/shared/utils/print.utils';
+import FinanceiroPrint from '../components/FinanceiroPrint.vue';
 import { useFaturamentoQuery } from '../composables/useFaturamentoQuery';
 import PeriodFilter from '../components/PeriodFilter.vue';
 import KpiCard from '../components/KpiCard.vue';
@@ -24,7 +24,6 @@ function onPeriodo(r: { inicio: string; fim: string }) {
 }
 
 const { data, isLoading, isError } = useFaturamentoQuery(inicio, fim);
-const toast = useToast();
 
 /** Só mostra o bloco de juros quando houve juros — repassado ou absorvido. */
 const jurosTotal = computed(
@@ -42,25 +41,27 @@ const temCusto = computed(
 
 const lucroPositivo = computed(() => (data.value?.lucro_bruto ?? 0) >= 0);
 
-/** Exporta o detalhamento por dia (dias com movimento) como CSV e abre no Excel. */
-async function exportarCsv() {
-  const d = data.value;
-  if (!d) return;
-  const linhas = d.por_dia
-    .filter((x) => x.total_geral > 0)
-    .map((x) => [
-      x.dia,
-      formatCentsToInput(x.total_vendas),
-      formatCentsToInput(x.total_os),
-      formatCentsToInput(x.total_geral),
-    ]);
-  const caminho = await saveCsv(
-    `faturamento_${d.inicio}_a_${d.fim}.csv`,
-    ['Dia', 'Vendas (R$)', 'OS (R$)', 'Total (R$)'],
-    linhas,
-  );
-  if (caminho) toast.success(`Planilha salva em: ${caminho}`);
+/**
+ * Impressão A4 — mesmo sistema da folha de comissão e das impressões de OS.
+ * Imprime o período que está no filtro, não um mês fixo: o botão entrega o que
+ * está na tela, senão o papel e o monitor discordariam.
+ */
+const mostrarImpressao = ref(false);
+async function imprimirFinanceiro() {
+  if (!data.value) return;
+  mostrarImpressao.value = true;
+  await nextTick();
+  let fallback: ReturnType<typeof setTimeout>;
+  const limpar = () => {
+    mostrarImpressao.value = false;
+    window.removeEventListener('afterprint', limpar);
+    clearTimeout(fallback);
+  };
+  window.addEventListener('afterprint', limpar);
+  fallback = setTimeout(limpar, 60000);
+  imprimirComPagina('A4');
 }
+
 </script>
 
 <template>
@@ -70,12 +71,15 @@ async function exportarCsv() {
       <button
         type="button"
         :disabled="!data"
-        class="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-slate-200 text-xs font-semibold text-slate-600 hover:border-brand-primary hover:text-brand-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-        @click="exportarCsv"
+        class="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-brand-primary text-white text-xs font-semibold hover:bg-brand-primary/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+        @click="imprimirFinanceiro"
       >
-        <Download :size="14" /> Exportar CSV
+        <Printer :size="14" /> Imprimir relatório
       </button>
     </div>
+
+    <!-- Relatório imprimível (A4) — só renderiza durante a impressão -->
+    <FinanceiroPrint v-if="mostrarImpressao && data" :dados="data" />
 
     <div
       v-if="isError"
