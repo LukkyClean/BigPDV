@@ -218,10 +218,10 @@ function escurecerAte(base: Oklch, lInicial: number, referencia: Rgb, minimo: nu
 
 /** Luminosidade de partida do primário. Abaixo disso o botão compete com a
  *  sidebar preta; acima, quase nenhuma matiz sustenta texto branco. */
-const L_PRIMARIA_INICIAL = 0.55;
+const L_PRIMARIA_INICIAL = 0.62;
 
 /** Teto de saturação: acima disso a cor vira néon e cansa em área grande. */
-const CROMA_MAXIMO = 0.16;
+const CROMA_MAXIMO = 0.26;
 
 /**
  * Gera a paleta a partir da cor escolhida.
@@ -250,8 +250,14 @@ export function derivarPaleta(corEscolhida: string): Paleta {
   //
   // Foi o que faltava na primeira versão: eu media contra o branco puro e o
   // resultado reprovava por centésimos justamente sobre a caixa clara.
+  // L alta e croma baixo de propósito. A caixa clara é a restrição que APERTA a
+  // primária — quanto mais escura ela for, mais escura a primária precisa ser
+  // para se ler ali. Em 0.95 o vermelho puro saía em #bd4235, com 5,26:1 contra
+  // o branco quando 4,5 bastava: escurecido além da conta, e o dono percebia como
+  // "apagado". Subindo a caixa para perto do branco, a primária ganha vivacidade
+  // sem que nenhum contraste caia abaixo do mínimo.
   const clara = quantizar(
-    ajustarParaGamut({ l: 0.95, c: Math.min(matiz.c, 0.035), h: matiz.h }),
+    ajustarParaGamut({ l: 0.972, c: Math.min(matiz.c, 0.03), h: matiz.h }),
   );
 
   const primaria = escurecerAte(matiz, L_PRIMARIA_INICIAL, clara, CONTRASTE_MINIMO_TEXTO);

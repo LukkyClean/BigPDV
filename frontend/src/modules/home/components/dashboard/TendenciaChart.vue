@@ -9,7 +9,13 @@ import { ref, onMounted, onBeforeUnmount, watch, computed } from 'vue';
 import { Chart, type ChartConfiguration } from 'chart.js/auto';
 
 import { formatCurrency } from '@/shared/utils/finance';
+import { useCoresTema, comAlpha } from '@/shared/theme/useCoresTema';
 import type { TendenciaDiaItemData } from '../../schemas/dashboard.schema';
+
+// Série única, cor institucional: segue o tema. Como o componente é autocontido
+// (monta o Chart.js ele mesmo), o `watch` do config abaixo é o que o repinta
+// quando a paleta muda.
+const { primaria } = useCoresTema();
 
 const props = defineProps<{ porDia: TendenciaDiaItemData[] }>();
 
@@ -26,13 +32,13 @@ const config = computed<ChartConfiguration>(() => ({
       {
         label: 'Faturamento',
         data: props.porDia.map((d) => d.total_geral),
-        borderColor: '#045ca1',
-        backgroundColor: 'rgba(4, 92, 161, 0.08)',
+        borderColor: primaria.value,
+        backgroundColor: comAlpha(primaria.value, 0.08),
         fill: true,
         tension: 0.3,
         borderWidth: 2,
         pointRadius: props.porDia.length > 31 ? 0 : 3,
-        pointBackgroundColor: '#045ca1',
+        pointBackgroundColor: primaria.value,
         pointHoverRadius: 5,
       },
     ],
