@@ -228,6 +228,12 @@ class EmpresaBase(BaseModel):
         max_length=255,
         description="URL ou caminho da logo da empresa",
     )
+    cor_tema: Optional[str] = Field(
+        None,
+        max_length=7,
+        pattern=r"^#[0-9a-fA-F]{6}$",
+        description="Cor da marca em hex (#RRGGBB). NULL usa a paleta de fabrica.",
+    )
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -389,6 +395,12 @@ class EmpresaUpdate(BaseModel):
         max_length=255,
         description="URL ou caminho da logo da empresa",
     )
+    cor_tema: Optional[str] = Field(
+        None,
+        max_length=7,
+        pattern=r"^#[0-9a-fA-F]{6}$",
+        description="Cor da marca em hex (#RRGGBB). NULL usa a paleta de fabrica.",
+    )
 
     endereco: Optional[List["EnderecoUpdate"]] = Field(
         None,
@@ -476,6 +488,12 @@ class EmpresaUserRead(BaseModel):
         None,
         max_length=255,
         description="URL ou caminho da logo da empresa",
+    )
+    cor_tema: Optional[str] = Field(
+        None,
+        max_length=7,
+        pattern=r"^#[0-9a-fA-F]{6}$",
+        description="Cor da marca em hex (#RRGGBB). NULL usa a paleta de fabrica.",
     )
     documento: Optional[str] = Field(
         None,

@@ -55,6 +55,16 @@ class Empresa(Base):
     celular: Mapped[Optional[str]] = mapped_column(String(11), nullable=True, doc="Celular de contato")
     email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, doc="Email de contato principal")
     url_logo: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, doc="Caminho/URL da imagem da logo para uso no PDV/Relatórios")
+    cor_tema: Mapped[Optional[str]] = mapped_column(
+        String(7),
+        nullable=True,
+        doc=(
+            "Cor da marca escolhida pelo dono, em hex (#RRGGBB). Fica ao lado do logo "
+            "porque e da mesma natureza: identidade visual, nao regra de negocio. "
+            "NULL = paleta de fabrica. A paleta completa e derivada dela no frontend "
+            "(shared/theme/paleta.ts); aqui guarda-se so a semente."
+        ),
+    )
     
     # --- Status ---
     ativo: Mapped[bool] = mapped_column(Boolean, default=True, doc="Status de ativo/inativo no sistema")

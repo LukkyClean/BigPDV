@@ -24,6 +24,7 @@ from app.core.config import BASE_DIR
 from app.core.depends import get_current_master_user, get_current_user, _handle_db_transaction
 from app.db.session import get_db
 from app.services import empresa as empresa_service
+from app.db.crud import empresa as empresa_crud
 
 
 router = APIRouter()
@@ -108,6 +109,24 @@ def create_image_empresa(
         empresa_id, # Passa o ID da empresa do token
         file
     )
+
+@router.get(
+    "/tema",
+    status_code=status.HTTP_200_OK,
+    summary="Cor do tema da empresa (público)",
+    description=(
+        "Devolve **apenas** a cor da marca, sem autenticação — a tela de login "
+        "precisa dela antes de existir token, e o terminal precisa dela no boot.\n\n"
+        "Exposição deliberadamente mínima: um hex e nada mais. Não revela razão "
+        "social, documento nem qualquer dado da empresa. `null` significa paleta "
+        "de fábrica.\n\n"
+        "Quem GRAVA a cor é o `PUT /empresas/`, que exige usuário master."
+    ),
+)
+def get_tema_empresa(db: Session = Depends(get_db)):
+    empresa = empresa_crud.get_empresa_atual(db)
+    return {"cor_tema": empresa.cor_tema if empresa else None}
+
 
 @router.get(
     "/",
