@@ -28,6 +28,8 @@ import { useSalvarConfiguracoesEstoqueMutation } from '../composables/mutates/us
 import { useSalvarConfiguracoesOSMutation } from '../composables/mutates/useSalvarConfiguracoesOSMutation'
 import { useSalvarConfiguracoesVendasMutation } from '../composables/mutates/useSalvarConfiguracoesVendasMutation'
 import { useSalvarConfiguracoesSegurancaMutation } from '../composables/mutates/useSalvarConfiguracoesSegurancaMutation'
+import { useUpdateEmpresaMutation } from '@/modules/enterprise/composables/useEmpresaQuery'
+import { guardarCorLocalmente } from '@/shared/theme/aplicar'
 import type { SecaoConfiguracao, SecaoExposta, SecaoId } from '../types/configuracoes.types'
 import { useGerenteAprovacao } from '@/shared/composables/useGerenteAprovacao'
 import { useConfirmacao } from '@/shared/composables/useConfirmacao'
@@ -59,6 +61,9 @@ const { mutate: salvarEstoque, mutateAsync: salvarEstoqueAsync, isPending: isPen
 const { mutate: salvarOS, isPending: isPendingOS } = useSalvarConfiguracoesOSMutation()
 const { mutateAsync: salvarVendasAsync, isPending: isPendingVendas } = useSalvarConfiguracoesVendasMutation()
 const { mutate: salvarSeguranca, isPending: isPendingSeguranca } = useSalvarConfiguracoesSegurancaMutation()
+// O tema mora na empresa (junto do logo), então reaproveita a mutation dela —
+// que já invalida o cache e sincroniza o auth store.
+const { mutate: salvarTema, isPending: isPendingTema } = useUpdateEmpresaMutation()
 
 const configuracoesStore = useConfiguracoesStore()
 const impressaoStore = useImpressaoStore()
@@ -103,7 +108,7 @@ async function navegarParaSecao(secaoId: SecaoId): Promise<void> {
   if (await verificarPinComRetry(pin)) irPara(secaoId)
 }
 
-const isPending = computed(() => isPendingClientes.value || isPendingEstoque.value || isPendingOS.value || isPendingVendas.value || isPendingSeguranca.value)
+const isPending = computed(() => isPendingClientes.value || isPendingEstoque.value || isPendingOS.value || isPendingVendas.value || isPendingSeguranca.value || isPendingTema.value)
 
 const activeComponentRef = ref<SecaoExposta | null>(null)
 const isDirtyAtivo = computed(() => activeComponentRef.value?.isDirty === true)
@@ -135,7 +140,7 @@ watch(() => props.isOpen, (aberto) => {
   }
 })
 
-const secoesFuncionais: SecaoId[] = ['seguranca', 'clientes-cadastro', 'produtos-estoque', 'ordens-de-servico', 'regras-de-vendas', 'impressao']
+const secoesFuncionais: SecaoId[] = ['seguranca', 'clientes-cadastro', 'produtos-estoque', 'ordens-de-servico', 'regras-de-vendas', 'impressao', 'formatos-exibicao']
 const secaoFuncional = computed(() => secoesFuncionais.includes(secaoAtiva.value))
 
 async function salvar(): Promise<void> {
@@ -177,6 +182,22 @@ async function salvar(): Promise<void> {
       toast.success('Configurações de impressão salvas!')
       fecharComDelay()
       break
+    case 'formatos-exibicao': {
+      // Só o tema é gravável aqui (data e hora são informativos). A cor mora na
+      // empresa, junto do logo, e o PUT /empresas/ já exige master — a regra de
+      // "só o dono decide a identidade visual" vem da rota, não da tela.
+      const { cor_tema } = comp.form as { cor_tema: string | null }
+      salvarTema({ data: { cor_tema } }, {
+        // A mutation de empresa já emite o toast de sucesso e invalida o cache.
+        // Aqui só guardamos a cor neste terminal, para o próximo boot (e a tela
+        // de login) já abrirem coloridos sem esperar o servidor.
+        onSuccess: () => {
+          guardarCorLocalmente(cor_tema)
+          fecharComDelay()
+        },
+      })
+      break
+    }
     case 'regras-de-vendas': {
       const { vendas, estoque } = comp.form as { vendas: Record<string, unknown>; estoque: Record<string, unknown> }
       const resultados = await Promise.allSettled([

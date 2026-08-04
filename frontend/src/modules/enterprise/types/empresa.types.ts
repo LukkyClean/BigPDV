@@ -95,6 +95,8 @@ export interface EmpresaRead {
   telefone?: string;
   celular?: string;
   url_logo?: string;
+  /** Cor da marca (#RRGGBB). Ausente/null = paleta de fábrica. */
+  cor_tema?: string | null;
   fiscal_settings?: FiscalSettings;
   enderecos?: Endereco[];
 }
@@ -121,6 +123,8 @@ export interface EmpresaUpdate {
   telefone?: string;
   celular?: string;
   url_logo?: string;
+  /** Cor da marca (#RRGGBB). Ausente/null = paleta de fábrica. */
+  cor_tema?: string | null;
   endereco?: Endereco[];
   fiscal_settings?: Partial<FiscalSettings> & {
     certificado_senha?: string;
