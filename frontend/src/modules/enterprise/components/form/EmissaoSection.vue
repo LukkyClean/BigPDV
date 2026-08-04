@@ -85,7 +85,7 @@ function updateField<K extends keyof FiscalSettings>(field: K, value: FiscalSett
                 type="radio"
                 name="ambiente_emissao"
                 :disabled="disabled"
-                class="radio radio-primary radio-xs"
+                class="radio radio-primary radio-xs accent-brand-primary"
                 @change="updateField('ambiente_emissao', 2)"
               />
               <span class="text-sm text-gray-700">Homologação (Testes)</span>
@@ -103,7 +103,7 @@ function updateField<K extends keyof FiscalSettings>(field: K, value: FiscalSett
                   type="radio"
                   name="ambiente_emissao"
                   :disabled="!canEmitirProducao || disabled"
-                  class="radio radio-error radio-xs"
+                  class="radio radio-error radio-xs accent-red-600"
                   @change="updateField('ambiente_emissao', 1)"
                 />
                 <span class="text-sm text-gray-700 font-bold">Produção</span>

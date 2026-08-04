@@ -24,7 +24,7 @@ const value = defineModel<boolean>({default: false});
       :id="uniqueId"
       type="checkbox"
       :disabled="disabled"
-      class="w-3.5 h-3.5 border-gray-300 rounded text-brand-primary focus:ring-brand-primary focus:ring-1 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+      class="w-3.5 h-3.5 border-gray-300 rounded accent-brand-primary text-brand-primary focus:ring-brand-primary focus:ring-1 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
     />
     <label
       v-if="label"

@@ -493,7 +493,7 @@ function handleFinish() {
             variant="primary"
             :is-loading="finishMutation.isPending.value"
             :disabled="!canFinishWithConfirmation"
-            class="px-6 shadow-lg shadow-blue-600/20"
+            class="px-6 shadow-lg shadow-brand-primary/20"
             @click="handleFinish"
           >
             Finalizar Venda

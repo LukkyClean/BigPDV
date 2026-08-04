@@ -44,7 +44,7 @@ const { logoutAndRedirect } = useAppNavigation();
       <User v-else :size="30" class="text-white" />
     </div>
     <div class="flex-1 min-w-0">
-      <p class="text-sm font-semibold truncate group-hover:text-blue-400 transition-colors">
+      <p class="text-sm font-semibold truncate group-hover:text-zinc-300 transition-colors">
         {{ userName }}
       </p>
       <div class="flex items-center gap-2">

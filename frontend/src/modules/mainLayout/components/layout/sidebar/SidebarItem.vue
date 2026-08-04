@@ -20,7 +20,7 @@ const router = useRouter();
     class="w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all duration-200 group cursor-pointer"
     :class="[
       active
-        ? 'bg-brand-primary text-white shadow-lg shadow-blue-900/15'
+        ? 'bg-brand-primary text-white shadow-lg shadow-brand-primary/15'
         : 'text-zinc-400 hover:bg-zinc-800 hover:text-white',
     ]"
   >

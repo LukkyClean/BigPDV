@@ -574,7 +574,7 @@ watch(() => props.isOpen, (open) => {
             variant="primary"
             :is-loading="finalizarMutation.isPending.value"
             :disabled="!canSubmit"
-            class="px-6 py-2.5 shadow-lg shadow-blue-600/20"
+            class="px-6 py-2.5 shadow-lg shadow-brand-primary/20"
             @click="handleSubmit"
           >
             Finalizar OS

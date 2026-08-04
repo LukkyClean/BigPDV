@@ -281,7 +281,7 @@ watch(isOpen, (open) => {
                           :disabled="isViewMode"
                           class="rounded-xl border px-3 py-2.5 text-left transition disabled:opacity-60"
                           :class="modoAtual === 'direto'
-                            ? 'border-indigo-500 bg-indigo-50 ring-1 ring-indigo-500'
+                            ? 'border-brand-primary bg-brand-primary-light ring-1 ring-brand-primary'
                             : 'border-zinc-200 bg-white hover:border-zinc-300'"
                           @click="setModo('direto')"
                         >
@@ -293,7 +293,7 @@ watch(isOpen, (open) => {
                           :disabled="isViewMode"
                           class="rounded-xl border px-3 py-2.5 text-left transition disabled:opacity-60"
                           :class="modoAtual === 'meta'
-                            ? 'border-indigo-500 bg-indigo-50 ring-1 ring-indigo-500'
+                            ? 'border-brand-primary bg-brand-primary-light ring-1 ring-brand-primary'
                             : 'border-zinc-200 bg-white hover:border-zinc-300'"
                           @click="setModo('meta')"
                         >
@@ -305,7 +305,7 @@ watch(isOpen, (open) => {
                     <div class="mt-4">
                       <label class="mb-1 block text-xs font-medium text-zinc-600">
                         Meta mensal
-                        <span v-if="modoAtual === 'meta'" class="text-indigo-600">(usada como gatilho)</span>
+                        <span v-if="modoAtual === 'meta'" class="text-brand-primary">(usada como gatilho)</span>
                         <span v-else>(opcional)</span>
                       </label>
                       <BaseMoneyInput v-model="metaReais" :disabled="isViewMode" />

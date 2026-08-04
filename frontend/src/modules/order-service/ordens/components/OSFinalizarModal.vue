@@ -639,7 +639,7 @@ async function handleEmitEntrega(zerarAdiantamento: boolean) {
           <BaseButton
             type="button"
             variant="primary"
-            class="ml-auto px-6 py-2.5 shadow-md shadow-blue-600/20 whitespace-nowrap shrink-0"
+            class="ml-auto px-6 py-2.5 shadow-md shadow-brand-primary/20 whitespace-nowrap shrink-0"
             @click="handleAdvance"
           >
             {{ isEntregaFlow ? 'Finalizar Entrega →' : 'Ir para Pagamento →' }}

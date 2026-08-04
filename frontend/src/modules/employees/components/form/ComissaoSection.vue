@@ -71,7 +71,7 @@ const MODOS: { id: 'herda' | 'direto' | 'meta'; titulo: string; ajuda: string }[
     <!-- Section Header -->
     <div class="flex items-center gap-3 mb-2">
       <div
-        class="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center text-indigo-600"
+        class="w-10 h-10 bg-brand-primary-light rounded-xl flex items-center justify-center text-brand-primary"
       >
         <LucideIcon :icon="Percent" />
       </div>
@@ -112,7 +112,7 @@ const MODOS: { id: 'herda' | 'direto' | 'meta'; titulo: string; ajuda: string }[
             :disabled="disabled"
             class="rounded-xl border px-3 py-2.5 text-left transition disabled:opacity-60"
             :class="modoAtual === m.id
-              ? 'border-indigo-500 bg-indigo-50 ring-1 ring-indigo-500'
+              ? 'border-brand-primary bg-brand-primary-light ring-1 ring-brand-primary'
               : 'border-zinc-200 bg-white hover:border-zinc-300'"
             @click="setModo(m.id)"
           >
