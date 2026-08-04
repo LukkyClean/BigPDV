@@ -15,8 +15,17 @@ import { computed } from 'vue';
 import { versaoPaleta } from './aplicar';
 import { PALETA_PADRAO } from './paleta';
 
-/** Valor computado de um token, com o padrão de fábrica como rede de segurança. */
-function lerToken(token: keyof typeof PALETA_PADRAO): string {
+/**
+ * Valor computado de um token, com o padrão de fábrica como rede de segurança.
+ *
+ * `versao` não é usada no cálculo — ela existe para que a leitura do CSS vire uma
+ * dependência REAL do computed que a chama. A primeira versão fazia
+ * `(versaoPaleta.value, lerToken(...))`, com o `.value` como expressão
+ * descartável: um minificador pode removê-la no build de produção, e aí o
+ * computed nunca reavalia e o gráfico só muda depois de recarregar a página.
+ * Como argumento, ela não tem como ser otimizada para fora.
+ */
+function lerToken(token: keyof typeof PALETA_PADRAO, _versao: number): string {
   const valor = getComputedStyle(document.documentElement)
     .getPropertyValue(`--color-${token}`)
     .trim();
@@ -35,7 +44,7 @@ export function comAlpha(hex: string, alpha: number): string {
 
 export function useCoresTema() {
   return {
-    primaria: computed(() => (versaoPaleta.value, lerToken('brand-primary'))),
-    secundaria: computed(() => (versaoPaleta.value, lerToken('brand-secondary'))),
+    primaria: computed(() => lerToken('brand-primary', versaoPaleta.value)),
+    secundaria: computed(() => lerToken('brand-secondary', versaoPaleta.value)),
   };
 }
