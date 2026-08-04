@@ -28,6 +28,7 @@ import { useOSSelectOptions } from '../composables/modal/useOSSelectOptions';
 import { useOSPrintFlow } from '../composables/modal/useOSPrintFlow';
 import { useOSClientHistory } from '../composables/modal/useOSClientHistory';
 import { useOSFormViewProvider } from '../context/useOSFormView.context';
+import { useOsCustomersGet } from '../composables/request/relationship/useOSRelationshipGet.queries';
 interface Props {
   isOpen: boolean;
   ordemServico?: OrderServiceReadDataType | null;
@@ -204,7 +205,10 @@ function handlePhotoChange() {
 }
 function handleLocalSubmit() {
   if (isCreateMode.value) {
-    const clienteId = (props.selectedCliente as { id?: number } | null)?.id;
+    // `currentCliente` e nao `props.selectedCliente`: quando o atendente troca de
+    // dono pelo aviso de identificador duplicado, a OS tem que nascer no nome de
+    // quem está na tela. Sem troca, `currentCliente` já cai no selectedCliente.
+    const clienteId = (currentCliente.value as { id?: number } | null)?.id;
     if (clienteId) form.criar.cliente_id.value = clienteId;
     form.criar.onSubmit();
   } else if (reopenMode.value === 'TEXT_ONLY') {
@@ -311,6 +315,7 @@ const updatedClienteRef = ref<CustomerUnionReadSchemaDataType | null>(null);
 const currentCliente = computed(
   () => updatedClienteRef.value ?? props.selectedCliente ?? currentOSData.value?.cliente ?? null,
 );
+const { data: clientesDisponiveis } = useOsCustomersGet();
 
 // ─── Ficha de vistoria imprimível (em branco, pra preencher no carro) ──────────
 // Funciona ANTES de criar a OS (usa os dados atuais do form) e também depois.
@@ -410,6 +415,18 @@ function handleUpdateCliente(cliente: CustomerUnionReadSchemaDataType) {
   updatedClienteRef.value = cliente;
 }
 
+/**
+ * O atendente viu que a placa/série já é de outro cliente e optou por abrir a OS
+ * no nome dele. Reaproveita a lista de clientes que o seletor da OS já mantém em
+ * cache, então não custa requisição nova.
+ */
+function handleAbrirComCliente(clienteId: number) {
+  const cliente = (clientesDisponiveis.value ?? []).find(
+    (c) => (c as { id?: number }).id === clienteId,
+  );
+  if (cliente) handleUpdateCliente(cliente as CustomerUnionReadSchemaDataType);
+}
+
 function handleChangeCliente() {
   emit('changeCliente');
 }
@@ -507,6 +524,7 @@ useOSFormViewProvider({
   handleReopenClick,
   handleChangeCliente,
   handleUpdateCliente,
+  handleAbrirComCliente,
   handleStatusUpdate,
   handleFuncionarioIdUpdate,
   handlePrioridadeUpdate,

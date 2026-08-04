@@ -77,6 +77,57 @@ def get_objeto_ativo_by_cliente_e_serie(
     return db.scalars(stmt).first()
 
 
+def _identificador_normalizado_sql(coluna):
+    """Coluna comparavel a `normalizar_identificador`: sem espaco nem hifen, maiusculo.
+
+    A placa e gravada como o usuario digitou ('ABC-1D23', 'abc 1d23'), entao a
+    igualdade crua erra o alvo. Normalizar dos dois lados e o que faz 'abc-1d23'
+    achar 'ABC1D23' ja cadastrado.
+    """
+    return func.upper(func.replace(func.replace(coluna, "-", ""), " ", ""))
+
+
+def get_objetos_ativos_por_identificador(
+    db: Session,
+    identificador: str,
+    cliente_id: int | None = None,
+    excluir_cliente_id: int | None = None,
+) -> Sequence[OSEquipamentoModel]:
+    """
+    Objetos ativos com o mesmo identificador (placa/serial), comparado de forma
+    normalizada. Diferente de `get_objeto_ativo_by_cliente_e_serie`, esta NAO se
+    limita a um cliente -- e o que permite avisar que a maquina ja esta cadastrada
+    no nome de outra pessoa.
+
+    cliente_id          → restringe a um cliente (checar se o dono atual ja o tem)
+    excluir_cliente_id  → tudo MENOS esse cliente (achar os donos concorrentes)
+    """
+    alvo = func.upper(func.replace(func.replace(identificador.strip(), "-", ""), " ", ""))
+
+    stmt = select(OSEquipamentoModel).where(
+        OSEquipamentoModel.ativo == True,  # noqa: E712
+        _identificador_normalizado_sql(OSEquipamentoModel.numero_serie) == alvo,
+    )
+    if cliente_id is not None:
+        stmt = stmt.where(OSEquipamentoModel.cliente_id == cliente_id)
+    if excluir_cliente_id is not None:
+        stmt = stmt.where(OSEquipamentoModel.cliente_id != excluir_cliente_id)
+
+    return db.scalars(stmt).all()
+
+
+def get_ultima_os_do_objeto(db: Session, objeto_id: int) -> OSModel | None:
+    """OS mais recente de um objeto — usada para datar o cadastro no aviso de
+    duplicidade ('última OS em 12/03/2026')."""
+    stmt = (
+        select(OSModel)
+        .where(OSModel.objeto_id == objeto_id)
+        .order_by(OSModel.data_criacao.desc())
+        .limit(1)
+    )
+    return db.scalars(stmt).first()
+
+
 def get_ordens_servico_by_search(
     db: Session,
     filters: dict,

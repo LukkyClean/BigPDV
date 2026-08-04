@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed } from 'vue';
-import { Fuel } from 'lucide-vue-next';
+import { computed, toRef } from 'vue';
+import { Fuel, TriangleAlert } from 'lucide-vue-next';
+import { useOSIdentificadorCheck } from '../../composables/request/relationship/useOSIdentificadorCheck.queries';
 import BaseInput from '@/shared/components/ui/BaseInput/BaseInput.vue';
 import BaseTextarea from '@/shared/components/ui/BaseInput/BaseTextarea.vue';
 import BaseSelect from '@/shared/components/ui/BaseSelect/BaseSelect.vue';
@@ -34,6 +35,8 @@ interface Props {
   isLocked?: boolean;
   isCreateMode?: boolean;
   errors?: Record<string, string | undefined>;
+  /** Cliente já escolhido para a OS — o aviso de duplicidade o ignora como "dono atual". */
+  clienteId?: number | null;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -66,7 +69,22 @@ const emit = defineEmits<{
   'update:osDados': [value: Record<string, unknown>];
   'update:selectedHistorico': [value: string];
   applyHistorico: [];
+  /** Atendente reconheceu o duplicado e quer abrir a OS com o dono já cadastrado. */
+  abrirComCliente: [clienteId: number];
 }>();
+
+// Só faz sentido na abertura: numa OS já criada o objeto está definido, e o
+// aviso viraria ruído sobre um fato consumado.
+const { conflitos: conflitosIdentificador } = useOSIdentificadorCheck(
+  toRef(() => props.modelValue.numero_serie),
+  toRef(() => props.clienteId ?? null),
+  computed(() => !!props.isCreateMode && !props.isLocked),
+);
+
+function formatarData(iso: string): string {
+  const data = new Date(iso);
+  return Number.isNaN(data.getTime()) ? '' : data.toLocaleDateString('pt-BR');
+}
 
 const historicoOptions = computed<SelectOption[]>(() => [
   { value: '', label: 'Usar anterior...' },
@@ -171,6 +189,44 @@ function handleHistoricoSelectChange(value: string) {
           :error="fieldError('numero_serie')"
           @update:model-value="updateField('numero_serie', $event)"
         />
+
+        <!-- Aviso, nunca bloqueio: o bem pode ter sido vendido, e quem sabe
+             disso é o atendente. Some sozinho quando o cliente atual já é dono
+             do objeto (a partir da 2ª OS dele com o mesmo identificador). -->
+        <div
+          v-for="conflito in conflitosIdentificador"
+          :key="conflito.objeto_id"
+          class="flex gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3"
+        >
+          <TriangleAlert :size="16" class="mt-0.5 shrink-0 text-amber-600" />
+          <div class="min-w-0 flex-1 space-y-1">
+            <p class="text-xs font-semibold text-amber-900">
+              {{ labelIdentificador }} já cadastrada para
+              {{ conflito.cliente_nome || 'outro cliente' }}
+            </p>
+            <p class="text-xs text-amber-800">
+              {{ [conflito.marca, conflito.modelo].filter(Boolean).join(' ') || labelSingular }}
+              <span v-if="conflito.ultima_os_numero">
+                — última OS {{ conflito.ultima_os_numero }}
+                <span v-if="conflito.ultima_os_data">
+                  em {{ formatarData(conflito.ultima_os_data) }}
+                </span>
+              </span>
+            </p>
+            <p class="text-xs text-amber-700">
+              Se o {{ labelSingular.toLowerCase() }} foi vendido, siga normalmente —
+              será criado um cadastro separado para o novo dono.
+            </p>
+            <button
+              v-if="isCreateMode && !isLocked"
+              type="button"
+              class="mt-1 rounded-md bg-amber-600 px-2.5 py-1 text-xs font-semibold text-white transition-colors hover:bg-amber-700"
+              @click="emit('abrirComCliente', conflito.cliente_id)"
+            >
+              Abrir com {{ conflito.cliente_nome || 'este cliente' }}
+            </button>
+          </div>
+        </div>
       </div>
 
       <div class="space-y-4">

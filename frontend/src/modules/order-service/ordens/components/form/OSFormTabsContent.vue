@@ -84,10 +84,12 @@ const objetoModel = computed<ObjetoFormData>({
           :is-locked="view.isStructureLocked.value"
           :is-create-mode="view.isCreateMode.value"
           :errors="view.formErrors.value"
+          :cliente-id="view.currentCliente.value?.id ?? null"
           @update:objeto-dados="view.setObjetoDados"
           @update:os-dados="view.setOsDados"
           @update:selected-historico="view.setSelectedHistorico"
           @apply-historico="view.applyObjetoHistorico"
+          @abrir-com-cliente="view.handleAbrirComCliente"
         />
 
         <OSVistoriaTab

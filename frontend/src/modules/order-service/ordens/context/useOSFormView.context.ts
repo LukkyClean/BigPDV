@@ -75,6 +75,8 @@ export interface OSFormViewContext {
   handleReopenClick: () => void;
   handleChangeCliente: () => void;
   handleUpdateCliente: (cliente: CustomerUnionReadSchemaDataType) => void;
+  /** Troca o dono da OS em criação para um cliente já cadastrado, pelo ID. */
+  handleAbrirComCliente: (clienteId: number) => void;
   handleStatusUpdate: (value: OsStatusEnumDataType) => void;
   handleFuncionarioIdUpdate: (value: string) => void;
   handlePrioridadeUpdate: (value: OsPriorityEnumDataType) => void;

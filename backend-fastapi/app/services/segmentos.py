@@ -48,8 +48,20 @@ def get_definicao_campos(db: Session) -> Dict[str, Any]:
 
 def normalizar_placa(valor: str) -> str:
     """Normaliza uma placa para validacao/armazenamento: remove espacos/hifens
-    e coloca em maiusculo. Ex: 'abc-1d23' -> 'ABC1D23'."""
-    return re.sub(r"[\s\-]", "", (valor or "")).upper()
+    e coloca em maiusculo. Ex: 'abc-1d23' -> 'ABC1D23'.
+
+    Delega ao registry: a mesma normalizacao decide se um identificador e
+    pesquisavel, e as duas nao podem divergir."""
+    return reg.normalizar_identificador(valor)
+
+
+def identificador_pesquisavel_atual(db: Session, valor: Optional[str]) -> bool:
+    """`reg.identificador_pesquisavel` ja resolvendo o segmento da instalacao.
+
+    Responde "este texto serve de chave?" -- para reaproveitar o objeto do cliente
+    e para avisar duplicidade. Nunca decide se a OS pode ser criada.
+    """
+    return reg.identificador_pesquisavel(valor, get_segmento_atual(db))
 
 
 def placa_valida(valor: str) -> bool:

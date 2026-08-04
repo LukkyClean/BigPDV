@@ -42,7 +42,12 @@ from app.db.crud import forma_pagamento as fp_crud
 from app.db.crud import configuracao_seguranca as config_seg_crud
 from app.db.crud import produto as produto_crud
 
-from app.services.segmentos import validar_objeto_por_segmento
+from app.services.segmentos import (
+    validar_objeto_por_segmento,
+    identificador_pesquisavel_atual,
+    get_segmento_atual,
+)
+from app.core import segmentos as reg
 from app.services import movimentacao_estoque as mov_service
 
 from app.core.enum import (
@@ -241,10 +246,15 @@ def create_ordem_servico(db: Session, os_to_create: OrdemServicoCreate) -> OSMod
     # Reutiliza o objeto existente do cliente (mesma placa/serial) em vez de duplicar:
     # um bem físico é UM registro que acumula histórico (KM, revisão) entre as OSs.
     # Se não existir, cria um novo. Agnóstico de segmento.
+    #
+    # Só vale como chave um identificador de verdade: `numero_serie` é obrigatório,
+    # então quem não tem o dado digita "S/N" — e por igualdade crua dois bens
+    # distintos do mesmo cliente colapsavam em UM registro, com o segundo
+    # sobrescrevendo marca/modelo do primeiro. Ver identificador_pesquisavel().
     numero_serie = objeto_data.get("numero_serie")
     equipamento_existente = (
         os_crud.get_objeto_ativo_by_cliente_e_serie(db, cliente_in_db.id, numero_serie)
-        if numero_serie else None
+        if numero_serie and identificador_pesquisavel_atual(db, numero_serie) else None
     )
     if equipamento_existente:
         # Atualiza os detalhes informados, mas PRESERVA a próxima revisão já agendada.
@@ -588,6 +598,62 @@ def _cliente_contato(cliente) -> tuple[str | None, str | None]:
     )
     telefone = getattr(cliente, "celular", None) or getattr(cliente, "telefone", None)
     return (nome.strip() if isinstance(nome, str) else nome), telefone
+
+
+def verificar_identificador_objeto(
+    db: Session,
+    identificador: str,
+    cliente_id: int | None = None,
+) -> dict:
+    """
+    Responde se a placa/serial digitada já pertence a algum objeto cadastrado —
+    inclusive de OUTRO cliente, que é o caso que o reuso comum nunca enxergou
+    (`get_objeto_ativo_by_cliente_e_serie` é escopado ao dono).
+
+    É um AVISO, nunca um bloqueio: a máquina pode ter sido vendida, e o atendente
+    decide se abre a OS com o dono antigo ou segue com o novo.
+
+    Duas regras de silêncio, para o aviso não virar ruído:
+      - identificador não pesquisável ("S/N", "não sei") não bate com nada;
+      - se o cliente atual JÁ tem um objeto com esse identificador, é o cliente
+        voltando com o mesmo bem — reuso normal, nada a avisar. É isso que faz o
+        aviso aparecer só na primeira OS depois da troca de dono, sem precisar
+        guardar "já avisei" em lugar nenhum.
+    """
+    segmento = get_segmento_atual(db)
+    pesquisavel = reg.identificador_pesquisavel(identificador, segmento)
+
+    resultado: dict = {
+        "identificador": identificador,
+        "pesquisavel": pesquisavel,
+        "conflitos": [],
+    }
+
+    if not pesquisavel:
+        return resultado
+
+    if cliente_id is not None and os_crud.get_objetos_ativos_por_identificador(
+        db, identificador, cliente_id=cliente_id
+    ):
+        return resultado
+
+    for objeto in os_crud.get_objetos_ativos_por_identificador(
+        db, identificador, excluir_cliente_id=cliente_id
+    ):
+        nome_cliente, _ = _cliente_contato(objeto.cliente)
+        ultima_os = os_crud.get_ultima_os_do_objeto(db, objeto.id)
+        resultado["conflitos"].append({
+            "objeto_id": objeto.id,
+            "cliente_id": objeto.cliente_id,
+            "cliente_nome": nome_cliente,
+            "marca": objeto.marca,
+            "modelo": objeto.modelo,
+            "numero_serie": objeto.numero_serie,
+            "ultima_os_numero": ultima_os.numero_os if ultima_os else None,
+            "ultima_os_data": ultima_os.data_criacao if ultima_os else None,
+        })
+
+    return resultado
 
 
 # ===========================================================================

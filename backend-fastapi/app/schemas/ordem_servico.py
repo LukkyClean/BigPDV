@@ -147,6 +147,42 @@ class OSItemUpdate(BaseModel):
 
 
 # ===========================================================================
+# VERIFICAÇÃO DE IDENTIFICADOR (placa / nº de série já cadastrado)
+# ===========================================================================
+
+class OSIdentificadorConflito(BaseModel):
+    """Objeto já cadastrado que usa o mesmo identificador, e de quem ele é."""
+    objeto_id: int = Field(..., description="ID do objeto já cadastrado")
+    cliente_id: int = Field(..., description="ID do cliente dono do objeto")
+    cliente_nome: Optional[str] = Field(None, description="Nome de exibição do dono")
+    marca: Optional[str] = Field(None, description="Marca registrada no objeto")
+    modelo: Optional[str] = Field(None, description="Modelo registrado no objeto")
+    numero_serie: Optional[str] = Field(None, description="Identificador como foi gravado")
+    ultima_os_numero: Optional[str] = Field(None, description="Número da OS mais recente do objeto")
+    ultima_os_data: Optional[datetime] = Field(None, description="Data da OS mais recente do objeto")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class OSIdentificadorCheck(BaseModel):
+    """
+    Resposta da verificação de duplicidade do identificador.
+
+    `pesquisavel=False` significa que o texto digitado não identifica um bem
+    ("S/N", "não sei") — não é erro, só não há o que procurar. `conflitos` vazio
+    significa que pode seguir sem aviso.
+    """
+    identificador: str = Field(..., description="Identificador consultado")
+    pesquisavel: bool = Field(..., description="Se o texto vale como identificador de um bem")
+    conflitos: List[OSIdentificadorConflito] = Field(
+        default_factory=list,
+        description="Objetos de OUTROS clientes com o mesmo identificador"
+    )
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ===========================================================================
 # EQUIPAMENTO DA OS
 # ===========================================================================
 

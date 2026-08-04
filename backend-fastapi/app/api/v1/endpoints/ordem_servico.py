@@ -45,6 +45,7 @@ from app.schemas.ordem_servico import (
     OrdemServicoCancelar,
     OrdemServicoReabrir,
     OSFotoRead,
+    OSIdentificadorCheck,
 )
 from app.services import ordem_servico as os_service
 from app.services import ordem_servico_foto as os_foto_service
@@ -106,6 +107,28 @@ def get_historico_km_objeto(
     db: Session = Depends(get_db),
 ):
     return os_service.get_historico_km(db, objeto_id)
+
+
+@router.get(
+    "/objeto/verificar-identificador",
+    response_model=OSIdentificadorCheck,
+    summary="Verificar se a placa/nº de série já está cadastrada",
+    description=(
+        "Procura objetos ativos com o mesmo identificador, **inclusive de outros "
+        "clientes** — o reuso comum é escopado ao dono e nunca enxerga esse caso. "
+        "É informativo: quem decide é o atendente, porque o bem pode ter sido vendido.\n\n"
+        "Não retorna conflito quando o texto não identifica um bem ('S/N', 'não sei') "
+        "nem quando o próprio `cliente_id` já possui um objeto com esse identificador — "
+        "aí é o mesmo cliente voltando com o mesmo bem."
+    ),
+)
+def verificar_identificador_objeto(
+    identificador: str = Query(..., min_length=1, max_length=100, description="Placa ou nº de série digitado"),
+    cliente_id: int | None = Query(None, description="Cliente selecionado na OS, se já houver"),
+    user_token: dict = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    return os_service.verificar_identificador_objeto(db, identificador, cliente_id)
 
 
 # ===========================================================================
