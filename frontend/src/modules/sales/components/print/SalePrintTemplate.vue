@@ -104,7 +104,7 @@ const totalPago = computed(() => {
             <td class="py-2 text-center text-slate-500">{{ item.sku || '-' }}</td>
             <td class="py-2 text-center text-slate-600">{{ item.quantidade }}</td>
             <td class="py-2 text-right text-slate-600">{{ formatCurrency(item.valor_unitario) }}</td>
-            <td class="py-2 text-right text-red-600">{{ item.desconto > 0 ? `- ${formatCurrency(item.desconto)}` : '-' }}</td>
+            <td class="py-2 text-right text-slate-600">{{ item.desconto > 0 ? `- ${formatCurrency(item.desconto)}` : '-' }}</td>
             <td class="py-2 pr-2 text-right font-bold text-slate-800">{{ formatCurrency(item.total) }}</td>
           </tr>
         </tbody>
@@ -140,15 +140,15 @@ const totalPago = computed(() => {
             <span>Subtotal:</span>
             <span>{{ formatCurrency(sale.subtotal) }}</span>
           </div>
-          <div v-if="sale.descontos > 0" class="flex justify-between text-xs text-red-600">
+          <div v-if="sale.descontos > 0" class="flex justify-between text-xs text-slate-500">
             <span>Desconto:</span>
             <span>- {{ formatCurrency(sale.descontos) }}</span>
           </div>
-          <div v-if="sale.entrega > 0" class="flex justify-between text-xs text-green-600">
+          <div v-if="sale.entrega > 0" class="flex justify-between text-xs text-slate-500">
             <span>Entrega:</span>
             <span>+ {{ formatCurrency(sale.entrega) }}</span>
           </div>
-          <div v-if="(saleData?.acrescimo ?? 0) > 0" class="flex justify-between text-xs text-amber-600">
+          <div v-if="(saleData?.acrescimo ?? 0) > 0" class="flex justify-between text-xs text-slate-500">
             <span>Juros:</span>
             <span>+ {{ formatCurrency(saleData?.acrescimo ?? 0) }}</span>
           </div>
@@ -160,7 +160,7 @@ const totalPago = computed(() => {
             <span>Total Pago:</span>
             <span>{{ formatCurrency(totalPago) }}</span>
           </div>
-          <div v-if="saleData && saleData.troco > 0" class="flex justify-between text-xs text-amber-600">
+          <div v-if="saleData && saleData.troco > 0" class="flex justify-between text-xs text-slate-500">
             <span>Troco:</span>
             <span>{{ formatCurrency(saleData.troco) }}</span>
           </div>
@@ -174,11 +174,11 @@ const totalPago = computed(() => {
           <span>Subtotal:</span>
           <span>{{ formatCurrency(sale.subtotal) }}</span>
         </div>
-        <div v-if="sale.descontos > 0" class="flex justify-between text-xs text-red-600">
+        <div v-if="sale.descontos > 0" class="flex justify-between text-xs text-slate-500">
           <span>Desconto:</span>
           <span>- {{ formatCurrency(sale.descontos) }}</span>
         </div>
-        <div v-if="sale.entrega > 0" class="flex justify-between text-xs text-green-600">
+        <div v-if="sale.entrega > 0" class="flex justify-between text-xs text-slate-500">
           <span>Entrega:</span>
           <span>+ {{ formatCurrency(sale.entrega) }}</span>
         </div>

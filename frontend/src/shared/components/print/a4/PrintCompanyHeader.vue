@@ -43,7 +43,7 @@ defineProps<{
         <p class="text-sm font-bold text-slate-800">{{ dateValue }}</p>
       </div>
       <div v-if="finalizadaDate" class="mt-2 text-center">
-        <p class="text-[10px] font-bold text-emerald-600 uppercase border border-emerald-200 bg-emerald-50 rounded px-1 py-0.5 inline-block">
+        <p class="text-[10px] font-bold text-slate-800 uppercase border border-slate-300 bg-slate-100 rounded px-1 py-0.5 inline-block">
           FINALIZADA EM {{ finalizadaDate }}
         </p>
       </div>

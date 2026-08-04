@@ -56,11 +56,15 @@ const title = computed(() => {
   return 'RECIBO E TERMO DE GARANTIA';
 });
 
+// Impressão é preto e branco por contrato (ver nota no topo do template): as três
+// situações compartilham o mesmo estilo porque quem distingue é o `label`, escrito
+// por extenso. A cor era redundante com ele.
 const situacaoConfig = computed(() => {
+  const CLS_SITUACAO = 'bg-slate-100 text-slate-800 border border-slate-400';
   const map: Record<string, { label: string; cls: string }> = {
-    REPARADO:   { label: 'Reparado',   cls: 'bg-emerald-100 text-emerald-700 border border-emerald-300' },
-    SEM_REPARO: { label: 'Sem Reparo', cls: 'bg-amber-100 text-amber-700 border border-amber-300' },
-    CONDENADO:  { label: 'Condenado',  cls: 'bg-red-100 text-red-700 border border-red-300' },
+    REPARADO:   { label: 'Reparado',   cls: CLS_SITUACAO },
+    SEM_REPARO: { label: 'Sem Reparo', cls: CLS_SITUACAO },
+    CONDENADO:  { label: 'Condenado',  cls: CLS_SITUACAO },
   };
   return situacao.value ? map[situacao.value] ?? null : null;
 });
@@ -173,7 +177,7 @@ const totalRecebido = computed(() => adiantamentoUtilizado.value + totalPago.val
     <template v-if="type === 'SAIDA'">
       <div v-if="ordemServico.solucao || ordemServico.diagnostico" class="mb-4 border border-slate-300 rounded-lg overflow-hidden">
         <div class="bg-slate-100 px-3 py-1.5 border-b border-slate-200 flex items-center gap-2">
-          <CheckCircle2 :size="14" class="text-emerald-600" />
+          <CheckCircle2 :size="14" class="text-slate-700" />
           <h3 class="text-xs font-bold uppercase text-slate-700">Laudo Técnico & Solução</h3>
         </div>
         <div class="p-3 text-xs space-y-2">
@@ -182,7 +186,7 @@ const totalRecebido = computed(() => adiantamentoUtilizado.value + totalPago.val
             <p class="text-slate-800">{{ ordemServico.diagnostico }}</p>
           </div>
           <div v-if="ordemServico.solucao" class="pt-2 border-t border-slate-100 mt-2">
-            <span class="font-bold text-emerald-600 uppercase text-[10px]">Solução Realizada:</span>
+            <span class="font-bold text-slate-800 uppercase text-[10px]">Solução Realizada:</span>
             <p class="text-slate-900 font-medium">{{ ordemServico.solucao }}</p>
           </div>
         </div>
@@ -214,12 +218,12 @@ const totalRecebido = computed(() => adiantamentoUtilizado.value + totalPago.val
         <div>
           <p class="text-[10px] font-bold text-slate-500 uppercase mb-2 border-b border-slate-200 pb-1">Detalhes do Pagamento</p>
           <!-- Adiantamento recebido na entrada -->
-          <div v-if="adiantamento > 0" class="flex justify-between items-center text-xs bg-emerald-50 p-1.5 rounded border border-emerald-100 mb-1.5">
+          <div v-if="adiantamento > 0" class="flex justify-between items-center text-xs bg-slate-50 p-1.5 rounded border border-slate-200 mb-1.5">
             <div class="flex items-center gap-2">
-              <Banknote :size="12" class="text-emerald-600" />
-              <span class="font-semibold text-emerald-700">Adiantamento (entrada)</span>
+              <Banknote :size="12" class="text-slate-700" />
+              <span class="font-semibold text-slate-800">Adiantamento (entrada)</span>
             </div>
-            <span class="font-bold text-emerald-700">{{ formatCurrency(adiantamento) }}</span>
+            <span class="font-bold text-slate-900">{{ formatCurrency(adiantamento) }}</span>
           </div>
           <!-- Pagamentos no fechamento -->
           <div v-if="ordemServico.pagamentos?.length" class="space-y-1.5">
@@ -247,7 +251,7 @@ const totalRecebido = computed(() => adiantamentoUtilizado.value + totalPago.val
             <span>Subtotal:</span>
             <span>{{ formatCurrency(subtotal) }}</span>
           </div>
-          <div v-if="(ordemServico.desconto ?? 0) > 0" class="flex justify-between text-xs text-red-600">
+          <div v-if="(ordemServico.desconto ?? 0) > 0" class="flex justify-between text-xs text-slate-500">
             <span>Desconto:</span>
             <span>- {{ formatCurrency(ordemServico.desconto ?? 0) }}</span>
           </div>
@@ -255,11 +259,11 @@ const totalRecebido = computed(() => adiantamentoUtilizado.value + totalPago.val
             <span>Deslocamento:</span>
             <span>+ {{ formatCurrency(ordemServico.taxa_entrega ?? 0) }}</span>
           </div>
-          <div v-if="(ordemServico.acrescimo ?? 0) > 0" class="flex justify-between text-xs text-amber-600">
+          <div v-if="(ordemServico.acrescimo ?? 0) > 0" class="flex justify-between text-xs text-slate-500">
             <span>Juros:</span>
             <span>+ {{ formatCurrency(ordemServico.acrescimo ?? 0) }}</span>
           </div>
-          <div v-if="adiantamento > 0" class="flex justify-between text-xs text-emerald-600">
+          <div v-if="adiantamento > 0" class="flex justify-between text-xs text-slate-500">
             <span>Adiantamento:</span>
             <span>- {{ formatCurrency(adiantamentoUtilizado) }}</span>
           </div>
@@ -267,8 +271,8 @@ const totalRecebido = computed(() => adiantamentoUtilizado.value + totalPago.val
             <span class="text-sm font-bold text-slate-900 uppercase">Total Pago:</span>
             <span class="text-xl font-black text-slate-900 leading-none">{{ formatCurrency(totalRecebido) }}</span>
           </div>
-          <div v-if="(ordemServico.acrescimo ?? 0) > 0" class="mt-1 border border-amber-300 bg-amber-50 rounded p-1.5 space-y-0.5">
-            <p class="text-[9px] font-bold text-amber-700 uppercase">Em caso de devolução</p>
+          <div v-if="(ordemServico.acrescimo ?? 0) > 0" class="mt-1 border border-slate-400 bg-slate-50 rounded p-1.5 space-y-0.5">
+            <p class="text-[9px] font-bold text-slate-800 uppercase">Em caso de devolução</p>
             <div class="flex justify-between text-[9px] text-slate-600">
               <span>Valor do serviço (dinheiro):</span>
               <span class="font-semibold">{{ formatCurrency(totalPago - (ordemServico.acrescimo ?? 0)) }}</span>
@@ -282,8 +286,8 @@ const totalRecebido = computed(() => adiantamentoUtilizado.value + totalPago.val
       </div>
 
       <!-- Termo de Garantia (só para REPARADO) -->
-      <div v-if="!isSemReparo" class="border border-brand-primary/20 bg-brand-primary-light/50 rounded-lg p-3 text-[10px] text-slate-700 text-justify leading-relaxed mb-6">
-        <div class="flex items-center gap-2 mb-1 font-bold text-brand-primary uppercase">
+      <div v-if="!isSemReparo" class="border border-slate-300 bg-slate-50 rounded-lg p-3 text-[10px] text-slate-700 text-justify leading-relaxed mb-6">
+        <div class="flex items-center gap-2 mb-1 font-bold text-slate-900 uppercase">
           <Receipt :size="12" />
           Termo de Garantia
         </div>
@@ -294,8 +298,8 @@ const totalRecebido = computed(() => adiantamentoUtilizado.value + totalPago.val
       </div>
 
       <!-- Declaração de entrega sem reparo (SEM_REPARO / CONDENADO) -->
-      <div v-else class="border border-amber-200 bg-amber-50/50 rounded-lg p-3 text-[10px] text-slate-700 text-justify leading-relaxed mb-6">
-        <div class="flex items-center gap-2 mb-1 font-bold text-amber-700 uppercase">
+      <div v-else class="border border-slate-300 bg-slate-50 rounded-lg p-3 text-[10px] text-slate-700 text-justify leading-relaxed mb-6">
+        <div class="flex items-center gap-2 mb-1 font-bold text-slate-900 uppercase">
           <Receipt :size="12" />
           Declaração de Entrega
         </div>
@@ -307,9 +311,9 @@ const totalRecebido = computed(() => adiantamentoUtilizado.value + totalPago.val
 
     <!-- ── CANCELAMENTO ── -->
     <template v-else-if="type === 'CANCELAMENTO'">
-      <div class="border border-red-200 bg-red-50/50 rounded-lg p-4 mb-6">
-        <div class="flex items-center gap-2 mb-2 font-bold text-red-700 uppercase">
-          <span class="p-1 bg-red-100 rounded">CANCELAMENTO</span>
+      <div class="border border-slate-400 bg-slate-50 rounded-lg p-4 mb-6">
+        <div class="flex items-center gap-2 mb-2 font-bold text-slate-900 uppercase">
+          <span class="p-1 bg-slate-200 border border-slate-400 rounded">CANCELAMENTO</span>
           Motivo do Cancelamento
         </div>
         <p class="text-sm text-slate-900 font-medium">{{ motivoCancelamento }}</p>
