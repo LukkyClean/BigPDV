@@ -12,7 +12,7 @@ export function useProductQuery(term: MaybeRef<string | null | undefined>) {
     queryKey: computed(() => 
       !!unref(term)
         ? productKeys.search(unref(term)!)
-        : [...productKeys.all, 'search', 'empty']
+        : [...productKeys.all, 'venda-busca', 'empty']
     ),
     queryFn: () => productService.searchProducts(unref(term)!),
     enabled: computed(() => !!unref(term) && unref(term)!.trim().length > 1),

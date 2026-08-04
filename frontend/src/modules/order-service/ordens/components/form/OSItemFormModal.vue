@@ -11,6 +11,7 @@ import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
 import { formatCurrency } from '@/shared/utils/finance';
 import { useProductsQuery } from '@/modules/products/inventory/composables/useProductsQuery';
 import { getServicos } from '@/modules/order-service/servicos/services/servicos.service';
+import { SERVICOS_OS_ITEM_QUERY_KEY } from '@/modules/order-service/shared/constants/queryKeys';
 import { MEDIDA_SERVICO_OPTIONS, MEDIDA_PRODUTO_OPTIONS } from '../../constants/core.constant';
 import type { OsItemCreateSchemaDataType } from '../../schemas/relationship/osItem.schema';
 import type { OsItemTypeEnumDataType, OsItemMeasureEnumDataType, OsItemAprovacaoEnumDataType } from '../../schemas/enums/osEnums.schema';
@@ -70,8 +71,11 @@ const { data: produtosData, isLoading: isLoadingProdutos } = useProductsQuery(
   20,
 );
 
+// A chave pende do prefixo canônico 'servicos': é o que faz o preço editado no
+// catálogo aparecer aqui sem F5. Como chave própria ('servicos-os-item'), a
+// invalidação das mutations do catálogo nunca alcançava este cache.
 const { data: servicosData, isLoading: isLoadingServicos } = useQuery({
-  queryKey: ['servicos-os-item', debouncedCatalogSearch] as const,
+  queryKey: [...SERVICOS_OS_ITEM_QUERY_KEY, debouncedCatalogSearch] as const,
   queryFn: () => getServicos({
     search: debouncedCatalogSearch.value || undefined,
     active: true,

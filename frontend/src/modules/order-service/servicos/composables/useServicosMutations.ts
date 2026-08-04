@@ -6,7 +6,7 @@ import { getErrorMessage, getConflictErrors, isConflictError } from '@/shared/ut
 import type { ApiError } from '@/shared/types/axios.types';
 
 import { createServico, updateServico, toggleServicoAtivo } from '../services/servicos.service';
-import { SERVICOS_QUERY_KEY, SERVICOS_STATS_QUERY_KEY } from '../constants/servicos.constants';
+import { SERVICOS_QUERY_KEY } from '../constants/servicos.constants';
 import type { ServiceCreateZod, ServiceUpdateZod, ServiceReadZod } from '../schemas/servicos.schema';
 
 export function useCreateServicoMutation(setErrors?: (errors: Record<string, string>) => void) {
@@ -17,8 +17,8 @@ export function useCreateServicoMutation(setErrors?: (errors: Record<string, str
     mutationFn: createServico,
     onSuccess: () => {
       toast.success('Serviço cadastrado com sucesso!');
+      // Prefixo canônico: alcança o catálogo, as stats e a busca do item da OS.
       queryClient.invalidateQueries({ queryKey: [SERVICOS_QUERY_KEY] });
-      queryClient.invalidateQueries({ queryKey: [SERVICOS_STATS_QUERY_KEY] });
     },
     onError: (error) => {
       if (isConflictError(error) && setErrors) {
@@ -42,8 +42,8 @@ export function useUpdateServicoMutation(setErrors?: (errors: Record<string, str
     mutationFn: ({ id, data }) => updateServico(id, data),
     onSuccess: () => {
       toast.success('Serviço atualizado com sucesso!');
+      // Prefixo canônico: alcança o catálogo, as stats e a busca do item da OS.
       queryClient.invalidateQueries({ queryKey: [SERVICOS_QUERY_KEY] });
-      queryClient.invalidateQueries({ queryKey: [SERVICOS_STATS_QUERY_KEY] });
     },
     onError: (error) => {
       if (isConflictError(error) && setErrors) {
@@ -68,8 +68,8 @@ export function useToggleServicoAtivoMutation() {
     onSuccess: (data) => {
       const status = data.ativo ? 'ativado' : 'desativado';
       toast.success(`Serviço ${status} com sucesso!`);
+      // Prefixo canônico: alcança o catálogo, as stats e a busca do item da OS.
       queryClient.invalidateQueries({ queryKey: [SERVICOS_QUERY_KEY] });
-      queryClient.invalidateQueries({ queryKey: [SERVICOS_STATS_QUERY_KEY] });
     },
     onError: (error) => {
       toast.error(getErrorMessage(error, 'Erro ao alterar status do serviço') as string);
