@@ -8,7 +8,6 @@ import {
   Package,
   ClipboardList,
   Users,
-  Banknote,
   Plug,
   Printer,
   Monitor,
@@ -45,7 +44,6 @@ import Seguranca from './sections/seguranca/components/Seguranca.vue'
 import ProdutosEstoque from './sections/produtos-estoque/components/ProdutosEstoque.vue'
 import OrdensDeServico from './sections/ordens-de-servico/components/OrdensDeServico.vue'
 import ClientesCadastro from './sections/clientes-cadastro/components/ClientesCadastro.vue'
-import FinanceiroTaxas from './sections/financeiro-taxas/components/FinanceiroTaxas.vue'
 import IntegracoesAPIs from './sections/integracoes-apis/components/IntegracoesAPIs.vue'
 import ImpressaoPeriferico from './sections/impressao/components/ImpressaoPeriferico.vue'
 import FormatosExibicao from './sections/formatos-exibicao/components/FormatosExibicao.vue'
@@ -227,7 +225,6 @@ const secoes: SecaoConfiguracao[] = [
   { id: 'produtos-estoque',  label: 'Produtos e Estoque',    icone: Package },
   { id: 'ordens-de-servico', label: 'Ordens de Serviço',     icone: ClipboardList },
   { id: 'clientes-cadastro', label: 'Clientes e Cadastro',   icone: Users },
-  { id: 'financeiro-taxas',  label: 'Financeiro e Taxas',    icone: Banknote },
   { id: 'integracoes-apis',  label: 'Integrações e APIs',    icone: Plug },
   { id: 'impressao',         label: 'Impressão e Periféricos', icone: Printer },
   { id: 'formatos-exibicao', label: 'Formatos e Exibição',   icone: Monitor },
@@ -241,7 +238,6 @@ const componenteMap: Record<SecaoId, Component> = {
   'produtos-estoque':  ProdutosEstoque,
   'ordens-de-servico': OrdensDeServico,
   'clientes-cadastro': ClientesCadastro,
-  'financeiro-taxas':  FinanceiroTaxas,
   'integracoes-apis':  IntegracoesAPIs,
   'impressao':         ImpressaoPeriferico,
   'formatos-exibicao': FormatosExibicao,
