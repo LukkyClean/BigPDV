@@ -158,3 +158,64 @@ def test_cor_nula_volta_ao_padrao(client, db_session):
     r = client.put(ROTA_EMPRESA, json={"cor_tema": None}, headers=header)
     assert r.status_code == status.HTTP_200_OK, r.text
     assert client.get(ROTA_TEMA).json()["cor_tema"] is None
+
+
+# =========================
+# CHAVE PIX
+# =========================
+
+def test_master_grava_chave_pix(client, db_session):
+    header = _criar_master_e_empresa(client)
+
+    r = client.put(ROTA_EMPRESA, json={
+        "chave_pix": "loja@exemplo.com.br",
+        "pix_ativo": True,
+    }, headers=header)
+    assert r.status_code == status.HTTP_200_OK, r.text
+    assert r.json()["chave_pix"] == "loja@exemplo.com.br"
+    assert r.json()["pix_ativo"] is True
+
+
+def test_pix_comeca_desligado(client, db_session):
+    """Instalacao existente nao passa a exibir QR sozinha ao atualizar."""
+    header = _criar_master_e_empresa(client)
+
+    r = client.get(ROTA_EMPRESA, headers=header)
+    assert r.status_code == status.HTTP_200_OK, r.text
+    assert r.json()["chave_pix"] is None
+    assert r.json()["pix_ativo"] is False
+
+
+def test_chave_pix_aceita_as_cinco_formas(client, db_session):
+    """CPF, CNPJ, telefone, e-mail e aleatoria: o QR embute a chave literalmente,
+    entao o backend nao impoe formato."""
+    header = _criar_master_e_empresa(client)
+
+    for chave in [
+        "12345678901",
+        "12345678000199",
+        "+5511987654321",
+        "loja@exemplo.com.br",
+        "123e4567-e89b-12d3-a456-426614174000",
+    ]:
+        r = client.put(ROTA_EMPRESA, json={"chave_pix": chave}, headers=header)
+        assert r.status_code == status.HTTP_200_OK, f"{chave}: {r.text}"
+        assert r.json()["chave_pix"] == chave
+
+
+def test_chave_pix_longa_demais_e_recusada(client, db_session):
+    """77 e o teto do BR Code. Recusar aqui evita gerar um QR invalido depois."""
+    header = _criar_master_e_empresa(client)
+
+    r = client.put(ROTA_EMPRESA, json={"chave_pix": "a" * 78}, headers=header)
+    assert r.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT, r.text
+
+
+def test_chave_pix_e_publica_apenas_pelo_endpoint_autenticado(client, db_session):
+    """GUARDIAO: a rota publica /tema devolve SO a cor. A chave PIX nao pode vazar
+    por ela -- e dado de recebimento, ainda que apareca no QR para quem compra."""
+    header = _criar_master_e_empresa(client)
+    client.put(ROTA_EMPRESA, json={"chave_pix": "loja@exemplo.com.br"}, headers=header)
+
+    corpo = client.get(ROTA_TEMA).json()
+    assert set(corpo.keys()) == {"cor_tema"}

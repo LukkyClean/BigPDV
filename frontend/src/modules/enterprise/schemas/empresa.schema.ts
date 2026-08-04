@@ -65,6 +65,8 @@ export const EmpresaSchema = z.object({
   celular: z.string().optional(),
   url_logo: z.string().optional(),
   cor_tema: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),
+  chave_pix: z.string().max(77).nullable().optional(),
+  pix_ativo: z.boolean().nullable().optional(),
   fiscal_settings: FiscalSettingsSchema.optional(),
   enderecos: z.array(EnderecoSchema).optional(),
 }).passthrough();
@@ -159,6 +161,8 @@ export const EmpresaFormValidationSchema = z.object({
   website: z.string().optional().or(z.literal('')),
   url_logo: z.string().optional().or(z.literal('')),
   cor_tema: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),
+  chave_pix: z.string().max(77).nullable().optional(),
+  pix_ativo: z.boolean().nullable().optional(),
 
   // Contato
   email: z.string().email('Email inválido').optional().or(z.literal('')),
@@ -204,6 +208,8 @@ export const EmpresaFormSchema = z.object({
   website: z.string().optional().or(z.literal('')),
   url_logo: z.string().optional().or(z.literal('')),
   cor_tema: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),
+  chave_pix: z.string().max(77).nullable().optional(),
+  pix_ativo: z.boolean().nullable().optional(),
 
   // Contato
   email: z.string().email('Email inválido').optional().or(z.literal('')),

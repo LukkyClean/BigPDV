@@ -234,6 +234,15 @@ class EmpresaBase(BaseModel):
         pattern=r"^#[0-9a-fA-F]{6}$",
         description="Cor da marca em hex (#RRGGBB). NULL usa a paleta de fabrica.",
     )
+    chave_pix: Optional[str] = Field(
+        None,
+        max_length=77,
+        description="Chave PIX do recebedor (CPF, CNPJ, telefone, e-mail ou aleatoria).",
+    )
+    pix_ativo: Optional[bool] = Field(
+        None,
+        description="Se o QR PIX aparece na finalizacao da venda.",
+    )
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -401,6 +410,15 @@ class EmpresaUpdate(BaseModel):
         pattern=r"^#[0-9a-fA-F]{6}$",
         description="Cor da marca em hex (#RRGGBB). NULL usa a paleta de fabrica.",
     )
+    chave_pix: Optional[str] = Field(
+        None,
+        max_length=77,
+        description="Chave PIX do recebedor (CPF, CNPJ, telefone, e-mail ou aleatoria).",
+    )
+    pix_ativo: Optional[bool] = Field(
+        None,
+        description="Se o QR PIX aparece na finalizacao da venda.",
+    )
 
     endereco: Optional[List["EnderecoUpdate"]] = Field(
         None,
@@ -494,6 +512,15 @@ class EmpresaUserRead(BaseModel):
         max_length=7,
         pattern=r"^#[0-9a-fA-F]{6}$",
         description="Cor da marca em hex (#RRGGBB). NULL usa a paleta de fabrica.",
+    )
+    chave_pix: Optional[str] = Field(
+        None,
+        max_length=77,
+        description="Chave PIX do recebedor (CPF, CNPJ, telefone, e-mail ou aleatoria).",
+    )
+    pix_ativo: Optional[bool] = Field(
+        None,
+        description="Se o QR PIX aparece na finalizacao da venda.",
     )
     documento: Optional[str] = Field(
         None,

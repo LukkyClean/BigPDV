@@ -138,7 +138,7 @@ watch(() => props.isOpen, (aberto) => {
   }
 })
 
-const secoesFuncionais: SecaoId[] = ['seguranca', 'clientes-cadastro', 'produtos-estoque', 'ordens-de-servico', 'regras-de-vendas', 'impressao', 'formatos-exibicao']
+const secoesFuncionais: SecaoId[] = ['seguranca', 'clientes-cadastro', 'produtos-estoque', 'ordens-de-servico', 'regras-de-vendas', 'impressao', 'formatos-exibicao', 'integracoes-apis']
 const secaoFuncional = computed(() => secoesFuncionais.includes(secaoAtiva.value))
 
 async function salvar(): Promise<void> {
@@ -205,6 +205,13 @@ async function salvar(): Promise<void> {
           setTimeout(() => window.location.reload(), 600)
         },
       })
+      break
+    }
+    case 'integracoes-apis': {
+      // A chave PIX mora na empresa, como o logo e a cor: dado de identidade, não
+      // regra de negócio. Reaproveita a mutation dela, que já exige master.
+      const { chave_pix, pix_ativo } = comp.form as { chave_pix: string; pix_ativo: boolean }
+      salvarTema({ data: { chave_pix: chave_pix.trim() || null, pix_ativo } }, fecharAposSalvar)
       break
     }
     case 'regras-de-vendas': {
