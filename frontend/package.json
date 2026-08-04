@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently \"vite\"",
-    "build": "vite build",
+    "build": "npm run check:tokens && vite build",
     "preview": "vite preview",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
@@ -13,7 +13,8 @@
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx --fix",
     "format": "prettier --write src/",
     "build:sidecar": "node ../scripts/build-sidecar.mjs",
-    "check:sidecar": "node ../scripts/check-sidecar.mjs"
+    "check:sidecar": "node ../scripts/check-sidecar.mjs",
+    "check:tokens": "node ../scripts/check-tokens.mjs"
   },
   "dependencies": {
     "@tailwindcss/postcss": "^4.1.18",
