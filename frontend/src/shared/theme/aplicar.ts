@@ -13,7 +13,18 @@
  * com a cor escolhida.
  */
 
+import { ref } from 'vue';
+
 import { derivarPaleta, type Paleta } from './paleta';
+
+/**
+ * Incrementa a cada troca de paleta.
+ *
+ * Existe para quem desenha em `<canvas>`: gráfico não é CSS e NÃO repinta sozinho
+ * quando a variável muda. Observando isto, o gráfico se redesenha junto com o
+ * resto da tela — inclusive durante a prévia ao vivo.
+ */
+export const versaoPaleta = ref(0);
 
 /** Guarda a cor escolhida para o boot seguinte, inclusive na tela de login —
  *  que roda antes de haver token para consultar o servidor. */
@@ -24,6 +35,7 @@ function escrever(paleta: Paleta): void {
   for (const [token, valor] of Object.entries(paleta)) {
     raiz.style.setProperty(`--color-${token}`, valor);
   }
+  versaoPaleta.value++;
 }
 
 /** Deriva e aplica. Chamar com a cor escolhida pelo dono. */
@@ -45,6 +57,7 @@ export function limparPaleta(): void {
   for (const token of ['brand-primary', 'brand-primary-hover', 'brand-primary-light', 'brand-secondary']) {
     raiz.style.removeProperty(`--color-${token}`);
   }
+  versaoPaleta.value++;
 }
 
 /** Cor guardada neste terminal, se houver. */
