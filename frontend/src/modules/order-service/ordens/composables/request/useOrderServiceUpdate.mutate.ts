@@ -38,7 +38,7 @@ export function useUpdateOrderServiceMutation() {
       queryClient.invalidateQueries({ queryKey: [ORDER_SERVICE_QUERY_KEY] });
       // Histórico do cliente também depende desta OS — sem isto reabrir de lá
       // servia dados velhos (acessórios/vistoria recém-salvos sumindo).
-      queryClient.invalidateQueries({ queryKey: [OS_CUSTOMER_QUERY_KEY] });
+      queryClient.invalidateQueries({ queryKey: OS_CUSTOMER_QUERY_KEY });
     },
     onError: (error) => {
       toast.error(getErrorMessage(error, 'Erro ao atualizar a ordem de serviço') as string);
@@ -55,7 +55,7 @@ export function useUpdateObjetoOSMutation() {
     onSuccess: (data) => {
       toast.success(`${data.numero_os} objeto atualizado com sucesso`);
       queryClient.invalidateQueries({ queryKey: [ORDER_SERVICE_QUERY_KEY] });
-      queryClient.invalidateQueries({ queryKey: [OS_CUSTOMER_QUERY_KEY] });
+      queryClient.invalidateQueries({ queryKey: OS_CUSTOMER_QUERY_KEY });
     },
     onError: (error) => {
       toast.error(getErrorMessage(error, 'Erro ao atualizar o objeto') as string);
@@ -88,7 +88,7 @@ export function useReadyOrderServiceMutation() {
     onSuccess: (data) => {
       toast.success(`${data.numero_os} finalizada com sucesso`);
       queryClient.invalidateQueries({ queryKey: [ORDER_SERVICE_QUERY_KEY] });
-      queryClient.invalidateQueries({ queryKey: [OS_CUSTOMER_QUERY_KEY] });
+      queryClient.invalidateQueries({ queryKey: OS_CUSTOMER_QUERY_KEY });
       invalidarRelatorios(queryClient);
     },
     onError: (error) => {
@@ -106,7 +106,7 @@ export function useCancelOrderServiceMutation() {
     onSuccess: (data) => {
       toast.success(`${data.numero_os} cancelada com sucesso`);
       queryClient.invalidateQueries({ queryKey: [ORDER_SERVICE_QUERY_KEY] });
-      queryClient.invalidateQueries({ queryKey: [OS_CUSTOMER_QUERY_KEY] });
+      queryClient.invalidateQueries({ queryKey: OS_CUSTOMER_QUERY_KEY });
       invalidarRelatorios(queryClient);
     },
     onError: (error) => {

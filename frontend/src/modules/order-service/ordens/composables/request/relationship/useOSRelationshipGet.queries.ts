@@ -15,7 +15,7 @@ import {
 
 export function useOsCustomersGet() {
   return useQuery({
-    queryKey: [OS_CUSTOMER_QUERY_KEY],
+    queryKey: OS_CUSTOMER_QUERY_KEY,
     queryFn: getCustomersAll,
     staleTime: OS_CUSTOMER_QUERY_STALE_TIME,
     refetchInterval: ORDER_SERVICE_REFETCH_INTERVAL,

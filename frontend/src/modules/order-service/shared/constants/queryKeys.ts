@@ -4,7 +4,6 @@ import { SERVICOS_KEY } from '@/shared/constants/entityKeys';
 export const ORDENS_SERVICO_QUERY_KEY = 'ordens-servico';
 export const ORDENS_SERVICO_STATS_QUERY_KEY = 'ordens-servico-stats';
 export const FUNCIONARIOS_QUERY_KEY = 'funcionarios';
-export const CLIENTES_SEARCH_QUERY_KEY = 'clientes-search';
 export const FORMAS_PAGAMENTO_QUERY_KEY = 'formas-pagamento';
 
 // Serviços (catálogo)

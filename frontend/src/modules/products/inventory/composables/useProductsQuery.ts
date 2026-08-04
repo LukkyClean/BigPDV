@@ -23,7 +23,7 @@ import type {
 } from '../types/products.types';
 import { getErrorMessage, getConflictErrors, isConflictError } from '@/shared/utils/error.utils';
 
-import { PRODUTOS_QUERY_KEY as QUERY_KEY, PRODUTOS_STALE_TIME as STALE_TIME, PRODUTOS_REFETCH_INTERVAL } from '../../shared/constants/queryKeys';
+import { PRODUTOS_QUERY_KEY as QUERY_KEY, PRODUTOS_STALE_TIME as STALE_TIME, PRODUTOS_AUTOCOMPLETE_STALE_TIME as AUTOCOMPLETE_STALE_TIME, PRODUTOS_REFETCH_INTERVAL } from '../../shared/constants/queryKeys';
 import { MOVIMENTACOES_QUERY_KEY } from './useMovimentacoesQuery';
 
 
@@ -39,7 +39,10 @@ export function useProductsQuery(searchTerm?: Ref<string | null>, limite?: numbe
   return useQuery({
     queryKey: [QUERY_KEY, cleanSearch, limite],
     queryFn: () => getProdutos(cleanSearch.value, limite),
-    staleTime: STALE_TIME,
+    // `limite` é o que separa auto-complete de listagem (ver doc acima), e os dois
+    // toleram idades diferentes: o modal de item precisa do produto recém-cadastrado,
+    // a tela de Produtos não paga esse custo de rede.
+    staleTime: limite != null ? AUTOCOMPLETE_STALE_TIME : STALE_TIME,
     refetchInterval: PRODUTOS_REFETCH_INTERVAL,
   });
 }

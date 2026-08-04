@@ -12,6 +12,7 @@ import { formatCurrency } from '@/shared/utils/finance';
 import { useProductsQuery } from '@/modules/products/inventory/composables/useProductsQuery';
 import { getServicos } from '@/modules/order-service/servicos/services/servicos.service';
 import { SERVICOS_OS_ITEM_QUERY_KEY } from '@/modules/order-service/shared/constants/queryKeys';
+import { REFETCH_CADASTROS } from '@/core/config/queryIntervals';
 import { MEDIDA_SERVICO_OPTIONS, MEDIDA_PRODUTO_OPTIONS } from '../../constants/core.constant';
 import type { OsItemCreateSchemaDataType } from '../../schemas/relationship/osItem.schema';
 import type { OsItemTypeEnumDataType, OsItemMeasureEnumDataType, OsItemAprovacaoEnumDataType } from '../../schemas/enums/osEnums.schema';
@@ -82,7 +83,10 @@ const { data: servicosData, isLoading: isLoadingServicos } = useQuery({
     limit: 20,
   }),
   enabled: computed(() => tipo.value === 'SERVICO' && debouncedCatalogSearch.value.length > 0),
-  staleTime: 1000 * 60,
+  staleTime: 1000 * 30,
+  // Invalidação é local ao navegador: sem polling, serviço cadastrado em outro
+  // terminal só apareceria aqui depois de um F5.
+  refetchInterval: REFETCH_CADASTROS,
 });
 
 interface CatalogItem {

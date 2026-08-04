@@ -1,6 +1,6 @@
 import { SaleSearch } from "./schemas/sale.schema"
 import { OrcamentoSearch } from "./schemas/orcamento.schema"
-import { PRODUTOS_KEY } from "@/shared/constants/entityKeys"
+import { PRODUTOS_KEY, CLIENTES_KEY } from "@/shared/constants/entityKeys"
 
 export const saleKeys = {
     all: ['sales'] as const,
@@ -29,7 +29,9 @@ export const productKeys = {
     search: (term: string) => [...productKeys.all, 'venda-busca', term] as const,
 }
 
+// Mesmo racional de productKeys: pende do prefixo canônico, então cliente
+// cadastrado em qualquer módulo entra nesta busca sem F5.
 export const customerKeys = {
-    all: ['customers'] as const,
-    search: (term: string) => [...customerKeys.all, 'search', term] as const,
+    all: [CLIENTES_KEY] as const,
+    search: (term: string) => [...customerKeys.all, 'venda-busca', term] as const,
 }

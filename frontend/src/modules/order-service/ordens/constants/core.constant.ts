@@ -1,4 +1,5 @@
 import { REFETCH_REALTIME } from '@/core/config/queryIntervals'
+import { CLIENTES_KEY } from '@/shared/constants/entityKeys'
 
 export const BASE_ORDER_SERVICE_URL = "/ordens-servico"
 export const BASE_EMPLOYEE_OS_URL = "/funcionarios"
@@ -11,7 +12,10 @@ export const ORDER_SERVICE_QUERY_STALE_TIME = 1000 * 60
 export const OS_EMPLOYEE_QUERY_KEY = "os-employee-query"
 export const OS_EMPLOYEE_QUERY_STALE_TIME = 1000 * 60
 
-export const OS_CUSTOMER_QUERY_KEY = "os-customer-query"
+// Pende do prefixo canônico 'clientes': cadastrar/editar cliente em qualquer
+// módulo invalida esta lista. Continua sendo chave própria, então as mutations da
+// OS seguem invalidando só ela.
+export const OS_CUSTOMER_QUERY_KEY = [CLIENTES_KEY, 'os-lista'] as const
 export const OS_CUSTOMER_QUERY_STALE_TIME = 1000 * 60
 
 // Definição de campos por segmento (metadados): muda raramente -> stale time longo.
