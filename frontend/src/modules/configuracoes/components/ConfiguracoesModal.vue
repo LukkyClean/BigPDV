@@ -189,11 +189,22 @@ async function salvar(): Promise<void> {
       const { cor_tema } = comp.form as { cor_tema: string | null }
       salvarTema({ data: { cor_tema } }, {
         // A mutation de empresa já emite o toast de sucesso e invalida o cache.
-        // Aqui só guardamos a cor neste terminal, para o próximo boot (e a tela
-        // de login) já abrirem coloridos sem esperar o servidor.
         onSuccess: () => {
+          // Guardar ANTES de recarregar: é daqui que o boot tira a cor, e é o que
+          // faz a tela de login já abrir colorida.
           guardarCorLocalmente(cor_tema)
-          fecharComDelay()
+
+          // Recarrega ao salvar. É rede de segurança, não a correção: a prévia ao
+          // vivo continua sendo reativa (não dá para recarregar a cada movimento
+          // do mouse). O reload existe porque `<canvas>` não reage a CSS — o
+          // gráfico lê a cor uma vez ao montar — e garante que QUALQUER coisa que
+          // tenha capturado uma cor na montagem apareça correta, inclusive o que
+          // ainda não mapeamos.
+          //
+          // Custo aceito: perde-se o cache do TanStack e o toast. Tolerável porque
+          // trocar o tema é ação rara, feita pelo dono, a partir de um modal de
+          // configuração — não há trabalho em andamento para perder.
+          setTimeout(() => window.location.reload(), 600)
         },
       })
       break
