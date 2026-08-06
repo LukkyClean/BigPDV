@@ -25,6 +25,7 @@ from app.api.v1.endpoints import movimentacao_estoque
 from app.api.v1.endpoints import configuracao
 from app.api.v1.endpoints import comunicado
 from app.api.v1.endpoints import licenca
+from app.api.v1.endpoints import backup
 
 # Cria a instância principal do roteador para a V1
 router = APIRouter()
@@ -91,3 +92,5 @@ router.include_router(comunicado.router, prefix="/comunicados", tags=["Comunicad
 # Inclui o roteador de licença sob o prefixo /licenca
 # Endpoint público (sem autenticação) para verificação de licença no boot
 router.include_router(licenca.router, prefix="/licenca", tags=["Licença"])
+
+router.include_router(backup.router, prefix="/backup", tags=["Backup"])

@@ -14,7 +14,8 @@ from app.db.models.contador_venda import ContadorVenda
 from app.db.models.forma_pagamento import FormaPagamento
 from app.services.limpeza_temporal import cancelar_vendas_ativas_expiradas, limpar_orcamentos_expirados, limpar_temp_data
 from app.services.licenca import enviar_heartbeat, renovar_licenca_background, desconectar_terminal
-from app.services.backup import create_backup, list_backups, get_last_backup
+from app.services.backup import create_backup, get_last_backup
+from app.services import cloud_sync
 from app.db.crud import terminal_conectado as terminal_crud
 
 from app.core.discovery import register_service, stop_discovery
@@ -28,8 +29,10 @@ INTERVALO_RENOVACAO_SEGUNDOS = 3600  # 1 hora
 
 ATRASO_INICIAL_BACKUP_SEGUNDOS = 180
 INTERVALO_BACKUP_SEGUNDOS = 3600
-INTERVALO_BACKUP_HORAS = 24
+INTERVALO_BACKUP_HORAS = 8
 
+ATRASO_INICIAL_SYNC_SEGUNDOS = 300
+INTERVALO_SYNC_SEGUNDOS = 3600
 
 async def _loop_limpeza_temporal():
     """Loop em segundo plano que executa a limpeza periodicamente."""
@@ -54,14 +57,15 @@ async def _loop_backup():
     while True:
         try:
             last_backup = await asyncio.to_thread(get_last_backup)
+            last_backup_created_at = datetime.fromisoformat(last_backup["criado_em"]) if last_backup else None
 
             need_backup = (
-                last_backup is None
-                or datetime.now() - last_backup >= timedelta(hours=INTERVALO_BACKUP_HORAS)
+                last_backup_created_at is None
+                or datetime.now() - last_backup_created_at >= timedelta(hours=INTERVALO_BACKUP_HORAS)
             )
             
             if need_backup:
-                print(f"[BACKUP] Criando backup automático (último backup: {last_backup.isoformat() if last_backup else 'nenhum'})")
+                print(f"[BACKUP] Criando backup automático (último backup: {last_backup["criado_em"] if last_backup else 'nenhum'})")
                 backup_info = await asyncio.to_thread(create_backup)
                 print(f'[BACKUP] Backup automático criado: {backup_info["arquivo"]} ({backup_info["tamanho_bytes"]} Bytes)')
         except Exception as e:
@@ -69,6 +73,26 @@ async def _loop_backup():
             print (f"[BACKUP] Próxima tentativa em 1 hora")
             
         await asyncio.sleep(INTERVALO_BACKUP_SEGUNDOS)
+        
+async def _loop_cloud_sync():
+    await asyncio.sleep(ATRASO_INICIAL_SYNC_SEGUNDOS)
+    
+    while True:
+        try:
+            db = SessionLocal()
+            
+            try:
+                print("[SYNC] Iniciando ciclo de sincronização com nuvem...")
+                summary = await cloud_sync.sync(db)
+                print(f"[SYNC] Status da sincronização: {summary}")
+            except Exception as e:
+                print(f"[SYNC] Erro durante a sincronização: {type(e).__name__}: {e}")
+            finally:
+                db.close()
+        except cloud_sync.CloudSyncError as e:
+            print(f"[SYNC] Ciclo encerrado: {e} (codigo={e.code})")
+        
+        await asyncio.sleep(INTERVALO_SYNC_SEGUNDOS)
 
 async def _loop_heartbeat_licenca():
     """Loop em segundo plano que envia heartbeat à API StartBig periodicamente."""
@@ -171,6 +195,9 @@ async def lifespan(app: FastAPI):
     
     print("Iniciando tarefa de backup automático...")
     tarefa_backup = asyncio.create_task(_loop_backup())
+    
+    print("Iniciando tarefa de sincronização com nuvem automático...")
+    tarefa_cloud_sync = asyncio.create_task(_loop_cloud_sync())
 
     print("Iniciando tarefa de heartbeat de licenca...")
     tarefa_heartbeat = asyncio.create_task(_loop_heartbeat_licenca())
@@ -193,9 +220,10 @@ async def lifespan(app: FastAPI):
     print("Encerrando tarefas em segundo plano...")
     tarefa_limpeza.cancel()
     tarefa_backup.cancel()
+    tarefa_cloud_sync.cancel()
     tarefa_heartbeat.cancel()
     tarefa_renovacao.cancel()
-    for tarefa in (tarefa_limpeza, tarefa_backup, tarefa_heartbeat, tarefa_renovacao):
+    for tarefa in (tarefa_limpeza, tarefa_backup, tarefa_cloud_sync, tarefa_heartbeat, tarefa_renovacao):
         try:
             await tarefa
         except asyncio.CancelledError:
