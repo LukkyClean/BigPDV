@@ -7,6 +7,7 @@ import { getUniqueOS } from '@/modules/order-service/ordens/services/orderServic
 import { useToast } from '@/shared/composables/useToast';
 import { ref } from 'vue';
 import type { AtividadeItemData } from '../../schemas/dashboard.schema';
+import { formatHora } from '@/shared/utils/date.utils';
 
 interface Props {
   items: AtividadeItemData[];
@@ -44,9 +45,8 @@ async function handleClick(item: AtividadeItemData) {
   }
 }
 
-function formatTime(dateStr: string): string {
-  return new Date(dateStr).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-}
+// `horario` é timestamp de evento (UTC no backend) — converte para hora local.
+const formatTime = formatHora;
 
 const statusConfig: Record<string, { label: string; class: string }> = {
   ATIVA:        { label: 'Ativa',        class: 'bg-blue-50 text-blue-600 border border-blue-200' },

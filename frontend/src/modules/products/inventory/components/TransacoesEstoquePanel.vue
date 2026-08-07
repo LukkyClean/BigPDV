@@ -19,6 +19,7 @@ import MovimentacaoModal from './MovimentacaoModal.vue';
 import { useMovimentacoesQuery } from '../composables/useMovimentacoesQuery';
 import { formatCurrency } from '@/shared/utils/finance';
 import type { ProdutoRead } from '../types/products.types';
+import { parseTimestampBackend } from '@/shared/utils/date.utils';
 
 interface Props {
   isOpen: boolean;
@@ -83,6 +84,7 @@ watch([searchTerm, tipoFilter], () => {
   currentPage.value = 1;
 });
 
+// Data da movimentação: timestamp de evento (UTC no backend).
 function formatDate(isoString: string) {
   return new Intl.DateTimeFormat('pt-BR', {
     day: '2-digit',
@@ -90,7 +92,7 @@ function formatDate(isoString: string) {
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
-  }).format(new Date(isoString));
+  }).format(parseTimestampBackend(isoString));
 }
 
 function quantidadeLabel(tipo: string, qtd: number) {

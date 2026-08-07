@@ -7,6 +7,7 @@ import { formatCurrency } from '@/shared/utils/finance';
 import BaseTableContainer from '@/shared/components/commons/BaseTableContainer/BaseTableContainer.vue';
 import BaseSearchInput from '@/shared/components/ui/BaseSearchInput/BaseSearchInput.vue';
 import BaseFilter from '@/shared/components/ui/BaseFilter/BaseFilter.vue';
+import { parseTimestampBackend } from '@/shared/utils/date.utils';
 
 interface Props {
   ordensServico: OrderServiceReadDataType[];
@@ -36,8 +37,9 @@ const emit = defineEmits<{
 const search = defineModel<string>('search', { default: '' });
 const activeFilter = defineModel<string | null>('activeFilter', { default: null });
 
+// `data_criacao` é timestamp de evento (UTC no backend).
 function formatDate(dateValue: string | Date): string {
-  return new Date(dateValue).toLocaleDateString('pt-BR', {
+  return parseTimestampBackend(dateValue).toLocaleDateString('pt-BR', {
     day: '2-digit',
     month: '2-digit',
     year: '2-digit',

@@ -7,8 +7,10 @@ import BaseTableContainer from '@/shared/components/commons/BaseTableContainer/B
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
 
 import { getEstadoOS } from '../../../shared/utils/formatters';
+import { useObjetoLabels } from '@/modules/order-service/shared/segmento/useObjetoLabels';
 import { useOrderServiceQueryByCliente } from '../../composables/request/useOrderServiceGet.queries';
 import type { OrderServiceReadDataType } from '../../schemas/orderServiceQuery.schema';
+import { parseTimestampBackend } from '@/shared/utils/date.utils';
 
 interface Props {
   isOpen: boolean;
@@ -16,6 +18,9 @@ interface Props {
 }
 
 const props = defineProps<Props>();
+
+// Cabeçalho da coluna por segmento: a oficina lê "Veículo", não "Objeto".
+const { labelSingular } = useObjetoLabels();
 
 const emit = defineEmits<{
   close: [];
@@ -28,8 +33,9 @@ const { items, totalPages, totalItems, currentPage, isLoading, isError } =
 
 const isEmpty = computed(() => !isLoading.value && items.value.length === 0);
 
+// `data_criacao` é timestamp de evento (UTC no backend).
 function formatDate(date: string | Date): string {
-  const d = typeof date === 'string' ? new Date(date) : date;
+  const d = parseTimestampBackend(date);
   return d.toLocaleDateString('pt-BR', {
     day: '2-digit',
     month: '2-digit',
@@ -78,7 +84,7 @@ function truncate(text: string | null | undefined, maxLength: number): string {
             <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Nº OS</th>
             <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Data</th>
             <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Status</th>
-            <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Objeto</th>
+            <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">{{ labelSingular }}</th>
             <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Defeito</th>
             <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Ação</th>
           </tr>

@@ -4,8 +4,14 @@ import { Trophy } from 'lucide-vue-next';
 import type { ChartConfiguration } from 'chart.js/auto';
 
 import { formatCurrency } from '@/shared/utils/finance';
+import { useCoresTema } from '@/shared/theme/useCoresTema';
 import { useRankingQuery } from '../composables/useRankingQuery';
 import ChartCanvas from './ChartCanvas.vue';
+
+// Série única, cor institucional: segue o tema. Ler daqui (e não escrever o hex)
+// é o que amarra o `config` à versão da paleta — quando a cor muda, o computed
+// reavalia e o ChartCanvas repinta, inclusive durante a prévia ao vivo.
+const { primaria } = useCoresTema();
 
 const props = defineProps<{ inicio: string; fim: string }>();
 
@@ -38,7 +44,7 @@ const config = computed<ChartConfiguration>(() => ({
       {
         label: 'Faturamento',
         data: itens.value.map((i) => i.faturamento_total),
-        backgroundColor: '#045ca1',
+        backgroundColor: primaria.value,
         borderRadius: 6,
         maxBarThickness: 34,
       },

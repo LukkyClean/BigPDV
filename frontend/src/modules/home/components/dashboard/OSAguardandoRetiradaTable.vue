@@ -6,6 +6,7 @@ import { useObjetoLabels } from '@/modules/order-service/shared/segmento/useObje
 import { getUniqueOS } from '@/modules/order-service/ordens/services/orderServiceGet.service';
 import { useToast } from '@/shared/composables/useToast';
 import type { OSAguardandoRetiradaItemData } from '../../schemas/dashboard.schema';
+import { formatData } from '@/shared/utils/date.utils';
 
 interface Props {
   items: OSAguardandoRetiradaItemData[];
@@ -34,9 +35,9 @@ async function handleRowClick(item: OSAguardandoRetiradaItemData) {
   }
 }
 
+// `data_finalizacao` é timestamp de evento (UTC no backend).
 function formatDate(dateStr: string | null): string {
-  if (!dateStr) return '—';
-  return new Date(dateStr).toLocaleDateString('pt-BR');
+  return formatData(dateStr, '—');
 }
 </script>
 
@@ -91,7 +92,7 @@ function formatDate(dateStr: string | null): string {
     </div>
 
     <div v-else class="p-8 text-center text-zinc-400 text-sm flex-1 flex items-center justify-center">
-      Nenhum equipamento aguardando retirada
+      Nenhum {{ labelSingular.toLowerCase() }} aguardando retirada
     </div>
   </div>
 </template>
