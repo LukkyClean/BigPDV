@@ -1,8 +1,8 @@
 """
 Módulo de migrações automáticas via Alembic.
 
-Aplica migrações pendentes automaticamente na inicialização do app,
-substituindo o antigo sistema manual de _aplicar_migracoes().
+Aplica migrações pendentes automaticamente na inicialização do app.
+O Alembic é a única autoridade sobre o schema do banco de dados.
 """
 import logging
 import os
@@ -13,6 +13,7 @@ from alembic.config import Config
 from alembic.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from sqlalchemy import inspect
+from sqlalchemy.exc import OperationalError
 
 from app.core.config import settings
 from app.db.session import engine
@@ -65,41 +66,66 @@ def _revisao_existe_no_script(alembic_cfg: Config, revisao: str) -> bool:
         return False
 
 
+def _obter_revisao_baseline(alembic_cfg: Config) -> str:
+    """Retorna o ID da primeira migração (baseline, sem down_revision)."""
+    script = ScriptDirectory.from_config(alembic_cfg)
+    bases = list(script.get_bases())
+    if not bases:
+        raise RuntimeError("Nenhuma migração encontrada no diretório de versões.")
+    return bases[0]
+
+
 def aplicar_migracoes():
     """
     Aplica migrações Alembic automaticamente na inicialização.
 
     Cenários:
-    1. DB novo (sem tabelas): create_all já foi chamado antes,
-       então basta fazer stamp("head").
-    2. DB existente sem alembic_version: foi criado por create_all.
-       Stamp em "head" pois create_all cria o schema completo.
-    3. DB existente com alembic_version: upgrade("head") aplica
-       apenas as migrações pendentes.
+    1. DB novo (sem tabelas): upgrade("head") cria tudo via migrações.
+    2. DB existente sem alembic_version: DB legado criado por create_all.
+       Stamp na baseline, depois upgrade("head") para migrações adicionais.
+    3. DB existente com alembic_version válido: upgrade("head") aplica pendentes.
+    4. Revisão desconhecida (DB de versão mais nova do app / downgrade):
+       Stamp no head. Schema está à frente, colunas extras são inofensivas no SQLite.
     """
     alembic_cfg = _criar_alembic_config()
+    baseline = _obter_revisao_baseline(alembic_cfg)
 
     if not _banco_tem_tabela_alembic_version():
-        logger.info(
-            "Tabela alembic_version não encontrada. "
-            "Registrando banco na revisão head..."
-        )
-        command.stamp(alembic_cfg, "head")
-        logger.info("Banco registrado na revisão head com sucesso.")
+        insp = inspect(engine)
+        tabelas_existentes = [
+            t for t in insp.get_table_names() if t != "alembic_version"
+        ]
+
+        if len(tabelas_existentes) == 0:
+            # DB completamente novo: upgrade cria tudo desde a baseline
+            logger.info("Banco novo detectado. Aplicando migrações desde o início...")
+            command.upgrade(alembic_cfg, "head")
+        else:
+            # DB legado (criado por create_all): schema já existe
+            logger.info(
+                "Banco legado detectado (sem alembic_version, %d tabelas). "
+                "Registrando na baseline e aplicando migrações pendentes...",
+                len(tabelas_existentes),
+            )
+            command.stamp(alembic_cfg, baseline)
+            command.upgrade(alembic_cfg, "head")
     else:
         revisao_atual = _obter_revisao_atual()
         logger.info("Revisão atual do banco: %s", revisao_atual)
 
-        # Se a revisão armazenada no banco não existe nos scripts de migração
-        # (ex: o código voltou para uma versão anterior), re-stampa para head.
         if revisao_atual and not _revisao_existe_no_script(alembic_cfg, revisao_atual):
+            # DB provavelmente vem de uma versão mais nova do app (downgrade).
+            # Stamp no head para evitar recriar tabelas que já existem.
+            # Colunas extras no SQLite são inofensivas (SQLAlchemy ignora).
             logger.warning(
                 "Revisão %s não encontrada nos scripts de migração. "
-                "Re-stampando para head...",
+                "Provavelmente o banco vem de uma versão mais recente do app. "
+                "Registrando no head atual para evitar conflitos...",
                 revisao_atual,
             )
-            command.stamp(alembic_cfg, "head")
+            command.stamp(alembic_cfg, "head", purge=True)
         else:
+            # Caso normal: aplica migrações pendentes
             command.upgrade(alembic_cfg, "head")
 
         revisao_nova = _obter_revisao_atual()
