@@ -28,7 +28,7 @@ import { useOSSelectOptions } from '../composables/modal/useOSSelectOptions';
 import { useOSPrintFlow } from '../composables/modal/useOSPrintFlow';
 import { useOSClientHistory } from '../composables/modal/useOSClientHistory';
 import { useOSFormViewProvider } from '../context/useOSFormView.context';
-import { useOsCustomersGet } from '../composables/request/relationship/useOSRelationshipGet.queries';
+import { getCustomerByIdForOS } from '../services/relationship/osRelationshipGet.service';
 interface Props {
   isOpen: boolean;
   ordemServico?: OrderServiceReadDataType | null;
@@ -93,7 +93,12 @@ const form = useOSFormProvider({
     await uploadPendingPhotos();
     handleClose();
   },
-  onItemSuccess: () => closeItemModal(),
+  // Recarrega DEPOIS que o PATCH do item respondeu — é aqui que o status de
+  // aprovação e a garantia recém-salvos chegam à tela e ao resumo financeiro.
+  onItemSuccess: () => {
+    closeItemModal();
+    refreshCurrentOSData();
+  },
   onFinalizarSuccess: () => { isFinalizarModalOpen.value = false; },
 });
 
@@ -315,7 +320,6 @@ const updatedClienteRef = ref<CustomerUnionReadSchemaDataType | null>(null);
 const currentCliente = computed(
   () => updatedClienteRef.value ?? props.selectedCliente ?? currentOSData.value?.cliente ?? null,
 );
-const { data: clientesDisponiveis } = useOsCustomersGet();
 
 // ─── Ficha de vistoria imprimível (em branco, pra preencher no carro) ──────────
 // Funciona ANTES de criar a OS (usa os dados atuais do form) e também depois.
@@ -417,14 +421,20 @@ function handleUpdateCliente(cliente: CustomerUnionReadSchemaDataType) {
 
 /**
  * O atendente viu que a placa/série já é de outro cliente e optou por abrir a OS
- * no nome dele. Reaproveita a lista de clientes que o seletor da OS já mantém em
- * cache, então não custa requisição nova.
+ * no nome dele.
+ *
+ * Busca pelo id no servidor. A versão anterior procurava numa lista em cache que
+ * só continha os 20 cadastros mais recentes — e cliente que volta com o mesmo
+ * carro raramente é um dos 20 últimos, então o clique não fazia NADA, sem erro
+ * nem aviso. Se a busca falhar agora, o atendente fica sabendo.
  */
-function handleAbrirComCliente(clienteId: number) {
-  const cliente = (clientesDisponiveis.value ?? []).find(
-    (c) => (c as { id?: number }).id === clienteId,
-  );
-  if (cliente) handleUpdateCliente(cliente as CustomerUnionReadSchemaDataType);
+async function handleAbrirComCliente(clienteId: number) {
+  try {
+    const cliente = await getCustomerByIdForOS(clienteId);
+    handleUpdateCliente(cliente);
+  } catch {
+    toast.error('Não foi possível carregar o cliente. Selecione-o pela busca.');
+  }
 }
 
 function handleChangeCliente() {

@@ -6,7 +6,7 @@
  * Todas as sections injetam context diretamente
  */
 
-import { Building, Save, Globe, FileText, Lock, ChevronRight } from 'lucide-vue-next';
+import { Building, Save, FileText, Lock, ChevronRight } from 'lucide-vue-next';
 import { onBeforeRouteLeave, useRouter } from 'vue-router';
 
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
@@ -31,7 +31,6 @@ import { recursoDisponivel } from '@/shared/config/planos';
 
 const {
   is_cnpj,
-  fiscal_settings,
   apiError,
   isLoading,
   isPending,
@@ -116,18 +115,14 @@ onBeforeRouteLeave(async () => {
           >
             {{ is_cnpj ? 'Empresa Verificada' : 'Cadastro Incompleto' }}
           </span>
-          <span
-            v-if="fiscal_settings"
-            class="ml-2 px-3 py-1 text-xs font-bold uppercase rounded-full tracking-wide border"
-            :class="
-              fiscal_settings.ambiente_emissao === 1
-                ? 'bg-red-50 text-red-600 border-red-200'
-                : 'bg-brand-primary-light text-brand-primary border-brand-primary/20'
-            "
-          >
-            <Globe :size="12" class="inline mb-0.5 mr-1" />
-            {{ fiscal_settings.ambiente_emissao === 1 ? 'Produção' : 'Homologação' }}
-          </span>
+          <!--
+            O selo de ambiente (Homologação/Produção) saiu daqui: é conceito de
+            emissão de NF-e e pertence ao módulo Fiscal, que na v1 é um estado
+            BLOQUEADO com CTA de upgrade e não expõe configuração fiscal
+            (ver FiscalView.vue). Nesta tela ele anunciava um ambiente de emissão
+            para um recurso que o plano nem libera.
+          -->
+
         </div>
       </div>
 

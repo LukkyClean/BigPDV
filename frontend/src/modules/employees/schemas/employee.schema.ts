@@ -37,7 +37,32 @@ export const enderecoSchema = z.object({
   bairro: z.string().min(2, 'Bairro deve ter no minimo 2 caracteres').max(100).optional().or(z.literal('')),
   cidade: z.string().min(2, 'Cidade deve ter no minimo 2 caracteres').max(100).optional().or(z.literal('')),
   estado: z.string().length(2, 'Estado deve ter 2 caracteres').optional().or(z.literal('')),
-});
+})
+  /**
+   * Endereço é tudo ou nada.
+   *
+   * Cada campo aceitava '' isoladamente, então um endereço pela metade passava
+   * aqui e ia para o servidor — que exige os seis (`schemas/endereco.py`) e
+   * devolvia 422. Como o erro do 422 não chegava à tela, o usuário clicava em
+   * Salvar e não acontecia nada, sem nenhuma pista do motivo.
+   *
+   * Deixar em branco continua válido: quem não quer endereço não preenche nada.
+   */
+  .superRefine((endereco, ctx) => {
+    const OBRIGATORIOS = ['cep', 'logradouro', 'numero', 'bairro', 'cidade', 'estado'] as const;
+    const preenchidos = OBRIGATORIOS.filter((campo) => !!endereco[campo]?.trim());
+    if (preenchidos.length === 0 || preenchidos.length === OBRIGATORIOS.length) return;
+
+    for (const campo of OBRIGATORIOS) {
+      if (!endereco[campo]?.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [campo],
+          message: 'Obrigatório quando o endereço é preenchido',
+        });
+      }
+    }
+  });
 
 // =============================================
 // MAIN EMPLOYEE SCHEMA

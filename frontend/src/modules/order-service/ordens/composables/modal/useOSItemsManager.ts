@@ -120,8 +120,13 @@ export function useOSItemsManager({
 
     if (editingItemId.value !== null) {
       form.item.setEditingItem(editingItemId.value, item);
+      // `onSubmit` é assíncrono e só DISPARA a mutation. Recarregar aqui trazia
+      // a OS antiga de volta e a resposta do PATCH nunca chegava à tela: o item
+      // gravava reprovado no banco e a tela seguia mostrando "Aprovado" com o
+      // subtotal cheio, até alguém fechar e reabrir a OS.
+      // Quem recarrega agora é o `onSuccess` da mutation (onItemSuccess), como
+      // já acontecia ao remover um item.
       form.item.onSubmit();
-      refreshCurrentOSData();
       return;
     }
 

@@ -338,6 +338,17 @@ export function useEmployeeFormProvider() {
     { immediate: true },
   );
 
+
+/**
+ * Endereço em branco não vai no payload.
+ *
+ * O formulário começa com uma linha de endereço vazia, e mandá-la fazia o
+ * backend recusar com 422 (lá os seis campos são obrigatórios). Quem não quer
+ * endereço simplesmente não preenche.
+ */
+function enderecoTemConteudo(e: { cep?: string; logradouro?: string; numero?: string; bairro?: string; cidade?: string; estado?: string }): boolean {
+  return [e.cep, e.logradouro, e.numero, e.bairro, e.cidade, e.estado].some((v) => !!v?.trim());
+}
   // Transform to API format
   function transformToCreateRequest(formData: EmployeeFormData): FuncionarioCreate {
     return {
@@ -375,8 +386,8 @@ export function useEmployeeFormProvider() {
         senha: formData.usuario_senha,
       },
       endereco:
-        formData.enderecos.length > 0
-          ? formData.enderecos.map((e) => ({
+        formData.enderecos.some(enderecoTemConteudo)
+          ? formData.enderecos.filter(enderecoTemConteudo).map((e) => ({
               logradouro: e.logradouro,
               numero: e.numero,
               bairro: e.bairro,
@@ -457,8 +468,14 @@ export function useEmployeeFormProvider() {
 
           // Endereços (Mantendo a lógica de ID para edição)
           endereco:
-            formData.enderecos.length > 0
-              ? formData.enderecos.map((e, idx) => ({
+            // Guarda o índice ORIGINAL antes de filtrar: é ele que casa com o
+            // `id` do endereço já salvo. Filtrar primeiro deslocaria a posição
+            // e gravaria por cima do endereço errado.
+            formData.enderecos.some(enderecoTemConteudo)
+              ? formData.enderecos
+                  .map((e, idx) => ({ e, idx }))
+                  .filter(({ e }) => enderecoTemConteudo(e))
+                  .map(({ e, idx }) => ({
                   id: selectedEmployee.value?.endereco?.[idx]?.id,
                   logradouro: e.logradouro,
                   numero: e.numero,

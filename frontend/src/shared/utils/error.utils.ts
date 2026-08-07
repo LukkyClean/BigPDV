@@ -12,23 +12,65 @@ import { ERROR_MESSAGES, NETWORK_ERROR_MESSAGE, ConflictedData } from '@/shared/
  * @param errors - Array de erros de validação
  * @returns Mensagem formatada
  */
+/** Nomes amigáveis para o campo citado num erro de validação. */
+const ROTULOS_CAMPO: Record<string, string> = {
+  email: 'E-mail',
+  senha: 'Senha',
+  nome: 'Nome',
+  confirmarSenha: 'Confirmação de senha',
+  cpf: 'CPF',
+  cnpj: 'CNPJ',
+  genero: 'Gênero',
+  tipo_conta: 'Tipo de conta',
+  salario_bruto: 'Salário bruto',
+  data_admissao: 'Data de admissão',
+  data_nascimento: 'Data de nascimento',
+  logradouro: 'Logradouro',
+  numero: 'Número',
+  bairro: 'Bairro',
+  cidade: 'Cidade',
+  estado: 'Estado (UF)',
+  cep: 'CEP',
+};
+
+/** "endereco.0.estado" → "Estado (UF)"; "cpf" → "CPF". */
+function rotuloDoCampo(caminho: string): string {
+  const ultimo = caminho.split('.').filter((p) => !/^\d+$/.test(p)).pop() ?? caminho;
+  return ROTULOS_CAMPO[ultimo] ?? ultimo;
+}
+
+/**
+ * Formata o 422 de validação.
+ *
+ * ⚠ O backend NÃO usa o formato padrão do FastAPI. O handler em
+ * `app/core/exceptions.py` emite `[{field, message}]`, e não `[{loc, msg}]`.
+ * A versão anterior lia `firstError.loc[...]` e **estourava** (`undefined[...]`)
+ * — a exceção acontecia dentro do `onError` da mutation, então o toast nunca
+ * aparecia: o usuário via um 422 no console e absolutamente nada na tela.
+ *
+ * Aceita os dois formatos, e nunca lança: um erro ao formatar um erro deixa o
+ * usuário sem nenhuma pista, que é o pior resultado possível.
+ */
 function formatValidationErrors(errors: ValidationError[]): string {
-  if (errors.length === 0) return '';
+  if (!Array.isArray(errors) || errors.length === 0) return '';
 
-  // Pega o primeiro erro e formata
-  const firstError = errors[0];
-  const field = firstError.loc[firstError.loc.length - 1];
+  const partes = errors.slice(0, 3).map((erro) => {
+    const bruto = erro as unknown as {
+      field?: string;
+      message?: string;
+      loc?: unknown[];
+      msg?: string;
+    };
+    const caminho = bruto.field
+      ?? (Array.isArray(bruto.loc) ? bruto.loc.filter((p) => p !== 'body').join('.') : '');
+    const mensagem = bruto.message ?? bruto.msg ?? '';
+    if (!caminho && !mensagem) return '';
+    return caminho ? `${rotuloDoCampo(caminho)}: ${mensagem}` : mensagem;
+  }).filter(Boolean);
 
-  // Mapeia campos para nomes amigáveis
-  const fieldNames: Record<string, string> = {
-    email: 'Email',
-    senha: 'Senha',
-    nome: 'Nome',
-    confirmarSenha: 'Confirmação de senha',
-  };
-
-  const fieldName = fieldNames[field as string] || field;
-  return `${fieldName}: ${firstError.msg}`;
+  if (partes.length === 0) return '';
+  const resto = errors.length - partes.length;
+  return resto > 0 ? `${partes.join(' • ')} (e mais ${resto})` : partes.join(' • ');
 }
 
 /**

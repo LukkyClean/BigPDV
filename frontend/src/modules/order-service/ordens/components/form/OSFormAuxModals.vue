@@ -130,6 +130,7 @@ async function handleFinalized(payload: { shouldPrint: boolean }) {
     :ordem-servico="view.currentOSData.value"
     @close="view.closeFinalizarModal"
     @advance="handleAdvance"
+    @itens-atualizados="view.refreshCurrentOSData"
   />
 
   <!-- Modal 2: Pagamento (overlay sobre Modal 1) -->

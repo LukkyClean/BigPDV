@@ -13,20 +13,31 @@ import {
 export function useCustomerQueryAll() {
   const searchQuery = ref('');
   const debouncedSearch = refDebounced(searchQuery, 500);
+  /**
+   * `true` traz só ativos; `false` traz TODOS (é o que a rota faz — não existe
+   * modo "só inativos"). Quem decide é o filtro da tela: para achar um cliente
+   * desativado é preciso pedir todos e estreitar depois.
+   *
+   * Ficou fixo em `true` por muito tempo, e nada na tela conseguia mexer nele —
+   * era o que tornava o filtro "Desativado" impossível de dar resultado.
+   */
   const onlyActive = ref<boolean>(true);
+  /** Página maior quando se está garimpando inativos — ver `useCustomers`. */
+  const pageLimit = ref<number | undefined>(undefined);
   const currentPage = ref<number>(1);
 
-  watch([debouncedSearch, onlyActive], () => {
+  watch([debouncedSearch, onlyActive, pageLimit], () => {
     currentPage.value = 1;
   });
 
   const query = useQuery({
-    queryKey: [CUSTOMER_QUERY_KEY, debouncedSearch, onlyActive, currentPage],
+    queryKey: [CUSTOMER_QUERY_KEY, debouncedSearch, onlyActive, pageLimit, currentPage],
     queryFn: () =>
       getAllCustomers({
         search: debouncedSearch.value || undefined,
         only_active: onlyActive.value,
         page: currentPage.value,
+        limit: pageLimit.value,
       }),
     staleTime: CUSTOMER_QUERY_STALE_TIME,
     refetchInterval: REFETCH_CADASTROS,
@@ -43,6 +54,7 @@ export function useCustomerQueryAll() {
   return {
     searchQuery,
     onlyActive,
+    pageLimit,
     customers,
     totalPages,
     totalItems,

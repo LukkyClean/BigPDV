@@ -35,7 +35,11 @@ export const DEFAULT_OS_CREATE_VALUES = {
   observacoes: undefined,
   desconto: undefined,
   valor_entrada: 0,
-  garantia: undefined,
+  // Garantia da mão de obra: 90 dias é o piso do CDC para serviço durável e o
+  // que a oficina e a assistência praticam. Vem preenchido para o campo não
+  // sair em branco — a via em papel já caía nesse mesmo texto por padrão, mas
+  // o cupom só imprime o bloco quando o campo tem valor.
+  garantia: '90 dias',
   data_previsao: undefined,
   cliente_id: undefined,
   funcionario_id: undefined,

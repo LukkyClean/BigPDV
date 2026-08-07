@@ -33,7 +33,38 @@ const props = withDefaults(defineProps<InputProps>(), {
   required: false,
 });
 
-const model = defineModel();
+/**
+ * `v-model.number` / `v-model.trim` só funcionam sozinhos em input NATIVO. Num
+ * componente, o Vue entrega os modificadores e quem aplica é o componente — e
+ * este não aplicava. Resultado: todo `v-model.number` do projeto era inerte e
+ * `type="number"` devolvia string.
+ *
+ * Onde havia um `z.number()` na frente, isso virava perda silenciosa: a garantia
+ * do item da OS saía como "90", o Zod reprovava e o `handleSubmit` do
+ * vee-validate abortava sem chamar o handler e sem erro na tela — o campo
+ * simplesmente voltava vazio.
+ *
+ * Campo vazio vira `null` (e não `''`): `''` reprova em `z.number().nullable()`
+ * exatamente como a string reprovava, e o bug voltaria pela porta dos fundos.
+ */
+// `any` (e não `unknown`) preserva o contrato que já existia: o componente
+// serve texto, número e data, e os chamadores tipam o handler como quiserem.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const [model, modelModifiers] = defineModel<any>({
+  set(valor: unknown) {
+    if (modelModifiers.trim && typeof valor === 'string') {
+      valor = valor.trim();
+    }
+    if (modelModifiers.number) {
+      if (valor === '' || valor === null || valor === undefined) return null;
+      const numero = Number(valor);
+      // Não engole o que o usuário digitou se não for número: devolver NaN
+      // apagaria o campo enquanto ele ainda está escrevendo.
+      return Number.isNaN(numero) ? valor : numero;
+    }
+    return valor;
+  },
+});
 
 // `blur` não borbulha, então o listener que o Vue jogaria na div raiz nunca
 // dispararia. Emitir explicitamente é o que permite normalizar um campo

@@ -78,9 +78,15 @@ function getClienteTelefone(cliente: CustomerUnionReadSchemaDataType): string | 
     @close="emit('close')"
   >
     <!-- Busca -->
+    <!--
+      Nome, documento e e-mail são o que o servidor de fato varre
+      (`_campos_busca`, no crud de cliente). Telefone estava escrito aqui e nunca
+      foi pesquisável: prometer campo que não busca produz exatamente o "digitei
+      certo e não achou" que a gente quer nunca mais ver.
+    -->
     <BaseSearchInput
       v-model="searchQuery"
-      placeholder="Buscar por nome, CPF/CNPJ, telefone..."
+      placeholder="Buscar por nome, CPF/CNPJ ou e-mail..."
     />
 
     <!-- Lista -->
@@ -135,7 +141,7 @@ function getClienteTelefone(cliente: CustomerUnionReadSchemaDataType): string | 
       <div v-else class="py-10 text-center text-zinc-400">
         <template v-if="!searchQuery">
           <p class="text-sm font-medium">Digite para buscar</p>
-          <p class="text-xs mt-1">Busque por nome, CPF/CNPJ ou telefone.</p>
+          <p class="text-xs mt-1">Busque por nome, CPF/CNPJ ou e-mail.</p>
         </template>
         <template v-else>
           <p class="text-sm font-medium">Nenhum cliente encontrado</p>
