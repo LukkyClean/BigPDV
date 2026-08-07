@@ -12,12 +12,17 @@ import {
   formatPrintDate,
   formatPrintDoc,
   tipoObjetoRelevante,
+  pixParaImpressao,
 } from '@/shared/utils/print.utils';
 
+import PixQrPrint from '@/shared/components/print/PixQrPrint.vue';
 import PrintCupomHeader from '@/shared/components/print/cupom/PrintCupomHeader.vue';
 import PrintCupomSignatures from '@/shared/components/print/cupom/PrintCupomSignatures.vue';
 import PrintCupomFooter from '@/shared/components/print/cupom/PrintCupomFooter.vue';
 import { useObjetoLabels } from '@/modules/order-service/shared/segmento/useObjetoLabels';
+import { useTextosImpressaoOS } from '@/modules/order-service/shared/segmento/textosImpressaoOS';
+import { useAtributosImpressaoOS } from '@/modules/order-service/shared/segmento/useAtributosImpressaoOS';
+import { formatGarantiaItem } from '@/modules/order-service/shared/utils/formatters';
 
 interface PrintCupomProps {
   orderService: OrderServiceReadDataType | null;
@@ -28,6 +33,19 @@ const props = defineProps<PrintCupomProps>();
 
 const { companyInfo } = useCompanyPrintInfo();
 const { labelSingular } = useObjetoLabels();
+const { textos, identificadorCupom } = useTextosImpressaoOS();
+const { atributos } = useAtributosImpressaoOS();
+
+/** Termos desta via — condensados e sem acento, como o resto do cupom. */
+const t = computed(() => textos.value.cupom);
+
+/** Atributos do segmento (oficina: Ano, Chassi, KM). Vazio em informática. */
+const atributosObjeto = computed(() =>
+  atributos(
+    props.orderService?.objeto?.dados_adicionais,
+    props.orderService?.dados_adicionais,
+  ),
+);
 
 const SEPARATOR = '────────────────────────────';
 
@@ -43,7 +61,7 @@ const title = computed(() => {
     case 'CANCELAMENTO': return 'CANCELAMENTO DE OS';
     case 'SAIDA':
       if (situacao.value === 'SEM_REPARO') return 'ENTREGA SEM REPARO';
-      if (situacao.value === 'CONDENADO') return 'OBJETO CONDENADO';
+      if (situacao.value === 'CONDENADO') return `${t.value.objeto.toUpperCase()} CONDENADO`;
       return 'RECIBO E GARANTIA';
     default: return 'Cupom';
   }
@@ -90,11 +108,19 @@ const motivoCancelamento = computed(() => {
 // Peça embutida no serviço não é listada para o cliente. `!== false` e não
 // `=== true`: item antigo vem sem o campo e tem que continuar aparecendo.
 const itensVisiveis = computed(() =>
-  (props.orderService?.itens ?? []).filter((item) => item.visivel_cliente !== false),
+  (props.orderService?.itens ?? []).filter(
+    (item) => item.visivel_cliente !== false && item.status_aprovacao !== 'REPROVADO',
+  ),
 );
 
 const subTotal = computed(() =>
   itensVisiveis.value.reduce((acc, item) => acc + item.valor_total, 0),
+);
+
+// Mesma regra da via em papel: com garantia por item, o termo geral não pode
+// afirmar que cobre as peças — os dois textos se contradiriam.
+const temGarantiaPorItem = computed(() =>
+  itensVisiveis.value.some((item) => formatGarantiaItem(item) !== ''),
 );
 
 const adiantamento = computed(() => props.orderService?.valor_entrada ?? 0);
@@ -111,6 +137,18 @@ const paymentTotal = computed(() => {
 });
 
 const totalRecebido = computed(() => adiantamentoUtilizado.value + paymentTotal.value);
+
+/** QR do PIX no papel — só quando há pagamento em PIX e a loja tem chave ativa. */
+const pix = computed(() =>
+  pixParaImpressao({
+    empresa: companyInfo.value,
+    pagamentos: props.orderService?.pagamentos?.map((pgto) => ({
+      nome: pgto.forma_pagamento?.nome || '',
+      valor: pgto.valor,
+    })),
+    txid: props.orderService?.numero_os ?? undefined,
+  }),
+);
 </script>
 
 <template>
@@ -155,10 +193,14 @@ const totalRecebido = computed(() => adiantamentoUtilizado.value + paymentTotal.
         Modelo: {{ orderService.objeto.modelo }}
       </div>
       <div v-if="orderService.objeto.numero_serie">
-        N/S: {{ orderService.objeto.numero_serie }}
+        {{ identificadorCupom }}: {{ orderService.objeto.numero_serie }}
       </div>
       <div v-if="orderService.objeto.cor">
         Cor: {{ orderService.objeto.cor }}
+      </div>
+      <!-- Atributos do segmento (oficina: Ano, Chassi, KM de entrada). -->
+      <div v-for="attr in atributosObjeto" :key="attr.label">
+        {{ attr.label }}: {{ attr.valor }}
       </div>
     </div>
 
@@ -202,6 +244,10 @@ const totalRecebido = computed(() => adiantamentoUtilizado.value + paymentTotal.
             class="item-row"
           >
             <div>{{ item.nome }}</div>
+            <!-- Garantia da peça: só sai quando o mecânico preencheu. -->
+            <div v-if="formatGarantiaItem(item)" class="text-[9px]">
+              Garantia: {{ formatGarantiaItem(item) }}
+            </div>
             <div class="flex justify-between">
               <span>{{ item.quantidade }}x {{ formatCurrency(item.valor_unitario) }}</span>
               <span class="font-bold">{{ formatCurrency(item.valor_total) }}</span>
@@ -281,12 +327,18 @@ const totalRecebido = computed(() => adiantamentoUtilizado.value + paymentTotal.
         </template>
       </div>
 
+      <!-- PIX: logo depois dos totais, antes da garantia -->
+      <template v-if="pix">
+        <div class="separator">{{ SEPARATOR }}</div>
+        <PixQrPrint :payload="pix.payload" :valor-centavos="pix.valorCentavos" />
+      </template>
+
       <!-- Garantia (só para REPARADO) -->
       <template v-if="!isSemReparo && orderService.garantia">
         <div class="separator">{{ SEPARATOR }}</div>
         <div class="section text-justify">
           <div class="font-bold mb-0.5">GARANTIA: {{ orderService.garantia }}</div>
-          Cobre servicos prestados e pecas substituidas neste documento. Nao cobre mau uso, liquidos, quedas ou intervencao de terceiros.
+          Cobre servicos prestados e pecas substituidas neste documento<template v-if="temGarantiaPorItem">, exceto onde houver garantia indicada na linha do item</template>. Nao cobre {{ t.garantiaExclusoes }}
         </div>
       </template>
 
@@ -294,8 +346,7 @@ const totalRecebido = computed(() => adiantamentoUtilizado.value + paymentTotal.
       <template v-else-if="isSemReparo">
         <div class="separator">{{ SEPARATOR }}</div>
         <div class="section text-justify">
-          Objeto devolvido sem reparo.
-          Sem garantia aplicavel a esta OS.
+          {{ t.semReparo }}
         </div>
       </template>
     </template>
@@ -309,11 +360,7 @@ const totalRecebido = computed(() => adiantamentoUtilizado.value + paymentTotal.
       </div>
       <div class="separator">{{ SEPARATOR }}</div>
       <div class="section text-justify">
-        A OS acima foi cancelada nesta data.
-        Objeto devolvido ao cliente sem
-        reparos ou com reparos parciais,
-        isentando a assistencia de garantias
-        sobre servicos nao concluidos.
+        {{ t.cancelamento }}
       </div>
     </template>
 
@@ -321,19 +368,11 @@ const totalRecebido = computed(() => adiantamentoUtilizado.value + paymentTotal.
     <template v-else>
       <div class="separator">{{ SEPARATOR }}</div>
       <div class="section text-justify">
-        O cliente declara estar ciente que a
-        empresa nao se responsabiliza por
-        perda de dados nem por chips/cartoes
-        deixados no aparelho. Autorizo a
-        analise tecnica do objeto.
+        {{ t.condicoesEntrada }}
       </div>
       <div class="separator">{{ SEPARATOR }}</div>
       <div class="section text-justify">
-        PRAZO DE RETIRADA: Objetos nao
-        retirados em 90 dias apos aviso de
-        conclusao serao considerados
-        abandonados, conforme Art. 1.275
-        do Codigo Civil Brasileiro.
+        {{ t.prazoRetirada }}
       </div>
     </template>
 

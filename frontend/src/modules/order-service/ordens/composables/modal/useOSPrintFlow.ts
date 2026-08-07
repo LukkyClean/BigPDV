@@ -7,6 +7,8 @@ import { osToEscPos } from '../../components/osToEscPos';
 import { DOTS } from '@/shared/services/escpos';
 import { carregarLogoRaster } from '@/shared/services/escposImagem';
 import { useObjetoLabels } from '@/modules/order-service/shared/segmento/useObjetoLabels';
+import { useTextosImpressaoOS } from '@/modules/order-service/shared/segmento/textosImpressaoOS';
+import { useAtributosImpressaoOS } from '@/modules/order-service/shared/segmento/useAtributosImpressaoOS';
 import type { OrderServiceReadDataType } from '../../schemas/orderServiceQuery.schema';
 import type { PrintFormat } from '@/shared/components/print/print.types';
 
@@ -34,6 +36,8 @@ export function useOSPrintFlow({ onClose, getOS }: UseOSPrintFlowParams) {
   const impressaoStore = useImpressaoStore();
   const { companyInfo } = useCompanyPrintInfo();
   const { labelSingular } = useObjetoLabels();
+  const { textos, identificadorCupom } = useTextosImpressaoOS();
+  const { atributos } = useAtributosImpressaoOS();
 
   /** Manda o cupom térmico direto pra impressora configurada; false = sem impressora/falhou */
   async function imprimirEscPosDireto(tipo: 'ENTRADA' | 'SAIDA'): Promise<boolean> {
@@ -47,6 +51,9 @@ export function useOSPrintFlow({ onClose, getOS }: UseOSPrintFlowParams) {
       empresa: companyInfo.value,
       logoRaster,
       rotuloObjeto: labelSingular.value,
+      rotuloIdentificador: identificadorCupom.value,
+      textos: textos.value.cupom,
+      atributos: atributos(os.objeto?.dados_adicionais, os.dados_adicionais),
     });
     return impressao.imprimirCupom(dados);
   }

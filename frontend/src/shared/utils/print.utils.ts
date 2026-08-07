@@ -2,7 +2,9 @@ import { computed } from 'vue';
 import { useAuthStore } from '@/shared/stores/auth.store';
 import { formatCNPJ, formatCPF } from '@/shared/utils/document.utils';
 import { getBackendBaseUrl } from '@/api/backendUrl';
+import { montarPixBrCode } from '@/shared/utils/pixBrCode';
 import type { CompanyPrintInfo, PrintFormat } from '@/shared/components/print/print.types';
+import { parseTimestampBackend } from './date.utils';
 
 // --- Cliente helpers (union type PF/PJ) ---
 
@@ -110,11 +112,56 @@ export function inferPermiteParcelamento(tipo: string): boolean {
   return tipo === 'CARTAO_CREDITO';
 }
 
+// --- PIX no comprovante ---
+
+/** O que o comprovante precisa saber de um pagamento para decidir sobre o PIX. */
+export interface PagamentoImpresso {
+  /** Nome da forma já resolvido — na venda vem de um resolver, na OS vem embutido. */
+  nome: string;
+  /** Valor em centavos. */
+  valor: number;
+}
+
+/**
+ * Decide se o comprovante leva QR do PIX, e por qual valor.
+ *
+ * O valor é a soma **só dos pagamentos em PIX**, não o total do documento: numa
+ * venda paga metade em dinheiro e metade em PIX, o QR cobra a metade certa.
+ *
+ * Devolve `null` quando não há o que imprimir — sem chave, com o PIX desligado,
+ * ou sem nenhum pagamento em PIX no documento.
+ */
+export function pixParaImpressao(params: {
+  empresa: CompanyPrintInfo;
+  pagamentos?: PagamentoImpresso[] | null;
+  /** Identificador da cobrança (número da OS, por exemplo). */
+  txid?: string;
+}): { payload: string; valorCentavos: number } | null {
+  const { empresa } = params;
+  if (!empresa.pixAtivo || !empresa.chavePix) return null;
+
+  const valorCentavos = (params.pagamentos ?? [])
+    .filter((p) => inferPaymentType(p.nome) === 'PIX')
+    .reduce((soma, p) => soma + p.valor, 0);
+  if (valorCentavos <= 0) return null;
+
+  const payload = montarPixBrCode({
+    chave: empresa.chavePix,
+    valorCentavos,
+    nome: empresa.nome,
+    cidade: empresa.cidade,
+    txid: params.txid,
+  });
+
+  return payload ? { payload, valorCentavos } : null;
+}
+
 // --- Formatters ---
 
+/** Timestamp de evento do backend (UTC) → data e hora locais na via impressa. */
 export function formatPrintDate(dateStr?: string | Date | null): string {
   if (!dateStr) return '__/__/____';
-  return new Date(dateStr).toLocaleDateString('pt-BR', {
+  return parseTimestampBackend(dateStr).toLocaleDateString('pt-BR', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
@@ -236,6 +283,9 @@ export function useCompanyPrintInfo() {
       contato: formatPrintPhone(empresa?.telefone || empresa?.celular || ''),
       email: empresa?.email || '',
       logo: getImageUrl(empresa?.url_logo),
+      cidade: endereco?.cidade || '',
+      chavePix: empresa?.chave_pix ?? null,
+      pixAtivo: Boolean(empresa?.pix_ativo),
     };
   });
 

@@ -15,10 +15,35 @@ import {
   formatPrintDate,
   formatPrintDoc,
   tipoObjetoRelevante,
+  pixParaImpressao,
 } from '@/shared/utils/print.utils'
 import type { Bobina, RasterImage } from '@/shared/services/escpos'
 import type { CompanyPrintInfo } from '@/shared/components/print/print.types'
+import type { TextosCupomOS } from '@/modules/order-service/shared/segmento/textosImpressaoOS'
+import type { AtributoImpresso } from '@/modules/order-service/shared/segmento/useAtributosImpressaoOS'
+import { formatGarantiaItem } from '@/modules/order-service/shared/utils/formatters'
 import type { OrderServiceReadDataType } from '../schemas/orderServiceQuery.schema'
+
+/**
+ * Termos usados quando o chamador não passa `textos`. São os da assistência
+ * técnica, palavra por palavra — quem não informar o segmento continua
+ * imprimindo o que sempre imprimiu.
+ */
+const TEXTOS_PADRAO: TextosCupomOS = {
+  objeto: 'Objeto',
+  identificador: 'N/S',
+  garantiaExclusoes: 'mau uso, liquidos, quedas ou intervencao de terceiros.',
+  semReparo: 'Objeto devolvido sem reparo. Sem garantia aplicavel a esta OS.',
+  cancelamento:
+    'A OS acima foi cancelada nesta data. Objeto devolvido ao cliente sem reparos ou com reparos '
+    + 'parciais, isentando a assistencia de garantias sobre servicos nao concluidos.',
+  condicoesEntrada:
+    'O cliente declara estar ciente que a empresa nao se responsabiliza por perda de dados nem por '
+    + 'chips/cartoes deixados no aparelho. Autorizo a analise tecnica do objeto.',
+  prazoRetirada:
+    'PRAZO DE RETIRADA: Objetos nao retirados em 90 dias apos aviso de conclusao serao considerados '
+    + 'abandonados, conforme Art. 1.275 do Codigo Civil Brasileiro.',
+}
 
 export interface OsEscPosOptions {
   bobina: Bobina
@@ -27,6 +52,12 @@ export interface OsEscPosOptions {
   logoRaster?: RasterImage | null
   /** Rótulo do objeto por segmento (ex.: "Veículo", "Equipamento"). Padrão: "Objeto". */
   rotuloObjeto?: string
+  /** Rótulo do identificador (ex.: "Placa"). Padrão: "N/S". */
+  rotuloIdentificador?: string
+  /** Termos jurídicos do segmento. Padrão: os da assistência técnica. */
+  textos?: TextosCupomOS
+  /** Atributos extras do objeto (oficina: Ano, Chassi, KM). Padrão: nenhum. */
+  atributos?: AtributoImpresso[]
 }
 
 /**
@@ -46,6 +77,7 @@ export function osToEscPos(
 ): Uint8Array {
   const b = new EscPosBuilder(opts.bobina)
   const { empresa } = opts
+  const t = opts.textos ?? TEXTOS_PADRAO
 
   const situacao = os.situacao_equipamento ?? null
   const isSemReparo = situacao === 'SEM_REPARO' || situacao === 'CONDENADO'
@@ -58,7 +90,7 @@ export function osToEscPos(
         : situacao === 'SEM_REPARO'
           ? 'ENTREGA SEM REPARO'
           : situacao === 'CONDENADO'
-            ? 'OBJETO CONDENADO'
+            ? `${t.objeto.toUpperCase()} CONDENADO`
             : 'RECIBO E GARANTIA'
 
   const dataStr = tipo === 'SAIDA' ? ((os.data_finalizacao as string) || os.data_criacao) : os.data_criacao
@@ -113,8 +145,13 @@ export function osToEscPos(
   }
   if (os.objeto.marca) b.linha(`Marca: ${os.objeto.marca}`)
   if (os.objeto.modelo) b.linha(`Modelo: ${os.objeto.modelo}`)
-  if (os.objeto.numero_serie) b.linha(`N/S: ${os.objeto.numero_serie}`)
+  if (os.objeto.numero_serie) {
+    b.linha(`${opts.rotuloIdentificador || t.identificador || 'N/S'}: ${os.objeto.numero_serie}`)
+  }
   if (os.objeto.cor) b.linha(`Cor: ${os.objeto.cor}`)
+  // Atributos do segmento (oficina: Ano, Chassi, KM de entrada) — a via térmica
+  // tem que dizer o mesmo que o papel.
+  for (const attr of opts.atributos ?? []) b.linha(`${attr.label}: ${attr.valor}`)
   b.separador()
 
   // Defeito relatado
@@ -136,11 +173,18 @@ export function osToEscPos(
     // Itens/serviços — peça embutida no serviço não é listada para o cliente.
     // `!== false` e não `=== true`: item antigo vem sem o campo e tem que
     // continuar aparecendo, exatamente como sempre apareceu.
-    const itensVisiveis = (os.itens ?? []).filter((item) => item.visivel_cliente !== false)
+    // Item REPROVADO fora, pelo mesmo motivo da via em papel: não foi feito e o
+    // backend já o tira do total, então listá-lo quebrava a soma do cupom.
+    const itensVisiveis = (os.itens ?? []).filter(
+      (item) => item.visivel_cliente !== false && item.status_aprovacao !== 'REPROVADO',
+    )
     if (itensVisiveis.length) {
       b.separador().negrito(true).linha('ITENS/SERVICOS').negrito(false)
       for (const item of itensVisiveis) {
         b.linha(item.nome)
+        // Garantia da peça: só sai quando o mecânico preencheu.
+        const garantiaItem = formatGarantiaItem(item)
+        if (garantiaItem) b.linha(`Garantia: ${garantiaItem}`)
         b.parLados(`${item.quantidade}x ${formatCurrency(item.valor_unitario)}`, formatCurrency(item.valor_total))
       }
     }
@@ -185,12 +229,41 @@ export function osToEscPos(
       b.parLados('Estorno cartao:', formatCurrency(paymentTotal))
     }
 
+    // PIX: QR pago pelo papel, com o valor só da parte paga em PIX. O número da
+    // OS vai como txid — é o que amarra a cobrança ao documento no extrato.
+    const pix = pixParaImpressao({
+      empresa,
+      pagamentos: os.pagamentos?.map((p) => ({
+        nome: p.forma_pagamento?.nome || '',
+        valor: p.valor,
+      })),
+      txid: os.numero_os ?? undefined,
+    })
+    if (pix) {
+      b.separador()
+        .alinhar('centro')
+        .negrito(true)
+        .linha('PAGUE COM PIX')
+        .negrito(false)
+        .linha(`Valor: ${formatCurrency(pix.valorCentavos)}`)
+        .pular()
+        .qrCode(pix.payload)
+        .pular()
+        .linha('Aponte a camera do celular')
+        .alinhar('esq')
+    }
+
     // Garantia / sem reparo
     if (!isSemReparo && os.garantia) {
+      // Com garantia por item, o termo geral cede a vez: dizer que cobre as
+      // peças contradiria a linha do item, que declara outro prazo.
+      const ressalva = itensVisiveis.some((item) => formatGarantiaItem(item) !== '')
+        ? ', exceto onde houver garantia indicada na linha do item'
+        : ''
       b.separador().negrito(true).linha(`GARANTIA: ${os.garantia}`).negrito(false)
-      b.linha('Cobre servicos prestados e pecas substituidas neste documento. Nao cobre mau uso, liquidos, quedas ou intervencao de terceiros.')
+      b.linha(`Cobre servicos prestados e pecas substituidas neste documento${ressalva}. Nao cobre ${t.garantiaExclusoes}`)
     } else if (isSemReparo) {
-      b.separador().linha('Objeto devolvido sem reparo. Sem garantia aplicavel a esta OS.')
+      b.separador().linha(t.semReparo)
     }
   } else if (tipo === 'CANCELAMENTO') {
     // CANCELAMENTO: motivo + termo (espelha o OSPrintCupom.vue)
@@ -200,13 +273,13 @@ export function osToEscPos(
       .negrito(false)
       .linha(extrairMotivoCancelamento(os.observacoes))
     b.separador()
-    b.linha('A OS acima foi cancelada nesta data. Objeto devolvido ao cliente sem reparos ou com reparos parciais, isentando a assistencia de garantias sobre servicos nao concluidos.')
+    b.linha(t.cancelamento)
   } else {
     // ENTRADA: termos
     b.separador()
-    b.linha('O cliente declara estar ciente que a empresa nao se responsabiliza por perda de dados nem por chips/cartoes deixados no aparelho. Autorizo a analise tecnica do objeto.')
+    b.linha(t.condicoesEntrada)
     b.separador()
-    b.linha('PRAZO DE RETIRADA: Objetos nao retirados em 90 dias apos aviso de conclusao serao considerados abandonados, conforme Art. 1.275 do Codigo Civil Brasileiro.')
+    b.linha(t.prazoRetirada)
   }
 
   // Assinaturas — as duas, como na via em papel (lá elas são blocos empilhados,
