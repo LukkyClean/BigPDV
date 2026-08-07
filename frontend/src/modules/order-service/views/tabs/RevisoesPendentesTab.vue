@@ -12,6 +12,7 @@ import OSKmHistoryModal from '../../revisoes/components/OSKmHistoryModal.vue';
 import { useOSCreateFlow } from '../../ordens/composables/useOSCreateFlow';
 import { getCustomerById } from '@/modules/customers/services/customerGet.service';
 import { useToast } from '@/shared/composables/useToast';
+import { diasVencido, kmExcedente, urgenciaTexto } from '../../revisoes/utils/revisaoUrgencia';
 
 const { data: revisoes, isLoading } = useRevisoesPendentes(ref(true));
 const { handleClienteSelected } = useOSCreateFlow();
@@ -38,27 +39,7 @@ const kpis = computed(() => {
   };
 });
 
-// ─── Urgência (dias vencidos / km acima do alvo) ────────────────────────────
-function diasVencido(r: RevisaoPendente): number {
-  if (!r.proxima_revisao_data) return 0;
-  const alvo = new Date(r.proxima_revisao_data);
-  const hoje = new Date();
-  return Math.max(0, Math.floor((hoje.getTime() - alvo.getTime()) / 86_400_000));
-}
-
-function kmExcedente(r: RevisaoPendente): number {
-  if (r.km_atual == null || r.proxima_revisao_km == null) return 0;
-  return Math.max(0, r.km_atual - r.proxima_revisao_km);
-}
-
-function urgenciaTexto(r: RevisaoPendente): string {
-  if (r.motivo === 'data') {
-    const d = diasVencido(r);
-    return d <= 0 ? 'Vence hoje' : `Vencida há ${d} ${d === 1 ? 'dia' : 'dias'}`;
-  }
-  const km = kmExcedente(r);
-  return km > 0 ? `${km.toLocaleString('pt-BR')} km acima do alvo` : 'Atingiu o KM alvo';
-}
+// Urgência vem de revisaoUrgencia.ts — a mesma frase é usada no aviso do sino.
 
 // ─── Lista filtrada e ordenada (mais crítica primeiro) ──────────────────────
 const listaFiltrada = computed<RevisaoPendente[]>(() => {

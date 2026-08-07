@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { PackageX, Clock, Megaphone, Plus, X, Send, CheckCheck } from 'lucide-vue-next'
+import { PackageX, Clock, Megaphone, Plus, X, Send, CheckCheck, Gauge } from 'lucide-vue-next'
 import { useNotificacoesStore } from '@/shared/stores/notificacoes.store'
 import { useAuthStore } from '@/shared/stores/auth.store'
 import { storeToRefs } from 'pinia'
@@ -8,6 +8,8 @@ import { criarComunicado, marcarComunicadoLido } from '../../services/comunicado
 import { useOSCreateFlow } from '@/modules/order-service/ordens/composables/useOSCreateFlow'
 import { useObjetoLabels } from '@/modules/order-service/shared/segmento/useObjetoLabels'
 import type { OrderServiceReadDataType } from '@/modules/order-service/ordens/schemas/orderServiceQuery.schema'
+import { formatData, formatDataPura, parseTimestampBackend } from '@/shared/utils/date.utils';
+import { urgenciaTexto } from '@/modules/order-service/revisoes/utils/revisaoUrgencia'
 
 defineProps<{ style?: Record<string, string> }>()
 const emit = defineEmits<{ close: [] }>()
@@ -16,7 +18,25 @@ const store = useNotificacoesStore()
 const authStore = useAuthStore()
 // Rótulo do objeto por segmento: a oficina lê "Veículo em abandono", não "Equipamento".
 const { labelSingular } = useObjetoLabels()
-const { osAbandono, osAtrasadas, comunicados, osVistos, temOsNaoVistas } = storeToRefs(store)
+const { osAbandono, osAtrasadas, comunicados, revisoes, osVistos, revisoesVistas, temOsNaoVistas } = storeToRefs(store)
+
+/**
+ * Revisões primeiro as que JÁ ESTÃO na oficina: é o único momento em que dá
+ * para resolver na hora — o carro está ali, o mecânico pergunta e o cliente
+ * decide. As outras viram ligação depois.
+ */
+const revisoesOrdenadas = computed(() =>
+  [...revisoes.value].sort((a, b) => {
+    const naOficina = Number(b.tem_os_aberta) - Number(a.tem_os_aberta)
+    if (naOficina !== 0) return naOficina
+    // Empate (os dois na oficina, ou nenhum): a revisão mais RECENTE em cima —
+    // é a convenção de painel de notificação, e foi o que faltava quando um
+    // carro que acabou de entrar aparecia embaixo de um de semanas atrás.
+    const ta = a.atualizado_em ? parseTimestampBackend(a.atualizado_em).getTime() : 0
+    const tb = b.atualizado_em ? parseTimestampBackend(b.atualizado_em).getTime() : 0
+    return tb - ta
+  }),
+)
 
 const showForm = ref(false)
 const titulo = ref('')
@@ -32,14 +52,20 @@ const isMasterOuGerente = computed(() => {
   return CARGOS_GERENCIAIS.some((c) => cargo.includes(c))
 })
 
+// Evento (criado_em, data_criacao): gravado em UTC, converte para local.
 function formatarData(d: string | null | undefined) {
-  if (!d) return '—'
-  return new Date(d).toLocaleDateString('pt-BR')
+  return formatData(d, '—')
+}
+
+// Prazo (data_previsao): dia escolhido pelo usuário — converter jogaria para
+// o dia anterior. Por isso os dois formatadores existem separados.
+function formatarPrazo(d: string | null | undefined) {
+  return formatDataPura(d, '—')
 }
 
 function diasDesde(d: string | null | undefined) {
   if (!d) return 0
-  return Math.floor((Date.now() - new Date(d).getTime()) / 86400000)
+  return Math.floor((Date.now() - parseTimestampBackend(d).getTime()) / 86400000)
 }
 
 function diasAte(d: string | null | undefined) {
@@ -78,6 +104,7 @@ function clicarComunicado(id: number, lido: boolean) {
 const semNotificacoes = computed(() =>
   osAbandono.value.length === 0 &&
   osAtrasadas.value.length === 0 &&
+  revisoes.value.length === 0 &&
   comunicados.value.length === 0
 )
 
@@ -207,7 +234,38 @@ function abrirOS(os: OrderServiceReadDataType) {
             {{ os.objeto?.marca }} {{ os.objeto?.modelo }}
           </p>
           <p class="text-[11px] text-red-600 mt-1 font-medium">
-            Previsão {{ formatarData(os.data_previsao) }} · {{ Math.abs(diasAte(os.data_previsao)) }} dias em atraso
+            Previsão {{ formatarPrazo(os.data_previsao) }} · {{ Math.abs(diasAte(os.data_previsao)) }} dias em atraso
+          </p>
+        </div>
+      </div>
+
+      <!-- Revisões vencidas -->
+      <div
+        v-for="r in revisoesOrdenadas"
+        :key="`revisao-${r.objeto_id}`"
+        class="flex items-start gap-3 px-4 py-3 border-b border-zinc-50 transition-colors cursor-pointer"
+        :class="revisoesVistas.has(r.objeto_id) ? 'opacity-40 hover:opacity-60' : 'hover:bg-zinc-50'"
+        @click="store.marcarRevisaoVista(r.objeto_id)"
+      >
+        <div class="mt-0.5 w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center shrink-0">
+          <Gauge :size="15" class="text-orange-600" />
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="text-xs font-semibold text-zinc-800 truncate">
+            Revisão vencida · {{ r.marca }} {{ r.modelo }}
+          </p>
+          <p class="text-xs text-zinc-500 mt-0.5 truncate">
+            {{ r.numero_serie }}<span v-if="r.cliente_nome"> · {{ r.cliente_nome }}</span>
+          </p>
+          <p class="text-[11px] text-orange-600 mt-1 font-medium">
+            {{ urgenciaTexto(r) }}
+          </p>
+          <!-- O carro já está na oficina: dá para resolver agora, sem ligar depois. -->
+          <p
+            v-if="r.tem_os_aberta"
+            class="text-[11px] mt-1 font-bold text-emerald-700 bg-emerald-50 rounded px-1.5 py-0.5 inline-block"
+          >
+            Está na oficina agora — aproveite e ofereça
           </p>
         </div>
       </div>

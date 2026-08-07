@@ -4,6 +4,7 @@ import { Gauge, Loader2 } from 'lucide-vue-next';
 import BaseModal from '@/shared/components/commons/BaseModal/BaseModal.vue';
 
 import { useHistoricoKm } from '../composables/useRevisao.queries';
+import { formatData } from '@/shared/utils/date.utils';
 
 interface Props {
   isOpen: boolean;
@@ -23,8 +24,9 @@ const { data: historico, isLoading } = useHistoricoKm(objetoIdRef);
 
 const linhas = computed(() => historico.value ?? []);
 
+// Data da OS que registrou o KM — timestamp de evento (UTC no backend).
 function formatarData(d: string): string {
-  return new Date(d).toLocaleDateString('pt-BR');
+  return formatData(d, '');
 }
 
 function formatarKm(km: number): string {

@@ -4,6 +4,7 @@ import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
 import { formatCurrency } from '@/shared/utils/finance';
 import type { OsItemCreateSchemaDataType, OsItemReadSchemaDataType } from '../../schemas/relationship/osItem.schema';
 import { useCapacidades } from '@/modules/order-service/shared/segmento/useCapacidades';
+import { formatGarantiaItem } from '@/modules/order-service/shared/utils/formatters';
 
 type OsItem = OsItemCreateSchemaDataType | OsItemReadSchemaDataType;
 
@@ -19,12 +20,8 @@ function statusBadge(item: OsItem) {
   return STATUS_BADGE[item.status_aprovacao ?? 'APROVADO'] ?? STATUS_BADGE.APROVADO;
 }
 
-function garantiaLabel(item: OsItem): string {
-  const partes: string[] = [];
-  if (item.garantia_dias) partes.push(`${item.garantia_dias} dias`);
-  if (item.garantia_km) partes.push(`${item.garantia_km.toLocaleString('pt-BR')} km`);
-  return partes.join(' / ');
-}
+// Mesma função das vias impressas: tela e papel não podem divergir na garantia.
+const garantiaLabel = formatGarantiaItem;
 
 interface Props {
   itens: OsItem[];

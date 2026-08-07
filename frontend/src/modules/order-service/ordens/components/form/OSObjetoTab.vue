@@ -10,6 +10,9 @@ import type { ObjetoHistorico } from '@/modules/customers/types/clientes.types';
 import { OS_EQUIP_TYPE_OPTIONS } from '../../constants/ordemServico.constants';
 import { useCapacidades } from '@/modules/order-service/shared/segmento/useCapacidades';
 import { useObjetoLabels } from '@/modules/order-service/shared/segmento/useObjetoLabels';
+import { useOSFieldDefinition } from '@/modules/order-service/shared/segmento/useOSFieldDefinition.queries';
+import type { SegmentField } from '@/modules/order-service/shared/segmento/segmentDefinition.type';
+import { parseTimestampBackend } from '@/shared/utils/date.utils';
 
 interface ObjetoForm {
   objeto: string;
@@ -81,8 +84,9 @@ const { conflitos: conflitosIdentificador } = useOSIdentificadorCheck(
   computed(() => !!props.isCreateMode && !props.isLocked),
 );
 
+// `ultima_os_data` é timestamp de evento (UTC no backend).
 function formatarData(iso: string): string {
-  const data = new Date(iso);
+  const data = parseTimestampBackend(iso);
   return Number.isNaN(data.getTime()) ? '' : data.toLocaleDateString('pt-BR');
 }
 
@@ -90,7 +94,7 @@ const historicoOptions = computed<SelectOption[]>(() => [
   { value: '', label: 'Usar anterior...' },
   ...props.objetosHistorico.map((objeto, idx) => ({
     value: String(idx),
-    label: `${objeto.objeto}${objeto.numero_serie ? ` (S/N: ${objeto.numero_serie})` : ''}`,
+    label: `${objeto.objeto}${objeto.numero_serie ? ` (${labelIdentificador.value}: ${objeto.numero_serie})` : ''}`,
   })),
 ]);
 
@@ -114,6 +118,32 @@ const combustivelTipoOptions: SelectOption[] = [
   { value: 'GASOLINA', label: 'Gasolina' },
   { value: 'DIESEL', label: 'Diesel' },
 ];
+
+const { data: definicaoData } = useOSFieldDefinition();
+
+/**
+ * Campos de check-in que já têm input próprio em outro ponto deste formulário.
+ * A lista dinâmica abaixo precisa pulá-los, senão informática ganharia um
+ * segundo campo de senha/acessórios/condições ao lado do que já existe.
+ */
+const CHECKIN_COM_INPUT_PROPRIO = new Set([
+  'km_entrada', 'senha_aparelho', 'acessorios', 'condicoes_aparelho',
+]);
+
+/**
+ * Campos de texto do check-in, direto do contrato (oficina: Prisma, CT,
+ * Estação do rádio). Eles existiam no registry e na ficha impressa, mas não
+ * tinham onde ser digitados — a ficha preenchida saía sempre com essas células
+ * em branco. Dirigido pelo contrato para um segmento novo ganhar seus campos
+ * sem mexer aqui.
+ */
+const checkinTextos = computed<SegmentField[]>(() =>
+  (definicaoData.value?.definicao?.checkin ?? []).filter(
+    (campo) => campo.tipo === 'texto'
+      && campo.escopo === 'os'
+      && !CHECKIN_COM_INPUT_PROPRIO.has(campo.nome),
+  ),
+);
 
 function updateField<K extends keyof ObjetoForm>(field: K, value: ObjetoForm[K]) {
   emit('update:modelValue', { ...props.modelValue, [field]: value });
@@ -278,6 +308,17 @@ function handleHistoricoSelectChange(value: string) {
           label="Tipo de Combustível"
           :options="combustivelTipoOptions"
           @update:model-value="updateOsDado('combustivel_tipo', $event)"
+        />
+      </div>
+      <!-- Campos de texto do check-in (oficina: Prisma, CT, Estação do rádio). -->
+      <div v-if="checkinTextos.length" class="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <BaseInput
+          v-for="campo in checkinTextos"
+          :key="campo.nome"
+          :model-value="dadoStr(osDados, campo.nome)"
+          :label="campo.label"
+          placeholder="Opcional"
+          @update:model-value="updateOsDado(campo.nome, $event)"
         />
       </div>
     </div>

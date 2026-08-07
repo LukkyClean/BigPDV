@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from 'vue';
-import { CheckCircle2, AlertTriangle, XCircle, ShieldCheck, User, Cpu, Calendar, Banknote, BookmarkCheck, CalendarClock, Gauge, ChevronDown } from 'lucide-vue-next';
+import { useQueryClient } from '@tanstack/vue-query';
+import { CheckCircle2, AlertTriangle, XCircle, ShieldCheck, User, Calendar, Banknote, BookmarkCheck, CalendarClock, Gauge, ChevronDown } from 'lucide-vue-next';
 
 import BaseModal from '@/shared/components/commons/BaseModal/BaseModal.vue';
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
@@ -14,9 +15,13 @@ import type { OrderServiceReadDataType } from '../schemas/orderServiceQuery.sche
 import type { OsEquipSituacaoEnumDataType } from '../schemas/enums/osEnums.schema';
 import { formatCurrency } from '@/shared/utils/finance';
 import { useCapacidades } from '@/modules/order-service/shared/segmento/useCapacidades';
+import { useObjetoLabels } from '@/modules/order-service/shared/segmento/useObjetoLabels';
 import { useToast } from '@/shared/composables/useToast';
 import { useImpressaoStore } from '@/shared/stores/impressao.store';
 import { updateObjetoOS } from '../services/orderServiceUpdate.service';
+import { useUpdateItemOSMutation } from '../composables/request/useOrderServiceUpdate.mutate';
+import { REVISOES_PENDENTES_QUERY_KEY } from '../../shared/constants/queryKeys';
+import { somarItensDaOS } from '../../shared/utils/formatters';
 
 
 export interface DadosFinalizacaoOS {
@@ -40,9 +45,56 @@ const props = defineProps<Props>();
 const emit = defineEmits<{
   close: [];
   advance: [data: DadosFinalizacaoOS];
+  /** Itens pendentes foram resolvidos aqui: o pai precisa recarregar a OS. */
+  itensAtualizados: [];
 }>();
 
+const updateItemMutation = useUpdateItemOSMutation();
+const queryClient = useQueryClient();
+
+/**
+ * Itens que o cliente ainda não respondeu.
+ *
+ * PENDENTE quer dizer pergunta em aberto: fechar a OS assim decide pelo cliente
+ * — ele pagaria por peça que não autorizou. O backend recusa (422); aqui a gente
+ * resolve antes, para o usuário não descobrir isso só no fim.
+ */
+const itensPendentes = computed(() =>
+  (props.ordemServico?.itens ?? []).filter((item) => item.status_aprovacao === 'PENDENTE'),
+);
+
+const resolvendoPendentes = ref(false);
+
+/** Aplica o mesmo status a todos os pendentes de uma vez. */
+async function resolverPendentes(status: 'APROVADO' | 'REPROVADO') {
+  const osNumber = props.osNumero;
+  if (!osNumber || resolvendoPendentes.value) return;
+
+  resolvendoPendentes.value = true;
+  try {
+    // Em série, e não em paralelo: cada PATCH recalcula o total da OS no
+    // backend, e disparar tudo junto faria os recálculos correrem uns por cima
+    // dos outros.
+    for (const item of itensPendentes.value) {
+      await updateItemMutation.mutateAsync({
+        osNumber,
+        osItemId: (item as { id: number }).id,
+        updatedItem: { status_aprovacao: status },
+      });
+    }
+    emit('itensAtualizados');
+    toast.success(
+      status === 'APROVADO' ? 'Itens aprovados.' : 'Itens reprovados e retirados do total.',
+    );
+  } catch {
+    toast.error('Não foi possível atualizar os itens. Tente pela aba Serviços e Peças.');
+  } finally {
+    resolvendoPendentes.value = false;
+  }
+}
+
 const { temRevisoes } = useCapacidades();
+const { labelSingular, labelIdentificador, objetoIcon } = useObjetoLabels();
 const toast = useToast();
 const impressaoStore = useImpressaoStore();
 
@@ -112,6 +164,10 @@ async function salvarProximaRevisao() {
         proxima_revisao_km: proximaRevisaoKm.value ?? null,
       },
     });
+    // É AQUI que a revisão nasce. Como isto é uma chamada de serviço direta (não
+    // uma mutation), nada avisava o cache: o veículo só aparecia na aba e no
+    // aviso do sino depois de recarregar a página.
+    queryClient.invalidateQueries({ queryKey: REVISOES_PENDENTES_QUERY_KEY });
   } catch {
     toast.error('OS finalizada, mas não foi possível agendar a próxima revisão.');
   }
@@ -144,10 +200,10 @@ const clienteDoc = computed(() => {
   return c?.cpf ?? c?.cnpj ?? null;
 });
 
-const subtotalItens = computed(() => {
-  if (!props.ordemServico?.itens) return 0;
-  return props.ordemServico.itens.reduce((sum, item) => sum + item.valor_total, 0);
-});
+// Exclui item REPROVADO: este subtotal alimenta o `totalAPagar` e vai para o
+// modal de pagamento — somar o recusado cobrava do cliente exatamente o que ele
+// tinha acabado de recusar.
+const subtotalItens = computed(() => somarItensDaOS(props.ordemServico?.itens));
 
 // Valor pago em finalizações anteriores — deduzido do cálculo atual como crédito
 const pagoAnteriormente = computed(() => props.ordemServico?.credito_anterior ?? 0);
@@ -263,6 +319,10 @@ async function handleAdvance() {
   hasAttemptedAdvance.value = true;
   if (garantiaObrigatoria.value && !garantia.value) return;
 
+  // Trava espelhada do backend: sem isto o usuário só descobriria o 422 depois
+  // de preencher solução, garantia e pagamento.
+  if (itensPendentes.value.length) return;
+
   if (subtotalItens.value === 0 && situacao_equipamento.value === 'REPARADO') {
     showOsVaziaModal.value = true;
     return;
@@ -371,14 +431,14 @@ async function handleEmitEntrega(zerarAdiantamento: boolean) {
 
         <div class="bg-zinc-50 border border-zinc-200 rounded-xl p-3 flex items-center gap-3">
           <div class="p-2 bg-brand-primary/10 rounded-lg shrink-0">
-            <Cpu :size="16" class="text-brand-primary" />
+            <component :is="objetoIcon" :size="16" class="text-brand-primary" />
           </div>
           <div class="min-w-0">
-            <p class="text-[10px] font-semibold text-zinc-400 uppercase tracking-wide">Objeto</p>
+            <p class="text-[10px] font-semibold text-zinc-400 uppercase tracking-wide">{{ labelSingular }}</p>
             <p class="font-semibold text-zinc-800 text-sm truncate leading-tight">
               {{ ordemServico?.objeto?.marca }} {{ ordemServico?.objeto?.modelo }}
             </p>
-            <p class="mt-0.5 text-xs text-zinc-400">Série: {{ ordemServico?.objeto?.numero_serie }}</p>
+            <p class="mt-0.5 text-xs text-zinc-400">{{ labelIdentificador }}: {{ ordemServico?.objeto?.numero_serie }}</p>
           </div>
         </div>
 
@@ -452,11 +512,52 @@ async function handleEmitEntrega(zerarAdiantamento: boolean) {
         </div>
       </div>
 
-      <!-- ── Linha 3: Situação do Objeto ── -->
+      <!-- ── Itens aguardando resposta do cliente ── -->
+      <div
+        v-if="itensPendentes.length"
+        class="rounded-xl border border-amber-300 bg-amber-50 p-3 space-y-2"
+      >
+        <div class="flex items-center gap-1.5">
+          <AlertTriangle :size="14" class="text-amber-600 shrink-0" />
+          <span class="text-xs font-bold text-amber-800 uppercase tracking-wide">
+            Aguardando aprovação do cliente
+          </span>
+        </div>
+        <p class="text-xs text-amber-800">
+          {{ itensPendentes.length === 1 ? 'Este item ainda não foi' : 'Estes itens ainda não foram' }}
+          respondido{{ itensPendentes.length === 1 ? '' : 's' }}. Não dá para fechar a O.S. sem decidir:
+          aprovado entra na conta, reprovado sai dela.
+        </p>
+        <ul class="text-xs text-amber-900 font-semibold space-y-0.5">
+          <li v-for="(item, i) in itensPendentes" :key="i">
+            • {{ item.nome }} — {{ formatCurrency(item.valor_total) }}
+          </li>
+        </ul>
+        <div class="flex gap-2 pt-1">
+          <BaseButton
+            variant="secondary"
+            size="sm"
+            :disabled="resolvendoPendentes"
+            @click="resolverPendentes('APROVADO')"
+          >
+            Aprovar {{ itensPendentes.length === 1 ? 'item' : 'todos' }}
+          </BaseButton>
+          <BaseButton
+            variant="secondary"
+            size="sm"
+            :disabled="resolvendoPendentes"
+            @click="resolverPendentes('REPROVADO')"
+          >
+            Reprovar {{ itensPendentes.length === 1 ? 'item' : 'todos' }}
+          </BaseButton>
+        </div>
+      </div>
+
+      <!-- ── Linha 3: Situação do objeto (rotulada pelo segmento) ── -->
       <div>
         <div class="flex items-center gap-1.5 mb-2">
           <ShieldCheck :size="14" class="text-brand-primary" />
-          <span class="text-xs font-semibold text-zinc-500 uppercase tracking-wide">Situação do Objeto</span>
+          <span class="text-xs font-semibold text-zinc-500 uppercase tracking-wide">Situação do {{ labelSingular }}</span>
           <span class="text-[10px] text-zinc-400">(opcional)</span>
         </div>
         <div class="grid grid-cols-3 gap-2">

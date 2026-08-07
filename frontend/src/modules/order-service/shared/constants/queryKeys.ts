@@ -12,3 +12,11 @@ export const FORMAS_PAGAMENTO_QUERY_KEY = 'formas-pagamento';
 export const SERVICOS_QUERY_KEY = SERVICOS_KEY;
 export const SERVICOS_STATS_QUERY_KEY = [SERVICOS_KEY, 'stats'] as const;
 export const SERVICOS_OS_ITEM_QUERY_KEY = [SERVICOS_KEY, 'os-item'] as const;
+
+/**
+ * Revisões vencidas. Chave ÚNICA, compartilhada pela aba Revisões e pelo aviso
+ * do sino: com chaves irmãs cada consumidor teria seu próprio cache e os dois
+ * mostrariam contagens diferentes do mesmo fato — foi o que aconteceu quando o
+ * aviso só apareceu depois de recarregar a página.
+ */
+export const REVISOES_PENDENTES_QUERY_KEY = ['os-revisoes-pendentes'] as const;

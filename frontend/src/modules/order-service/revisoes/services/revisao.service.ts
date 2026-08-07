@@ -16,6 +16,8 @@ export interface RevisaoPendente {
   proxima_revisao_km: number | null;
   km_atual: number | null;
   motivo: 'data' | 'km';
+  /** Última alteração do veículo — é o que o agendamento da revisão grava. */
+  atualizado_em: string | null;
 }
 
 /** Um ponto do histórico de quilometragem do veículo. */
