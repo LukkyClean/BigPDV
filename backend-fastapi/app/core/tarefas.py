@@ -14,7 +14,7 @@ from app.db.models.contador_venda import ContadorVenda
 from app.db.models.forma_pagamento import FormaPagamento
 from app.services.limpeza_temporal import cancelar_vendas_ativas_expiradas, limpar_orcamentos_expirados, limpar_temp_data
 from app.services.licenca import enviar_heartbeat, renovar_licenca_background, desconectar_terminal
-from app.services.backup import create_backup, get_last_backup
+from app.services.backup import create_backup, get_last_backup, apply_pending_restore
 from app.services import cloud_sync
 from app.db.crud import terminal_conectado as terminal_crud
 
@@ -57,7 +57,7 @@ async def _loop_backup():
     while True:
         try:
             last_backup = await asyncio.to_thread(get_last_backup)
-            last_backup_created_at = datetime.fromisoformat(last_backup["criado_em"]) if last_backup else None
+            last_backup_created_at = datetime.fromisoformat(last_backup.criado_em) if last_backup else None
 
             need_backup = (
                 last_backup_created_at is None
@@ -65,9 +65,9 @@ async def _loop_backup():
             )
             
             if need_backup:
-                print(f"[BACKUP] Criando backup automático (último backup: {last_backup["criado_em"] if last_backup else 'nenhum'})")
+                print(f"[BACKUP] Criando backup automático (último backup: {last_backup.criado_em if last_backup else 'nenhum'})")
                 backup_info = await asyncio.to_thread(create_backup)
-                print(f'[BACKUP] Backup automático criado: {backup_info["arquivo"]} ({backup_info["tamanho_bytes"]} Bytes)')
+                print(f'[BACKUP] Backup automático criado: {backup_info.arquivo} ({backup_info.tamanho_bytes} Bytes)')
         except Exception as e:
             print(f"[BACKUP] Erro ao criar backup automático: {type(e).__name__}: {e}")
             print (f"[BACKUP] Próxima tentativa em 1 hora")
@@ -174,6 +174,15 @@ async def lifespan(app: FastAPI):
     Gerenciador de ciclo de vida do FastAPI.
     Inicia tarefas em segundo plano ao iniciar e cancela ao encerrar.
     """
+    try:
+        result = apply_pending_restore()
+        if result:
+            print(f"[RESTORE] Restauração aplicada no boot: "
+                  f"ciclo {result['restored_cycle']}. "
+                  f"Cópia de segurança em {result.get('old_db')}")
+    except Exception as e:
+        print(f"[RESTORE] Erro ao aplicar restauração pendente: {type(e).__name__}: {e}")
+    
     await asyncio.to_thread(limpar_temp_data)
 
     Base.metadata.create_all(bind=engine)

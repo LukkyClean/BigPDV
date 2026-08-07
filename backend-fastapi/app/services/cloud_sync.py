@@ -5,8 +5,12 @@ from typing import Any, Dict, Optional
  
 import httpx
  
-from app.services.backup import save_backup 
+from app.services.backup import save_backup
 from app.services import cloud_journal as journal
+from app.schemas.backup import (
+    BackupInfo, FlowDecision, SyncResponse,
+    DownloadChainResponse, CloudPlanResponse,
+)
  
 logger = logging.getLogger(__name__)
  
@@ -92,23 +96,23 @@ async def _request(db, method: str, url: str,
 # ===========================================================================
  
 def flow(status: Dict[str, Any], last_manifest: Optional[dict],
-         last_local_backup: Optional[dict]) -> Dict[str, Any]:
+         last_local_backup: Optional[BackupInfo]) -> FlowDecision:
     """
     Implementa o §2 da spec, na ordem exata.
     Ações: blocked | in_progress | up_to_date | no_local_backup | upload
     """
     # 1. plano permite backup em nuvem?
     if not status.get("planoPermiteBackup", False):
-        return {"action": "blocked", "code": status.get("codigoBloqueio", "unknown")}
+        return FlowDecision(action="blocked", code=status.get("codigoBloqueio", "unknown"))
  
     # 2. outra máquina enviando? (resposta normal)
     if status.get("envioEmAndamento", False):
-        return {"action": "in_progress"}
+        return FlowDecision(action="in_progress")
  
     # sem backup local ainda: não há O QUE enviar (ação de parada própria,
     # NÃO "upload" — senão o sync tentaria enviar o que não existe).
     if last_manifest is None or last_local_backup is None:
-        return {"action": "no_local_backup"}
+        return FlowDecision(action="no_local_backup")
  
     # 3. PULAR ANTECIPADO: compara o codigoConteudo do último elo da nuvem
     #    com o do nosso manifest, ANTES de qualquer escrita.
@@ -118,22 +122,24 @@ def flow(status: Dict[str, Any], last_manifest: Optional[dict],
     if chain:
         cloud_code = chain[-1].get("codigoConteudo")
         if cloud_code and cloud_code == journal.code_content(last_manifest):
-            return {"action": "up_to_date"}
+            return FlowDecision(action="up_to_date")
  
     # 4. full ou fragmento? Decisão do SERVIDOR.
     #    spec: fullDoCicloConfirmado == False  => próximo envio é FULL.
     backup_type = "full" if not status.get("fullDoCicloConfirmado", False) else "fragmento"
  
-    decision: Dict[str, Any] = {"action": "upload", "backup_type": backup_type,
-                                "cycle": status.get("cicloCorrente")}
- 
     # RECONCILIAÇÃO: servidor quer full e o backup local mais recente NÃO é
     # full -> gerar um full local antes de enviar.
-    is_full_local = last_local_backup.get("completo", False)
-    if backup_type == "full" and not is_full_local:
-        decision["force_full_local"] = True
+    force_full = backup_type == "full" and not last_local_backup.completo
+
+    return FlowDecision(
+        action="upload",
+        backup_type=backup_type,
+        cycle=status.get("cicloCorrente"),
+        force_full_local=force_full or None,
+    )
  
-    return decision
+ 
  
  
 # ===========================================================================
@@ -194,7 +200,7 @@ async def confirm_upload(db, payload: Dict[str, Any]) -> Dict[str, Any]:
 # ORQUESTRADOR
 # ===========================================================================
  
-async def sync(db) -> Dict[str, Any]:
+async def sync(db) -> SyncResponse:
     from app.core.hwid import obter_hwid            # mesmo hwid da licença
     from app.services import backup as backup_service
  
@@ -213,26 +219,29 @@ async def sync(db) -> Dict[str, Any]:
     if last_backup:
         
         manifest = await asyncio.to_thread(
-            backup_service._load_manifest, last_backup["arquivo"]
+            backup_service._load_manifest, last_backup.arquivo
         )
  
     decision = flow(status, manifest, last_backup)
  
     # Ações de PARADA (tudo que não é "upload"): encerra o ciclo.
-    if decision["action"] in ("blocked", "in_progress", "up_to_date", "no_local_backup"):
+    if decision.action in ("blocked", "in_progress", "up_to_date", "no_local_backup"):
         logger.info("[SYNC] Ciclo encerrado sem envio: %s", decision)
-        return {"status": decision["action"], "details": decision}
+        return SyncResponse(status=decision.action, details=str(decision.action))
  
     # 2. RECONCILIAÇÃO: gerar full local se o servidor exige
-    if decision.get("force_full_local"):
+    if decision.force_full_local:
         logger.info("[SYNC] Servidor exige full; gerando full local forçado.")
         new = await asyncio.to_thread(backup_service.create_backup, True)
-        last_backup = {"arquivo": new["arquivo"], "completo": True}
+        last_backup = BackupInfo(
+            arquivo=new.arquivo, criado_em=new.criado_em,
+            tamanho_bytes=new.tamanho_bytes, completo=True,
+        )
         manifest = await asyncio.to_thread(
-            backup_service._load_manifest, last_backup["arquivo"]
+            backup_service._load_manifest, last_backup.arquivo
         )
  
-    file = last_backup["arquivo"]
+    file = last_backup.arquivo
     zip_path = os.path.join(backup_service.LOCAL_BACKUP, file)
     size = os.path.getsize(zip_path)
     content_code = journal.code_content(manifest)   # do MANIFEST, nunca do zip
@@ -240,12 +249,12 @@ async def sync(db) -> Dict[str, Any]:
  
     # 3. URL-UPLOAD
     journal.update_journal_entry(file, status=journal.STATUS_PENDENTE,
-                                 ciclo=decision["cycle"], codigoConteudo=content_code)
+                                 ciclo=decision.cycle, codigoConteudo=content_code)
     try:
         authorization = await get_url_upload(db, payload={
             "hwid": hwid,
-            "tipo": decision["backup_type"],
-            "ciclo": decision["cycle"],
+            "tipo": decision.backup_type,
+            "ciclo": decision.cycle,
             "tamanhoBytes": size,
             "codigoConteudo": content_code,
             "origem": "AUTOMATICO",
@@ -253,17 +262,17 @@ async def sync(db) -> Dict[str, Any]:
     except CloudSyncError as e:
         # Recusa de negócio: registra e ENCERRA (sem retry).
         journal.update_journal_entry(file, status=journal.STATUS_FALHOU, codigoErro=e.code)
-        return {"status": "error", "details": str(e), "code": e.code,
-                "http_status": e.http_status}
+        return SyncResponse(status="error", details=str(e), code=e.code,
+                            http_status=e.http_status)
  
     action_api = authorization.get("acao")
     if action_api == "PULAR":
         # Servidor já tem este conteúdo. NÃO chamar /confirmar (spec §2).
         journal.update_journal_entry(file, status=journal.STATUS_ENVIADO,
                                      observacao="PULAR: conteudo ja na nuvem")
-        return {"status": "skipped", "details": "Conteúdo já presente na nuvem."}
+        return SyncResponse(status="skipped", details="Conteúdo já presente na nuvem.")
     if action_api == "AGUARDANDO_OUTRO_TERMINAL":
-        return {"status": "waiting", "details": "Outro terminal está enviando."}
+        return SyncResponse(status="waiting", details="Outro terminal está enviando.")
  
     upload_id = authorization.get("uploadId")
     journal.update_journal_entry(file, status=journal.STATUS_ENVIANDO,
@@ -285,8 +294,8 @@ async def sync(db) -> Dict[str, Any]:
         # Marca falha nos DOIS desfechos do confirmar (fora do except interno).
         journal.update_journal_entry(file, status=journal.STATUS_FALHOU,
                                      codigoErro=e.code or "PUT_FALHOU")
-        return {"status": "error", "details": str(e), "code": e.code,
-                "http_status": e.http_status}
+        return SyncResponse(status="error", details=str(e), code=e.code,
+                            http_status=e.http_status)
  
     confirm = await confirm_upload(db, payload={
         "uploadId": upload_id, "hwid": hwid, "ok": True, "tamanhoBytes": size,
@@ -296,13 +305,13 @@ async def sync(db) -> Dict[str, Any]:
                                      confirmadoEm=confirm.get("confirmado_em")
                                      or confirm.get("confirmadoEm"))
         logger.info("[SYNC] Backup %s enviado e confirmado.", file)
-        return {"status": "success", "details": "Backup enviado e confirmado."}
+        return SyncResponse(status="success", details="Backup enviado e confirmado.")
  
     journal.update_journal_entry(file, status=journal.STATUS_FALHOU,
                                  codigoErro="CONFIRMAR_NEGADA")
-    return {"status": "error", "details": "Confirmação negada.", "code": "CONFIRMAR_NEGADA"}
+    return SyncResponse(status="error", details="Confirmação negada.", code="CONFIRMAR_NEGADA")
 
-async def get_cloud_plan(db, cycle: str) -> Dict[str, Any]:
+async def get_cloud_plan(db, cycle: str) -> CloudPlanResponse:
     from app.core.hwid import obter_hwid
     
     payload: Dict[str, Any] = {"hwid": obter_hwid(),}
@@ -315,9 +324,9 @@ async def get_cloud_plan(db, cycle: str) -> Dict[str, Any]:
         body = _safe_json(response)
         if body.get("codigo") == "BACKUP_INEXISTENTE" and not cycle:
             # §5b: nada NESTE ciclo, mas pode haver em ciclo anterior.
-            return {"status": "needs_explicit_cycle",
-                    "code": "BACKUP_INEXISTENTE",
-                    "details": "Ciclo corrente vazio; reconsultar com ciclo explícito."}
+            return CloudPlanResponse(status="needs_explicit_cycle",
+                    code="BACKUP_INEXISTENTE",
+                    details="Ciclo corrente vazio; reconsultar com ciclo explícito.")
         raise CloudSyncError(
             f"url-download 404: {body.get('codigo')}",
             code=body.get("codigo"), http_status=404,
@@ -330,22 +339,22 @@ async def get_cloud_plan(db, cycle: str) -> Dict[str, Any]:
         )
  
     plan = response.json()
-    return {"status": "ok", "plan": plan}
+    return CloudPlanResponse(status="ok", plan=plan)
  
-async def download_chain(db, cycle: Optional[str] = None) -> Dict[str, Any]:
+async def download_chain(db, cycle: Optional[str] = None) -> DownloadChainResponse:
     from app.services import backup as backup_service
 
     planned = await get_cloud_plan(db, cycle)
     
-    if planned["status"] == "needs_explicit_cycle":
-        return {"status": "needs_explicit_cycle", "details": planned["details"]}
+    if planned.status == "needs_explicit_cycle":
+        return DownloadChainResponse(status="needs_explicit_cycle", details=planned.details)
     
-    plan = planned["plan"]
+    plan = planned.plan
     files = plan.get("arquivos", [])
     resolved_cycle = plan.get("ciclo") or cycle
     
     if not files:
-        return {"status": "no_files", "details": "Nenhum backup disponível na nuvem para este ciclo.", "ciclo": resolved_cycle}
+        return DownloadChainResponse(status="no_files", details="Nenhum backup disponível na nuvem para este ciclo.", ciclo=resolved_cycle)
     
     ordered_files: list[str] = []
 
@@ -370,13 +379,13 @@ async def download_chain(db, cycle: Optional[str] = None) -> Dict[str, Any]:
             ordered_files.append(filename)
             
     await asyncio.to_thread(backup_service.restore_from_chain, cycle, ordered_files)
-    return {
-        "status": "success",
-        "ciclo": resolved_cycle,
-        "ordered_files": ordered_files,
-        "restaura_ate": plan.get("restauraAte"),
-        "cadeia_completa": plan.get("cadeiaCompleta", False),
-        "indisponiveis": plan.get("indisponiveis", []),
-        "total_bytes": plan.get("totalBytes"),
-    }
+    return DownloadChainResponse(
+        status="success",
+        ciclo=resolved_cycle,
+        ordered_files=ordered_files,
+        restaura_ate=plan.get("restauraAte"),
+        cadeia_completa=plan.get("cadeiaCompleta", False),
+        indisponiveis=plan.get("indisponiveis", []),
+        total_bytes=plan.get("totalBytes"),
+    )
     
