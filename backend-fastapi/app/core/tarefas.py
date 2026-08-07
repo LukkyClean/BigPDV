@@ -7,9 +7,8 @@ from datetime import datetime, timedelta
 
 from fastapi import FastAPI
 
-from app.db.base import Base
 from app.db.migrations import aplicar_migracoes
-from app.db.session import SessionLocal, engine
+from app.db.session import SessionLocal
 from app.db.models.contador_venda import ContadorVenda
 from app.db.models.forma_pagamento import FormaPagamento
 from app.services.limpeza_temporal import cancelar_vendas_ativas_expiradas, limpar_orcamentos_expirados, limpar_temp_data
@@ -185,7 +184,7 @@ async def lifespan(app: FastAPI):
     
     await asyncio.to_thread(limpar_temp_data)
 
-    Base.metadata.create_all(bind=engine)
+    aplicar_migracoes()
 
     # Limpar terminais conectados da sessão anterior (stale após restart)
     db = SessionLocal()
@@ -195,8 +194,6 @@ async def lifespan(app: FastAPI):
         logger.info("Terminais conectados da sessão anterior limpos.")
     finally:
         db.close()
-
-    aplicar_migracoes()
     _seed_formas_pagamento()
     _seed_contador_venda()
     print("Iniciando tarefa de limpeza automatica temporal...")
