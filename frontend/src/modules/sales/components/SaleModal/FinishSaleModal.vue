@@ -21,6 +21,7 @@ import {
 } from '@/shared/utils/print.utils';
 
 import BaseModal from '@/shared/components/commons/BaseModal/BaseModal.vue';
+import PixQrCode from '@/shared/components/commons/PixQrCode/PixQrCode.vue';
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
 import BaseInput from '@/shared/components/ui/BaseInput/BaseInput.vue';
 import BaseDateInput from '@/shared/components/ui/BaseDateInput/BaseDateInput.vue';
@@ -620,12 +621,12 @@ function handleFinish() {
         />
       </div>
 
-      <!-- PIX: QR placeholder -->
-      <div v-if="getMethodTipo(currentPaymentMethod) === 'PIX'" class="text-center py-2">
-        <div class="border-2 border-dashed border-emerald-400/40 bg-emerald-50 rounded-xl p-4 inline-block">
-          <QrCode :size="44" class="text-emerald-600" />
-        </div>
-        <p class="text-[10px] text-zinc-400 mt-2">QR Code para cobrança via PIX.</p>
+      <!--
+        PIX: QR já com o valor deste pagamento — não com o total da venda. Numa
+        venda dividida, cada PIX cobra a sua parte.
+      -->
+      <div v-if="getMethodTipo(currentPaymentMethod) === 'PIX'" class="py-1">
+        <PixQrCode :valor-centavos="paymentBaseCentavos" />
       </div>
 
       <div class="flex gap-3 pt-2">

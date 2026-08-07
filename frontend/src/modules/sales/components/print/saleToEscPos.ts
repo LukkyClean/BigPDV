@@ -13,6 +13,7 @@ import {
   getClienteEndereco,
   formatPrintDate,
   formatPrintDoc,
+  pixParaImpressao,
 } from '@/shared/utils/print.utils'
 import type { Bobina, RasterImage } from '@/shared/services/escpos'
 import type { CompanyPrintInfo } from '@/shared/components/print/print.types'
@@ -115,6 +116,29 @@ export function saleToEscPos(
     const totalPago = venda.pagamentos?.reduce((acc, pg) => acc + pg.valor, 0) ?? 0
     b.parLados('Total Pago:', formatCurrency(totalPago))
     if (venda.troco > 0) b.parLados('Troco:', formatCurrency(venda.troco))
+  }
+
+  // PIX: QR pago pelo papel. Vai depois dos totais, onde o cliente procura o
+  // que fazer em seguida — e com o valor só da parte paga em PIX.
+  const pix = pixParaImpressao({
+    empresa,
+    pagamentos: venda?.pagamentos?.map((p) => ({
+      nome: opts.resolverPagamento?.(p.forma_pagamento_id) ?? '',
+      valor: p.valor,
+    })),
+  })
+  if (pix) {
+    b.separador()
+      .alinhar('centro')
+      .negrito(true)
+      .linha('PAGUE COM PIX')
+      .negrito(false)
+      .linha(`Valor: ${formatCurrency(pix.valorCentavos)}`)
+      .pular()
+      .qrCode(pix.payload)
+      .pular()
+      .linha('Aponte a camera do celular')
+      .alinhar('esq')
   }
 
   // Observações

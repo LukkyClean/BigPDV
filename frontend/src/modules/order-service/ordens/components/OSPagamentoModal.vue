@@ -6,6 +6,7 @@ import {
 } from 'lucide-vue-next';
 
 import BaseModal from '@/shared/components/commons/BaseModal/BaseModal.vue';
+import PixQrCode from '@/shared/components/commons/PixQrCode/PixQrCode.vue';
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
 import BaseInput from '@/shared/components/ui/BaseInput/BaseInput.vue';
 import BaseDateInput from '@/shared/components/ui/BaseDateInput/BaseDateInput.vue';
@@ -20,7 +21,7 @@ import type { DadosFinalizacaoOS } from './OSFinalizarModal.vue';
 import { formatCurrency } from '@/shared/utils/finance';
 import { useOsPaymentMethodsGet } from '../composables/request/relationship/useOSPaymentMethods.queries';
 import { useReadyOrderServiceMutation } from '../composables/request/useOrderServiceUpdate.mutate';
-import { inferPaymentType, inferPermiteParcelamento, getPaymentDisplayName } from '../../shared/utils/formatters';
+import { inferPaymentType, inferPermiteParcelamento, getPaymentDisplayName, somarItensDaOS } from '../../shared/utils/formatters';
 import {
   useJurosPagamento,
   JUROS_RESPONSAVEL_OPTIONS,
@@ -117,10 +118,8 @@ const parcelasOptions = computed(() => {
 });
 
 // ─── Cálculos financeiros ─────────────────────────────────────────────────────
-const subtotalItens = computed(() => {
-  if (!props.ordemServico?.itens) return 0;
-  return props.ordemServico.itens.reduce((sum, item) => sum + item.valor_total, 0);
-});
+// Exclui item REPROVADO — é esta soma que vira o valor cobrado no caixa.
+const subtotalItens = computed(() => somarItensDaOS(props.ordemServico?.itens));
 
 const desconto = computed(() => props.descontoOs);
 const taxaEntrega = computed(() => props.ordemServico?.taxa_entrega ?? 0);
@@ -703,11 +702,14 @@ watch(() => props.isOpen, (open) => {
         />
       </div>
 
-      <div v-if="getMethodTipo(currentPaymentMethod) === 'PIX'" class="text-center py-2">
-        <div class="border-2 border-dashed border-emerald-400/40 bg-emerald-50 rounded-xl p-4 inline-block">
-          <QrCode :size="44" class="text-emerald-600" />
-        </div>
-        <p class="text-[10px] text-zinc-400 mt-2">QR Code para cobrança via PIX.</p>
+      <!--
+        O número da OS vai como txid: é o único identificador que já existe no
+        momento do QR (a venda ainda nem foi criada quando o dela é gerado), e
+        alguns bancos o mostram no extrato — o que vai ajudar a conciliação
+        quando o módulo financeiro chegar.
+      -->
+      <div v-if="getMethodTipo(currentPaymentMethod) === 'PIX'" class="py-1">
+        <PixQrCode :valor-centavos="paymentBaseCentavos" :txid="osNumero ?? undefined" />
       </div>
 
       <div class="flex gap-3 pt-2">

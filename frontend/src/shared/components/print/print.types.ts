@@ -12,4 +12,9 @@ export interface CompanyPrintInfo {
   contato: string;
   email: string;
   logo: string | null;
+  /** Cidade sozinha — o BR Code do PIX exige o campo separado do endereço. */
+  cidade?: string;
+  /** Chave PIX do recebedor, para montar o QR do comprovante. */
+  chavePix?: string | null;
+  pixAtivo?: boolean;
 }

@@ -14,6 +14,9 @@ export interface Company {
   enderecos: EnderecoFormData[];
   url_logo: string;
   segmento?: string;
+  /** Chave PIX do recebedor. Vem do login junto do resto da identidade da empresa. */
+  chave_pix?: string | null;
+  pix_ativo?: boolean;
   ativo: boolean;
 }
 

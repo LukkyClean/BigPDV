@@ -17,10 +17,11 @@
  * local da loja — fica para o módulo financeiro.
  */
 import { ref, computed, watch } from 'vue'
-import { QrCode } from 'lucide-vue-next'
+import { QrCode, CheckCircle2, AlertTriangle } from 'lucide-vue-next'
 
 import { useEmpresaQuery } from '@/modules/enterprise/composables/useEmpresaQuery'
 import BaseInput from '@/shared/components/ui/BaseInput/BaseInput.vue'
+import { normalizarChavePix, ROTULO_TIPO_CHAVE } from '@/shared/utils/pixBrCode'
 
 const { data: empresa } = useEmpresaQuery()
 
@@ -61,6 +62,21 @@ function alternarPix() {
   if (!temChave.value) return
   form.value.pix_ativo = !form.value.pix_ativo
 }
+
+/**
+ * A chave entra no QR LITERALMENTE. `(11) 99999-8888` gera um QR
+ * sintaticamente perfeito e economicamente morto: banco nenhum resolve a chave,
+ * e o erro só aparece com o cliente na frente do balcão.
+ *
+ * Por isso o campo se normaliza ao sair dele, e mostra de volta o que ficou
+ * gravado: este é o único instante em que um humano ainda pode conferir.
+ */
+const chaveLida = computed(() => normalizarChavePix(form.value.chave_pix))
+
+function normalizarAoSair() {
+  const { chave } = chaveLida.value
+  if (chave) form.value.chave_pix = chave
+}
 </script>
 
 <template>
@@ -83,12 +99,31 @@ function alternarPix() {
           </p>
         </div>
 
-        <BaseInput
-          v-model="form.chave_pix"
-          label="Chave PIX"
-          placeholder="CPF, CNPJ, telefone, e-mail ou chave aleatória"
-          maxlength="77"
-        />
+        <div>
+          <BaseInput
+            v-model="form.chave_pix"
+            label="Chave PIX"
+            placeholder="CPF, CNPJ, telefone, e-mail ou chave aleatória"
+            maxlength="77"
+            @blur="normalizarAoSair"
+          />
+
+          <p
+            v-if="temChave && chaveLida.reconhecida"
+            class="flex items-center gap-1.5 text-[11px] text-emerald-600 mt-1.5"
+          >
+            <CheckCircle2 :size="12" class="shrink-0" />
+            Reconhecida como {{ ROTULO_TIPO_CHAVE[chaveLida.tipo].toLowerCase() }}.
+          </p>
+          <p
+            v-else-if="temChave"
+            class="flex items-start gap-1.5 text-[11px] text-amber-600 mt-1.5"
+          >
+            <AlertTriangle :size="12" class="shrink-0 mt-0.5" />
+            Não parece um CPF, CNPJ, telefone, e-mail nem chave aleatória. Pode salvar assim,
+            mas o banco do cliente provavelmente não vai reconhecer.
+          </p>
+        </div>
 
         <div class="flex items-center justify-between border-t border-zinc-100 pt-3">
           <div>

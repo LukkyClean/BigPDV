@@ -11,8 +11,10 @@ import {
   getClienteEndereco,
   formatPrintDate,
   formatPrintDoc,
+  pixParaImpressao,
 } from '@/shared/utils/print.utils';
 
+import PixQrPrint from '@/shared/components/print/PixQrPrint.vue';
 import PrintCupomHeader from '@/shared/components/print/cupom/PrintCupomHeader.vue';
 import PrintCupomSignatures from '@/shared/components/print/cupom/PrintCupomSignatures.vue';
 import PrintCupomFooter from '@/shared/components/print/cupom/PrintCupomFooter.vue';
@@ -57,6 +59,17 @@ const totalPago = computed(() => {
   if (!saleData.value?.pagamentos) return 0;
   return saleData.value.pagamentos.reduce((acc, pg) => acc + pg.valor, 0);
 });
+
+/** QR do PIX no papel — só quando há pagamento em PIX e a loja tem chave ativa. */
+const pix = computed(() =>
+  pixParaImpressao({
+    empresa: companyInfo.value,
+    pagamentos: saleData.value?.pagamentos?.map((pgto) => ({
+      nome: props.paymentMethodResolver?.(pgto.forma_pagamento_id) ?? '',
+      valor: pgto.valor,
+    })),
+  }),
+);
 </script>
 
 <template>
@@ -162,6 +175,12 @@ const totalPago = computed(() => {
         </div>
       </template>
     </div>
+
+    <!-- PIX: onde o cliente procura o que fazer depois de ver o total -->
+    <template v-if="pix">
+      <div class="separator">{{ SEPARATOR }}</div>
+      <PixQrPrint :payload="pix.payload" :valor-centavos="pix.valorCentavos" />
+    </template>
 
     <!-- Observações -->
     <template v-if="sale.observacao">

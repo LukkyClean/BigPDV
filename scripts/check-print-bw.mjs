@@ -28,17 +28,38 @@ const SRC = join(RAIZ, 'frontend', 'src');
 /**
  * Um arquivo entra na regra se contém `print-container` — o marcador que o
  * print-a4.css e o print-cupom.css usam para isolar o que vai para o papel.
- * Componentes auxiliares (cabeçalho, rodapé, assinaturas) são incluídos porque
- * são montados dentro desse container.
  */
 const MARCADORES = ['print-container', 'print:block'];
 
-/** Famílias de cor do Tailwind. Neutros (slate/zinc/gray/neutral/stone) e as
- *  cores puras black/white seguem permitidos. */
+/**
+ * ...e tudo daqui entra também, tenha marcador ou não.
+ *
+ * O marcador sozinho não bastava: cabeçalho, rodapé e assinaturas são montados
+ * dentro do container mas não escrevem o nome dele, então ficavam de fora da
+ * varredura — e foi por essa fresta que o A4 inteiro passou meses em `slate`.
+ *
+ * A pasta `print/` inteira NÃO serve como regra: a raiz dela mistura peça de
+ * papel com tela (o modal que pergunta "A4 ou cupom?" é interface, e interface
+ * pode e deve ter a cor da marca). Por isso vale a subpasta, não a pasta.
+ */
+const PRINT = join(SRC, 'shared', 'components', 'print');
+const PASTAS_SEMPRE = [join(PRINT, 'a4'), join(PRINT, 'cupom')];
+/** Peças de papel soltas na raiz de `print/` — não cabem em a4/ nem em cupom/
+ *  porque servem aos dois formatos. */
+const ARQUIVOS_SEMPRE = [join(PRINT, 'PixQrPrint.vue')];
+
+/**
+ * Famílias de cor do Tailwind barradas no papel.
+ *
+ * `slate` e `gray` entram na lista apesar de serem vendidos como "cinzas": os
+ * dois são cinza AZULADO (slate-700 é #334155, azul de verdade), e num documento
+ * impresso isso aparece — o comprovante saía com cara de azul-marinho em vez de
+ * preto. Cinza no papel é `neutral` (acromático), `zinc` ou `stone`.
+ */
 const CORES = [
   'red', 'orange', 'amber', 'yellow', 'lime', 'green', 'emerald', 'teal',
   'cyan', 'sky', 'blue', 'indigo', 'violet', 'purple', 'fuchsia', 'pink', 'rose',
-  'brand',
+  'brand', 'slate', 'gray',
 ];
 // `(?:-[a-z]+)*` cobre nomes compostos (brand-primary-light) sem engolir o hífen
 // do tom numérico — senão a mensagem sairia truncada em "text-emerald-" e quem
@@ -62,9 +83,14 @@ function arquivosVue(dir, acc = []) {
 
 const ocorrencias = [];
 
+const sempre = new Set([
+  ...PASTAS_SEMPRE.flatMap((pasta) => arquivosVue(pasta)),
+  ...ARQUIVOS_SEMPRE.filter((arquivo) => existsSync(arquivo)),
+]);
+
 for (const arquivo of arquivosVue(SRC)) {
   const conteudo = readFileSync(arquivo, 'utf8');
-  if (!MARCADORES.some((m) => conteudo.includes(m))) continue;
+  if (!sempre.has(arquivo) && !MARCADORES.some((m) => conteudo.includes(m))) continue;
 
   conteudo.split('\n').forEach((linha, i) => {
     for (const achado of linha.match(REGEX_COR) ?? []) {
@@ -76,7 +102,8 @@ for (const arquivo of arquivosVue(SRC)) {
 if (ocorrencias.length) {
   console.error('\n\x1b[31m✖ BUILD BARRADO — cor em template de impressão\x1b[0m\n');
   console.error('  Documento impresso é preto e branco. Use a escala neutra');
-  console.error('  (slate/zinc) e distinga por peso, borda ou texto — não por cor.\n');
+  console.error('  (neutral/zinc/stone — NÃO slate nem gray, que puxam para o azul)');
+  console.error('  e distinga por peso, borda ou texto — não por cor.\n');
   for (const o of ocorrencias) {
     console.error(`  • ${relative(RAIZ, o.arquivo)}:${o.linha}  →  ${o.achado}`);
   }

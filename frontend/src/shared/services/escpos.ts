@@ -114,6 +114,43 @@ export class EscPosBuilder {
     return this
   }
 
+  /**
+   * QR Code pelo comando NATIVO da impressora (GS ( k), não por imagem.
+   *
+   * A diferença importa: o caminho de imagem (`raster`) depende de ler pixels
+   * de um `<canvas>`, e é justamente por ali que a logo ainda não sai na
+   * térmica. O QR nativo não passa por nada disso — a impressora recebe o texto
+   * e desenha o código sozinha, no tamanho certo, com a correção de erro certa.
+   *
+   * `modulo` é o lado de cada quadradinho em pontos. O padrão sobe na bobina de
+   * 80mm porque lá há folga: QR maior é QR que a câmera do cliente pega de
+   * primeira, e num cupom térmico desbotado isso é a diferença entre pagar e
+   * digitar tudo na mão.
+   */
+  qrCode(texto: string, opts?: { modulo?: number; correcao?: 'L' | 'M' | 'Q' | 'H' }): this {
+    if (!texto) return this
+    const bytes = codificarTexto(texto)
+    // O comando carrega o tamanho em dois bytes; acima disso não há QR possível.
+    if (bytes.length + 3 > 0xffff) return this
+
+    const modulo = opts?.modulo ?? (this.larguraDots >= 576 ? 7 : 5)
+    const correcao = { L: 48, M: 49, Q: 50, H: 51 }[opts?.correcao ?? 'M']
+
+    // Modelo 2 — o universal.
+    this.bytes.push(GS, 0x28, 0x6b, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00)
+    // Tamanho do módulo.
+    this.bytes.push(GS, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x43, modulo)
+    // Nível de correção de erro.
+    this.bytes.push(GS, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x45, correcao)
+    // Carrega os dados no buffer do símbolo (pL/pH contam os 3 bytes de cabeçalho).
+    const tamanho = bytes.length + 3
+    this.bytes.push(GS, 0x28, 0x6b, tamanho & 0xff, (tamanho >> 8) & 0xff, 0x31, 0x50, 0x30)
+    for (const byte of bytes) this.bytes.push(byte)
+    // Imprime o que está no buffer.
+    this.bytes.push(GS, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x51, 0x30)
+    return this
+  }
+
   /** Imprime o texto e quebra a linha; textos maiores que a bobina quebram em várias linhas */
   linha(texto = ''): this {
     if (!texto) {
