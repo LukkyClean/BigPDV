@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { getChecklistData, saveChecklistData } from './api/checklist.service'
 import type { ChecklistDados } from './types/checklist.types'
 import ChecklistForm from './components/ChecklistForm.vue'
 import SuccessScreen from './components/SuccessScreen.vue'
+import { aplicarCorDaEmpresa, urlDaLogo } from './theme/aplicarTema'
 import logoImage from './assets/images/start-logo.png'
 
 type AppState = 'loading' | 'form' | 'submitting' | 'success' | 'error'
@@ -33,6 +34,9 @@ onMounted(async () => {
     const data = await getChecklistData(osNumber, token)
     checklistData.value = data
     dadosAdicionais.value = { ...data.dados_adicionais }
+    // Quem escaneou o QR é cliente da loja, não do StartBig: a página passa a
+    // ter a cor e a marca dela assim que os dados chegam.
+    aplicarCorDaEmpresa(data.cor_tema)
     state.value = 'form'
   } catch (err: any) {
     const status = err?.response?.status
@@ -75,6 +79,14 @@ function handleRetry() {
 function reloadPage() {
   window.location.reload()
 }
+
+/**
+ * Logo da loja, com a do produto como rede de segurança: enquanto os dados não
+ * chegam — e numa loja que ainda não subiu logo — o cabeçalho não pode ficar com
+ * um buraco.
+ */
+const logoExibida = computed(() => urlDaLogo(checklistData.value?.url_logo) ?? logoImage)
+const nomeExibido = computed(() => checklistData.value?.empresa_nome || 'StartBig')
 </script>
 
 <template>
@@ -82,7 +94,7 @@ function reloadPage() {
     <!-- Header -->
     <header class="bg-brand-primary text-white px-4 py-4 shadow-md">
       <div class="max-w-xl mx-auto flex items-center gap-3">
-        <img :src="logoImage" alt="StartBig" class="h-9 rounded-full" />
+        <img :src="logoExibida" :alt="nomeExibido" class="h-9 rounded-full bg-white object-contain" />
         <div>
           <h1 class="text-lg font-bold">Vistoria de Entrada</h1>
           <p v-if="checklistData" class="text-sm text-white/80 mt-0.5">

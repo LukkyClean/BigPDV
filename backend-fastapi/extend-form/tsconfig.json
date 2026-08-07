@@ -13,8 +13,9 @@
     "noEmit": true,
     "types": [],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@paleta": ["../../frontend/src/shared/theme/paleta.ts"]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.vue", "env.d.ts"]
+  "include": ["src/**/*.ts", "src/**/*.vue", "env.d.ts", "../../frontend/src/shared/theme/paleta.ts"]
 }

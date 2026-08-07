@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from app.core.checklist_token import gerar_token_checklist, validar_token_checklist
 from app.core.depends import check_permission
 from app.core.enum import OrdemServicoStatus
+from app.db.crud import empresa as empresa_crud
 from app.db.crud import ordem_servico as os_crud
 from app.db.session import get_db
 from app.services import segmentos as segmentos_service
@@ -44,6 +45,14 @@ class ChecklistDadosResponse(BaseModel):
     modelo: Optional[str] = None
     definicao: Optional[Dict[str, Any]] = None
     dados_adicionais: Dict[str, Any] = {}
+    # Identidade visual da loja. Vai JUNTO com os dados do checklist, e nao numa
+    # chamada a parte, porque o celular do cliente ja faz esta requisicao e a
+    # pagina nao tem por que abrir com a cara do produto para depois virar a cara
+    # da loja. Aqui e a rota protegida por token: nada disso vaza para quem nao
+    # tem o link da OS.
+    empresa_nome: Optional[str] = None
+    cor_tema: Optional[str] = None
+    url_logo: Optional[str] = None
 
 
 class ChecklistDadosUpdate(BaseModel):
@@ -53,6 +62,25 @@ class ChecklistDadosUpdate(BaseModel):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _identidade_visual(db: Session) -> Dict[str, Optional[str]]:
+    """
+    Cor e logo da loja para a pagina do celular.
+
+    A instalacao tem uma empresa so, entao nao ha o que escolher. Se ela ainda
+    nao existe (instalacao recem-feita, antes do onboarding), devolve tudo vazio
+    e a pagina fica na identidade de fabrica — nunca quebra por causa de enfeite.
+    """
+    empresa = empresa_crud.get_empresa_atual(db)
+    if not empresa:
+        return {"empresa_nome": None, "cor_tema": None, "url_logo": None}
+
+    return {
+        "empresa_nome": empresa.nome_fantasia or empresa.razao_social,
+        "cor_tema": empresa.cor_tema,
+        "url_logo": empresa.url_logo,
+    }
+
 
 def _get_lan_ip() -> str:
     """Descobre o IP da maquina na rede local (mesmo truque do Rust)."""
@@ -150,6 +178,7 @@ def get_checklist_dados(
         modelo=modelo,
         definicao=definicao,
         dados_adicionais=os_in_db.dados_adicionais or {},
+        **_identidade_visual(db),
     )
 
 
@@ -209,4 +238,5 @@ def update_checklist_dados(
         modelo=modelo,
         definicao=definicao_resp.get("definicao"),
         dados_adicionais=os_in_db.dados_adicionais or {},
+        **_identidade_visual(db),
     )

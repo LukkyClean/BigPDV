@@ -259,6 +259,58 @@ def test_garantia_por_item_persistida(client, db_session):
     assert item["status_aprovacao"] == "APROVADO"
 
 
+def test_finalizar_com_item_pendente_bloqueia(client, db_session):
+    """PENDENTE = cliente nao respondeu; nao da para fechar a OS por ele."""
+    header = _autenticar_e_criar_empresa(client, "oficina_mecanica")
+    cliente_id = _criar_cliente(client, header)
+    fp_id = _criar_forma_pagamento(client, header)
+    itens = [
+        _item("Troca de pastilha", 10000, status_aprovacao="APROVADO"),
+        _item("Caixa de direcao", 50000, status_aprovacao="PENDENTE"),
+    ]
+    r = client.post("/api/v1/ordens-servico/", json=_os_payload(cliente_id, "ABC1D23", itens=itens), headers=header)
+    assert r.status_code == status.HTTP_201_CREATED, r.text
+    numero = r.json()["numero_os"]
+
+    fin = {
+        "situacao_equipamento": "REPARADO", "garantia": "90 dias",
+        "pagamentos": [{"forma_pagamento_id": fp_id, "valor": 60000}],
+    }
+    rf = client.put(f"/api/v1/ordens-servico/{numero}/finalizar", json=fin, headers=header)
+    assert rf.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY, rf.text
+    # A mensagem nomeia o item, senao o usuario nao sabe qual resolver.
+    assert "Caixa de direcao" in rf.json()["detail"]
+
+
+def test_finalizar_sem_item_pendente_passa(client, db_session):
+    """A trava so morde em PENDENTE: APROVADO e REPROVADO fecham normalmente."""
+    header = _autenticar_e_criar_empresa(client, "oficina_mecanica")
+    cliente_id = _criar_cliente(client, header)
+    fp_id = _criar_forma_pagamento(client, header)
+    itens = [
+        _item("Troca de pastilha", 10000, status_aprovacao="APROVADO"),
+        _item("Caixa de direcao", 50000, status_aprovacao="REPROVADO"),
+    ]
+    r = client.post("/api/v1/ordens-servico/", json=_os_payload(cliente_id, "ABC1D23", itens=itens), headers=header)
+    numero = r.json()["numero_os"]
+
+    fin = {
+        "situacao_equipamento": "REPARADO", "garantia": "90 dias",
+        "pagamentos": [{"forma_pagamento_id": fp_id, "valor": 10000}],
+    }
+    rf = client.put(f"/api/v1/ordens-servico/{numero}/finalizar", json=fin, headers=header)
+    assert rf.status_code == 200, rf.text
+
+
+def test_finalizar_informatica_nao_sofre_trava_de_pendente(client, db_session):
+    """Guardiao: sem aprovacao por item, nenhum item nasce PENDENTE e nada muda."""
+    header = _autenticar_e_criar_empresa(client, "assistencia_tecnica")
+    cliente_id = _criar_cliente(client, header)
+    fp_id = _criar_forma_pagamento(client, header)
+    numero = _criar_e_finalizar_os(client, header, cliente_id, fp_id, "SERIAL-PEND", 14000)
+    assert numero
+
+
 def test_historico_km_do_veiculo(client, db_session):
     """Histórico de KM lê km_entrada das OS do veículo, da mais antiga p/ recente."""
     header = _autenticar_e_criar_empresa(client, "oficina_mecanica")
@@ -382,6 +434,30 @@ def test_revisao_pendente_por_data(client, db_session):
     assert len(lst) == 1
     assert lst[0]["numero_serie"] == "ABC1D23"
     assert lst[0]["motivo"] == "data"
+
+
+def test_revisoes_vem_da_mais_recente_para_a_mais_antiga(client, db_session):
+    """Veiculo que mexeu por ultimo aparece primeiro.
+
+    Sem ordem explicita a lista saia na ordem do banco, e um carro que acabou de
+    entrar na oficina aparecia embaixo de um de semanas atras — no aviso do sino
+    isso enterra justamente o que ainda da para resolver.
+    """
+    header = _autenticar_e_criar_empresa(client, "oficina_mecanica")
+    cliente_id = _criar_cliente(client, header)
+
+    for placa in ("AAA1A11", "BBB2B22"):
+        r = client.post(
+            "/api/v1/ordens-servico/",
+            json=_os_payload(cliente_id, placa, objeto_extra={"proxima_revisao_data": "2020-01-01"}),
+            headers=header,
+        )
+        assert r.status_code == status.HTTP_201_CREATED, r.text
+
+    lst = client.get("/api/v1/ordens-servico/revisoes-pendentes", headers=header).json()
+    assert len(lst) == 2
+    assert lst[0]["atualizado_em"] is not None, "a UI ordena por este campo"
+    assert lst[0]["atualizado_em"] >= lst[1]["atualizado_em"], "mais recente primeiro"
 
 
 def test_revisao_futura_nao_aparece(client, db_session):

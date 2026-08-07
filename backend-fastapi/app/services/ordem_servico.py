@@ -130,6 +130,33 @@ def _assert_os_editavel(os_in_db: OSModel) -> None:
         raise os_fechada_exce
 
 
+def _assert_sem_itens_pendentes(os_in_db: OSModel) -> None:
+    """Lanca 422 se a OS tem item aguardando resposta do cliente.
+
+    PENDENTE quer dizer que o cliente ainda nao disse se aprova ou recusa.
+    Fechar a OS assim decide por ele: hoje o item entra no total (ele paga por
+    peca que nao autorizou) e nao baixa do estoque (a peca sai da conta mas
+    continua na prateleira). Ou aprova, ou recusa — nao da para entregar o
+    veiculo com a pergunta em aberto.
+
+    Nao afeta segmento sem aprovacao por item: la o default e APROVADO e nenhum
+    item nasce PENDENTE.
+    """
+    pendentes = [
+        item.nome for item in os_in_db.itens
+        if item.status_aprovacao == OrdemServicoItemAprovacao.PENDENTE
+    ]
+    if pendentes:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "Ha itens aguardando aprovacao do cliente: "
+                + ", ".join(pendentes)
+                + ". Aprove ou reprove cada um antes de finalizar."
+            ),
+        )
+
+
 def _assert_item_coerente(item: OSItemModel) -> None:
     """Peça embutida vale zero; item cobrado vale mais que zero.
 
@@ -583,7 +610,16 @@ def get_revisoes_pendentes(db: Session) -> list[dict]:
             "proxima_revisao_km": obj.proxima_revisao_km,
             "km_atual": km_atual,
             "motivo": "data" if venc_data else "km",
+            # Quando este veiculo mexeu pela ultima vez (o agendamento da revisao
+            # grava aqui). E o que permite a UI mostrar a revisao mais recente no
+            # topo: sem isto a lista saia na ordem do banco, e um veiculo que
+            # acabou de entrar aparecia embaixo de um de semanas atras.
+            "atualizado_em": obj.data_atualizacao,
         })
+    # Mais recente primeiro. `datetime.min` no lugar de None manda o objeto sem
+    # data para o fim SEM comparar None com None, que levanta TypeError no
+    # sort e derrubaria a tela inteira de revisoes.
+    pendentes.sort(key=lambda p: p["atualizado_em"] or datetime.min, reverse=True)
     return pendentes
 
 
@@ -821,9 +857,11 @@ def finalizar_ordem_servico(
     3. A soma dos pagamentos deve ser exatamente igual ao valor_total.
     4. Cada forma_pagamento_id deve existir e estar ativa no catálogo.
     5. Status → FINALIZADA, data_finalizacao → now().
+    6. Nenhum item pode estar PENDENTE (aguardando resposta do cliente).
     """
     os_in_db = _get_os_or_raise(db, numero_os)
     _assert_os_editavel(os_in_db)
+    _assert_sem_itens_pendentes(os_in_db)
 
     # Aplica campos financeiros se informados
     if data.desconto is not None:
