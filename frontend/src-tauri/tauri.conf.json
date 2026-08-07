@@ -44,7 +44,11 @@
       "icons/icon.ico"
     ],
     "windows": {
+      "webviewInstallMode": {
+        "type": "embedBootstrapper"
+      },
       "nsis": {
+        "minimumWebview2Version": "110.0.1587.40",
         "installerHooks": "nsis/extend/hooks.nsh",
         "template": "nsis/installer.nsi",
         "installMode": "perMachine",
