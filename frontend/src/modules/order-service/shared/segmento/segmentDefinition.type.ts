@@ -76,7 +76,13 @@ export type SegmentCapability =
   | 'vistoria'
   | 'revisoes'
   | 'aprovacao_itens'
-  | 'garantia_itens';
+  | 'garantia_itens'
+  /**
+   * Cliente vê o mockup pelo QR e libera a produção. NÃO se confunde com
+   * `aprovacao_itens`: aquela é sobre PREÇO (aprovar linha do orçamento), esta
+   * é sobre a ARTE (a estampa está certa? pode gravar a tela?).
+   */
+  | 'aprovacao_arte';
 
 /**
  * Um processo de negócio dentro do mesmo segmento.

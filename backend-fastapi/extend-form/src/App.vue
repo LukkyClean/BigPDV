@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { getChecklistData, saveChecklistData } from './api/checklist.service'
 import type { ChecklistDados } from './types/checklist.types'
 import ChecklistForm from './components/ChecklistForm.vue'
+import AprovacaoArte from './components/AprovacaoArte.vue'
 import SuccessScreen from './components/SuccessScreen.vue'
 import { aplicarCorDaEmpresa, urlDaLogo } from './theme/aplicarTema'
 
@@ -87,6 +88,17 @@ function reloadPage() {
  */
 const logoExibida = computed(() => urlDaLogo(checklistData.value?.url_logo))
 const nomeExibido = computed(() => checklistData.value?.empresa_nome || 'StartBig')
+
+/**
+ * O que esta página é, decidido pela capacidade do segmento e não por um
+ * `if segmento === 'serigrafia'`. Um segmento novo que declare `aprovacao_arte`
+ * no registry ganha esta tela sem tocar neste arquivo.
+ */
+const aprovaArte = computed(
+  () => checklistData.value?.definicao?.capacidades?.includes('aprovacao_arte') ?? false,
+)
+
+const tituloPagina = computed(() => (aprovaArte.value ? 'Aprovação de Arte' : 'Vistoria de Entrada'))
 </script>
 
 <template>
@@ -101,7 +113,7 @@ const nomeExibido = computed(() => checklistData.value?.empresa_nome || 'StartBi
           class="h-9 rounded-full bg-white object-contain"
         />
         <div>
-          <h1 class="text-lg font-bold">Vistoria de Entrada</h1>
+          <h1 class="text-lg font-bold">{{ tituloPagina }}</h1>
           <p v-if="checklistData" class="text-sm text-white/80 mt-0.5">
             {{ checklistData.numero_os }}
             <span v-if="checklistData.placa"> &mdash; {{ checklistData.placa }}</span>
@@ -127,6 +139,15 @@ const nomeExibido = computed(() => checklistData.value?.empresa_nome || 'StartBi
           Tentar novamente
         </button>
       </div>
+
+      <!-- Aprovação de arte (segmento declara a capacidade) -->
+      <AprovacaoArte
+        v-else-if="(state === 'form' || state === 'submitting') && aprovaArte"
+        :fotos="checklistData?.fotos ?? []"
+        v-model:dados-adicionais="dadosAdicionais"
+        :is-submitting="state === 'submitting'"
+        @submit="handleSubmit"
+      />
 
       <!-- Form -->
       <ChecklistForm

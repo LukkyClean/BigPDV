@@ -26,6 +26,7 @@
 from typing import Any, Dict, List
 
 from ..campos import campo, tipo_de_trabalho
+from ..capacidades import CAP_APROVACAO_ARTE
 
 SEGMENTO_SERIGRAFIA = "serigrafia"
 
@@ -124,11 +125,11 @@ SERIGRAFIA = {
     "rotulo_objeto_plural": "Artes",
     "identificador": {"nome": "codigo_arte", "label": "Código da arte", "regex": None},
 
-    # Nenhuma capacidade nesta onda. Vistoria e revisoes nao se aplicam;
-    # garantia de estampa seria medida em lavagens, e nao em dias/KM; e a
-    # aprovacao de ARTE (cliente ver o mockup e liberar) e coisa diferente de
-    # aprovacao de item de orcamento -- vira capacidade propria mais adiante.
-    "capacidades": [],
+    # Vistoria e revisoes nao se aplicam; garantia de estampa seria medida em
+    # lavagens, e nao em dias/KM. Fica a aprovacao de ARTE: o cliente ve o
+    # mockup no celular e libera a producao -- e o unico ponto do processo em
+    # que estampar errado ainda custa barato.
+    "capacidades": [CAP_APROVACAO_ARTE],
 
     # Vazios porque este segmento declara por tipo de trabalho. O guard
     # (test/core/test_registry_segmentos.py) proibe usar os dois caminhos.

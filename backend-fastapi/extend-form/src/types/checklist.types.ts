@@ -32,6 +32,8 @@ export interface ChecklistDados {
   modelo: string | null
   definicao: SegmentDefinition | null
   dados_adicionais: Record<string, unknown>
+  /** Fotos anexadas à OS — na aprovação de arte, são o mockup que o cliente vê. */
+  fotos?: string[]
   /** Identidade visual da loja — quem o cliente reconhece do outro lado do QR. */
   empresa_nome?: string | null
   cor_tema?: string | null

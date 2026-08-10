@@ -29,6 +29,7 @@
 
 from .campos import campo, grupo_vistoria, tipo_de_trabalho
 from .capacidades import (
+    CAP_APROVACAO_ARTE,
     CAP_APROVACAO_ITENS,
     CAP_GARANTIA_ITENS,
     CAP_REVISOES,
@@ -61,6 +62,7 @@ __all__ = [
     "CAP_REVISOES",
     "CAP_APROVACAO_ITENS",
     "CAP_GARANTIA_ITENS",
+    "CAP_APROVACAO_ARTE",
     "CAPACIDADES_CONHECIDAS",
     # construcao
     "campo",

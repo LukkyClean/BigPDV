@@ -33,6 +33,7 @@ import type { SegmentCapability } from './segmentDefinition.type';
 const FALLBACK_POR_SEGMENTO: Record<string, SegmentCapability[]> = {
   oficina_mecanica: ['vistoria', 'revisoes', 'aprovacao_itens', 'garantia_itens'],
   assistencia_tecnica: [],
+  serigrafia: ['aprovacao_arte'],
 };
 
 /**
@@ -92,5 +93,6 @@ export function useCapacidades() {
     temRevisoes: computed(() => tem('revisoes')),
     temAprovacaoItens: computed(() => tem('aprovacao_itens')),
     temGarantiaItens: computed(() => tem('garantia_itens')),
+    temAprovacaoArte: computed(() => tem('aprovacao_arte')),
   };
 }
