@@ -45,8 +45,10 @@ from .definicoes import (
     SEGMENTO_OFICINA,
     SEGMENTO_SERIGRAFIA,
     SERIGRAFIA,
+    gerar_identificador,
     get_definicao_segmento,
     get_identificador_segmento,
+    identificador_e_gerado,
     segmento_tem_definicao,
 )
 from .identificador import (
@@ -80,6 +82,8 @@ __all__ = [
     "get_definicao_segmento",
     "segmento_tem_definicao",
     "get_identificador_segmento",
+    "identificador_e_gerado",
+    "gerar_identificador",
     # identificador
     "IDENTIFICADORES_GENERICOS",
     "IDENTIFICADOR_MIN_CARACTERES",

@@ -189,9 +189,18 @@ class OSIdentificadorCheck(BaseModel):
 class OSObjetoCreate(BaseModel):
     """Payload para registrar um objeto de serviço ao abrir uma OS."""
     tipo_equipamento: Optional[TipoEquipamento] = Field(None, description="Tipo do equipamento (opcional - compatibilidade)")
-    marca: str = Field(..., max_length=100, description="Marca do objeto (ex: Fiat, Samsung)")
-    modelo: str = Field(..., max_length=100, description="Modelo do objeto (ex: Uno, S20)")
-    numero_serie: str = Field(..., max_length=100, description="Número de série ou identificador principal (ex: Placa, Serial)")
+    # marca/modelo tambem sao opcionais aqui pela MESMA razao de numero_serie:
+    # no segmento que gera identificador, o formulario pergunta so o nome da
+    # arte, e o servico preenche o resto. Continuam exigidos para os demais --
+    # ver _exigir_campos_do_objeto em services/ordem_servico.py.
+    marca: Optional[str] = Field(None, max_length=100, description="Marca do objeto (ex: Fiat, Samsung)")
+    modelo: Optional[str] = Field(None, max_length=100, description="Modelo do objeto (ex: Uno, S20)")
+    # Opcional no schema porque ha segmento em que o SISTEMA gera o
+    # identificador (serigrafia: "ART-0042"), e o formulario nem pergunta.
+    # Para quem NAO gera, a exigencia continua existindo -- ela so mudou de
+    # lugar, para o servico, que sabe qual e o segmento. Ver
+    # _preencher_identificador_gerado em services/ordem_servico.py.
+    numero_serie: Optional[str] = Field(None, max_length=100, description="Número de série ou identificador principal (ex: Placa, Serial). Gerado pelo sistema em segmentos que o declaram.")
     imei: Optional[str] = Field(None, max_length=20, description="IMEI (opcional - compatibilidade)")
     cor: Optional[str] = Field(None, max_length=50, description="Cor do objeto")
     proxima_revisao_data: Optional[date] = Field(None, description="Data agendada da próxima revisão (oficina)")

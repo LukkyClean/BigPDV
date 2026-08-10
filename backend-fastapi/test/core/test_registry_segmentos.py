@@ -164,6 +164,31 @@ def test_tipos_de_trabalho_sao_bem_formados():
         assert len(ids) == len(set(ids)), f"{segmento}: ids repetidos {ids}"
 
 
+def test_identificador_gerado_nao_e_pedido_ao_usuario():
+    """A regra que nasceu do erro do "Codigo da arte".
+
+    Se o SISTEMA gera o identificador, o formulario nao pode pedi-lo: campo
+    obrigatorio que o usuario nao tem como preencher vira lixo ("1", "teste"),
+    e lixo como chave faz dois bens distintos colapsarem num cadastro so.
+
+    Placa e numero de serie NAO sao gerados justamente porque existem no mundo
+    -- estao escritos no bem, e o atendente so copia.
+    """
+    for segmento, definicao in DEFINICOES.items():
+        identificador = definicao.get("identificador") or {}
+        if not identificador.get("gerado"):
+            continue
+
+        assert identificador.get("prefixo"), f"{segmento}: identificador gerado sem prefixo"
+
+        declarados = {c["nome"] for c in _campos_da_definicao(definicao)}
+        assert identificador["nome"] not in declarados, (
+            f"{segmento}: '{identificador['nome']}' e gerado pelo sistema, mas esta "
+            f"declarado como campo do formulario -- o usuario seria obrigado a "
+            f"inventar um valor que ele nao tem como saber"
+        )
+
+
 def test_segmento_com_tipos_nao_usa_veiculo_nem_checkin():
     """As duas formas de declarar campo se excluem: misturar faria a tela
     dinamica ignorar `veiculo`/`checkin` sem ninguem perceber."""

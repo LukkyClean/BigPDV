@@ -198,6 +198,70 @@ def _recalcular_valor_total_os(os_in_db: OSModel) -> None:
 # CRIAÇÃO (CREATE)
 # ===========================================================================
 
+def _preencher_identificador_gerado(
+    db: Session,
+    objeto_data: dict,
+    numero_os: str,
+    cliente,
+) -> None:
+    """Preenche, para segmentos que declaram identificador GERADO, o que o
+    usuário não tem como saber.
+
+    Muda `objeto_data` no lugar. É no-op para oficina e informática, que pedem
+    o identificador ao usuário porque ele existe no mundo (placa, nº de série).
+
+    Preenche também `marca`/`modelo` quando vierem vazios: são colunas NOT NULL
+    herdadas do desenho de veículo/equipamento, e numa serigrafia a "marca" da
+    arte, no caso comum, é o próprio cliente que está pedindo. Exigir que ele
+    redigite o nome do cliente ali seria atrito sem informação nova.
+    """
+    segmento = get_segmento_atual(db)
+    if not reg.identificador_e_gerado(segmento):
+        return
+
+    if not (objeto_data.get("numero_serie") or "").strip():
+        objeto_data["numero_serie"] = reg.gerar_identificador(segmento, numero_os)
+
+    if not (objeto_data.get("marca") or "").strip():
+        objeto_data["marca"] = (getattr(cliente, "nome", None) or "").strip() or "—"
+
+    if not (objeto_data.get("modelo") or "").strip():
+        objeto_data["modelo"] = objeto_data["numero_serie"]
+
+
+def _exigir_campos_do_objeto(db: Session, objeto_data: dict) -> None:
+    """Repõe, no serviço, as exigências que saíram do schema.
+
+    `marca`, `modelo` e `numero_serie` viraram opcionais no schema para o
+    segmento que gera o próprio identificador e preenche o resto. Sem esta
+    guarda, informática e oficina — que contavam com o `Field(...)` obrigatório
+    — passariam a aceitar OS sem esses dados, e o objeto do cliente ficaria
+    inencontrável. São colunas NOT NULL, então o banco explodiria com um 500
+    feio em vez de um 422 explicando o que falta.
+
+    Esta função é o que protege os dois segmentos que já estão em produção.
+    Coberta por test/api/v1/test_os_identificador_gerado.py.
+    """
+    identificador = reg.get_identificador_segmento(get_segmento_atual(db)) or {}
+
+    faltando = [
+        rotulo
+        for campo, rotulo in (
+            ("marca", "Marca"),
+            ("modelo", "Modelo"),
+            ("numero_serie", identificador.get("label") or "Número de série"),
+        )
+        if not (objeto_data.get(campo) or "").strip()
+    ]
+    if not faltando:
+        return
+
+    raise HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        detail=f"{', '.join(faltando)}: obrigatório para abrir uma OS.",
+    )
+
+
 def create_ordem_servico(db: Session, os_to_create: OrdemServicoCreate) -> OSModel:
     """
     Cria uma nova OS com equipamento e itens em uma única transação.
@@ -261,6 +325,17 @@ def create_ordem_servico(db: Session, os_to_create: OrdemServicoCreate) -> OSMod
                 obj_dados_adicionais[legacy_field] = val.value if hasattr(val, 'value') else val
 
     objeto_data["dados_adicionais"] = obj_dados_adicionais
+
+    # --- Identificador gerado pelo sistema (ex: serigrafia) ---
+    # Placa e numero de serie existem no mundo: estao escritos no bem, e o
+    # atendente so copia. Codigo de arte nao existe ate alguem inventar -- e
+    # campo obrigatorio que o usuario nao tem como preencher vira lixo ("1",
+    # "teste"), que e como dois notebooks ja colapsaram num cadastro so.
+    #
+    # Aqui o codigo nasce do numero da OS, que ja e sequencial e unico: nao ha
+    # contador novo para manter nem corrida entre terminais para tratar.
+    _preencher_identificador_gerado(db, objeto_data, next_number, cliente_in_db)
+    _exigir_campos_do_objeto(db, objeto_data)
 
     # Validacao especifica de segmento (ex: placa para oficina). Gated: e no-op
     # para segmentos sem regra dedicada, entao o fluxo de informatica permanece intacto.

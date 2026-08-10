@@ -39,27 +39,42 @@ def _campos_da_arte() -> List[Dict[str, Any]]:
     """A arte e o que se repete quando o cliente volta.
 
     Ela ocupa o lugar do objeto de servico -- o mesmo mecanismo que liga veiculo
-    ao dono e equipamento ao cliente. Cliente volta em outubro pedindo mais 200
-    com a mesma arte, e o historico, a busca e o "ja fiz isso pra ela" saem de
-    graca do motor que ja existe.
+    ao dono e equipamento ao cliente.
 
-    Os tres campos sao COLUNAS de objetos_servico (NOT NULL), por isso
-    `origem="coluna"`. `codigo_arte` grava em `numero_serie`, do mesmo jeito que
-    a placa da oficina -- o nome do campo nao e o nome da coluna, e e o contrato
-    que carrega essa diferenca.
+    REPARE NO QUE **NAO** ESTA AQUI: o codigo da arte.
 
-    Repetido nos tres tipos de trabalho porque a arte existe em todos; a funcao
-    evita triplicar a declaracao a mao.
+    A primeira versao pedia "Codigo da arte" como campo obrigatorio, copiando o
+    formato da placa e do numero de serie. Estava errado, e o dono do produto
+    achou o erro com uma pergunta de uma linha: "e se e um cliente novo, como vou
+    saber esse codigo?".
+
+    Placa e numero de serie EXISTEM NO MUNDO -- estao escritos no bem. Codigo de
+    arte nao existe ate alguem inventar. Campo obrigatorio que o usuario nao tem
+    como preencher nao vira dado, vira lixo: "1", "arte", "teste" -- exatamente o
+    "S/N" que ja colapsou dois notebooks num cadastro so (ver
+    identificador_pesquisavel no motor).
+
+    Os sistemas do ramo (Printavo, shopVOX, DecoNetwork, YoPrint) tambem nao tem
+    codigo de arte: a arte e um ARQUIVO anexado ao pedido, achada pelo cliente e
+    reaproveitada clonando o pedido anterior.
+
+    Entao o codigo passou a ser GERADO (ver `identificador` desta definicao) e
+    saiu da frente do atendente. Ele continua existindo -- e util impresso, para
+    etiquetar a tela guardada na prateleira --, mas como SAIDA, nunca entrada.
+
+    Sobra um campo obrigatorio: o nome da arte, que o atendente sabe.
     """
     return [
-        campo("codigo_arte", "Código da arte", "texto", obrigatorio=True,
-              escopo="objeto", grupo=GRUPO_ARTE, origem="coluna", coluna="numero_serie"),
         campo("nome_arte", "Nome da arte", "texto", obrigatorio=True,
-              escopo="objeto", grupo=GRUPO_ARTE, origem="coluna", coluna="modelo"),
+              escopo="objeto", grupo=GRUPO_ARTE, origem="coluna", coluna="modelo",
+              largura="inteira"),
         # A arte pertence a uma empresa/marca, que nem sempre e quem paga: um
-        # revendedor pode encomendar para tres clientes finais diferentes.
-        campo("empresa_arte", "Empresa / Marca da estampa", "texto", obrigatorio=True,
-              escopo="objeto", grupo=GRUPO_ARTE, origem="coluna", coluna="marca"),
+        # revendedor pode encomendar para tres clientes finais diferentes. Em
+        # branco, o servico preenche com o nome do cliente da OS -- o caso comum
+        # e a estampa ser da propria pessoa que esta pedindo.
+        campo("empresa_arte", "Empresa / Marca da estampa", "texto",
+              escopo="objeto", grupo=GRUPO_ARTE, origem="coluna", coluna="marca",
+              largura="inteira"),
     ]
 
 
@@ -123,7 +138,22 @@ SERIGRAFIA = {
     "segmento": SEGMENTO_SERIGRAFIA,
     "rotulo_objeto_singular": "Arte",
     "rotulo_objeto_plural": "Artes",
-    "identificador": {"nome": "codigo_arte", "label": "Código da arte", "regex": None},
+    # `gerado` diz ao servico que o sistema cria este identificador -- o usuario
+    # nao digita e o formulario nao pergunta. O codigo nasce do numero da OS
+    # ("ART-0042"), entao e unico sem contador novo e sem corrida entre
+    # terminais: ele herda a unicidade do numero da OS, que ja existe.
+    #
+    # Vale impresso: a tela (matriz) fica guardada numa prateleira e precisa de
+    # etiqueta. "ART-0042" no quadro da tela e como se acha ela seis meses
+    # depois. E o unico ponto em que eu discordo dos sistemas do ramo, que nao
+    # tem codigo nenhum -- eles nao lidam com a prateleira fisica.
+    "identificador": {
+        "nome": "codigo_arte",
+        "label": "Código da arte",
+        "regex": None,
+        "gerado": True,
+        "prefixo": "ART",
+    },
 
     # Vistoria e revisoes nao se aplicam; garantia de estampa seria medida em
     # lavagens, e nao em dias/KM. Fica a aprovacao de ARTE: o cliente ve o

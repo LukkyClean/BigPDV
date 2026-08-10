@@ -56,6 +56,16 @@ export interface SegmentIdentifier {
   label: string;
   /** Regex de validação (ex: placa). `null` quando não há. */
   regex: string | null;
+  /**
+   * `true` quando o SISTEMA cria o identificador e o formulário não o pergunta.
+   *
+   * Placa e nº de série existem no mundo — estão escritos no bem, e o atendente
+   * só copia. Código de arte não existe até alguém inventar, e campo
+   * obrigatório que o usuário não tem como preencher vira lixo ("1", "teste").
+   */
+  gerado?: boolean;
+  /** Prefixo do identificador gerado (ex: "ART" → "ART-0042"). */
+  prefixo?: string;
 }
 
 /** Grupo da vistoria de inspeção; cada item é avaliado por um dos `estados`. */
