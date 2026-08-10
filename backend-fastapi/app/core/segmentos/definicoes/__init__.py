@@ -11,13 +11,14 @@ from typing import Any, Dict, Optional
 
 from .assistencia import ASSISTENCIA, SEGMENTO_ASSISTENCIA
 from .oficina import OFICINA, PLACA_REGEX, SEGMENTO_OFICINA
+from .serigrafia import SEGMENTO_SERIGRAFIA, SERIGRAFIA
 
 # Cada definicao carrega o proprio identificador na chave "segmento", entao o
 # mapa se monta sozinho -- nao ha uma segunda lista de nomes para esquecer de
 # atualizar.
 DEFINICOES: Dict[str, Dict[str, Any]] = {
     d["segmento"]: d
-    for d in (OFICINA, ASSISTENCIA)
+    for d in (OFICINA, ASSISTENCIA, SERIGRAFIA)
 }
 
 
@@ -44,9 +45,11 @@ __all__ = [
     "DEFINICOES",
     "OFICINA",
     "ASSISTENCIA",
+    "SERIGRAFIA",
     "PLACA_REGEX",
     "SEGMENTO_OFICINA",
     "SEGMENTO_ASSISTENCIA",
+    "SEGMENTO_SERIGRAFIA",
     "get_definicao_segmento",
     "segmento_tem_definicao",
     "get_identificador_segmento",

@@ -6,6 +6,7 @@ import type { Component } from 'vue';
 export type BusinessSegment =
   | 'assistencia_tecnica'
   | 'oficina_mecanica'
+  | 'serigrafia'
   | 'mercado'
   | 'marcenaria'
   | 'eletricista'

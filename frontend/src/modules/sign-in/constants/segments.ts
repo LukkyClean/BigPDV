@@ -23,6 +23,12 @@ export const BUSINESS_SEGMENTS: SegmentOption[] = [
     description: 'Manutenção e reparo de veículos',
   },
   {
+    id: 'serigrafia',
+    label: 'Serigrafia',
+    icon: 'shirt',
+    description: 'Estamparia de camisas, sacolas e brindes',
+  },
+  {
     id: 'mercado',
     label: 'Mercado',
     icon: 'store',
@@ -63,6 +69,8 @@ export const SEGMENT_TIPS: Record<string, string> = {
     'Para assistências técnicas, recomendamos configurar ordens de serviço após o cadastro.',
   oficina_mecanica:
     'Para oficinas mecânicas, você poderá cadastrar veículos e peças no módulo de OS.',
+  serigrafia:
+    'Para serigrafias, cadastre a pintura por número de cores em Serviços e os tipos de sacola em Produtos — a OS já multiplica pelo que o cliente pedir.',
   mercado:
     'Para mercados, o módulo de estoque e PDV estarão prontos para uso imediato.',
   marcenaria:

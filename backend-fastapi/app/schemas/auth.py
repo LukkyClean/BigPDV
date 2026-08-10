@@ -11,7 +11,7 @@ from app.schemas.endereco import Endereco
 
 # Tipos válidos para enums do setup
 SEGMENTOS_VALIDOS = Literal[
-    'assistencia_tecnica', 'oficina_mecanica',
+    'assistencia_tecnica', 'oficina_mecanica', 'serigrafia',
     'mercado', 'marcenaria', 'eletricista', 'outros'
 ]
 GENEROS_VALIDOS = Literal['MASCULINO', 'FEMININO', 'OUTRO']
