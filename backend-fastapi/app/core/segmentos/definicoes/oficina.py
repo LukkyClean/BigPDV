@@ -21,6 +21,11 @@ SEGMENTO_OFICINA = "oficina_mecanica"
 # A validacao real normaliza (uppercase, sem hifen) antes de aplicar.
 PLACA_REGEX = r"^(?:[A-Z]{3}\d{4}|[A-Z]{3}\d[A-Z]\d{2})$"
 
+# Cabecalhos das secoes do formulario. Constantes para nao divergirem por erro
+# de digitacao -- o renderizador agrupa por igualdade de string.
+GRUPO_VEICULO = "Dados do Veículo"
+GRUPO_CHECKIN = "Check-in de Entrada"
+
 
 OFICINA = {
     "segmento": SEGMENTO_OFICINA,
@@ -39,29 +44,39 @@ OFICINA = {
     ],
 
     # --- Dados do veiculo (escopo=objeto) ---
+    # ATENCAO a `origem`: marca/modelo/cor sao COLUNAS reais de objetos_servico,
+    # e a placa e a coluna `numero_serie` (o nome do campo difere do nome da
+    # coluna). Ano e chassi vivem no JSON. Quem renderizar isso as cegas precisa
+    # da distincao para nao gravar no lugar errado.
     "veiculo": [
-        campo("placa", "Placa", "texto", obrigatorio=True, escopo="objeto"),
-        campo("marca", "Marca", "texto", escopo="objeto"),
-        campo("modelo", "Modelo", "texto", escopo="objeto"),
-        campo("cor", "Cor", "texto", escopo="objeto"),
-        campo("ano", "Ano", "inteiro", escopo="objeto"),
-        campo("chassi", "Chassi", "texto", escopo="objeto"),
+        campo("placa", "Placa", "texto", obrigatorio=True, escopo="objeto",
+              grupo=GRUPO_VEICULO, origem="coluna", coluna="numero_serie"),
+        campo("marca", "Marca", "texto", escopo="objeto",
+              grupo=GRUPO_VEICULO, origem="coluna"),
+        campo("modelo", "Modelo", "texto", escopo="objeto",
+              grupo=GRUPO_VEICULO, origem="coluna"),
+        campo("cor", "Cor", "texto", escopo="objeto",
+              grupo=GRUPO_VEICULO, origem="coluna"),
+        campo("ano", "Ano", "inteiro", escopo="objeto", grupo=GRUPO_VEICULO),
+        campo("chassi", "Chassi", "texto", escopo="objeto", grupo=GRUPO_VEICULO),
     ],
 
     # --- Check-in de entrada (escopo=os) ---
     "checkin": [
-        campo("km_entrada", "KM de entrada", "inteiro", escopo="os"),
-        campo("prisma", "Prisma", "texto", escopo="os"),
-        campo("ct", "CT", "texto", escopo="os"),
-        campo("estacao_radio", "Estação do rádio", "texto", escopo="os"),
+        campo("km_entrada", "KM de entrada", "inteiro", escopo="os", grupo=GRUPO_CHECKIN),
+        campo("prisma", "Prisma", "texto", escopo="os", grupo=GRUPO_CHECKIN),
+        campo("ct", "CT", "texto", escopo="os", grupo=GRUPO_CHECKIN),
+        campo("estacao_radio", "Estação do rádio", "texto", escopo="os", grupo=GRUPO_CHECKIN),
         campo("combustivel_nivel", "Nível de combustível", "opcao",
-              opcoes=["VAZIO", "1/4", "1/2", "3/4", "CHEIO"], escopo="os"),
+              opcoes=["VAZIO", "1/4", "1/2", "3/4", "CHEIO"], escopo="os",
+              grupo=GRUPO_CHECKIN),
         campo("combustivel_tipo", "Tipo de combustível", "opcao",
-              opcoes=["ALCOOL", "GASOLINA", "DIESEL"], escopo="os"),
+              opcoes=["ALCOOL", "GASOLINA", "DIESEL"], escopo="os",
+              grupo=GRUPO_CHECKIN),
         campo("pneus_estado", "Estado dos pneus", "opcao",
-              opcoes=["BOM", "REGULAR", "RUIM"], escopo="os"),
+              opcoes=["BOM", "REGULAR", "RUIM"], escopo="os", grupo=GRUPO_CHECKIN),
         campo("estepe_estado", "Estado do estepe", "opcao",
-              opcoes=["BOM", "REGULAR", "RUIM"], escopo="os"),
+              opcoes=["BOM", "REGULAR", "RUIM"], escopo="os", grupo=GRUPO_CHECKIN),
     ],
 
     # --- Acessorios presentes (checklist sim/nao) ---

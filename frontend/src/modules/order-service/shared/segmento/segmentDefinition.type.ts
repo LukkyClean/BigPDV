@@ -6,11 +6,32 @@
 // que novos segmentos (ex: oficina_moto) funcionem sem alterar o frontend.
 // ---------------------------------------------------------------------------
 
-/** Tipo de widget de um campo dinâmico. */
+/**
+ * Tipo de widget de um campo dinâmico.
+ *
+ * Espelha TIPOS_DE_CAMPO_SUPORTADOS (app/core/segmentos/campos.py). O
+ * renderizador faz `switch` exaustivo sobre esta união: acrescentar um tipo
+ * aqui sem desenhá-lo lá **não compila**. É de propósito — é o que impede um
+ * segmento novo de declarar campo que ninguém sabe mostrar.
+ */
 export type SegmentFieldType = 'texto' | 'numero' | 'inteiro' | 'opcao' | 'booleano';
 
 /** Onde o campo é persistido: no objeto (veículo) ou na OS (check-in). */
 export type SegmentFieldScope = 'objeto' | 'os';
+
+/** Quanto o campo ocupa na grade de 2 colunas. */
+export type SegmentFieldWidth = 'meia' | 'inteira';
+
+/**
+ * Como o valor é persistido.
+ *
+ * `coluna` = coluna real da tabela (marca, modelo, cor, numero_serie).
+ * `dados_adicionais` = chave no JSON — o caso de todo campo de segmento novo.
+ *
+ * Existe porque o projeto mistura os dois, e um renderizador que não saiba a
+ * diferença grava no lugar errado.
+ */
+export type SegmentFieldOrigin = 'coluna' | 'dados_adicionais';
 
 /** Descrição de um campo dinâmico do segmento. */
 export interface SegmentField {
@@ -21,6 +42,12 @@ export interface SegmentField {
   escopo: SegmentFieldScope;
   /** Presente quando `tipo === 'opcao'`. */
   opcoes?: string[];
+  /** Cabeçalho da seção em que o campo aparece. `null` = sem seção. */
+  grupo?: string | null;
+  largura?: SegmentFieldWidth;
+  origem?: SegmentFieldOrigin;
+  /** Nome da coluna real, quando difere de `nome` (ex: placa → numero_serie). */
+  coluna?: string;
 }
 
 /** Campo identificador principal do objeto (ex: placa mapeada em numero_serie). */
