@@ -33,6 +33,7 @@ const TEXTOS_PADRAO: TextosCupomOS = {
   objeto: 'Objeto',
   identificador: 'N/S',
   defeito: 'DEFEITO RELATADO',
+  assinaturaLoja: 'Tecnico Responsavel',
   garantiaExclusoes: 'mau uso, liquidos, quedas ou intervencao de terceiros.',
   semReparo: 'Objeto devolvido sem reparo. Sem garantia aplicavel a esta OS.',
   cancelamento:
@@ -291,7 +292,7 @@ export function osToEscPos(
     .alinhar('centro')
     .linha(linhaAssinatura)
     .negrito(true)
-    .linha('Tecnico Responsavel')
+    .linha(t.assinaturaLoja)
     .negrito(false)
     .pular(2)
     .linha(linhaAssinatura)

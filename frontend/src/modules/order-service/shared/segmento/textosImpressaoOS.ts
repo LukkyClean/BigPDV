@@ -30,6 +30,8 @@ export interface TextosCupomOS {
   identificador: string | null;
   /** Cabeçalho do texto livre relatado pelo cliente, em caixa alta na bobina. */
   defeito: string;
+  /** Quem assina pela loja, na bobina (sem acento). */
+  assinaturaLoja: string;
   /** Continua a frase "Nao cobre ...". */
   garantiaExclusoes: string;
   semReparo: string;
@@ -45,6 +47,13 @@ export interface TextosImpressaoOS {
   objetoPlural: string;
   /** Como a empresa se nomeia nos termos ("A empresa", "A assistência técnica"). */
   empresa: string;
+  /**
+   * Cabeçalho do quadro do objeto na A4.
+   *
+   * Vem inteiro do pacote, e não montado como `'Dados do ' + labelSingular`,
+   * porque português tem gênero: essa montagem imprimia "DADOS DO ARTE".
+   */
+  tituloObjeto: string;
   /** Rótulo do identificador na coluna da A4; `null` = usar o do contrato. */
   identificador: string | null;
   /**
@@ -57,6 +66,14 @@ export interface TextosImpressaoOS {
   /** Continua a frase "A garantia NÃO COBRE: ...". */
   garantiaExclusoes: string;
   condicoesEntrada: string;
+  /**
+   * Quem assina pela loja, na linha de assinatura.
+   *
+   * "Técnico" pressupõe conserto: numa serigrafia quem assina é o responsável
+   * pelo pedido, não um técnico. Os dois segmentos em produção mantêm a
+   * palavra que sempre imprimiram.
+   */
+  assinaturaLoja: string;
   cupom: TextosCupomOS;
 }
 
@@ -69,6 +86,7 @@ const ASSISTENCIA_TECNICA: TextosImpressaoOS = {
   objeto: 'objeto',
   objetoPlural: 'Objetos',
   empresa: 'A assistência técnica',
+  tituloObjeto: 'Dados do Equipamento',
   // O contrato chama de "Nº de série / IMEI", que não cabe na coluna da via.
   identificador: 'Nº Série',
   defeito: 'Defeito Relatado / Solicitação',
@@ -79,10 +97,12 @@ const ASSISTENCIA_TECNICA: TextosImpressaoOS = {
     + '(backup é responsabilidade do cliente) nem por chips/cartões de memória deixados no aparelho. '
     + 'Autorizo a análise técnica do objeto acima. Em caso de não aprovação do orçamento, estou ciente '
     + 'que poderá ser cobrada taxa de análise técnica.',
+  assinaturaLoja: 'Técnico Responsável',
   cupom: {
     objeto: 'Objeto',
     identificador: 'N/S',
     defeito: 'DEFEITO RELATADO',
+    assinaturaLoja: 'Tecnico Responsavel',
     garantiaExclusoes: 'mau uso, liquidos, quedas ou intervencao de terceiros.',
     semReparo: 'Objeto devolvido sem reparo. Sem garantia aplicavel a esta OS.',
     cancelamento:
@@ -105,6 +125,7 @@ const OFICINA_MECANICA: TextosImpressaoOS = {
   objeto: 'veículo',
   objetoPlural: 'Veículos',
   empresa: 'A empresa',
+  tituloObjeto: 'Dados do Veículo',
   identificador: null,
   defeito: 'Defeito Relatado / Solicitação',
   garantiaExclusoes:
@@ -115,10 +136,12 @@ const OFICINA_MECANICA: TextosImpressaoOS = {
     + 'no interior do veículo. Autorizo a execução dos serviços descritos e a movimentação do veículo '
     + 'por funcionários da empresa para testes e diagnóstico. Em caso de não aprovação do orçamento, '
     + 'estou ciente que poderá ser cobrada taxa de diagnóstico.',
+  assinaturaLoja: 'Técnico Responsável',
   cupom: {
     objeto: 'Veiculo',
     identificador: null,
     defeito: 'DEFEITO RELATADO',
+    assinaturaLoja: 'Tecnico Responsavel',
     garantiaExclusoes: 'mau uso, falta de manutencao, desgaste natural ou intervencao de terceiros.',
     semReparo: 'Veiculo devolvido sem reparo. Sem garantia aplicavel a esta OS.',
     cancelamento:
@@ -150,6 +173,7 @@ const SERIGRAFIA: TextosImpressaoOS = {
   objeto: 'peça',
   objetoPlural: 'Peças',
   empresa: 'A empresa',
+  tituloObjeto: 'Dados da Arte',
   // O contrato chama de "Código da arte", que não cabe na coluna da via.
   identificador: 'Arte',
   defeito: 'Descrição do Pedido',
@@ -161,10 +185,12 @@ const SERIGRAFIA: TextosImpressaoOS = {
     + 'responsabiliza por defeitos de fabricação das peças fornecidas pelo cliente nem repõe peças '
     + 'danificadas durante o processo de estampa. O cliente declara ter conferido e aprovado a arte, '
     + 'as cores e a posição da estampa antes da produção.',
+  assinaturaLoja: 'Responsável',
   cupom: {
     objeto: 'Peca',
     identificador: 'Arte',
     defeito: 'DESCRICAO DO PEDIDO',
+    assinaturaLoja: 'Responsavel',
     garantiaExclusoes:
       'agua quente, alvejante, secadora, ferro sobre a estampa ou uso indevido da peca.',
     semReparo: 'Pecas devolvidas sem estampa. Sem garantia aplicavel a esta OS.',

@@ -99,6 +99,13 @@ def test_codigo_nasce_do_numero_da_os():
     assert gerar_identificador("oficina_mecanica", "0042") is None
 
 
+def test_codigo_nao_empilha_dois_prefixos():
+    """O numero real da OS e "OS-2026-000001". Concatenar direto dava
+    "ART-OS-2026-000001" -- dois prefixos, feio de ler e pior de escrever no
+    quadro da tela, que e para o que este codigo existe."""
+    assert gerar_identificador("serigrafia", "OS-2026-000001") == "ART-2026-000001"
+
+
 # =========================
 # Serigrafia: o sistema preenche o que o usuario nao sabe
 # =========================
@@ -116,7 +123,13 @@ def test_serigrafia_abre_os_sem_o_usuario_informar_codigo(client, db_session):
     assert r.status_code == status.HTTP_201_CREATED, r.text
     corpo = r.json()
     objeto = corpo.get("objeto") or corpo.get("equipamento")
-    assert objeto["numero_serie"] == f"ART-{corpo['numero_os']}"
+
+    codigo = objeto["numero_serie"]
+    numero_os = corpo["numero_os"]
+    # Carrega o numero da OS, com UM prefixo so: "OS-2026-000001" vira
+    # "ART-2026-000001", e nao "ART-OS-2026-000001".
+    assert codigo == f"ART-{numero_os.removeprefix('OS-')}"
+    assert "ART-OS-" not in codigo
 
 
 def test_serigrafia_preenche_a_marca_com_o_cliente_quando_vazia(client, db_session):

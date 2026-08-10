@@ -377,7 +377,7 @@ const pix = computed(() =>
     </template>
 
     <PrintCupomSignatures
-      left-label="Tecnico Responsavel"
+      :left-label="textos.cupom.assinaturaLoja"
       right-label="Assinatura do Cliente"
       :right-name="orderService.cliente ? getClienteNome(orderService.cliente) : undefined"
     />

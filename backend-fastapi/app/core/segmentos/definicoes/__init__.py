@@ -52,16 +52,25 @@ def identificador_e_gerado(segmento: Optional[str]) -> bool:
 
 
 def gerar_identificador(segmento: Optional[str], numero_os: str) -> Optional[str]:
-    """Identificador derivado do numero da OS. Ex: ART-0042.
+    """Identificador derivado do numero da OS. Ex: ART-2026-000001.
 
     Nasce do numero da OS de proposito: ele ja e sequencial e unico, entao nao
     ha contador novo para manter nem corrida entre terminais para tratar.
+
+    O "OS-" do numero e removido antes de compor: o numero real e
+    "OS-2026-000001", e concatenar direto produzia "ART-OS-2026-000001" -- dois
+    prefixos empilhados, feio de ler e pior ainda de escrever no quadro da tela,
+    que e justamente para o que este codigo serve.
     """
     identificador = get_identificador_segmento(segmento) or {}
     if not identificador.get("gerado"):
         return None
+
     prefixo = identificador.get("prefixo") or "ID"
-    return f"{prefixo}-{numero_os}"
+    numero = (numero_os or "").strip()
+    if numero.upper().startswith("OS-"):
+        numero = numero[3:]
+    return f"{prefixo}-{numero}"
 
 
 __all__ = [

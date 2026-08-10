@@ -78,6 +78,30 @@ export function useObjetoLabels() {
       ?? 'Descreva o problema principal relatado pelo cliente...',
   );
 
+  /**
+   * Rótulo que o segmento dá a uma COLUNA do objeto (`marca`, `modelo`, `cor`).
+   *
+   * A via impressa mostrava "Marca: BigTec / Modelo: BigTec" numa OS de
+   * serigrafia — os nomes internos das colunas, que não dizem nada ao cliente.
+   * O contrato já sabe que ali é "Empresa / Marca da estampa" e "Nome da arte":
+   * os campos declaram `origem: 'coluna'` e `coluna: 'marca'`.
+   *
+   * Sem declaração, devolve o padrão — que é o que oficina e informática
+   * imprimem hoje, palavra por palavra.
+   */
+  function labelDaColuna(coluna: string, padrao: string): string {
+    const def = definicao.value;
+    if (!def) return padrao;
+
+    const todos = [
+      ...(def.veiculo ?? []),
+      ...(def.checkin ?? []),
+      ...(def.tipos ?? []).flatMap((tipo) => tipo.campos),
+    ];
+    const campo = todos.find((c) => c.origem === 'coluna' && (c.coluna ?? c.nome) === coluna);
+    return campo?.label ?? padrao;
+  }
+
   return {
     definicao,
     objetoIcon,
@@ -87,5 +111,6 @@ export function useObjetoLabels() {
     identificadorRegex,
     labelDefeito,
     placeholderDefeito,
+    labelDaColuna,
   };
 }

@@ -29,6 +29,7 @@ import PrintSignatures from '@/shared/components/print/a4/PrintSignatures.vue';
 import PrintFooter from '@/shared/components/print/a4/PrintFooter.vue';
 import { useObjetoLabels } from '@/modules/order-service/shared/segmento/useObjetoLabels';
 import { useTextosImpressaoOS } from '@/modules/order-service/shared/segmento/textosImpressaoOS';
+import { useTiposDeTrabalho } from '@/modules/order-service/shared/segmento/useTiposDeTrabalho';
 import { useAtributosImpressaoOS } from '@/modules/order-service/shared/segmento/useAtributosImpressaoOS';
 import { formatGarantiaItem } from '@/modules/order-service/shared/utils/formatters';
 
@@ -38,7 +39,8 @@ const props = defineProps<{
 }>();
 
 const { companyInfo } = useCompanyPrintInfo();
-const { labelSingular, objetoIcon } = useObjetoLabels();
+const { labelSingular, objetoIcon, labelDaColuna } = useObjetoLabels();
+const { tipoPorId } = useTiposDeTrabalho();
 const { textos, identificadorA4 } = useTextosImpressaoOS();
 const { atributos } = useAtributosImpressaoOS();
 
@@ -58,6 +60,24 @@ const atributosObjeto = computed(() =>
 const mostrarTipoObjeto = computed(() =>
   tipoObjetoRelevante(props.ordemServico?.objeto?.tipo_equipamento, labelSingular.value),
 );
+
+/**
+ * Linha em destaque sob o cabeçalho do quadro.
+ *
+ * Em segmento com tipos de trabalho, é o TIPO ("Camisa (pintura)", "Sacola de
+ * papel") — que é o que quem vai produzir precisa ler primeiro. Antes saía
+ * "Equipamento" ali, herdado do shim de compatibilidade: uma palavra que não
+ * diz nada numa OS de arte.
+ *
+ * Nos demais segmentos, continua sendo o `tipo_equipamento` de sempre.
+ */
+const subtituloObjeto = computed<string | null>(() => {
+  const tipo = tipoPorId(props.ordemServico?.dados_adicionais?.tipo_trabalho as string | undefined);
+  if (tipo) return tipo.label;
+  return mostrarTipoObjeto.value
+    ? (props.ordemServico?.objeto?.tipo_equipamento ?? null)
+    : null;
+});
 
 const situacao = computed(() => props.ordemServico?.situacao_equipamento ?? null);
 
@@ -197,22 +217,34 @@ const pix = computed(() =>
       <div class="border border-neutral-300 rounded-lg overflow-hidden">
         <div class="bg-neutral-100 px-3 py-1.5 border-b border-neutral-200 flex items-center gap-2">
           <component :is="objetoIcon" :size="14" class="text-neutral-600" />
-          <h3 class="text-xs font-bold uppercase text-neutral-800">Dados do {{ labelSingular }}</h3>
+          <h3 class="text-xs font-bold uppercase text-neutral-800">{{ textos.tituloObjeto }}</h3>
         </div>
         <div class="p-3 text-xs space-y-1.5">
-          <div v-if="mostrarTipoObjeto || situacaoConfig" class="flex items-center gap-2">
-            <p v-if="mostrarTipoObjeto" class="text-sm font-bold text-neutral-900">{{ ordemServico.objeto.tipo_equipamento }}</p>
+          <div v-if="subtituloObjeto || situacaoConfig" class="flex items-center gap-2">
+            <p v-if="subtituloObjeto" class="text-sm font-bold text-neutral-900">{{ subtituloObjeto }}</p>
             <span v-if="situacaoConfig" :class="['px-2 py-0.5 rounded-full text-[10px] font-bold', situacaoConfig.cls]">
               {{ situacaoConfig.label }}
             </span>
           </div>
+          <!-- Rótulos das colunas vêm do contrato: em serigrafia, "Marca" e
+               "Modelo" são "Empresa / Marca da estampa" e "Nome da arte". -->
           <div class="grid grid-cols-2 gap-2">
-            <p><span class="font-bold text-neutral-700">Marca:</span> {{ ordemServico.objeto.marca || '-' }}</p>
-            <p><span class="font-bold text-neutral-700">Modelo:</span> {{ ordemServico.objeto.modelo || '-' }}</p>
+            <p v-if="ordemServico.objeto.marca">
+              <span class="font-bold text-neutral-700">{{ labelDaColuna('marca', 'Marca') }}:</span>
+              {{ ordemServico.objeto.marca }}
+            </p>
+            <p v-if="ordemServico.objeto.modelo">
+              <span class="font-bold text-neutral-700">{{ labelDaColuna('modelo', 'Modelo') }}:</span>
+              {{ ordemServico.objeto.modelo }}
+            </p>
           </div>
           <div class="grid grid-cols-2 gap-2">
             <p><span class="font-bold text-neutral-700">{{ identificadorA4 }}:</span> {{ ordemServico.objeto.numero_serie || '-' }}</p>
-            <p><span class="font-bold text-neutral-700">Cor:</span> {{ ordemServico.objeto.cor || '-' }}</p>
+            <!-- "Cor: -" ocupava linha sem dizer nada; a arte nem tem cor. -->
+            <p v-if="ordemServico.objeto.cor">
+              <span class="font-bold text-neutral-700">{{ labelDaColuna('cor', 'Cor') }}:</span>
+              {{ ordemServico.objeto.cor }}
+            </p>
           </div>
           <!-- Atributos do segmento (oficina: Ano, Chassi, KM de entrada). -->
           <div v-if="atributosObjeto.length" class="grid grid-cols-2 gap-2">
@@ -413,7 +445,7 @@ const pix = computed(() =>
     </div>
 
     <PrintSignatures
-      left-label="Técnico Responsável"
+      :left-label="textos.assinaturaLoja"
       right-label="Assinatura do Cliente"
       :right-name="ordemServico.cliente ? getClienteNome(ordemServico.cliente) : undefined"
     />
