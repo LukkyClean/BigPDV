@@ -120,9 +120,55 @@ const OFICINA_MECANICA: TextosImpressaoOS = {
   },
 };
 
+/**
+ * Serigrafia. Duas escolhas de vocabulário que valem explicação:
+ *
+ * 1. O substantivo é **peça**, não "arte". O objeto de serviço é a arte (é ela
+ *    que se repete entre pedidos), mas quem entra e sai da loja é a peça — e a
+ *    via fala do que o cliente entrega e leva de volta. "Arte devolvida sem
+ *    estampa" não diz nada; "Peças devolvidas sem estampa" diz tudo.
+ *
+ * 2. As condições de entrada carregam a cláusula de peça do cliente, que é o
+ *    padrão do ramo: peça nova e sem uso, e a loja não repõe o que estragar no
+ *    processo. Numa loja que estampa peça de terceiro, esse parágrafo é a
+ *    diferença entre um prejuízo combinado e uma discussão no balcão.
+ */
+const SERIGRAFIA: TextosImpressaoOS = {
+  objeto: 'peça',
+  objetoPlural: 'Peças',
+  empresa: 'A empresa',
+  // O contrato chama de "Código da arte", que não cabe na coluna da via.
+  identificador: 'Arte',
+  garantiaExclusoes:
+    'lavagem com água quente, uso de alvejante ou secadora, passar ferro diretamente sobre a estampa, '
+    + 'desgaste natural por lavagens sucessivas ou uso indevido da peça.',
+  condicoesEntrada:
+    'As peças entregues pelo cliente devem ser novas, sem uso e do mesmo modelo. A empresa não se '
+    + 'responsabiliza por defeitos de fabricação das peças fornecidas pelo cliente nem repõe peças '
+    + 'danificadas durante o processo de estampa. O cliente declara ter conferido e aprovado a arte, '
+    + 'as cores e a posição da estampa antes da produção.',
+  cupom: {
+    objeto: 'Peca',
+    identificador: 'Arte',
+    garantiaExclusoes:
+      'agua quente, alvejante, secadora, ferro sobre a estampa ou uso indevido da peca.',
+    semReparo: 'Pecas devolvidas sem estampa. Sem garantia aplicavel a esta OS.',
+    cancelamento:
+      'A OS acima foi cancelada nesta data. Pecas devolvidas ao cliente sem estampa ou com producao '
+      + 'parcial, isentando a empresa de garantias sobre servicos nao concluidos.',
+    condicoesEntrada:
+      'Pecas do cliente devem ser novas e sem uso. A empresa nao repoe pecas danificadas no processo '
+      + 'de estampa. Cliente declara ter aprovado arte, cores e posicao antes da producao.',
+    prazoRetirada:
+      'PRAZO DE RETIRADA: Pecas nao retiradas em 90 dias apos aviso de conclusao serao consideradas '
+      + 'abandonadas, conforme Art. 1.275 do Codigo Civil Brasileiro.',
+  },
+};
+
 const PACOTES: Record<string, TextosImpressaoOS> = {
   oficina_mecanica: OFICINA_MECANICA,
   assistencia_tecnica: ASSISTENCIA_TECNICA,
+  serigrafia: SERIGRAFIA,
 };
 
 const PADRAO = ASSISTENCIA_TECNICA;
