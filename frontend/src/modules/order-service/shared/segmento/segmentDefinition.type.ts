@@ -78,6 +78,21 @@ export type SegmentCapability =
   | 'aprovacao_itens'
   | 'garantia_itens';
 
+/**
+ * Um processo de negócio dentro do mesmo segmento.
+ *
+ * Oficina e informática têm um só (toda OS é sobre um veículo / um
+ * equipamento). Serigrafia é o primeiro segmento em que a OS pode ser de
+ * coisas diferentes — camisa ou sacola —, cada uma com seus campos.
+ *
+ * Segmento que não declara `tipos` continua exatamente como sempre foi.
+ */
+export interface SegmentWorkType {
+  id: string;
+  label: string;
+  campos: SegmentField[];
+}
+
 /** Definição completa dos campos de um segmento com regras dedicadas. */
 export interface SegmentDefinition {
   segmento: string;
@@ -90,6 +105,11 @@ export interface SegmentDefinition {
   checkin: SegmentField[];
   acessorios: string[];
   vistoria: SegmentInspectionGroup[];
+  /**
+   * Ausente/vazio = formulário único (o caso de oficina e informática).
+   * Presente = a OS pergunta o tipo antes de mostrar os campos.
+   */
+  tipos?: SegmentWorkType[];
 }
 
 /** Resposta do endpoint de definição de campos. */

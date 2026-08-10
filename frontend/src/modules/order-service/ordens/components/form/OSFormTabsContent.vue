@@ -3,6 +3,7 @@ import { ref, computed, watch, type Component } from 'vue';
 import { ClipboardCheck, ClipboardList, Package } from 'lucide-vue-next';
 
 import OSObjetoTab from './OSObjetoTab.vue';
+import OSObjetoDinamicoTab from './OSObjetoDinamicoTab.vue';
 import OSVistoriaTab from './OSVistoriaTab.vue';
 import OSDiagnosticoTab from './OSDiagnosticoTab.vue';
 import OSServicesTab from './OSServicesTab.vue';
@@ -10,6 +11,7 @@ import type { ObjetoFormData } from '../../composables/modal/useOSFormAdapter';
 import { useOSFormView } from '../../context/useOSFormView.context';
 import { useObjetoLabels } from '@/modules/order-service/shared/segmento/useObjetoLabels';
 import { useCapacidades } from '@/modules/order-service/shared/segmento/useCapacidades';
+import { useTiposDeTrabalho } from '@/modules/order-service/shared/segmento/useTiposDeTrabalho';
 
 type TabType = 'objeto' | 'vistoria' | 'diagnostico' | 'servicos';
 
@@ -18,6 +20,11 @@ const view = useOSFormView();
 // Rótulo e ícone da aba do objeto vêm do contrato (Veículo/Equipamento).
 const { labelSingular, objetoIcon } = useObjetoLabels();
 const { temVistoria } = useCapacidades();
+
+// Qual aba de objeto usar. `temTipos` só é verdadeiro para segmento que declara
+// tipos de trabalho no registry — oficina e informática não declaram, então
+// continuam na tab curada, pelo mesmo caminho de sempre.
+const { temTipos } = useTiposDeTrabalho();
 
 const activeTab = ref<TabType>('objeto');
 
@@ -74,8 +81,19 @@ const objetoModel = computed<ObjetoFormData>({
 
     <div class="min-h-125">
       <fieldset v-if="activeTab !== 'diagnostico'" :disabled="view.isStructureLocked.value" class="contents">
+        <OSObjetoDinamicoTab
+          v-if="activeTab === 'objeto' && temTipos"
+          v-model="objetoModel"
+          :objeto-dados="view.objetoDados.value"
+          :os-dados="view.osDados.value"
+          :errors="view.formErrors.value"
+          :is-locked="view.isStructureLocked.value"
+          @update:objeto-dados="view.setObjetoDados"
+          @update:os-dados="view.setOsDados"
+        />
+
         <OSObjetoTab
-          v-if="activeTab === 'objeto'"
+          v-else-if="activeTab === 'objeto'"
           v-model="objetoModel"
           :objeto-dados="view.objetoDados.value"
           :os-dados="view.osDados.value"

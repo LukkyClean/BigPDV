@@ -27,7 +27,7 @@
 #            arquivo X mora.
 # ---------------------------------------------------------------------------
 
-from .campos import campo, grupo_vistoria
+from .campos import campo, grupo_vistoria, tipo_de_trabalho
 from .capacidades import (
     CAP_APROVACAO_ITENS,
     CAP_GARANTIA_ITENS,
@@ -63,6 +63,7 @@ __all__ = [
     # construcao
     "campo",
     "grupo_vistoria",
+    "tipo_de_trabalho",
     # definicoes
     "DEFINICOES",
     "OFICINA",

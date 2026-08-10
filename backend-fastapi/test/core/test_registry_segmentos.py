@@ -27,12 +27,27 @@ from app.db.models.objeto_servico import ObjetoServico
 COLUNAS_OBJETO = set(ObjetoServico.__table__.columns.keys())
 
 
+def _campos_da_definicao(definicao):
+    """Todos os campos de uma definicao, venham de onde vierem.
+
+    Segmento sem tipos de trabalho declara em `veiculo`/`checkin`; segmento com
+    tipos (serigrafia) declara dentro de cada tipo. O guard tem que enxergar os
+    dois, senao o caminho novo passaria sem conferencia -- que e justamente o
+    caminho que ninguem testou ainda.
+    """
+    for chave in ("veiculo", "checkin"):
+        for campo in definicao.get(chave, []):
+            yield campo
+    for tipo in definicao.get("tipos", []):
+        for campo in tipo.get("campos", []):
+            yield campo
+
+
 def _todos_os_campos():
     """(segmento, campo) de todos os campos declarados por todos os segmentos."""
     for segmento, definicao in DEFINICOES.items():
-        for chave in ("veiculo", "checkin"):
-            for campo in definicao.get(chave, []):
-                yield segmento, campo
+        for campo in _campos_da_definicao(definicao):
+            yield segmento, campo
 
 
 def _ids(par):
@@ -111,13 +126,49 @@ def test_campo_de_coluna_aponta_para_coluna_que_existe(par):
     )
 
 
-def test_nomes_de_campo_nao_se_repetem_dentro_do_segmento():
-    """veiculo e checkin caem no mesmo espaco de nomes no formulario; nome
-    repetido faria um campo sobrescrever o outro em silencio."""
+def test_nomes_de_campo_nao_se_repetem_no_mesmo_formulario():
+    """Campos do mesmo formulario caem no mesmo espaco de nomes; nome repetido
+    faria um sobrescrever o outro em silencio.
+
+    Em segmento com tipos de trabalho a conferencia e POR TIPO -- dois tipos
+    podem ter "cor_impressao" cada um, porque nunca aparecem juntos na tela.
+    """
     for segmento, definicao in DEFINICOES.items():
-        nomes = [
-            campo["nome"]
-            for chave in ("veiculo", "checkin")
-            for campo in definicao.get(chave, [])
-        ]
-        assert len(nomes) == len(set(nomes)), f"{segmento}: {nomes}"
+        formularios = {
+            "veiculo+checkin": [
+                campo["nome"]
+                for chave in ("veiculo", "checkin")
+                for campo in definicao.get(chave, [])
+            ],
+        }
+        for tipo in definicao.get("tipos", []):
+            formularios[f"tipo:{tipo['id']}"] = [c["nome"] for c in tipo.get("campos", [])]
+
+        for qual, nomes in formularios.items():
+            assert len(nomes) == len(set(nomes)), f"{segmento}/{qual}: {nomes}"
+
+
+def test_tipos_de_trabalho_sao_bem_formados():
+    """Tipo sem id/label vira opcao vazia no seletor; id repetido faz um tipo
+    ficar inalcancavel."""
+    for segmento, definicao in DEFINICOES.items():
+        tipos = definicao.get("tipos", [])
+        if not tipos:
+            continue
+        ids = []
+        for tipo in tipos:
+            assert tipo.get("id"), f"{segmento}: tipo sem id"
+            assert tipo.get("label"), f"{segmento}: tipo {tipo.get('id')} sem label"
+            assert tipo.get("campos"), f"{segmento}: tipo {tipo['id']} sem campos"
+            ids.append(tipo["id"])
+        assert len(ids) == len(set(ids)), f"{segmento}: ids repetidos {ids}"
+
+
+def test_segmento_com_tipos_nao_usa_veiculo_nem_checkin():
+    """As duas formas de declarar campo se excluem: misturar faria a tela
+    dinamica ignorar `veiculo`/`checkin` sem ninguem perceber."""
+    for segmento, definicao in DEFINICOES.items():
+        if not definicao.get("tipos"):
+            continue
+        assert not definicao.get("veiculo"), segmento
+        assert not definicao.get("checkin"), segmento

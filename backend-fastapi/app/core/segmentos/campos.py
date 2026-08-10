@@ -73,6 +73,21 @@ def campo(
     return resultado
 
 
+def tipo_de_trabalho(id: str, label: str, campos: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Um processo de negocio dentro do mesmo segmento.
+
+    Oficina e informatica tem UM processo so: toda OS e sobre um veiculo, ou
+    toda OS e sobre um equipamento. Serigrafia e o primeiro segmento em que a
+    OS pode ser de coisas diferentes (camisa ou sacola), cada uma com seus
+    campos -- entao o formulario precisa perguntar "o que e este trabalho?"
+    antes de saber o que mostrar.
+
+    Segmento que NAO declara `tipos` continua exatamente como sempre foi: e o
+    que mantem oficina e informatica intocadas.
+    """
+    return {"id": id, "label": label, "campos": campos}
+
+
 def grupo_vistoria(titulo: str, itens: List[str]) -> Dict[str, Any]:
     """Grupo de itens de inspecao. Cada item e avaliado como OK / N_OK / REPARAR."""
     return {
