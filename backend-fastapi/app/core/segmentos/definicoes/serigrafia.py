@@ -104,7 +104,7 @@ _SACOLA_PLASTICA = tipo_de_trabalho("sacola_plastica", "Sacola plástica", [
     *_campos_da_arte(),
 
     campo("tipo_sacola", "Tipo de sacola", "opcao",
-          opcoes=["Alça fita", "Vasada", "Camiseta", "Mileiro"],
+          opcoes=["Alça fita", "Vazada", "Camiseta", "Mileiro"],
           escopo="os", grupo=GRUPO_SACOLA),
     campo("medidas", "Medidas (L × A × fole)", "texto",
           escopo="os", grupo=GRUPO_SACOLA),

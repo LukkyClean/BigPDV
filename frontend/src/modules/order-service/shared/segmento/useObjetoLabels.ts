@@ -1,5 +1,5 @@
 import { computed, type Component } from 'vue';
-import { Car, Smartphone, ShoppingCart, Hammer, Zap, Bike, AirVent, Wrench, Package } from 'lucide-vue-next';
+import { Car, Smartphone, ShoppingCart, Hammer, Zap, Bike, AirVent, Wrench, Shirt, Package } from 'lucide-vue-next';
 
 import { useSegmento } from '@/shared/composables/useSegmento';
 import { useOSFieldDefinition } from './useOSFieldDefinition.queries';
@@ -12,6 +12,7 @@ import { useOSFieldDefinition } from './useOSFieldDefinition.queries';
 const ICONES_SEGMENTO: Record<string, Component> = {
   oficina_mecanica: Car,
   assistencia_tecnica: Smartphone,
+  serigrafia: Shirt,
   mercado: ShoppingCart,
   marcenaria: Hammer,
   eletricista: Zap,

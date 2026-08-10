@@ -88,8 +88,13 @@ const objetoModel = computed<ObjetoFormData>({
           :os-dados="view.osDados.value"
           :errors="view.formErrors.value"
           :is-locked="view.isStructureLocked.value"
+          :is-create-mode="view.isCreateMode.value"
+          :objetos-historico="view.objetosHistorico.value"
+          :selected-historico="view.selectedHistorico.value"
           @update:objeto-dados="view.setObjetoDados"
           @update:os-dados="view.setOsDados"
+          @update:selected-historico="view.setSelectedHistorico"
+          @apply-historico="view.applyObjetoHistorico"
         />
 
         <OSObjetoTab

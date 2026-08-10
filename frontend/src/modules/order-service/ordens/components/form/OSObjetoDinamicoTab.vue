@@ -16,9 +16,12 @@
 import { computed } from 'vue';
 
 import BaseSelect from '@/shared/components/ui/BaseSelect/BaseSelect.vue';
+import type { SelectOption } from '@/shared/components/ui/BaseSelect/BaseSelect.vue';
 import GrupoDeCampos from '@/modules/order-service/shared/segmento/components/GrupoDeCampos.vue';
 import { useTiposDeTrabalho } from '@/modules/order-service/shared/segmento/useTiposDeTrabalho';
+import { useObjetoLabels } from '@/modules/order-service/shared/segmento/useObjetoLabels';
 import type { SegmentField } from '@/modules/order-service/shared/segmento/segmentDefinition.type';
+import type { ObjetoHistorico } from '@/modules/customers/types/clientes.types';
 
 import type { ObjetoFormData } from '../../composables/modal/useOSFormAdapter';
 
@@ -33,6 +36,10 @@ interface Props {
   osDados?: Record<string, unknown>;
   errors?: Record<string, string | undefined>;
   isLocked?: boolean;
+  /** Objetos que este cliente já tem — em serigrafia, as artes dele. */
+  objetosHistorico?: ObjetoHistorico[];
+  selectedHistorico?: string;
+  isCreateMode?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -40,15 +47,51 @@ const props = withDefaults(defineProps<Props>(), {
   osDados: () => ({}),
   errors: () => ({}),
   isLocked: false,
+  objetosHistorico: () => [],
+  selectedHistorico: '',
 });
 
 const emit = defineEmits<{
   'update:modelValue': [value: ObjetoFormData];
   'update:objetoDados': [value: Record<string, unknown>];
   'update:osDados': [value: Record<string, unknown>];
+  'update:selectedHistorico': [value: string];
+  applyHistorico: [];
 }>();
 
 const { opcoes, tipoPadrao, gruposDoTipo } = useTiposDeTrabalho();
+const { labelSingular } = useObjetoLabels();
+
+/**
+ * Reaproveitar o que o cliente já tem é o ponto inteiro de a arte existir como
+ * objeto: a Claudinha volta em outubro pedindo mais 200 com a mesma estampa, e
+ * o atendente não deveria redigitar nada.
+ *
+ * Rotulado pelo nome da arte (o `modelo`), com o código como desempate quando
+ * há duas com nome parecido. O código aparece aqui porque é RECONHECIMENTO, e
+ * não digitação — é a mesma razão pela qual ele sai impresso e não é pedido no
+ * formulário.
+ */
+const historicoOptions = computed<SelectOption[]>(() => [
+  { value: '', label: `Usar ${labelSingular.value.toLowerCase()} anterior...` },
+  ...props.objetosHistorico.map((objeto, indice) => ({
+    value: String(indice),
+    label: [objeto.modelo || objeto.objeto, objeto.numero_serie]
+      .filter(Boolean)
+      .join(' — '),
+  })),
+]);
+
+// Só na abertura: numa OS já criada o objeto está definido, e trocá-lo por um
+// item de histórico reescreveria um fato consumado.
+const mostrarHistorico = computed(
+  () => !!props.isCreateMode && !props.isLocked && props.objetosHistorico.length > 0,
+);
+
+function escolherDoHistorico(valor: string) {
+  emit('update:selectedHistorico', valor);
+  if (valor) emit('applyHistorico');
+}
 
 /**
  * O tipo escolhido mora em `dados_adicionais` da OS — não precisa de coluna
@@ -133,17 +176,28 @@ function gravarCampo(campos: SegmentField[], nome: string, valor: unknown) {
 
 <template>
   <div class="space-y-5 animate-fadeIn">
-    <!-- Seletor do tipo de trabalho. Some sozinho quando o segmento declara um
-         tipo só — perguntar "camisa ou camisa?" seria ruído. -->
-    <BaseSelect
-      v-if="opcoes.length > 1"
-      :model-value="tipoAtual"
-      label="Tipo de trabalho"
-      :options="opcoes"
-      required
-      :disabled="isLocked"
-      @update:model-value="trocarTipo(String($event))"
-    />
+    <div class="grid grid-cols-2 gap-3">
+      <!-- Seletor do tipo de trabalho. Some sozinho quando o segmento declara
+           um tipo só — perguntar "camisa ou camisa?" seria ruído. -->
+      <BaseSelect
+        v-if="opcoes.length > 1"
+        :model-value="tipoAtual"
+        label="Tipo de trabalho"
+        :options="opcoes"
+        required
+        :disabled="isLocked"
+        @update:model-value="trocarTipo(String($event))"
+      />
+
+      <!-- Cliente que volta não digita nada: escolhe a arte que já é dele. -->
+      <BaseSelect
+        v-if="mostrarHistorico"
+        :model-value="selectedHistorico"
+        :label="`${labelSingular} já cadastrada`"
+        :options="historicoOptions"
+        @update:model-value="escolherDoHistorico(String($event))"
+      />
+    </div>
 
     <GrupoDeCampos
       v-for="(grupo, indice) in grupos"
