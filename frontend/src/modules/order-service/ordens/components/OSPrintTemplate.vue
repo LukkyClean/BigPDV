@@ -226,7 +226,7 @@ const pix = computed(() =>
 
     <div class="mb-4 space-y-2">
       <div class="border border-neutral-300 rounded-lg p-3 bg-neutral-50/50">
-        <p class="text-[10px] font-bold text-neutral-600 uppercase mb-1">Defeito Relatado / Solicitação</p>
+        <p class="text-[10px] font-bold text-neutral-600 uppercase mb-1">{{ textos.defeito }}</p>
         <p class="text-xs text-neutral-900 font-medium">{{ ordemServico.defeito_relatado }}</p>
       </div>
       <div v-if="ordemServico.observacoes" class="border border-dashed border-neutral-300 rounded-lg p-3">

@@ -59,7 +59,13 @@ const props = withDefaults(defineProps<Props>(), {
 // que não é oficina vê IMEI/senha" — ou seja, um segmento novo (mercado,
 // marcenaria) herdaria a tela de informática sem ninguém pedir. Agora só vê quem
 // declara o campo no registry do backend.
-const { objetoIcon, labelSingular, labelIdentificador } = useObjetoLabels();
+const {
+  objetoIcon,
+  labelSingular,
+  labelIdentificador,
+  labelDefeito,
+  placeholderDefeito,
+} = useObjetoLabels();
 const { temCampo } = useCapacidades();
 
 function fieldError(field: string): string | undefined {
@@ -327,9 +333,9 @@ function handleHistoricoSelectChange(value: string) {
       <div>
         <BaseTextarea
           :model-value="modelValue.defeito_relatado"
-          label="Defeito Relatado"
+          :label="labelDefeito"
           :rows="3"
-          placeholder="Descreva o problema principal relatado pelo cliente..."
+          :placeholder="placeholderDefeito"
           required
           :error="fieldError('defeito_relatado')"
           @update:model-value="updateField('defeito_relatado', $event as string)"

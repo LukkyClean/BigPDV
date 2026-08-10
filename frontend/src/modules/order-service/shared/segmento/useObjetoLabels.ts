@@ -61,6 +61,23 @@ export function useObjetoLabels() {
   /** Regex de validação do identificador (ex: placa), quando o segmento define. */
   const identificadorRegex = computed(() => definicao.value?.identificador?.regex ?? null);
 
+  /**
+   * Rótulo do texto livre relatado pelo cliente.
+   *
+   * O padrão é "Defeito Relatado", palavra por palavra: é o que oficina e
+   * informática imprimem e mostram hoje, e as duas estão em produção. Só muda
+   * para quem declarar outro no registry — em serigrafia, "Descrição do
+   * pedido", porque ninguém traz camisa quebrada.
+   */
+  const labelDefeito = computed(
+    () => definicao.value?.rotulo_defeito ?? 'Defeito Relatado',
+  );
+
+  const placeholderDefeito = computed(
+    () => definicao.value?.placeholder_defeito
+      ?? 'Descreva o problema principal relatado pelo cliente...',
+  );
+
   return {
     definicao,
     objetoIcon,
@@ -68,5 +85,7 @@ export function useObjetoLabels() {
     labelPlural,
     labelIdentificador,
     identificadorRegex,
+    labelDefeito,
+    placeholderDefeito,
   };
 }

@@ -33,23 +33,47 @@ const TipoEquipamentoOpcional = z
  */
 export const PLACA_REGEX = /^(?:[A-Z]{3}\d{4}|[A-Z]{3}\d[A-Z]\d{2})$/;
 
+/**
+ * `marca` e `numero_serie` deixaram de ser exigidos AQUI porque a exigência
+ * passou a depender do segmento, e este schema não sabe qual é.
+ *
+ * Em serigrafia o sistema GERA o identificador ("ART-0042") e preenche a marca
+ * com o nome do cliente — o formulário não pergunta nenhum dos dois. Exigi-los
+ * aqui produzia a pior trava possível: "O número de série é obrigatório" sem
+ * existir campo na tela para preencher.
+ *
+ * A exigência não sumiu, mudou de lugar: `_exigir_campos_do_objeto`, no backend,
+ * sabe o segmento e devolve 422 dizendo exatamente o que falta. Informática e
+ * oficina continuam recusando OS sem esses dados — provado em
+ * `test/api/v1/test_os_identificador_gerado.py`.
+ *
+ * O custo: nesses dois segmentos o aviso passa a chegar como toast do servidor
+ * em vez de texto vermelho embaixo do campo. Se isso incomodar, o caminho é
+ * tornar o schema reativo ao contrato (vee-validate aceita schema computado) —
+ * não foi feito agora para não mexer no formulário que as duas lojas usam.
+ *
+ * `modelo` continua obrigatório: em serigrafia ele É o nome da arte, o único
+ * campo que o atendente realmente preenche.
+ */
 export const OsObjetoCreateSchema = z.object({
   tipo_equipamento: TipoEquipamentoOpcional,
   marca: z
-    .string({ required_error: 'A marca é obrigatória' })
+    .string()
     .trim()
-    .min(1, 'A marca é obrigatória')
-    .max(100, 'A marca deve ter no máximo 100 caracteres'),
+    .max(100, 'A marca deve ter no máximo 100 caracteres')
+    .optional()
+    .default(''),
   modelo: z
     .string({ required_error: 'O modelo é obrigatório' })
     .trim()
     .min(1, 'O modelo é obrigatório')
     .max(100, 'O modelo deve ter no máximo 100 caracteres'),
   numero_serie: z
-    .string({ required_error: 'O número de série é obrigatório' })
+    .string()
     .trim()
-    .min(1, 'O número de série é obrigatório')
-    .max(100, 'O número de série deve ter no máximo 100 caracteres'),
+    .max(100, 'O número de série deve ter no máximo 100 caracteres')
+    .optional()
+    .default(''),
   // `imei` não é coluna do objeto — o backend devolve null quando não há.
   // `.optional()` aceita undefined mas REPROVA null, e o campo aparecia em
   // vermelho com "Expected string, received null". Trata null como ausente.

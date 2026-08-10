@@ -32,6 +32,7 @@ import type { OrderServiceReadDataType } from '../schemas/orderServiceQuery.sche
 const TEXTOS_PADRAO: TextosCupomOS = {
   objeto: 'Objeto',
   identificador: 'N/S',
+  defeito: 'DEFEITO RELATADO',
   garantiaExclusoes: 'mau uso, liquidos, quedas ou intervencao de terceiros.',
   semReparo: 'Objeto devolvido sem reparo. Sem garantia aplicavel a esta OS.',
   cancelamento:
@@ -155,7 +156,7 @@ export function osToEscPos(
   b.separador()
 
   // Defeito relatado
-  b.negrito(true).linha('DEFEITO RELATADO').negrito(false).linha(os.defeito_relatado)
+  b.negrito(true).linha(t.defeito).negrito(false).linha(os.defeito_relatado)
 
   // Observações
   if (os.observacoes) {

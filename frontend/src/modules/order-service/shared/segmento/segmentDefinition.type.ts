@@ -114,6 +114,15 @@ export interface SegmentDefinition {
   segmento: string;
   rotulo_objeto_singular: string;
   rotulo_objeto_plural: string;
+  /**
+   * Rótulo do texto livre que o cliente relata. Ausente = "Defeito Relatado".
+   *
+   * O campo nasceu do modelo de CONSERTO ("o que quebrou"). Num segmento de
+   * produção não há defeito — o cliente encomenda. O campo continua útil (é o
+   * "o que ele pediu", e sai impresso), mas com o nome certo.
+   */
+  rotulo_defeito?: string;
+  placeholder_defeito?: string;
   identificador: SegmentIdentifier;
   /** O que o segmento faz. Vazio = só o fluxo genérico de OS. */
   capacidades: SegmentCapability[];

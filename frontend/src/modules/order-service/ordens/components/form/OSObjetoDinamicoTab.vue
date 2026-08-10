@@ -17,6 +17,7 @@ import { computed } from 'vue';
 
 import BaseSelect from '@/shared/components/ui/BaseSelect/BaseSelect.vue';
 import type { SelectOption } from '@/shared/components/ui/BaseSelect/BaseSelect.vue';
+import BaseTextarea from '@/shared/components/ui/BaseInput/BaseTextarea.vue';
 import GrupoDeCampos from '@/modules/order-service/shared/segmento/components/GrupoDeCampos.vue';
 import { useTiposDeTrabalho } from '@/modules/order-service/shared/segmento/useTiposDeTrabalho';
 import { useObjetoLabels } from '@/modules/order-service/shared/segmento/useObjetoLabels';
@@ -60,7 +61,22 @@ const emit = defineEmits<{
 }>();
 
 const { opcoes, tipoPadrao, gruposDoTipo } = useTiposDeTrabalho();
-const { labelSingular } = useObjetoLabels();
+const { labelSingular, labelDefeito, placeholderDefeito } = useObjetoLabels();
+
+/**
+ * O texto livre do que o cliente pediu.
+ *
+ * Ele é OBRIGATÓRIO no schema da OS desde sempre, e a aba curada o desenha —
+ * mas esta aba não desenhava. O resultado era o pior tipo de trava: "A
+ * descrição de defeito é obrigatória" sem existir campo nenhum na tela para
+ * preencher. Um campo exigido tem que estar visível em toda tela que cria OS.
+ *
+ * O rótulo vem do contrato: em serigrafia é "Descrição do pedido", porque
+ * ninguém traz camisa quebrada.
+ */
+function atualizarDefeito(valor: string) {
+  emit('update:modelValue', { ...props.modelValue, defeito_relatado: valor });
+}
 
 /**
  * Reaproveitar o que o cliente já tem é o ponto inteiro de a arte existir como
@@ -209,5 +225,21 @@ function gravarCampo(campos: SegmentField[], nome: string, valor: unknown) {
       :disabled="isLocked"
       @update:campo="(nome, valor) => gravarCampo(grupo.campos, nome, valor)"
     />
+
+    <!-- O que o cliente pediu, em texto livre. Obrigatório no schema da OS, e
+         por isso precisa estar VISÍVEL aqui: campo exigido sem campo na tela é
+         uma trava sem saída. -->
+    <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
+      <BaseTextarea
+        :model-value="modelValue.defeito_relatado"
+        :label="labelDefeito"
+        :rows="3"
+        :placeholder="placeholderDefeito"
+        required
+        :error="erroDoCampo('defeito_relatado')"
+        :disabled="isLocked"
+        @update:model-value="atualizarDefeito($event as string)"
+      />
+    </div>
   </div>
 </template>

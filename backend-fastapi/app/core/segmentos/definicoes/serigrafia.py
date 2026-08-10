@@ -138,6 +138,16 @@ SERIGRAFIA = {
     "segmento": SEGMENTO_SERIGRAFIA,
     "rotulo_objeto_singular": "Arte",
     "rotulo_objeto_plural": "Artes",
+
+    # O campo `defeito_relatado` nasceu do modelo de CONSERTO: o cliente chega
+    # com algo quebrado e conta o que houve. Aqui nao ha defeito -- o cliente
+    # encomenda uma producao. O campo continua util (e o "o que ele pediu", em
+    # texto livre, que sai impresso na via), mas com o nome certo.
+    #
+    # Segmento que nao declara isto continua com "Defeito Relatado", palavra por
+    # palavra -- e o que mantem oficina e informatica intocadas.
+    "rotulo_defeito": "Descrição do pedido",
+    "placeholder_defeito": "Ex: 100 camisas brancas, logo no peito, 2 cores",
     # `gerado` diz ao servico que o sistema cria este identificador -- o usuario
     # nao digita e o formulario nao pergunta. O codigo nasce do numero da OS
     # ("ART-0042"), entao e unico sem contador novo e sem corrida entre

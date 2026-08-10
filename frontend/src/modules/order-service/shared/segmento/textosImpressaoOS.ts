@@ -28,6 +28,8 @@ export interface TextosCupomOS {
   objeto: string;
   /** Rótulo do identificador na largura da bobina; `null` = usar o do contrato. */
   identificador: string | null;
+  /** Cabeçalho do texto livre relatado pelo cliente, em caixa alta na bobina. */
+  defeito: string;
   /** Continua a frase "Nao cobre ...". */
   garantiaExclusoes: string;
   semReparo: string;
@@ -45,6 +47,13 @@ export interface TextosImpressaoOS {
   empresa: string;
   /** Rótulo do identificador na coluna da A4; `null` = usar o do contrato. */
   identificador: string | null;
+  /**
+   * Cabeçalho do texto livre relatado pelo cliente.
+   *
+   * "Defeito" pressupõe conserto. Numa serigrafia ninguém traz camisa
+   * quebrada: o cliente encomenda, e o cabeçalho da via precisa dizer isso.
+   */
+  defeito: string;
   /** Continua a frase "A garantia NÃO COBRE: ...". */
   garantiaExclusoes: string;
   condicoesEntrada: string;
@@ -62,6 +71,7 @@ const ASSISTENCIA_TECNICA: TextosImpressaoOS = {
   empresa: 'A assistência técnica',
   // O contrato chama de "Nº de série / IMEI", que não cabe na coluna da via.
   identificador: 'Nº Série',
+  defeito: 'Defeito Relatado / Solicitação',
   garantiaExclusoes:
     'mau uso, contato com líquidos, quedas, oxidação, violação de selos de garantia ou intervenção de terceiros.',
   condicoesEntrada:
@@ -72,6 +82,7 @@ const ASSISTENCIA_TECNICA: TextosImpressaoOS = {
   cupom: {
     objeto: 'Objeto',
     identificador: 'N/S',
+    defeito: 'DEFEITO RELATADO',
     garantiaExclusoes: 'mau uso, liquidos, quedas ou intervencao de terceiros.',
     semReparo: 'Objeto devolvido sem reparo. Sem garantia aplicavel a esta OS.',
     cancelamento:
@@ -95,6 +106,7 @@ const OFICINA_MECANICA: TextosImpressaoOS = {
   objetoPlural: 'Veículos',
   empresa: 'A empresa',
   identificador: null,
+  defeito: 'Defeito Relatado / Solicitação',
   garantiaExclusoes:
     'mau uso, falta de manutenção preventiva, desgaste natural de peças, uso indevido do veículo, '
     + 'adulteração de componentes ou intervenção de terceiros.',
@@ -106,6 +118,7 @@ const OFICINA_MECANICA: TextosImpressaoOS = {
   cupom: {
     objeto: 'Veiculo',
     identificador: null,
+    defeito: 'DEFEITO RELATADO',
     garantiaExclusoes: 'mau uso, falta de manutencao, desgaste natural ou intervencao de terceiros.',
     semReparo: 'Veiculo devolvido sem reparo. Sem garantia aplicavel a esta OS.',
     cancelamento:
@@ -139,6 +152,7 @@ const SERIGRAFIA: TextosImpressaoOS = {
   empresa: 'A empresa',
   // O contrato chama de "Código da arte", que não cabe na coluna da via.
   identificador: 'Arte',
+  defeito: 'Descrição do Pedido',
   garantiaExclusoes:
     'lavagem com água quente, uso de alvejante ou secadora, passar ferro diretamente sobre a estampa, '
     + 'desgaste natural por lavagens sucessivas ou uso indevido da peça.',
@@ -150,6 +164,7 @@ const SERIGRAFIA: TextosImpressaoOS = {
   cupom: {
     objeto: 'Peca',
     identificador: 'Arte',
+    defeito: 'DESCRICAO DO PEDIDO',
     garantiaExclusoes:
       'agua quente, alvejante, secadora, ferro sobre a estampa ou uso indevido da peca.',
     semReparo: 'Pecas devolvidas sem estampa. Sem garantia aplicavel a esta OS.',
