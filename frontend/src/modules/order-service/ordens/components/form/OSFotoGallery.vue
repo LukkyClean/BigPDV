@@ -8,6 +8,7 @@ import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
 import BaseModal from '@/shared/components/commons/BaseModal/BaseModal.vue';
 import ConfirmationTemplate from '@/shared/components/templates/ConfirmationTemplate.vue';
 import { getBackendBaseUrl } from '@/api/backendUrl';
+import { useCapacidades } from '@/modules/order-service/shared/segmento/useCapacidades';
 
 export interface PendingPhoto {
   file: File;
@@ -35,6 +36,23 @@ const emit = defineEmits<{
 }>();
 
 const toast = useToast();
+
+/**
+ * "Fotos do Diagnóstico" pressupõe que houve diagnóstico. Em serigrafia estas
+ * fotos são a ARTE — o mockup que o cliente aprova pelo celular —, e chamá-las
+ * de diagnóstico manda o atendente procurar algo que não existe ali.
+ */
+const { temDiagnostico } = useCapacidades();
+
+const tituloGaleria = computed(() =>
+  temDiagnostico.value ? 'Fotos do Diagnóstico' : 'Fotos da Arte',
+);
+
+const vazioGaleria = computed(() =>
+  temDiagnostico.value
+    ? 'Fotos do objeto e diagnóstico aparecerão aqui.'
+    : 'Anexe aqui a arte que o cliente vai aprovar.',
+);
 const fileInput = ref<HTMLInputElement | null>(null);
 
 const deleteMutation = useDeleteFotoOSMutation();
@@ -142,7 +160,7 @@ function getPhotoSrc(photo: { url: string; isPending: boolean }) {
     <div class="flex items-center justify-between">
       <h3 class="text-sm font-semibold text-slate-700 flex items-center gap-2">
         <ImageIcon :size="16" class="text-slate-500" />
-        Fotos do Diagnóstico
+        {{ tituloGaleria }}
         <span class="text-xs font-normal text-slate-400">({{ totalCount }})</span>
       </h3>
 
@@ -190,7 +208,7 @@ function getPhotoSrc(photo: { url: string; isPending: boolean }) {
         <ImageIcon :size="24" class="text-slate-400" />
       </div>
       <p class="text-sm text-slate-500 font-medium">Nenhuma foto adicionada</p>
-      <p class="text-xs text-slate-400 mt-1">Fotos do objeto e diagnóstico aparecerão aqui.</p>
+      <p class="text-xs text-slate-400 mt-1">{{ vazioGaleria }}</p>
     </div>
 
     <!-- Slideshow -->
@@ -218,7 +236,7 @@ function getPhotoSrc(photo: { url: string; isPending: boolean }) {
       <ConfirmationTemplate :icon="Trash2" icon-bg-class="bg-brand-primary-light" icon-color-class="text-brand-primary">
         <template #description>
           <p class="text-sm text-slate-500 leading-relaxed">
-            Deseja realmente remover esta foto do diagnóstico? <br>
+            Deseja realmente remover esta foto? <br>
             <span class="text-xs text-red-500 font-semibold">Esta ação não poderá ser desfeita.</span>
           </p>
         </template>
