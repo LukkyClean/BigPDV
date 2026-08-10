@@ -220,7 +220,7 @@ def create_ordem_servico(db: Session, os_to_create: OrdemServicoCreate) -> OSMod
     itens_model = []
 
     for item in os_to_create.itens:
-        valor_item = item.quantidade * item.valor_unitario
+        valor_item = round(item.quantidade * item.valor_unitario)
         # Itens REPROVADO não entram no total (default APROVADO conta, como hoje).
         if _item_conta_no_total(item.status_aprovacao):
             valor_bruto_os += valor_item
@@ -706,7 +706,7 @@ def add_item_to_os(db: Session, numero_os: str, item_data: OSItemCreate) -> OSMo
     os_in_db = _get_os_or_raise(db, numero_os)
     _assert_os_editavel(os_in_db)
 
-    valor_item = item_data.quantidade * item_data.valor_unitario
+    valor_item = round(item_data.quantidade * item_data.valor_unitario)
     item_dict = item_data.model_dump(exclude={"item_id"}, exclude_unset=True)
 
     novo_item = OSItemModel(
@@ -744,7 +744,7 @@ def update_item_os(db: Session, numero_os: str, item_id: int, data: OSItemUpdate
 
     # Recalcula valor_total do item se quantidade ou valor_unitario mudarem
     if "quantidade" in update_data or "valor_unitario" in update_data:
-        item_in_db.valor_total = item_in_db.quantidade * item_in_db.valor_unitario
+        item_in_db.valor_total = round(item_in_db.quantidade * item_in_db.valor_unitario)
 
     # Visibilidade e valor precisam continuar coerentes DEPOIS do patch — os dois
     # campos podem vir em requisições separadas, e só aqui dá para ver o estado

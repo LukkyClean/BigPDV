@@ -3,7 +3,7 @@
 # DESCRICAO: Modelo SQLAlchemy para a tabela 'ordem_servico_itens'.
 # ---------------------------------------------------------------------------
 
-from sqlalchemy import Integer, String, Boolean, ForeignKey, Enum as SqlAlchemyEnum, CheckConstraint
+from sqlalchemy import Float, Integer, String, Boolean, ForeignKey, Enum as SqlAlchemyEnum, CheckConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from typing import Optional, TYPE_CHECKING
 
@@ -54,7 +54,10 @@ class OrdemServicoItem(Base):
     tipo: Mapped[OrdemServicoItemTipo] = mapped_column(SqlAlchemyEnum(OrdemServicoItemTipo), nullable=False, doc="Tipo do item")
     nome: Mapped[str] = mapped_column(String(255), nullable=False, doc="Descricao do item/servico")
     unidade_medida: Mapped[UnidadeMedida] = mapped_column(SqlAlchemyEnum(UnidadeMedida), nullable=False, doc="Unidade de medida")
-    quantidade: Mapped[int] = mapped_column(Integer, nullable=False, doc="Quantidade")
+    # Fracionada para unidades de peso: a serigrafia vende sacola por quilo, e
+    # quilo quebrado (2,5 kg) é escolha do cliente. Ver a nota em
+    # db/models/estoque.py sobre por que isso não exigiu migration.
+    quantidade: Mapped[float] = mapped_column(Float, nullable=False, doc="Quantidade")
     valor_unitario: Mapped[int] = mapped_column(Integer, nullable=False, doc="Valor unitario (centavos)")
     valor_total: Mapped[int] = mapped_column(Integer, nullable=False, doc="Valor total (centavos)")
 

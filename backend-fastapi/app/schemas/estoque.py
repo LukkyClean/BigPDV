@@ -19,7 +19,7 @@ class EstoqueCreate(BaseModel):
         ...,
         description="Valor de venda no varejo (em centavos)."
     )
-    quantidade: int = Field(
+    quantidade: float = Field(
         default=0, # Define 0 como padrão se não for fornecido
         description="Quantidade inicial em estoque."
     )
@@ -31,11 +31,11 @@ class EstoqueCreate(BaseModel):
         None, 
         description="Valor de venda no atacado (em centavos)."
     )
-    quantidade_ideal: Optional[int] = Field(
+    quantidade_ideal: Optional[float] = Field(
         None, 
         description="Quantidade de estoque considerada ideal."
     )
-    quantidade_minima: Optional[int] = Field(
+    quantidade_minima: Optional[float] = Field(
         None, 
         description="Quantidade mínima para acionar alertas de reposição."
     )
@@ -70,7 +70,7 @@ class EstoqueUpdate(BaseModel):
         None,
         description="Novo valor de venda no varejo (em centavos)."
     )
-    quantidade: Optional[int] = Field(
+    quantidade: Optional[float] = Field(
         None,
         description="Nova quantidade em estoque."
     )
@@ -82,11 +82,11 @@ class EstoqueUpdate(BaseModel):
         None, 
         description="Novo valor de venda no atacado (em centavos)."
     )
-    quantidade_ideal: Optional[int] = Field(
+    quantidade_ideal: Optional[float] = Field(
         None, 
         description="Nova quantidade de estoque ideal."
     )
-    quantidade_minima: Optional[int] = Field(
+    quantidade_minima: Optional[float] = Field(
         None, 
         description="Nova quantidade mínima para reposição."
     )

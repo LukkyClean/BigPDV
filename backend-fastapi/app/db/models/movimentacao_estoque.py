@@ -4,7 +4,7 @@
 #            Registra todo histórico de entradas, saídas e ajustes de estoque.
 # ---------------------------------------------------------------------------
 
-from sqlalchemy import Integer, String, Text, DateTime, ForeignKey, func
+from sqlalchemy import Float, Integer, String, Text, DateTime, ForeignKey, func
 from sqlalchemy.orm import relationship, Mapped, mapped_column
 from sqlalchemy.sql.sqltypes import Enum as SQLAlchemyEnum
 from datetime import datetime
@@ -71,18 +71,20 @@ class MovimentacaoEstoque(Base):
         nullable=False,
         doc="Tipo da movimentação: ENTRADA, SAIDA ou AJUSTE"
     )
-    quantidade: Mapped[int] = mapped_column(
-        Integer,
+    # Fracionadas para unidades de peso (2,5 kg). Ver a nota em db/models/estoque.py
+    # sobre por que a mudança de tipo não exigiu migration.
+    quantidade: Mapped[float] = mapped_column(
+        Float,
         nullable=False,
         doc="Quantidade movimentada (sempre positivo)"
     )
-    quantidade_anterior: Mapped[int] = mapped_column(
-        Integer,
+    quantidade_anterior: Mapped[float] = mapped_column(
+        Float,
         nullable=False,
         doc="Quantidade em estoque antes da movimentação"
     )
-    quantidade_posterior: Mapped[int] = mapped_column(
-        Integer,
+    quantidade_posterior: Mapped[float] = mapped_column(
+        Float,
         nullable=False,
         doc="Quantidade em estoque após a movimentação"
     )

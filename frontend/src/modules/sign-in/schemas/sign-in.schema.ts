@@ -2,17 +2,17 @@ import { z } from 'zod';
 import { toTypedSchema } from '@vee-validate/zod';
 import { cpf, cnpj } from 'cpf-cnpj-validator';
 
+import { SEGMENTOS } from '@/shared/constants/segmentos';
+
 /**
- * Segmentos válidos
+ * Segmentos válidos — vêm da fonte única em `shared/constants/segmentos.ts`.
+ *
+ * Esta lista já foi um `as const` local, e foi exatamente isso que fez o
+ * onboarding recusar "serigrafia" com "Invalid enum value" mesmo depois de o
+ * segmento existir em todo o resto do sistema: sem vínculo com o tipo, o
+ * `vue-tsc` não tinha o que cobrar.
  */
-const businessSegments = [
-  'assistencia_tecnica',
-  'oficina_mecanica',
-  'mercado',
-  'marcenaria',
-  'eletricista',
-  'outros',
-] as const;
+const businessSegments = SEGMENTOS;
 
 /**
  * Schema da loja + endereço (Passo 1)

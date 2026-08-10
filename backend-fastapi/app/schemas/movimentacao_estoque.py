@@ -13,7 +13,7 @@ from app.core.enum import MovimentacaoTipo, MovimentacaoOrigem
 class MovimentacaoCreate(BaseModel):
     """Dados de entrada para registrar uma movimentação de estoque."""
     tipo: MovimentacaoTipo = Field(..., description="Tipo: ENTRADA, SAIDA ou AJUSTE")
-    quantidade: int = Field(
+    quantidade: float = Field(
         ...,
         ge=0,
         description=(
@@ -43,9 +43,9 @@ class MovimentacaoRead(BaseModel):
     usuario_id: Optional[int]
     usuario_nome: str
     tipo: MovimentacaoTipo
-    quantidade: int
-    quantidade_anterior: int
-    quantidade_posterior: int
+    quantidade: float
+    quantidade_anterior: float
+    quantidade_posterior: float
     origem: MovimentacaoOrigem = Field(
         MovimentacaoOrigem.LEGADO,
         description="De onde veio: LEGADO, MANUAL, CADASTRO, VENDA ou ORDEM_SERVICO",

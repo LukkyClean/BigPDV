@@ -1,16 +1,13 @@
 import type { Component } from 'vue';
 
 /**
- * Segmentos de negócio disponíveis para seleção
+ * Segmentos de negócio disponíveis para seleção.
+ * Fonte única em `shared/constants/segmentos.ts` — reexportado aqui só para
+ * não quebrar quem já importava `BusinessSegment` deste arquivo.
  */
-export type BusinessSegment =
-  | 'assistencia_tecnica'
-  | 'oficina_mecanica'
-  | 'serigrafia'
-  | 'mercado'
-  | 'marcenaria'
-  | 'eletricista'
-  | 'outros';
+import type { Segmento as BusinessSegment } from '@/shared/constants/segmentos';
+
+export type { BusinessSegment };
 
 /**
  * Tipo de pessoa do responsável

@@ -51,7 +51,7 @@ class OSItemBase(BaseModel):
     tipo: OrdemServicoItemTipo = Field(..., description="Tipo do item: PRODUTO ou SERVICO")
     nome: str = Field(..., max_length=255, min_length=3, description="Descrição do item")
     unidade_medida: UnidadeMedida = Field(..., description="Unidade de medida")
-    quantidade: int = Field(..., gt=0, description="Quantidade")
+    quantidade: float = Field(..., gt=0, description="Quantidade (fracionada para unidades de peso, ex: 2.5 kg)")
     valor_unitario: int = Field(
         ...,
         ge=0,
@@ -125,7 +125,7 @@ class OSItemUpdate(BaseModel):
     """Payload para atualização parcial de um item de OS. Todos os campos são opcionais."""
     nome: Optional[str] = Field(None, max_length=255, min_length=3, description="Nova descrição")
     unidade_medida: Optional[UnidadeMedida] = Field(None, description="Nova unidade de medida")
-    quantidade: Optional[int] = Field(None, gt=0, description="Nova quantidade")
+    quantidade: Optional[float] = Field(None, gt=0, description="Nova quantidade (fracionada para unidades de peso)")
     valor_unitario: Optional[int] = Field(None, ge=0, description="Novo valor unitário em centavos")
     status_aprovacao: Optional[OrdemServicoItemAprovacao] = Field(None, description="Novo status de aprovação do item")
     garantia_dias: Optional[int] = Field(None, ge=0, description="Nova garantia do item em dias")

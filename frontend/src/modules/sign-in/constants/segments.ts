@@ -3,56 +3,62 @@
  * @description Define os segmentos disponíveis com seus ícones e descrições
  */
 
+import { SEGMENTOS, type Segmento } from '@/shared/constants/segmentos';
 import type { SegmentOption } from '../types/sign-in.types';
 
 /**
- * Lista de segmentos de negócio disponíveis
- * Cada segmento possui um ícone SVG inline para garantir consistência visual
+ * Card de cada segmento no onboarding.
+ *
+ * É um `Record<Segmento, ...>` de propósito: segmento novo em
+ * `shared/constants/segmentos.ts` **não compila** até ganhar seu card aqui.
+ * Antes isto era um array solto, e um segmento podia existir no sistema inteiro
+ * sem aparecer na tela — ou pior, aparecer e ser recusado na validação.
  */
-export const BUSINESS_SEGMENTS: SegmentOption[] = [
-  {
-    id: 'assistencia_tecnica',
+const CARDS: Record<Segmento, Omit<SegmentOption, 'id'>> = {
+  assistencia_tecnica: {
     label: 'Assistência Técnica',
     icon: 'computer',
     description: 'Reparo de computadores, celulares e eletrônicos',
   },
-  {
-    id: 'oficina_mecanica',
+  oficina_mecanica: {
     label: 'Oficina Mecânica',
     icon: 'wrench',
     description: 'Manutenção e reparo de veículos',
   },
-  {
-    id: 'serigrafia',
+  serigrafia: {
     label: 'Serigrafia',
     icon: 'shirt',
     description: 'Estamparia de camisas, sacolas e brindes',
   },
-  {
-    id: 'mercado',
+  mercado: {
     label: 'Mercado',
     icon: 'store',
     description: 'Supermercados, mercearias e vendas no varejo',
   },
-  {
-    id: 'marcenaria',
+  marcenaria: {
     label: 'Marcenaria',
     icon: 'hammer',
     description: 'Fabricação e reparo de móveis',
   },
-  {
-    id: 'eletricista',
+  eletricista: {
     label: 'Eletricista',
     icon: 'bolt',
     description: 'Serviços de instalação e manutenção elétrica',
   },
-  {
-    id: 'outros',
+  outros: {
     label: 'Outros',
     icon: 'grid',
     description: 'Outros tipos de negócio',
   },
-];
+};
+
+/**
+ * Lista de segmentos de negócio disponíveis, na ordem declarada em SEGMENTOS.
+ */
+export const BUSINESS_SEGMENTS: SegmentOption[] = SEGMENTOS.map((id) => ({
+  id,
+  ...CARDS[id],
+}));
 
 /**
  * Mapeia o ID do segmento para suas informações
@@ -62,9 +68,11 @@ export function getSegmentById(id: string): SegmentOption | undefined {
 }
 
 /**
- * Dicas contextuais por segmento, exibidas em Dados da Loja e Resumo
+ * Dicas contextuais por segmento, exibidas em Dados da Loja e Resumo.
+ * `Record<Segmento, ...>` pela mesma razão de CARDS: segmento sem dica não
+ * compila, em vez de cair silenciosamente na dica de "outros".
  */
-export const SEGMENT_TIPS: Record<string, string> = {
+export const SEGMENT_TIPS: Record<Segmento, string> = {
   assistencia_tecnica:
     'Para assistências técnicas, recomendamos configurar ordens de serviço após o cadastro.',
   oficina_mecanica:
@@ -85,5 +93,5 @@ export const SEGMENT_TIPS: Record<string, string> = {
  * Retorna a dica contextual para um segmento
  */
 export function getSegmentTip(segmentId: string): string {
-  return SEGMENT_TIPS[segmentId] || SEGMENT_TIPS['outros'];
+  return SEGMENT_TIPS[segmentId as Segmento] || SEGMENT_TIPS.outros;
 }
