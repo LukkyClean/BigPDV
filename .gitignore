@@ -14,6 +14,11 @@ __pycache__/
 # Ignora seu arquivo de banco de dados SQLite local
 *.db
 *.sqlite
+# Backup de banco antes de recomeçar do zero (ex: start_big.db.<motivo>.bak).
+# O `*.db` acima não pega estes, e é banco com dado de cliente dentro.
+*.db.*.bak
+*.db-wal
+*.db-shm
 
 # 4. Configurações de IDE e Outros Temporários
 # Ignora o arquivo .env (crucial para segredos como a SECRET_KEY)
