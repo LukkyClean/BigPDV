@@ -129,6 +129,13 @@ export interface SegmentDefinition {
    */
   rotulo_defeito?: string;
   placeholder_defeito?: string;
+  /**
+   * Quem executa o serviço, na tela e nas vias. Ausente = "Técnico".
+   *
+   * "Técnico" pressupõe conserto. Num segmento de produção quem toca o pedido
+   * é o responsável por ele.
+   */
+  rotulo_responsavel?: string;
   identificador: SegmentIdentifier;
   /** O que o segmento faz. Vazio = só o fluxo genérico de OS. */
   capacidades: SegmentCapability[];

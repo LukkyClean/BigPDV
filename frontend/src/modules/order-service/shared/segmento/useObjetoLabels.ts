@@ -79,6 +79,14 @@ export function useObjetoLabels() {
   );
 
   /**
+   * Quem executa o serviço. O padrão é "Técnico" — o que oficina e informática
+   * mostram hoje, e as duas estão em produção.
+   */
+  const labelResponsavel = computed(
+    () => definicao.value?.rotulo_responsavel ?? 'Técnico',
+  );
+
+  /**
    * Rótulo que o segmento dá a uma COLUNA do objeto (`marca`, `modelo`, `cor`).
    *
    * A via impressa mostrava "Marca: BigTec / Modelo: BigTec" numa OS de
@@ -111,6 +119,7 @@ export function useObjetoLabels() {
     identificadorRegex,
     labelDefeito,
     placeholderDefeito,
+    labelResponsavel,
     labelDaColuna,
   };
 }

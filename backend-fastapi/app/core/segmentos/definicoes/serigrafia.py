@@ -147,6 +147,9 @@ SERIGRAFIA = {
     # Segmento que nao declara isto continua com "Defeito Relatado", palavra por
     # palavra -- e o que mantem oficina e informatica intocadas.
     "rotulo_defeito": "Descrição do pedido",
+    # Quem toca o pedido nao e "tecnico" -- nao ha o que consertar. E quem
+    # responde pelo servico que esta sendo aberto.
+    "rotulo_responsavel": "Responsável",
     "placeholder_defeito": "Ex: 100 camisas brancas, logo no peito, 2 cores",
     # `gerado` diz ao servico que o sistema cria este identificador -- o usuario
     # nao digita e o formulario nao pergunta. O codigo nasce do numero da OS
