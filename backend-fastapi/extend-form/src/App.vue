@@ -5,7 +5,6 @@ import type { ChecklistDados } from './types/checklist.types'
 import ChecklistForm from './components/ChecklistForm.vue'
 import SuccessScreen from './components/SuccessScreen.vue'
 import { aplicarCorDaEmpresa, urlDaLogo } from './theme/aplicarTema'
-import logoImage from './assets/images/start-logo.png'
 
 type AppState = 'loading' | 'form' | 'submitting' | 'success' | 'error'
 
@@ -81,11 +80,12 @@ function reloadPage() {
 }
 
 /**
- * Logo da loja, com a do produto como rede de segurança: enquanto os dados não
- * chegam — e numa loja que ainda não subiu logo — o cabeçalho não pode ficar com
- * um buraco.
+ * Logo da loja, e só ela. Quem escaneou o QR é cliente da loja, não do StartBig:
+ * numa loja que ainda não subiu logo, mostrar a marca do produto confunde mais
+ * do que o espaço vazio resolve. Sem logo, o `v-if` do cabeçalho tira a imagem
+ * inteira — o `gap` do flex não deixa buraco.
  */
-const logoExibida = computed(() => urlDaLogo(checklistData.value?.url_logo) ?? logoImage)
+const logoExibida = computed(() => urlDaLogo(checklistData.value?.url_logo))
 const nomeExibido = computed(() => checklistData.value?.empresa_nome || 'StartBig')
 </script>
 
@@ -94,7 +94,12 @@ const nomeExibido = computed(() => checklistData.value?.empresa_nome || 'StartBi
     <!-- Header -->
     <header class="bg-brand-primary text-white px-4 py-4 shadow-md">
       <div class="max-w-xl mx-auto flex items-center gap-3">
-        <img :src="logoExibida" :alt="nomeExibido" class="h-9 rounded-full bg-white object-contain" />
+        <img
+          v-if="logoExibida"
+          :src="logoExibida"
+          :alt="nomeExibido"
+          class="h-9 rounded-full bg-white object-contain"
+        />
         <div>
           <h1 class="text-lg font-bold">Vistoria de Entrada</h1>
           <p v-if="checklistData" class="text-sm text-white/80 mt-0.5">
