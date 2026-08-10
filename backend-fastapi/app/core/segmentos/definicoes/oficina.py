@@ -10,6 +10,7 @@
 from ..campos import campo, grupo_vistoria
 from ..capacidades import (
     CAP_APROVACAO_ITENS,
+    CAP_DIAGNOSTICO,
     CAP_GARANTIA_ITENS,
     CAP_REVISOES,
     CAP_VISTORIA,
@@ -37,6 +38,7 @@ OFICINA = {
 
     # O que o segmento faz (ver ../capacidades.py).
     "capacidades": [
+        CAP_DIAGNOSTICO,
         CAP_VISTORIA,
         CAP_REVISOES,
         CAP_APROVACAO_ITENS,

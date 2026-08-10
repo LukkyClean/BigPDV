@@ -30,10 +30,20 @@ CAP_GARANTIA_ITENS = "garantia_itens"    # garantia (dias/KM) por item
 # Um negocio pode ter uma, outra, as duas ou nenhuma.
 CAP_APROVACAO_ARTE = "aprovacao_arte"
 
+# O negocio DIAGNOSTICA antes de executar: recebe algo com problema, investiga e
+# emite laudo. E o caso de oficina e informatica.
+#
+# Serigrafia nao diagnostica nada -- o cliente chega dizendo o que quer, e a
+# loja produz. Sem esta capacidade, a aba deixa de pedir laudo tecnico e passa a
+# servir so para as imagens (que ali sao a ARTE, e alimentam a aprovacao pelo
+# celular -- por isso a aba continua existindo).
+CAP_DIAGNOSTICO = "diagnostico"
+
 CAPACIDADES_CONHECIDAS = [
     CAP_VISTORIA,
     CAP_REVISOES,
     CAP_APROVACAO_ITENS,
     CAP_GARANTIA_ITENS,
     CAP_APROVACAO_ARTE,
+    CAP_DIAGNOSTICO,
 ]

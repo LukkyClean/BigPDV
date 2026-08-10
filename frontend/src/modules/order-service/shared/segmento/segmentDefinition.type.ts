@@ -92,7 +92,13 @@ export type SegmentCapability =
    * `aprovacao_itens`: aquela é sobre PREÇO (aprovar linha do orçamento), esta
    * é sobre a ARTE (a estampa está certa? pode gravar a tela?).
    */
-  | 'aprovacao_arte';
+  | 'aprovacao_arte'
+  /**
+   * O negócio DIAGNOSTICA antes de executar: recebe algo com problema,
+   * investiga e emite laudo. Sem isto, a aba deixa de pedir laudo técnico e
+   * serve só para as imagens.
+   */
+  | 'diagnostico';
 
 /**
  * Um processo de negócio dentro do mesmo segmento.

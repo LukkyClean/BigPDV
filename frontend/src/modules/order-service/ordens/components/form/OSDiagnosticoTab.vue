@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ClipboardList } from 'lucide-vue-next';
+import { ClipboardList, Image } from 'lucide-vue-next';
 import BaseTextarea from '@/shared/components/ui/BaseInput/BaseTextarea.vue';
+import { useCapacidades } from '@/modules/order-service/shared/segmento/useCapacidades';
 import OSFotoGallery from './OSFotoGallery.vue';
 import type { OsImageReadDataType } from '../../schemas/relationship/osPhoto.schema';
 import type { PendingPhoto } from './OSFotoGallery.vue';
@@ -15,6 +16,17 @@ interface Props {
 
 defineProps<Props>();
 
+/**
+ * O laudo técnico só faz sentido em negócio que DIAGNOSTICA: recebe algo com
+ * problema, investiga, emite parecer. Serigrafia não diagnostica nada — o
+ * cliente chega dizendo o que quer e a loja produz.
+ *
+ * A aba continua existindo mesmo sem laudo, e de propósito: é aqui que mora a
+ * galeria de fotos, e em serigrafia a foto É a arte — é ela que o cliente
+ * aprova pelo celular. Tirar a aba inteira tiraria o lugar de anexar o mockup.
+ */
+const { temDiagnostico } = useCapacidades();
+
 const emit = defineEmits<{
   'update:diagnostico': [value: string];
   'add-photo': [file: File];
@@ -27,14 +39,17 @@ const emit = defineEmits<{
   <div class="space-y-4 animate-fadeIn">
     <div class="bg-brand-primary-light border-l-4 border-brand-primary p-4 rounded-r-xl mb-4">
       <h5 class="text-sm font-bold text-brand-primary flex items-center gap-2">
-        <ClipboardList :size="16" /> Área Técnica
+        <component :is="temDiagnostico ? ClipboardList : Image" :size="16" />
+        {{ temDiagnostico ? 'Área Técnica' : 'Imagens' }}
       </h5>
       <p class="text-xs text-brand-primary mt-1">
-        Espaço reservado para o laudo técnico.
+        {{ temDiagnostico
+          ? 'Espaço reservado para o laudo técnico.'
+          : 'Anexe a arte aprovada e as fotos do pedido.' }}
       </p>
     </div>
 
-    <div>
+    <div v-if="temDiagnostico">
       <BaseTextarea
         :model-value="diagnostico"
         label="Laudo Técnico / Diagnóstico"
@@ -45,7 +60,7 @@ const emit = defineEmits<{
       />
     </div>
 
-    <div class="pt-4 border-t border-slate-200">
+    <div :class="temDiagnostico ? 'pt-4 border-t border-slate-200' : ''">
       <OSFotoGallery
         v-if="osNumero"
         :os-numero="osNumero"

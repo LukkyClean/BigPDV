@@ -9,6 +9,7 @@
 # ---------------------------------------------------------------------------
 
 from ..campos import campo
+from ..capacidades import CAP_DIAGNOSTICO
 
 SEGMENTO_ASSISTENCIA = "assistencia_tecnica"  # "informatica" no dia a dia
 
@@ -23,10 +24,11 @@ ASSISTENCIA = {
     "rotulo_objeto_plural": "Equipamentos",
     "identificador": {"nome": "numero_serie", "label": "Nº de série / IMEI", "regex": None},
 
-    # Vazio preserva exatamente a tela de informatica que esta em producao hoje.
-    # Nao e uma afirmacao de que informatica "nao pode" ter aprovacao de itens:
-    # o dia que o produto quiser, e acrescentar CAP_APROVACAO_ITENS nesta lista.
-    "capacidades": [],
+    # So o diagnostico: informatica recebe aparelho com defeito, investiga e
+    # emite laudo -- e o que a tela dela ja faz hoje, agora declarado. Nao e uma
+    # afirmacao de que informatica "nao pode" ter aprovacao de itens: o dia que
+    # o produto quiser, e acrescentar CAP_APROVACAO_ITENS nesta lista.
+    "capacidades": [CAP_DIAGNOSTICO],
     "veiculo": [],  # nao se aplica
     # Todos em dados_adicionais (o padrao de `campo`): `imei` deixou de ser
     # coluna na refatoracao Equipamento -> ObjetoServico e hoje e uma property

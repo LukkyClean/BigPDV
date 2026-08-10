@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, type Component } from 'vue';
-import { ClipboardCheck, ClipboardList, Package } from 'lucide-vue-next';
+import { ClipboardCheck, ClipboardList, Image as ImageIcon, Package } from 'lucide-vue-next';
 
 import OSObjetoTab from './OSObjetoTab.vue';
 import OSObjetoDinamicoTab from './OSObjetoDinamicoTab.vue';
@@ -19,7 +19,7 @@ const view = useOSFormView();
 
 // Rótulo e ícone da aba do objeto vêm do contrato (Veículo/Equipamento).
 const { labelSingular, objetoIcon } = useObjetoLabels();
-const { temVistoria } = useCapacidades();
+const { temVistoria, temDiagnostico } = useCapacidades();
 
 // Qual aba de objeto usar. `temTipos` só é verdadeiro para segmento que declara
 // tipos de trabalho no registry — oficina e informática não declaram, então
@@ -43,7 +43,12 @@ const allTabs = computed<{ id: TabType; label: string; icon: Component }[]>(() =
     tabs.push({ id: 'vistoria', label: 'Vistoria', icon: ClipboardCheck });
   }
   tabs.push(
-    { id: 'diagnostico', label: 'Diagnóstico', icon: ClipboardList },
+    // Sem diagnóstico a aba não some: ela guarda a galeria de fotos, e em
+    // serigrafia a foto É a arte que o cliente aprova pelo celular. Muda só o
+    // nome, para não prometer laudo onde não há o que laudar.
+    temDiagnostico.value
+      ? { id: 'diagnostico', label: 'Diagnóstico', icon: ClipboardList }
+      : { id: 'diagnostico', label: 'Imagens', icon: ImageIcon },
     { id: 'servicos', label: 'Serviços e Peças', icon: Package },
   );
   return tabs;

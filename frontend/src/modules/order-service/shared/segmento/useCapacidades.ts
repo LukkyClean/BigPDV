@@ -31,8 +31,8 @@ import type { SegmentCapability } from './segmentDefinition.type';
  * mais. Quando o contrato chega, ele manda; este mapa nunca decide sozinho.
  */
 const FALLBACK_POR_SEGMENTO: Record<string, SegmentCapability[]> = {
-  oficina_mecanica: ['vistoria', 'revisoes', 'aprovacao_itens', 'garantia_itens'],
-  assistencia_tecnica: [],
+  oficina_mecanica: ['diagnostico', 'vistoria', 'revisoes', 'aprovacao_itens', 'garantia_itens'],
+  assistencia_tecnica: ['diagnostico'],
   serigrafia: ['aprovacao_arte'],
 };
 
@@ -94,5 +94,6 @@ export function useCapacidades() {
     temAprovacaoItens: computed(() => tem('aprovacao_itens')),
     temGarantiaItens: computed(() => tem('garantia_itens')),
     temAprovacaoArte: computed(() => tem('aprovacao_arte')),
+    temDiagnostico: computed(() => tem('diagnostico')),
   };
 }
