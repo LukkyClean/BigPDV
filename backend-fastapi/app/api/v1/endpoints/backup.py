@@ -1,7 +1,6 @@
 import asyncio
-from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Path, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.depends import get_current_active_user, _handle_db_transaction
@@ -16,8 +15,8 @@ from app.schemas.backup import (
 )
 from app.schemas.configuracao_backup import ConfiguracaoBackupRead, ConfiguracaoBackupUpdate
 from app.services import backup as backup_service
-from app.services import cloud_journal
-from app.services import cloud_sync
+from app.services.cloud import journal as cloud_journal
+from app.services.cloud import download as cloud_download
 from app.services import configuracao_backup as configuracao_backup_service
 
 router = APIRouter()
@@ -49,7 +48,7 @@ def ultimo_backup(
 ):
     ultimo = backup_service.get_last_backup()
     if ultimo is None:
-        raise HTTPException(status_code=204)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
     return ultimo
 
 
@@ -62,14 +61,9 @@ def ultimo_backup(
 async def criar_backup(
     usuario_token: dict = Depends(get_current_active_user),
 ):
-    hoje = datetime.now().date()
-    backups = backup_service.list_backups()
-    backups_hoje = [
-        b for b in backups
-        if datetime.fromisoformat(b.criado_em).date() == hoje
-    ]
+    backups_hoje = backup_service.count_backups_today()
 
-    if len(backups_hoje) >= LIMITE_BACKUP_MANUAL_DIARIO:
+    if backups_hoje >= LIMITE_BACKUP_MANUAL_DIARIO:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="LIMITE_BACKUP_DIARIO",
@@ -83,7 +77,7 @@ async def criar_backup(
             detail=str(e),
         )
 
-    restantes = max(0, LIMITE_BACKUP_MANUAL_DIARIO - len(backups_hoje) - 1)
+    restantes = max(0, LIMITE_BACKUP_MANUAL_DIARIO - backups_hoje - 1)
 
     return BackupCriadoComCota(
         arquivo=criado.arquivo,
@@ -140,33 +134,7 @@ def update_configuracao_backup(
 def listar_ciclos_nuvem(
     usuario_token: dict = Depends(get_current_active_user),
 ):
-    journal = cloud_journal.load_journal()
-
-    ciclos: dict[str, dict] = {}
-    for filename, entry in journal.items():
-        if entry.get("status") != cloud_journal.STATUS_ENVIADO:
-            continue
-        ciclo = entry.get("ciclo")
-        if not ciclo:
-            continue
-
-        if ciclo not in ciclos:
-            ciclos[ciclo] = {
-                "ciclo": ciclo,
-                "quantidade_backups": 0,
-                "ultimo_envio": "",
-                "arquivos": [],
-            }
-
-        ciclos[ciclo]["quantidade_backups"] += 1
-        ciclos[ciclo]["arquivos"].append(filename)
-
-        confirmado_em = entry.get("confirmadoEm", "")
-        if confirmado_em > ciclos[ciclo]["ultimo_envio"]:
-            ciclos[ciclo]["ultimo_envio"] = confirmado_em
-
-    resultado = sorted(ciclos.values(), key=lambda c: c["ciclo"], reverse=True)
-    return resultado
+    return cloud_journal.get_ciclos_enviados()
 
 
 @router.get(
@@ -176,11 +144,12 @@ def listar_ciclos_nuvem(
     summary="Baixa e restaura cadeia de backups da nuvem",
 )
 async def backup_download(
+    usuario_token: dict = Depends(get_current_active_user),
     db: Session = Depends(get_db),
     *,
     ciclo: str = Path(..., description="ID do ciclo de backup a ser baixado"),
 ):
-    return await cloud_sync.download_chain(db, ciclo)
+    return await cloud_download.download_chain(db, ciclo)
 
 
 @router.post(

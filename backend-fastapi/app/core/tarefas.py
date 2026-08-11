@@ -13,8 +13,9 @@ from app.db.models.contador_venda import ContadorVenda
 from app.db.models.forma_pagamento import FormaPagamento
 from app.services.limpeza_temporal import cancelar_vendas_ativas_expiradas, limpar_orcamentos_expirados, limpar_temp_data
 from app.services.licenca import enviar_heartbeat, renovar_licenca_background, desconectar_terminal
-from app.services.backup import create_backup, get_last_backup, apply_pending_restore
-from app.services import cloud_sync
+from app.services.backup import create_backup, get_last_backup, apply_pending_restore, limpar_snapshots_antigos
+from app.services.cloud.sync import sync as _cloud_sync
+from app.services.cloud.flow import CloudSyncError as _CloudSyncError
 from app.services.configuracao_backup import get_or_create_configuracao_backup
 from app.db.crud import terminal_conectado as terminal_crud
 
@@ -125,13 +126,13 @@ async def _loop_cloud_sync():
             
             try:
                 print("[SYNC] Iniciando ciclo de sincronização com nuvem...")
-                summary = await cloud_sync.sync(db)
+                summary = await _cloud_sync(db)
                 print(f"[SYNC] Status da sincronização: {summary}")
             except Exception as e:
                 print(f"[SYNC] Erro durante a sincronização: {type(e).__name__}: {e}")
             finally:
                 db.close()
-        except cloud_sync.CloudSyncError as e:
+        except _CloudSyncError as e:
             print(f"[SYNC] Ciclo encerrado: {e} (codigo={e.code})")
         
         await asyncio.sleep(INTERVALO_SYNC_SEGUNDOS)
@@ -224,7 +225,12 @@ async def lifespan(app: FastAPI):
                   f"Cópia de segurança em {result.get('old_db')}")
     except Exception as e:
         print(f"[RESTORE] Erro ao aplicar restauração pendente: {type(e).__name__}: {e}")
-    
+
+    try:
+        await asyncio.to_thread(limpar_snapshots_antigos)
+    except Exception as e:
+        print(f"[LIMPEZA] Erro ao limpar snapshots antigos: {type(e).__name__}: {e}")
+
     await asyncio.to_thread(limpar_temp_data)
 
     aplicar_migracoes()
