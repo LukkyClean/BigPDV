@@ -57,15 +57,36 @@ const fileInput = ref<HTMLInputElement | null>(null);
 
 const deleteMutation = useDeleteFotoOSMutation();
 
+/**
+ * Aceita VÁRIAS imagens por seleção.
+ *
+ * Antes lia só `files[0]`, e o input nem abria em modo múltiplo: dava para
+ * juntar várias fotos clicando repetidamente, mas selecionar as três de uma vez
+ * era impossível. Não era regra de negócio — era o handler pegando o primeiro e
+ * descartando o resto em silêncio, que é o pior jeito de recusar um arquivo.
+ *
+ * Uma OS raramente tem uma foto só: a serigrafia manda variações da arte, a
+ * oficina fotografa cada avaria.
+ */
 function handleFileSelect(event: Event) {
   const target = event.target as HTMLInputElement;
-  if (!target.files || target.files.length === 0) return;
-  const file = target.files[0];
-  if (!file.type.startsWith('image/')) {
-    toast.error('Selecione apenas arquivos de imagem.');
-    return;
+  const selecionados = Array.from(target.files ?? []);
+  if (selecionados.length === 0) return;
+
+  const imagens = selecionados.filter((f) => f.type.startsWith('image/'));
+  const recusados = selecionados.length - imagens.length;
+
+  // Avisa o que ficou de fora em vez de sumir com o arquivo: quem selecionou um
+  // PDF junto precisa saber que ele não entrou.
+  if (recusados > 0) {
+    toast.error(
+      recusados === 1
+        ? 'Um arquivo não é imagem e foi ignorado.'
+        : `${recusados} arquivos não são imagens e foram ignorados.`,
+    );
   }
-  emit('add-photo', file);
+
+  for (const imagem of imagens) emit('add-photo', imagem);
   if (fileInput.value) fileInput.value.value = '';
 }
 
@@ -169,7 +190,7 @@ function getPhotoSrc(photo: { url: string; isPending: boolean }) {
         Adicionar Foto
       </BaseButton>
 
-      <input ref="fileInput" type="file" accept="image/*" class="hidden" @change="handleFileSelect" />
+      <input ref="fileInput" type="file" accept="image/*" multiple class="hidden" @change="handleFileSelect" />
     </div>
 
     <div v-if="allPhotos.length > 0" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
