@@ -145,3 +145,12 @@ class Empresa(Base):
         cascade="all, delete-orphan",
         doc="Configurações de segurança e aprovações por PIN"
     )
+
+    # Relacionamento 1:1 com Configurações de Backup
+    config_backup: Mapped[Optional["ConfiguracaoBackup"]] = relationship(
+        "ConfiguracaoBackup",
+        back_populates="empresa",
+        uselist=False,
+        cascade="all, delete-orphan",
+        doc="Configurações de backup automático"
+    )

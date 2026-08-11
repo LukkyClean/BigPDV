@@ -28,6 +28,7 @@ import { useSalvarConfiguracoesEstoqueMutation } from '../composables/mutates/us
 import { useSalvarConfiguracoesOSMutation } from '../composables/mutates/useSalvarConfiguracoesOSMutation'
 import { useSalvarConfiguracoesVendasMutation } from '../composables/mutates/useSalvarConfiguracoesVendasMutation'
 import { useSalvarConfiguracoesSegurancaMutation } from '../composables/mutates/useSalvarConfiguracoesSegurancaMutation'
+import { useSalvarConfiguracaoBackupMutation } from '../composables/mutates/useSalvarConfiguracaoBackupMutation'
 import type { SecaoConfiguracao, SecaoExposta, SecaoId } from '../types/configuracoes.types'
 import { useGerenteAprovacao } from '@/shared/composables/useGerenteAprovacao'
 import { useConfirmacao } from '@/shared/composables/useConfirmacao'
@@ -59,6 +60,7 @@ const { mutate: salvarEstoque, mutateAsync: salvarEstoqueAsync, isPending: isPen
 const { mutate: salvarOS, isPending: isPendingOS } = useSalvarConfiguracoesOSMutation()
 const { mutateAsync: salvarVendasAsync, isPending: isPendingVendas } = useSalvarConfiguracoesVendasMutation()
 const { mutate: salvarSeguranca, isPending: isPendingSeguranca } = useSalvarConfiguracoesSegurancaMutation()
+const { mutate: salvarBackup, isPending: isPendingBackup } = useSalvarConfiguracaoBackupMutation()
 
 const configuracoesStore = useConfiguracoesStore()
 const impressaoStore = useImpressaoStore()
@@ -103,7 +105,7 @@ async function navegarParaSecao(secaoId: SecaoId): Promise<void> {
   if (await verificarPinComRetry(pin)) irPara(secaoId)
 }
 
-const isPending = computed(() => isPendingClientes.value || isPendingEstoque.value || isPendingOS.value || isPendingVendas.value || isPendingSeguranca.value)
+const isPending = computed(() => isPendingClientes.value || isPendingEstoque.value || isPendingOS.value || isPendingVendas.value || isPendingSeguranca.value || isPendingBackup.value)
 
 const activeComponentRef = ref<SecaoExposta | null>(null)
 const isDirtyAtivo = computed(() => activeComponentRef.value?.isDirty === true)
@@ -135,7 +137,7 @@ watch(() => props.isOpen, (aberto) => {
   }
 })
 
-const secoesFuncionais: SecaoId[] = ['seguranca', 'clientes-cadastro', 'produtos-estoque', 'ordens-de-servico', 'regras-de-vendas', 'impressao']
+const secoesFuncionais: SecaoId[] = ['seguranca', 'clientes-cadastro', 'produtos-estoque', 'ordens-de-servico', 'regras-de-vendas', 'impressao', 'backup-dados']
 const secaoFuncional = computed(() => secoesFuncionais.includes(secaoAtiva.value))
 
 async function salvar(): Promise<void> {
@@ -176,6 +178,9 @@ async function salvar(): Promise<void> {
       }
       toast.success('Configurações de impressão salvas!')
       fecharComDelay()
+      break
+    case 'backup-dados':
+      salvarBackup(comp.form as any, fecharAposSalvar)
       break
     case 'regras-de-vendas': {
       const { vendas, estoque } = comp.form as { vendas: Record<string, unknown>; estoque: Record<string, unknown> }

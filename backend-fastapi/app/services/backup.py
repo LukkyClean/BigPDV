@@ -6,6 +6,10 @@ import sqlite3
 import tempfile
 import zipfile
 
+import gc
+from sqlalchemy import text
+
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
@@ -611,11 +615,19 @@ def confirm_restore(cycle: str, pre_restore_backup_path: str) -> ConfirmRestoreR
         ciclo=cycle,
     )
     
-def _swap_dir(src: str, dst: str) -> None:
+def _swap_dir(src: str, dst: str, retries: int = 5, delay: float = 0.5) -> None:
     if os.path.exists(dst):
         return
     
-    os.replace(src, dst)
+    for attempt in range(retries):
+        try:
+            os.replace(src, dst)
+            return
+        except PermissionError as e:
+            if attempt < retries - 1:
+                time.sleep(delay)
+            else:
+                raise BackupError(f"Falha ao substituir arquivo após {retries} tentativas: {e}")
      
 def apply_pending_restore () -> Optional[dict]:
     if not os.path.exists(MARKER_RESTORE_PATH):
@@ -650,6 +662,33 @@ def apply_pending_restore () -> Optional[dict]:
     
     staged_db = os.path.join(staging_dir, DB_NAME)
     staged_static = os.path.join(staging_dir, STATIC_DIR_NO_ZIP)
+    
+    # Intervenção profunda no SQLAlchemy e SQLite
+    try:
+        from app.db.session import engine
+        
+        # Força o SQLite a consolidar o WAL no banco principal e liberar os locks
+        with engine.connect() as conn:
+            conn.execute(text("PRAGMA wal_checkpoint(TRUNCATE);"))
+        
+        # Fechar a pool
+        engine.dispose()
+        
+        # Força o Garbage Collector a liberar objetos pendentes
+        gc.collect()
+        
+        time.sleep(1)
+    except Exception as e:
+        print(f"[RESTORE] Aviso: nao foi possivel dar dispose no engine: {e}")
+
+    for aux in (production_db + "-wal", production_db + "-shm"):
+        if os.path.exists(aux):
+            for _ in range(3):
+                try:
+                    os.remove(aux)
+                    break
+                except OSError as e:
+                    time.sleep(0.5)
 
     if os.path.exists(production_db):
         _swap_dir(production_db, old_db)
