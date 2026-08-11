@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import { ref, watch, nextTick, computed } from 'vue'
+import { ref, watch, nextTick } from 'vue'
 import { Copy, Check, Loader2 } from 'lucide-vue-next'
 import BaseModal from '@/shared/components/commons/BaseModal/BaseModal.vue'
 import { getChecklistQrUrl } from '../services/checklistToken.service'
 import { useToast } from '@/shared/composables/useToast'
-import { useCapacidades } from '@/modules/order-service/shared/segmento/useCapacidades'
 import * as QRCode from 'qrcode'
 
 interface Props {
@@ -16,19 +15,6 @@ const props = defineProps<Props>()
 const emit = defineEmits<{ close: [] }>()
 
 const toast = useToast()
-
-// O que o cliente vai fazer do outro lado do QR muda por segmento — e a
-// resposta vem da capacidade, não de um `if segmento`.
-const { temAprovacaoArte } = useCapacidades()
-
-const titulo = computed(() =>
-  temAprovacaoArte.value ? 'Aprovação de Arte pelo Celular' : 'Checklist pelo Celular',
-)
-const subtitulo = computed(() =>
-  temAprovacaoArte.value
-    ? 'Envie ao cliente para ele conferir a arte e liberar a produção'
-    : 'Escaneie o QR code ou copie o link para preencher o checklist',
-)
 
 const qrUrl = ref('')
 const isLoading = ref(false)
@@ -80,8 +66,8 @@ async function copyLink() {
 <template>
   <BaseModal
     :is-open="isOpen"
-    :title="titulo"
-    :subtitle="subtitulo"
+    title="Checklist pelo Celular"
+    subtitle="Escaneie o QR code ou copie o link para preencher o checklist"
     size="sm"
     @close="emit('close')"
   >

@@ -33,10 +33,8 @@ import type { SegmentCapability } from './segmentDefinition.type';
 const FALLBACK_POR_SEGMENTO: Record<string, SegmentCapability[]> = {
   oficina_mecanica: ['diagnostico', 'vistoria', 'revisoes', 'aprovacao_itens', 'garantia_itens'],
   assistencia_tecnica: ['diagnostico'],
-  // Vazio: `aprovacao_arte` existe no codigo e esta DESLIGADA no registry
-  // (ver definicoes/serigrafia.py). Se ficasse aqui, o botao apareceria por um
-  // instante durante o carregamento e sumiria — pisca de funcionalidade que
-  // nao existe é pior que não ter.
+  // Serigrafia nao declara capacidade nenhuma: nao diagnostica, nao faz
+  // vistoria, nao agenda revisao.
   serigrafia: [],
 };
 
@@ -97,7 +95,6 @@ export function useCapacidades() {
     temRevisoes: computed(() => tem('revisoes')),
     temAprovacaoItens: computed(() => tem('aprovacao_itens')),
     temGarantiaItens: computed(() => tem('garantia_itens')),
-    temAprovacaoArte: computed(() => tem('aprovacao_arte')),
     temDiagnostico: computed(() => tem('diagnostico')),
   };
 }

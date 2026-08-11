@@ -24,19 +24,13 @@ CAP_REVISOES = "revisoes"                # lembrete de manutencao por data/KM
 CAP_APROVACAO_ITENS = "aprovacao_itens"  # cliente aprova/reprova item do orcamento
 CAP_GARANTIA_ITENS = "garantia_itens"    # garantia (dias/KM) por item
 
-# Cliente ve o mockup no celular e libera a producao. NAO se confunde com
-# CAP_APROVACAO_ITENS: aquela e sobre PRECO (aprovar linha do orcamento), esta e
-# sobre a ARTE (a estampa esta certa? a cor esta certa? pode gravar a tela?).
-# Um negocio pode ter uma, outra, as duas ou nenhuma.
-CAP_APROVACAO_ARTE = "aprovacao_arte"
-
 # O negocio DIAGNOSTICA antes de executar: recebe algo com problema, investiga e
 # emite laudo. E o caso de oficina e informatica.
 #
 # Serigrafia nao diagnostica nada -- o cliente chega dizendo o que quer, e a
 # loja produz. Sem esta capacidade, a aba deixa de pedir laudo tecnico e passa a
-# servir so para as imagens (que ali sao a ARTE, e alimentam a aprovacao pelo
-# celular -- por isso a aba continua existindo).
+# servir so para as imagens (que em serigrafia sao a ARTE -- por isso a aba
+# continua existindo).
 CAP_DIAGNOSTICO = "diagnostico"
 
 CAPACIDADES_CONHECIDAS = [
@@ -44,6 +38,5 @@ CAPACIDADES_CONHECIDAS = [
     CAP_REVISOES,
     CAP_APROVACAO_ITENS,
     CAP_GARANTIA_ITENS,
-    CAP_APROVACAO_ARTE,
     CAP_DIAGNOSTICO,
 ]

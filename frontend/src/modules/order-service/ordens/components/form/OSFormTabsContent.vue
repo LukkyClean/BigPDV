@@ -150,7 +150,6 @@ const objetoModel = computed<ObjetoFormData>({
         :fotos="view.currentOSData.value?.fotos ?? []"
         :pending-photos="view.pendingPhotos.value"
         :is-locked="view.isDiagnosticoLocked.value"
-        :os-dados="view.currentOSData.value?.dados_adicionais ?? {}"
         @update:diagnostico="view.handleDiagnosticoUpdate"
         @add-photo="view.handleAddPhoto"
         @remove-pending="view.handleRemovePending"

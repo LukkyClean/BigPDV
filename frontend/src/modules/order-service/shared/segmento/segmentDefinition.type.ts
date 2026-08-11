@@ -88,12 +88,6 @@ export type SegmentCapability =
   | 'aprovacao_itens'
   | 'garantia_itens'
   /**
-   * Cliente vê o mockup pelo QR e libera a produção. NÃO se confunde com
-   * `aprovacao_itens`: aquela é sobre PREÇO (aprovar linha do orçamento), esta
-   * é sobre a ARTE (a estampa está certa? pode gravar a tela?).
-   */
-  | 'aprovacao_arte'
-  /**
    * O negócio DIAGNOSTICA antes de executar: recebe algo com problema,
    * investiga e emite laudo. Sem isto, a aba deixa de pedir laudo técnico e
    * serve só para as imagens.

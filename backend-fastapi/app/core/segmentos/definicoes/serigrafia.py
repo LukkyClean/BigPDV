@@ -167,21 +167,15 @@ SERIGRAFIA = {
         "prefixo": "ART",
     },
 
-    # Vistoria e revisoes nao se aplicam; garantia de estampa seria medida em
-    # lavagens, e nao em dias/KM.
+    # Nenhuma. Vistoria e revisoes nao se aplicam, e garantia de estampa seria
+    # medida em lavagens, nao em dias/KM.
     #
-    # CAP_APROVACAO_ARTE esta construida e DESLIGADA, por decisao do dono
-    # (10/08/2026). O motivo nao e a feature: e o alcance do link.
-    #
-    # O QR aponta para o IP da LAN da loja (ver checklist_mobile._get_lan_ip),
-    # entao so abre para quem esta no Wi-Fi dela. Aprovacao de arte e remota por
-    # natureza -- o cliente vai embora, a loja faz o mockup e manda. Com o
-    # cliente no balcao, mostrar a tela e ouvir "pode fazer" e mais simples que
-    # pedir para ele escanear.
-    #
-    # Ligar de volta e ESTA LINHA, quando a loja tiver um endereco publico
-    # (tunel tipo Cloudflare, ou nuvem). Nada mais precisa mudar: a pagina do
-    # celular, o endpoint, o botao e a exibicao da resposta continuam no codigo.
+    # A aprovacao de arte pelo celular chegou a ser construida e foi REMOVIDA
+    # (10/08/2026): o QR aponta para o IP da LAN da loja, entao so abriria para
+    # quem estivesse no Wi-Fi dela -- e aprovacao de arte e remota por natureza.
+    # Com o cliente no balcao, mostrar a tela e ouvir "pode fazer" e mais
+    # simples do que pedir para ele escanear. Refazer, se a loja um dia tiver
+    # endereco publico, esta no historico do git.
     "capacidades": [],
 
     # Vazios porque este segmento declara por tipo de trabalho. O guard

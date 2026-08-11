@@ -11,7 +11,7 @@
 # ---------------------------------------------------------------------------
 
 import socket
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, status
@@ -53,19 +53,10 @@ class ChecklistDadosResponse(BaseModel):
     empresa_nome: Optional[str] = None
     cor_tema: Optional[str] = None
     url_logo: Optional[str] = None
-    # Fotos da OS. Servem a aprovacao de arte: sem ver o mockup, o cliente nao
-    # tem o que aprovar. Vazio para quem nao anexou foto, e a pagina nao mostra
-    # a secao -- nenhum segmento perde nada por este campo existir.
-    fotos: List[str] = []
 
 
 class ChecklistDadosUpdate(BaseModel):
     dados_adicionais: Dict[str, Any]
-
-
-def _fotos_da_os(os_in_db) -> List[str]:
-    """URLs das fotos anexadas a OS, na ordem em que foram enviadas."""
-    return [foto.url for foto in (os_in_db.fotos or []) if foto.url]
 
 
 # ---------------------------------------------------------------------------
@@ -187,7 +178,6 @@ def get_checklist_dados(
         modelo=modelo,
         definicao=definicao,
         dados_adicionais=os_in_db.dados_adicionais or {},
-        fotos=_fotos_da_os(os_in_db),
         **_identidade_visual(db),
     )
 
@@ -248,6 +238,5 @@ def update_checklist_dados(
         modelo=modelo,
         definicao=definicao_resp.get("definicao"),
         dados_adicionais=os_in_db.dados_adicionais or {},
-        fotos=_fotos_da_os(os_in_db),
         **_identidade_visual(db),
     )
