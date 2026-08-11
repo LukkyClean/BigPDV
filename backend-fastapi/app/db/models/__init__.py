@@ -28,6 +28,7 @@ from app.db.models.configuracao_os import ConfiguracaoOS  # noqa: F401
 from app.db.models.configuracao_vendas import ConfiguracaoVendas  # noqa: F401
 from app.db.models.configuracao_seguranca import ConfiguracaoSeguranca  # noqa: F401
 from app.db.models.configuracao_licenca import ConfiguracaoLicenca  # noqa: F401
+from app.db.models.configuracao_backup import ConfiguracaoBackup  # noqa: F401
 from app.db.models.comunicado import Comunicado, ComunicadoLeitura  # noqa: F401
 from app.db.models.sessao_caixa import SessaoCaixa  # noqa: F401
 from app.db.models.venda import Venda  # noqa: F401
