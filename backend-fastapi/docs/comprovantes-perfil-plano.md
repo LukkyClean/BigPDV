@@ -81,15 +81,61 @@ conversa): uma lista de modelos chumbados. A lista dele já mostra a falha —
 
 ## 4. O modelo
 
-Perfil de comprovante = **suporte × densidade/blocos × documento**.
+### 4.0 O invariante de conteúdo (decidido pelo dono, 12/08/2026)
+
+**Não existe opção que remova informação do comprovante.** Aparecem SEMPRE, em
+qualquer empresa e qualquer segmento, na OS e na Venda:
+
+- dados da empresa
+- dados do cliente, **incluindo endereço**
+- os itens discriminados (produto ou serviço)
+- o resumo exato do pagamento
+
+Isso existe para **proteger o cliente** e não é assunto de preferência do lojista.
+
+A consequência é uma propriedade de segurança que vale mais que a flexibilidade
+perdida: **nenhuma combinação de configurações produz uma via legalmente pobre.**
+Ninguém desliga os itens e descobre meses depois que não consegue provar o que
+entregou. O sistema não permite.
+
+> Registro de percurso: a primeira versão deste plano propunha densidade
+> `basico/normal/completo` **removendo blocos** (CPF, endereço, observações). Estava
+> errado, e o corte certo veio do dono: o conteúdo é fixo, o que muda é a forma.
+
+### 4.1 O que varia
+
+Perfil de comprovante = **suporte × densidade**, por documento.
 
 ```
 suporte      cupom58 · cupom80 · A5 (meia folha) · A4
-densidade    basico · normal · completo
-blocos       cliente · endereco · documento · objeto · fotos · observacoes ·
-             diagnostico · itens · pagamento · termos · assinaturas
-documento    os_entrada · os_entrega   (venda_recibo na fase final)
+densidade    normal (o de hoje) · compacto
+logo         com · sem
+documento    os_entrada · os_entrega · venda_recibo
 ```
+
+Densidade é **a mesma informação renderizada diferente**. Hoje cada bloco é um card
+com borda, barra de cabeçalho, ícone e `mb-4` de respiro. No compacto vira linha
+corrida, rótulo inline, duas ou três colunas, sem moldura — mesmos dados, muito menos
+papel.
+
+Duas densidades, não três: três é fácil de escrever e caro de manter afinado.
+
+### 4.2 Como a densidade se implementa
+
+Dois caminhos, a decidir na execução:
+
+1. **Classe no container** — `.print-container.compacto`, com o CSS de impressão
+   redefinindo espaçamentos e bordas. Barato; o template quase não muda. Risco:
+   briga de especificidade com as utilitárias do Tailwind, resolvida com
+   `!important` — que o `print-a4.css` já usa, então não é corpo estranho.
+2. **Classes condicionais no template** — `:class="dens('mb-4','mb-1')"`. Explícito,
+   sem briga de CSS, mas mexe em muita linha.
+
+Recomendação: começar por (1).
+
+**No cupom térmico a densidade é outra coisa.** Lá não há CSS — são bytes. Compactar é
+menos linha em branco e rótulo abreviado. Mesmo conceito, implementação separada em
+`osToEscPos` / `saleToEscPos`.
 
 ### Três camadas de decisão
 
@@ -112,31 +158,24 @@ O alvo. Isto é tudo o que um segmento novo deveria precisar:
 
 ```ts
 serigrafia: {
-  os_entrada: { suporte: 'A5',      densidade: 'normal', blocos: [...] },
-  os_entrega: { suporte: 'cupom80', densidade: 'basico', blocos: [...] },
+  os_entrada: { suporte: 'A5',      densidade: 'normal',   logo: true },
+  os_entrega: { suporte: 'cupom80', densidade: 'compacto', logo: true },
 }
 ```
 
-### Presets são derivados, não armazenados
-
-"Resumido" e "Completo" são botões que setam os toggles. A tela mostra
-"Personalizado" quando a combinação não bate com nenhum preset. Nada de campo
-`preset` salvo no banco — campo salvo dessincroniza dos toggles na primeira edição.
-
 ### O limite honesto
 
-**Bloco que já existe no catálogo** → segmento novo só declara. Zero Vue.
-**Bloco que ninguém inventou ainda** → escreve uma vez e ele entra no catálogo,
-disponível para todos os segmentos daí em diante.
+Com o conteúdo fixo (§4.0), o custo por segmento novo cai bastante: quase tudo é
+escolher suporte e densidade. Sobra um caso que ainda pede código: **conteúdo que
+nenhum segmento tinha pedido antes**.
 
-Foi exatamente o que aconteceu com `imagem_na_entrada`: a serigrafia precisou, virou
-capacidade declarável, e hoje qualquer segmento pode pedir. O custo por segmento tende
-a zero, mas o primeiro de cada **tipo novo de conteúdo** tem custo. Isso é inevitável;
-a alternativa seria um motor de layout genérico, e aí voltamos a construir plataforma.
+Foi o que aconteceu com `imagem_na_entrada` — a serigrafia precisou da arte na via,
+virou capacidade declarável, e hoje qualquer segmento pode pedir. Escreve-se uma vez e
+entra no catálogo para todos. A alternativa seria um motor de layout genérico, e aí
+voltamos a construir plataforma.
 
-E a densidade resolve a constante de 42mm: ela deixa de ser número chumbado e passa a
-ser consequência do perfil — `basico` sem foto, `normal` com foto pequena, `completo`
-com foto grande.
+E a densidade resolve a constante de 42mm da foto: deixa de ser número chumbado no
+template e passa a ser consequência do perfil.
 
 ---
 
@@ -145,8 +184,9 @@ com foto grande.
 | Decisão | Escolha | Por quê |
 |---|---|---|
 | Suporte declarado pelo segmento é padrão ou regra? | **padrão** (lojista troca) | Regra parece organizada no papel, mas existe a oficina que só tem A4 e a serigrafia que comprou térmica. Não vale brigar com cliente por decisão de arquitetura. |
-| Toggles valem por formato (cupom vs A4) ou um conjunto só? | **um conjunto só** | dois conjuntos dobram tela e manutenção; o cupom já é naturalmente condensado. Se aparecer caso real, divide depois com evidência. |
-| Armazenamento: colunas booleanas ou JSON? | **colunas booleanas explícitas** | booleano tipado é coberto por Pydantic e `vue-tsc`. JSON não é, e a primeira chave escrita errada só aparece na impressão do cliente. |
+| O que é configurável? | **só a forma** (suporte, densidade, logo) | §4.0 — conteúdo é proteção do cliente, não preferência do lojista |
+| Quantas densidades? | **duas** (normal, compacto) | três é fácil de escrever e caro de manter afinado |
+| Armazenamento | **colunas explícitas** (enum curto + booleano) | tipado é coberto por Pydantic e `vue-tsc`. JSON não é, e a primeira chave escrita errada só aparece na impressão do cliente. |
 | Defaults | **reproduzem exatamente a saída de hoje** | ninguém pode ter o comprovante alterado por uma atualização. Ver §7. |
 | Editor de template pelo usuário | **não existe** | produto, não plataforma |
 | Escolha de fonte e tamanho | **não existe** | é o botão que quebra layout e gera chamado. Se preciso, `densidade` resolve o caso real. |
@@ -157,45 +197,83 @@ com foto grande.
 
 Cada fase é entregável sozinha e reversível.
 
-### Fase 0 — descobrir o que come a página
-Abrir o template e medir quais blocos consomem a segunda folha. **Pode resolver a
-queixa do cliente sem nenhuma configuração nova** — e aí melhora para todos, inclusive
-quem nunca vai abrir a tela. Precedente: a ficha de vistoria da oficina foi
-reorganizada em duas colunas exatamente assim.
-*Risco: nenhum. Não escreve código de feature.*
+### Fase 0 — descobrir o que come a página ✅ FECHADA (12/08/2026)
 
-### Fase 1 — catálogo de blocos
-Nomear cada bloco do template atual e extrair a lista. Só organização; nenhum
-comportamento muda. É o alicerce de todo o resto.
-*Risco: nenhum.*
+**Resultado: não há ganho de graça. É volume de informação mesmo.**
+
+O levantamento mapeou o template inteiro e levantou um suspeito de layout — a regra
+`.print-container .border { page-break-inside: avoid }` no `print-a4.css`, cujo
+seletor pega *todo* elemento com borda (todos os cards), fazendo um bloco que não cabe
+pular inteiro de página e deixar vão em branco. **O dono confirmou que não é o caso**:
+a segunda folha vem cheia, é conteúdo.
+
+Fica registrado como achado lateral: se algum dia aparecer segunda folha *quase
+vazia*, esse seletor é o primeiro lugar a olhar.
+
+Consumidores de espaço mapeados, em ordem: espaçamento acumulado (padding `1cm` +
+`mb-4`/`mb-6`/`mb-8` empilhados + `margin-top: 2rem` do rodapé, fácil passar de 4cm só
+de respiro) · os textos legais de tamanho fixo (Termo de Garantia, Condições de
+Entrada, com `leading-relaxed` e `text-justify`) · o QR do PIX (30mm + `mb-6`) · a
+tabela de itens, que cresce sem limite.
+
+**Conclusão que orienta o resto:** o caminho é densidade de layout, não remoção de
+conteúdo.
+
+### Fase 1 — catálogo de blocos ✅ FECHADA (12/08/2026)
+
+Extraído do template:
+
+**Nos dois documentos** — cabeçalho da loja (logo, dados, nº da OS, datas) · faixa do
+título · card do cliente (nome, CPF/CNPJ, telefone, endereço, código) · card do objeto
+(marca, modelo, identificador, cor, atributos do segmento) · assinaturas · rodapé
+
+**Só entrada** — defeito relatado · observações e acessórios · fotos/arte · condições
+de entrada + prazo de retirada
+
+**Só entrega** — diagnóstico e solução · itens com garantia por item · lista de
+pagamentos · resumo financeiro (subtotal, desconto, deslocamento, juros, adiantamento,
+total) · QR do PIX · termo de garantia ou declaração de entrega
+
+Todos permanecem **sempre presentes** (§4.0). O catálogo serve para saber o que a
+densidade precisa saber compactar, não o que ligar e desligar.
 
 ### Fase 2 — suporte de papel
 Acrescentar `A5` ao mapa do `@page` em `imprimirComPagina` e fazer o template
-respeitar a largura. Entrega "meia folha", que é metade da queixa original.
+respeitar a largura. Entrega "meia folha".
 *Risco: baixo, frontend puro.*
 
-### Fase 3 — perfil no registry
-Cada segmento declara o perfil dos seus dois documentos. Defaults reproduzindo a saída
-atual. O template passa a ler o perfil em vez das constantes.
-*Risco: baixo — os blocos já são condicionais. Testar nos 3 segmentos.*
+### Fase 3 — densidade compacta
+A variante `compacto` do layout: cards viram linha corrida, rótulo inline, mais
+colunas, sem moldura. Decidir entre classe no container e classes condicionais
+(§4.2). **É a fase que resolve a queixa** — as anteriores só preparam.
+*Risco: médio. É onde o comprovante muda de cara; testar nos 3 segmentos.*
 
-### Fase 4 — sobrescrita pela empresa
+### Fase 4 — perfil no registry
+Cada segmento declara suporte e densidade dos seus documentos. Defaults reproduzindo
+a saída atual.
+*Risco: baixo.*
+
+### Fase 5 — sobrescrita pela empresa
 Colunas em `configuracoes_os` + migration + schema + seção nova na tela de Ordens de
 Serviço, com **Entrada** e **Entrega** separados.
 *Risco: médio. Mexe no backend → exige `build:sidecar` no deploy.*
 
-### Fase 5 — preview ao vivo
+### Fase 6 — recibo de Venda
+O mesmo CSS de densidade aplicado ao template de venda, e as mesmas colunas em
+`ConfiguracaoVendas`.
+
+**Deixou de ser projeto à parte.** Com o conteúdo fixo e só a forma variando, o
+mecanismo é idêntico ao da OS — é aplicação, não desenho novo. Pode inclusive andar
+junto da Fase 3 se o CSS sair genérico o bastante.
+
+### Fase 7 — preview ao vivo
 `OSPrintTemplate.vue` recebendo uma OS de exemplo, renderizado reduzido ao lado dos
-controles, atualizando a cada clique.
+controles, atualizando a cada mudança.
 
 É o que separa esta tela da tela de 1998: configuração de impressão sem preview é
-tentativa e erro gastando papel. E como a queixa do cliente é sobre **tamanho**, ver a
-folha encolher ao desligar blocos ataca o problema direto.
+tentativa e erro gastando papel. E como a queixa é sobre **tamanho**, ver a folha
+encolher ao trocar a densidade ataca o problema direto.
 *Risco: baixo (só leitura), custo o mais alto das fases.*
-
-### Fase 6 — recibo de Venda
-Mesmo desenho aplicado a `ConfiguracaoVendas` e ao template de venda, com o padrão já
-provado na OS.
 
 ---
 
