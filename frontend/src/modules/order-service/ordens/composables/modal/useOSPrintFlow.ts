@@ -26,6 +26,7 @@ export function useOSPrintFlow({ onClose, getOS }: UseOSPrintFlowParams) {
     printType,
     printFormat,
     isPrintSelectModalOpen,
+    openPrintSelect,
     printDirect,
     handlePrintFormatSelected: handlePrintFormatSelectedBase,
     closePrintSelectModal,
@@ -81,13 +82,18 @@ export function useOSPrintFlow({ onClose, getOS }: UseOSPrintFlowParams) {
   }
 
   /**
-   * Regra única de impressão (sem perguntar formato):
-   * - Impressora térmica configurada → cupom ESC/POS direto (silencioso).
-   * - Sem térmica (ou falha) → recibo A4 abrindo o diálogo do sistema.
-   * `imprimirEscPosDireto` já devolve false quando não há térmica configurada.
+   * Regra única de impressão (sem perguntar formato), obedecendo `formato_os`:
+   * - Formato Cupom + térmica configurada → ESC/POS direto (silencioso).
+   * - Formato A4 → recibo A4 abrindo o diálogo do sistema, SEM tentar ESC/POS.
+   * - Sem térmica (ou falha no envio) → cai no A4.
+   *
+   * O teste do formato existe porque ESC/POS sao bytes de comando, nao texto:
+   * despejados numa impressora comum, saem como uma folha de pontinhos. Antes
+   * daqui o ramo ESC/POS era tentado SEMPRE que houvesse impressora, e escolher
+   * A4 na tela nao tinha efeito nenhum — o `formato_os` era gravado e nunca lido.
    */
   async function imprimir(tipo: 'ENTRADA' | 'SAIDA', afterPrint?: () => void) {
-    if (await imprimirEscPosDireto(tipo)) {
+    if (impressaoStore.config.formato_os === 'cupom' && (await imprimirEscPosDireto(tipo))) {
       afterPrint?.();
       return;
     }
@@ -102,8 +108,17 @@ export function useOSPrintFlow({ onClose, getOS }: UseOSPrintFlowParams) {
     imprimir('SAIDA');
   }
 
-  /** Impressão automática pós-criação/finalização: segue a regra única e fecha. */
+  /**
+   * Impressão pós-criação/finalização, conforme `auto_imprimir_os`:
+   * 'perguntar' → o atendente escolhe o formato nesta OS;
+   * 'automatico' → segue a regra única (o formato configurado).
+   * O 'nao' é filtrado antes, por quem chama.
+   */
   async function imprimirAutomaticoEFechar(tipo: 'ENTRADA' | 'SAIDA') {
+    if (impressaoStore.config.auto_imprimir_os === 'perguntar') {
+      openPrintSelect(tipo, () => onClose());
+      return;
+    }
     await imprimir(tipo, () => onClose());
   }
 
