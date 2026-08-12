@@ -81,7 +81,7 @@ def bancos(tmp_path, monkeypatch):
     _criar_banco(staging, HWID_SERVIDOR_ANTIGO, token="token-antigo")
 
     # _preserve_local_license le o banco de producao por `database_path`.
-    monkeypatch.setattr("app.services.backup.database_path", producao)
+    monkeypatch.setattr("app.services.backup.restore.database_path", producao)
 
     return producao, staging
 
@@ -126,7 +126,7 @@ def test_sem_licenca_local_a_do_backup_e_descartada(tmp_path, monkeypatch):
     _criar_banco(producao, None)  # tabela existe, sem licenca
     _criar_banco(staging, HWID_SERVIDOR_ANTIGO)
 
-    monkeypatch.setattr("app.services.backup.database_path", producao)
+    monkeypatch.setattr("app.services.backup.restore.database_path", producao)
 
     resultado = _preserve_local_license(staging)
 
@@ -140,7 +140,7 @@ def test_banco_de_producao_inexistente_nao_quebra(tmp_path, monkeypatch):
     _criar_banco(staging, HWID_SERVIDOR_ANTIGO)
 
     monkeypatch.setattr(
-        "app.services.backup.database_path", str(tmp_path / "nao_existe.db")
+        "app.services.backup.restore.database_path", str(tmp_path / "nao_existe.db")
     )
 
     _preserve_local_license(staging)
@@ -163,7 +163,7 @@ def test_backup_antigo_sem_a_tabela_nao_quebra(tmp_path, monkeypatch):
     conn.commit()
     conn.close()
 
-    monkeypatch.setattr("app.services.backup.database_path", producao)
+    monkeypatch.setattr("app.services.backup.restore.database_path", producao)
 
     resultado = _preserve_local_license(staging)
 
@@ -193,7 +193,7 @@ def test_colunas_diferentes_entre_backup_e_local(tmp_path, monkeypatch):
     conn.commit()
     conn.close()
 
-    monkeypatch.setattr("app.services.backup.database_path", producao)
+    monkeypatch.setattr("app.services.backup.restore.database_path", producao)
 
     _preserve_local_license(staging)
 

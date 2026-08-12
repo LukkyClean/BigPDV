@@ -48,6 +48,11 @@ class BackupCriado(BaseModel):
     }
 
 
+class BackupCriadoComCota(BackupCriado):
+    """Resposta da criação de backup manual com informação de cota diária."""
+    backups_restantes_hoje: int = Field(..., description="Backups manuais restantes hoje (limite de 2/dia)")
+
+
 class BackupVerificacao(BaseModel):
     """Resultado da verificação de integridade de um backup."""
     arquivo: str = Field(..., description="Nome do arquivo verificado")
@@ -186,6 +191,14 @@ class CloudPlanResponse(BaseModel):
 # ===========================================================================
 # Journal de Envios (cloud_journal)
 # ===========================================================================
+
+class CicloNuvemInfo(BaseModel):
+    """Informações de um ciclo de backup disponível na nuvem (via journal local)."""
+    ciclo: str = Field(..., description="Identificador do ciclo (ex: 2026-08)")
+    quantidade_backups: int = Field(..., description="Total de arquivos enviados neste ciclo")
+    ultimo_envio: str = Field(..., description="Data do último envio confirmado (ISO 8601)")
+    arquivos: List[str] = Field(..., description="Nomes dos arquivos enviados")
+
 
 class JournalEntry(BaseModel):
     """Entrada individual do journal de sincronização com a nuvem."""

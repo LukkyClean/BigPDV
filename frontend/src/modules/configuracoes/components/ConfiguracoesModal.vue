@@ -27,6 +27,7 @@ import { useSalvarConfiguracoesEstoqueMutation } from '../composables/mutates/us
 import { useSalvarConfiguracoesOSMutation } from '../composables/mutates/useSalvarConfiguracoesOSMutation'
 import { useSalvarConfiguracoesVendasMutation } from '../composables/mutates/useSalvarConfiguracoesVendasMutation'
 import { useSalvarConfiguracoesSegurancaMutation } from '../composables/mutates/useSalvarConfiguracoesSegurancaMutation'
+import { useSalvarConfiguracaoBackupMutation } from '../composables/mutates/useSalvarConfiguracaoBackupMutation'
 import { useUpdateEmpresaMutation } from '@/modules/enterprise/composables/useEmpresaQuery'
 import { guardarCorLocalmente } from '@/shared/theme/aplicar'
 import type { SecaoConfiguracao, SecaoExposta, SecaoId } from '../types/configuracoes.types'
@@ -59,6 +60,7 @@ const { mutate: salvarEstoque, mutateAsync: salvarEstoqueAsync, isPending: isPen
 const { mutate: salvarOS, isPending: isPendingOS } = useSalvarConfiguracoesOSMutation()
 const { mutateAsync: salvarVendasAsync, isPending: isPendingVendas } = useSalvarConfiguracoesVendasMutation()
 const { mutate: salvarSeguranca, isPending: isPendingSeguranca } = useSalvarConfiguracoesSegurancaMutation()
+const { mutate: salvarBackup, isPending: isPendingBackup } = useSalvarConfiguracaoBackupMutation()
 // O tema mora na empresa (junto do logo), então reaproveita a mutation dela —
 // que já invalida o cache e sincroniza o auth store.
 const { mutate: salvarTema, isPending: isPendingTema } = useUpdateEmpresaMutation()
@@ -106,7 +108,7 @@ async function navegarParaSecao(secaoId: SecaoId): Promise<void> {
   if (await verificarPinComRetry(pin)) irPara(secaoId)
 }
 
-const isPending = computed(() => isPendingClientes.value || isPendingEstoque.value || isPendingOS.value || isPendingVendas.value || isPendingSeguranca.value || isPendingTema.value)
+const isPending = computed(() => isPendingClientes.value || isPendingEstoque.value || isPendingOS.value || isPendingVendas.value || isPendingSeguranca.value || isPendingTema.value || isPendingBackup.value)
 
 const activeComponentRef = ref<SecaoExposta | null>(null)
 const isDirtyAtivo = computed(() => activeComponentRef.value?.isDirty === true)
@@ -138,7 +140,7 @@ watch(() => props.isOpen, (aberto) => {
   }
 })
 
-const secoesFuncionais: SecaoId[] = ['seguranca', 'clientes-cadastro', 'produtos-estoque', 'ordens-de-servico', 'regras-de-vendas', 'impressao', 'formatos-exibicao', 'integracoes-apis']
+const secoesFuncionais: SecaoId[] = ['seguranca', 'clientes-cadastro', 'produtos-estoque', 'ordens-de-servico', 'regras-de-vendas', 'impressao', 'formatos-exibicao', 'integracoes-apis', 'backup-dados']
 const secaoFuncional = computed(() => secoesFuncionais.includes(secaoAtiva.value))
 
 async function salvar(): Promise<void> {
@@ -168,6 +170,9 @@ async function salvar(): Promise<void> {
       break
     case 'seguranca':
       salvarSeguranca(comp.form as any, fecharAposSalvar)
+      break
+    case 'backup-dados':
+      salvarBackup(comp.form as any, fecharAposSalvar)
       break
     case 'impressao':
       // Config local deste PC (localStorage) — sem chamada ao backend
