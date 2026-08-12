@@ -30,7 +30,9 @@ export function useOSPrintFlow({ onClose, getOS }: UseOSPrintFlowParams) {
     printDirect,
     handlePrintFormatSelected: handlePrintFormatSelectedBase,
     closePrintSelectModal,
-  } = usePrintFlow<'ENTRADA' | 'SAIDA'>();
+  } = usePrintFlow<'ENTRADA' | 'SAIDA'>((tipo) =>
+    tipo === 'ENTRADA' ? 'os_entrada' : 'os_entrega',
+  );
 
   const isFinalizarModalOpen = ref(false);
 

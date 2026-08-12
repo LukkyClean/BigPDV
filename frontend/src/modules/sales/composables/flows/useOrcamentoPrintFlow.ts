@@ -20,7 +20,9 @@ export function useOrcamentoPrintFlow() {
     printDirect,
     handlePrintFormatSelected: handlePrintFormatSelectedBase,
     closePrintSelectModal,
-  } = usePrintFlow<OrcamentoPrintType>();
+    // Orçamento acompanha o recibo de venda: é o mesmo documento comercial, só
+    // antes de virar venda. Não vale ter apresentação própria.
+  } = usePrintFlow<OrcamentoPrintType>(() => 'venda_recibo');
 
   const orcamentoForPrint = ref<OrcamentoRead | null>(null);
 

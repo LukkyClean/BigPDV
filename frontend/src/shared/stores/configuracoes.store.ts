@@ -79,6 +79,12 @@ export const useConfiguracoesStore = defineStore('configuracoes', () => {
   const prazoAbandonoDias = computed(() => configOS.value?.prazo_abandono_dias ?? 90)
   const taxaDiagnosticoPadrao = computed(() => configOS.value?.taxa_diagnostico_padrao ?? 0)
 
+  // ── OS: apresentação dos comprovantes (só a FORMA; conteúdo é invariante) ──
+  const comprovanteEntradaFolha = computed(() => configOS.value?.comprovante_entrada_folha ?? 'A4')
+  const comprovanteEntradaDensidade = computed(() => configOS.value?.comprovante_entrada_densidade ?? 'normal')
+  const comprovanteEntregaFolha = computed(() => configOS.value?.comprovante_entrega_folha ?? 'A4')
+  const comprovanteEntregaDensidade = computed(() => configOS.value?.comprovante_entrega_densidade ?? 'normal')
+
   // ── Vendas: regras ──
   const permitirDesconto = computed(() => configVendas.value?.permitir_desconto ?? true)
   const descontoMaximoPercent = computed(() => configVendas.value?.desconto_maximo_percent ?? 30)
@@ -138,6 +144,11 @@ export const useConfiguracoesStore = defineStore('configuracoes', () => {
     garantiaPadrao,
     prazoAbandonoDias,
     taxaDiagnosticoPadrao,
+
+    comprovanteEntradaFolha,
+    comprovanteEntradaDensidade,
+    comprovanteEntregaFolha,
+    comprovanteEntregaDensidade,
 
     permitirDesconto,
     descontoMaximoPercent,

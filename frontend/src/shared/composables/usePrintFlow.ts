@@ -1,8 +1,21 @@
 import { ref } from 'vue';
 import { imprimirComPagina, aguardarImagensDaImpressao } from '@/shared/utils/print.utils';
+import { usePerfilComprovante } from '@/shared/composables/usePerfilComprovante';
+import type { DocumentoComprovante } from '@/shared/composables/usePerfilComprovante';
 import type { PrintFormat } from '@/shared/components/print/print.types';
 
-export function usePrintFlow<T extends string>() {
+/**
+ * `documentoDe` traduz o tipo de impressão deste módulo para o documento do
+ * perfil de comprovante. Fica como parâmetro porque só quem chama sabe a
+ * correspondência: em OS, ENTRADA e SAIDA são documentos diferentes e podem
+ * querer papéis diferentes; em vendas há um só.
+ */
+export function usePrintFlow<T extends string>(
+  documentoDe?: (tipo: T) => DocumentoComprovante,
+) {
+  // Tamanho do papel (folha do perfil, bobina da máquina). A densidade não passa
+  // por aqui: ela é uma classe no container, aplicada pelo próprio template.
+  const { opcoesPaginaDe } = usePerfilComprovante();
   const printType = ref<T>('' as T);
   const printFormat = ref<PrintFormat>('A4');
   const isPrintSelectModalOpen = ref(false);
@@ -25,7 +38,8 @@ export function usePrintFlow<T extends string>() {
       // então nenhuma via existente fica mais lenta.
       await aguardarImagensDaImpressao();
 
-      imprimirComPagina(format);
+      const documento = documentoDe?.(printType.value as T) ?? 'os_entrega';
+      imprimirComPagina(format, opcoesPaginaDe(documento));
       printFormat.value = '' as PrintFormat;
       pendingPrintAction.value?.();
       pendingPrintAction.value = null;

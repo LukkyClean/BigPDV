@@ -87,6 +87,19 @@ export const GARANTIA_OPTIONS = [
   '1 ano',
 ] as const
 
+/**
+ * Apresentação dos comprovantes. Só a FORMA — o conteúdo é invariante (dados da
+ * empresa, do cliente com endereço, itens discriminados e resumo do pagamento
+ * saem sempre, porque protegem o cliente).
+ * Ver backend-fastapi/docs/comprovantes-perfil-plano.md
+ *
+ * `.catch()` nos dois: uma loja atualizada cujo backend ainda não tenha as
+ * colunas devolveria o campo ausente, e sem isso o Zod reprovaria a resposta
+ * inteira — derrubando toda a config de OS por causa de um campo novo.
+ */
+export const FOLHA_OPTIONS = ['A4', 'A5'] as const
+export const DENSIDADE_OPTIONS = ['normal', 'compacto'] as const
+
 export const ConfiguracaoOSSchema = z.object({
   id: z.number(),
   empresa_id: z.number(),
@@ -95,6 +108,11 @@ export const ConfiguracaoOSSchema = z.object({
   garantia_padrao: z.enum(GARANTIA_OPTIONS),
   prazo_abandono_dias: z.number().int().min(1),
   taxa_diagnostico_padrao: z.number().int().min(0),
+
+  comprovante_entrada_folha: z.enum(FOLHA_OPTIONS).catch('A4'),
+  comprovante_entrada_densidade: z.enum(DENSIDADE_OPTIONS).catch('normal'),
+  comprovante_entrega_folha: z.enum(FOLHA_OPTIONS).catch('A4'),
+  comprovante_entrega_densidade: z.enum(DENSIDADE_OPTIONS).catch('normal'),
 
   data_atualizacao: z.string(),
 })

@@ -3,7 +3,12 @@ import { useAuthStore } from '@/shared/stores/auth.store';
 import { formatCNPJ, formatCPF } from '@/shared/utils/document.utils';
 import { getBackendBaseUrl } from '@/api/backendUrl';
 import { montarPixBrCode } from '@/shared/utils/pixBrCode';
-import type { CompanyPrintInfo, PrintFormat } from '@/shared/components/print/print.types';
+import type {
+  CompanyPrintInfo,
+  LarguraBobina,
+  PrintFormat,
+  TamanhoFolha,
+} from '@/shared/components/print/print.types';
 import { parseTimestampBackend } from './date.utils';
 
 // --- Cliente helpers (union type PF/PJ) ---
@@ -247,8 +252,25 @@ export async function aguardarImagensDaImpressao(timeoutMs = 4000): Promise<void
   await Promise.race([carregadas, teto]);
 }
 
-export function imprimirComPagina(format: PrintFormat): void {
-  const size = format === 'CUPOM' ? '80mm auto' : 'A4';
+/**
+ * Imprime injetando a regra `@page` do papel escolhido.
+ *
+ * `format` é a CLASSE do dispositivo (folha ou bobina); `opcoes` refina o papel
+ * dentro dela. Os dois eixos são separados porque quem decide cada um é
+ * diferente: a máquina sabe se tem térmica (formato), a empresa decide se a via
+ * sai em folha inteira ou meia folha (tamanho).
+ *
+ * Os padrões reproduzem o comportamento anterior, então os chamadores que só
+ * passam `format` — ficha de vistoria, relatórios — seguem em A4 inalterados.
+ */
+export function imprimirComPagina(
+  format: PrintFormat,
+  opcoes: { folha?: TamanhoFolha; bobina?: LarguraBobina } = {},
+): void {
+  const { folha = 'A4', bobina = '80' } = opcoes;
+  // A bobina deixou de ser fixa em 80mm: numa loja de 58mm a via HTML saía com
+  // a página larga demais e o conteúdo desalinhado do papel.
+  const size = format === 'CUPOM' ? `${bobina}mm auto` : folha;
   const style = document.createElement('style');
   style.setAttribute('data-print-page', '');
   style.textContent = `@media print{@page{size:${size};margin:0}}`;

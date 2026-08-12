@@ -10,6 +10,7 @@ import {
 } from 'lucide-vue-next';
 import type { OrderServiceReadDataType } from '../schemas/orderServiceQuery.schema';
 import { formatCurrency } from '@/shared/utils/finance';
+import { usePerfilComprovante } from '@/shared/composables/usePerfilComprovante';
 import {
   useCompanyPrintInfo,
   getClienteNome,
@@ -43,6 +44,12 @@ const props = defineProps<{
 }>();
 
 const { companyInfo } = useCompanyPrintInfo();
+
+// Densidade do layout. O documento é passado porque entrada e entrega podem
+// querer apresentações diferentes (a Fase 4 do plano declara por documento).
+const { classeDensidade } = usePerfilComprovante(
+  props.type === 'ENTRADA' ? 'os_entrada' : 'os_entrega',
+);
 const { labelSingular, objetoIcon, labelDaColuna } = useObjetoLabels();
 const { tipoPorId } = useTiposDeTrabalho();
 // Gate das imagens na via: capacidade do registry, não nome de segmento.
@@ -245,7 +252,11 @@ const pix = computed(() =>
 
 <template>
   <Teleport to="body">
-  <div v-if="ordemServico" class="print-container hidden print:block bg-white text-black font-sans leading-tight">
+  <div
+    v-if="ordemServico"
+    class="print-container hidden print:block bg-white text-black font-sans leading-tight"
+    :class="classeDensidade"
+  >
     <PrintCompanyHeader
       :company="companyInfo"
       document-label="Número da O.S."

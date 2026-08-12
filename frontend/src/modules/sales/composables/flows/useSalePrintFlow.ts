@@ -22,7 +22,7 @@ export function useSalePrintFlow() {
     printDirect,
     handlePrintFormatSelected: handlePrintFormatSelectedBase,
     closePrintSelectModal,
-  } = usePrintFlow<SalePrintType>();
+  } = usePrintFlow<SalePrintType>(() => 'venda_recibo');
 
   const saleForPrint = ref<SaleRead | null>(null);
   const { formasPagamento } = usePaymentMethodsQuery();

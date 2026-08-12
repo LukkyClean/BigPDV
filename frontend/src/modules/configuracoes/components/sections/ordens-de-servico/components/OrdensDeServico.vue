@@ -8,7 +8,16 @@ import { GARANTIA_OPTIONS } from '@/modules/configuracoes/schemas/configuracoes.
 import type { ConfiguracaoOSUpdate } from '@/modules/configuracoes/schemas/configuracoes.schema'
 
 const configStore = useConfiguracoesStore()
-const { prazoEntregaPadrao, garantiaPadrao, prazoAbandonoDias, taxaDiagnosticoPadrao } = storeToRefs(configStore)
+const {
+  prazoEntregaPadrao,
+  garantiaPadrao,
+  prazoAbandonoDias,
+  taxaDiagnosticoPadrao,
+  comprovanteEntradaFolha,
+  comprovanteEntradaDensidade,
+  comprovanteEntregaFolha,
+  comprovanteEntregaDensidade,
+} = storeToRefs(configStore)
 
 useConfiguracoesOSQuery()
 
@@ -18,8 +27,30 @@ function valoresDoStore(): ConfiguracaoOSUpdate {
     garantia_padrao: garantiaPadrao.value as typeof GARANTIA_OPTIONS[number],
     prazo_abandono_dias: prazoAbandonoDias.value,
     taxa_diagnostico_padrao: taxaDiagnosticoPadrao.value,
+    comprovante_entrada_folha: comprovanteEntradaFolha.value,
+    comprovante_entrada_densidade: comprovanteEntradaDensidade.value,
+    comprovante_entrega_folha: comprovanteEntregaFolha.value,
+    comprovante_entrega_densidade: comprovanteEntregaDensidade.value,
   }
 }
+
+/** Rótulos dos comprovantes. O texto é o que ensina o lojista, não a documentação. */
+const DOCUMENTOS = [
+  {
+    chave: 'entrada' as const,
+    titulo: 'Via de entrada',
+    ajuda: 'Impressa ao abrir a OS — o protocolo que o cliente leva.',
+    campoFolha: 'comprovante_entrada_folha' as const,
+    campoDensidade: 'comprovante_entrada_densidade' as const,
+  },
+  {
+    chave: 'entrega' as const,
+    titulo: 'Via de entrega',
+    ajuda: 'Impressa ao finalizar — leva os itens e o resumo do pagamento.',
+    campoFolha: 'comprovante_entrega_folha' as const,
+    campoDensidade: 'comprovante_entrega_densidade' as const,
+  },
+]
 
 const form = ref<ConfiguracaoOSUpdate>(valoresDoStore())
 
@@ -111,6 +142,61 @@ defineExpose({ form, isDirty, resetar })
           <BaseMoneyInput v-model="taxaReais" />
         </div>
       </div>
+    </div>
+
+    <!-- COMPROVANTES -->
+    <div class="flex flex-col">
+      <p class="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-3">Comprovantes</p>
+
+      <!--
+        Só a FORMA é configurável. O aviso abaixo existe porque a primeira
+        pergunta do lojista vai ser "e dá pra tirar tal informação?" — melhor
+        responder antes de ele procurar a opção que não existe.
+      -->
+      <p class="text-[11px] text-zinc-500 mb-3 leading-relaxed">
+        Dados da empresa, dados do cliente com endereço, os itens e o resumo do pagamento
+        aparecem sempre — eles protegem o cliente e não podem ser removidos.
+        Aqui você escolhe apenas <strong>como</strong> a via é montada no papel.
+      </p>
+
+      <div
+        v-for="doc in DOCUMENTOS"
+        :key="doc.chave"
+        class="py-3 border-b border-zinc-100"
+      >
+        <p class="text-sm font-medium text-zinc-800">{{ doc.titulo }}</p>
+        <p class="text-[11px] text-zinc-400 mt-0.5 mb-2">{{ doc.ajuda }}</p>
+
+        <div class="flex flex-wrap gap-4">
+          <div>
+            <label class="text-xs font-medium text-zinc-600">Papel</label>
+            <select
+              v-model="form[doc.campoFolha]"
+              class="mt-1 block w-40 rounded-md border-2 border-zinc-200 px-2 py-1.5 text-sm focus:outline-none focus:border-brand-primary"
+            >
+              <option value="A4">A4 — folha inteira</option>
+              <option value="A5">A5 — meia folha</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="text-xs font-medium text-zinc-600">Layout</label>
+            <select
+              v-model="form[doc.campoDensidade]"
+              class="mt-1 block w-40 rounded-md border-2 border-zinc-200 px-2 py-1.5 text-sm focus:outline-none focus:border-brand-primary"
+            >
+              <option value="normal">Normal</option>
+              <option value="compacto">Compacto</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <p class="text-[11px] text-zinc-400 mt-3 leading-relaxed">
+        O <strong>Compacto</strong> aproveita melhor a folha reduzindo molduras e espaços,
+        sem tirar informação. É o caminho quando a via está passando para a segunda página.
+        Em impressora térmica esta escolha não se aplica — o cupom já sai condensado.
+      </p>
     </div>
 
     <!-- NOTIFICAÇÕES (visual only) -->
