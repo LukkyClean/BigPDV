@@ -10,11 +10,19 @@ from app.db.base import Base
 from app.db.migrations import aplicar_migracoes
 from app.db.session import SessionLocal, engine
 from app.db.models.contador_venda import ContadorVenda
+from app.db.models.empresa import Empresa
 from app.db.models.forma_pagamento import FormaPagamento
 from app.services.limpeza_temporal import cancelar_vendas_ativas_expiradas, limpar_orcamentos_expirados, limpar_temp_data
 from app.services.licenca import enviar_heartbeat, renovar_licenca_background, desconectar_terminal
-from app.services.backup import create_backup, get_last_backup, apply_pending_restore
-from app.services import cloud_sync
+from app.services.backup import (
+    create_backup,
+    get_last_backup,
+    apply_pending_restore,
+    limpar_snapshots_antigos,
+)
+# `cloud` reexporta sync/CloudSyncError; o alias mantem o resto do arquivo igual.
+from app.services import cloud as cloud_sync
+from app.services.configuracao_backup import get_or_create_configuracao_backup
 from app.db.crud import terminal_conectado as terminal_crud
 
 from app.core.discovery import register_service, stop_discovery
@@ -26,8 +34,15 @@ INTERVALO_HEARTBEAT_SEGUNDOS = 100  # 5 minutos
 INTERVALO_RENOVACAO_SEGUNDOS = 3600  # 1 hora
 
 ATRASO_INICIAL_BACKUP_SEGUNDOS = 180
-INTERVALO_BACKUP_SEGUNDOS = 3600
-INTERVALO_BACKUP_HORAS = 8
+# Checagem curta: o horario do backup diario e escolhido pelo lojista e pode
+# mudar a qualquer momento, entao o loop rele a configuracao a cada minuto.
+INTERVALO_CHECAGEM_BACKUP_SEGUNDOS = 60
+
+FREQUENCIA_HORAS = {
+    "8horas": 8,
+    "12horas": 12,
+    "diario": 24,
+}
 
 ATRASO_INICIAL_SYNC_SEGUNDOS = 300
 INTERVALO_SYNC_SEGUNDOS = 3600
@@ -49,19 +64,67 @@ async def _loop_limpeza_temporal():
         await asyncio.sleep(INTERVALO_LIMPEZA_HORAS * 3600)
 
 
+def _precisa_backup_por_horario(horario: str, last_backup_created_at: datetime | None) -> bool:
+    """
+    Decide o backup diario: so dispara depois do horario escolhido e no maximo
+    uma vez por dia. `horario` invalido cai em 02:00 em vez de derrubar o loop.
+    """
+    agora = datetime.now()
+    try:
+        hora, minuto = map(int, horario.split(":"))
+    except (ValueError, AttributeError):
+        hora, minuto = 2, 0
+
+    alvo_hoje = agora.replace(hour=hora, minute=minuto, second=0, microsecond=0)
+
+    if agora < alvo_hoje:
+        return False
+
+    if last_backup_created_at is None:
+        return True
+
+    return last_backup_created_at < alvo_hoje
+
+
 async def _loop_backup():
-    """Loop em segundo plano que mantem o backup local em dia (a cada 8h)."""
+    """Loop que mantem o backup local em dia, na frequencia escolhida na tela."""
     await asyncio.sleep(ATRASO_INICIAL_BACKUP_SEGUNDOS)
 
     while True:
         try:
+            db = SessionLocal()
+            try:
+                # A loja tem uma empresa so, mas o id nem sempre e 1 (banco
+                # recriado/restaurado). Fixar 1 faria a linha nascer com FK
+                # invalida e o loop errar de minuto em minuto, sem backup.
+                empresa_id = db.query(Empresa.id).order_by(Empresa.id).limit(1).scalar()
+                if empresa_id is None:
+                    # Onboarding ainda nao rodou: nao ha o que salvar.
+                    ativo = False
+                else:
+                    config = get_or_create_configuracao_backup(db, empresa_id)
+                    ativo = config.backup_automatico_ativo
+                    frequencia = config.frequencia
+                    horario = config.horario
+                    db.commit()
+            finally:
+                db.close()
+
+            if not ativo:
+                await asyncio.sleep(INTERVALO_CHECAGEM_BACKUP_SEGUNDOS)
+                continue
+
             last_backup = await asyncio.to_thread(get_last_backup)
             last_backup_created_at = datetime.fromisoformat(last_backup.criado_em) if last_backup else None
 
-            need_backup = (
-                last_backup_created_at is None
-                or datetime.now() - last_backup_created_at >= timedelta(hours=INTERVALO_BACKUP_HORAS)
-            )
+            if frequencia == "diario":
+                need_backup = _precisa_backup_por_horario(horario, last_backup_created_at)
+            else:
+                intervalo_horas = FREQUENCIA_HORAS.get(frequencia, 8)
+                need_backup = (
+                    last_backup_created_at is None
+                    or datetime.now() - last_backup_created_at >= timedelta(hours=intervalo_horas)
+                )
 
             if need_backup:
                 print(f"[BACKUP] Criando backup automático (último backup: {last_backup.criado_em if last_backup else 'nenhum'})")
@@ -69,9 +132,9 @@ async def _loop_backup():
                 print(f'[BACKUP] Backup automático criado: {backup_info.arquivo} ({backup_info.tamanho_bytes} Bytes)')
         except Exception as e:
             print(f"[BACKUP] Erro ao criar backup automático: {type(e).__name__}: {e}")
-            print(f"[BACKUP] Próxima tentativa em 1 hora")
+            print(f"[BACKUP] Próxima tentativa em {INTERVALO_CHECAGEM_BACKUP_SEGUNDOS}s")
 
-        await asyncio.sleep(INTERVALO_BACKUP_SEGUNDOS)
+        await asyncio.sleep(INTERVALO_CHECAGEM_BACKUP_SEGUNDOS)
 
 
 async def _loop_cloud_sync():
@@ -189,6 +252,11 @@ async def lifespan(app: FastAPI):
             print(f"[RESTORE] Licença: {result.get('license')}")
     except Exception as e:
         print(f"[RESTORE] Erro ao aplicar restauração pendente: {type(e).__name__}: {e}")
+
+    try:
+        await asyncio.to_thread(limpar_snapshots_antigos)
+    except Exception as e:
+        print(f"[LIMPEZA] Erro ao limpar snapshots antigos: {type(e).__name__}: {e}")
 
     await asyncio.to_thread(limpar_temp_data)
 
