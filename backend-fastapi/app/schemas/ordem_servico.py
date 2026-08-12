@@ -341,6 +341,7 @@ class OrdemServicoBase(BaseModel):
     # Financeiro
     desconto: Optional[int] = Field(None, ge=0, description="Desconto aplicado em centavos")
     valor_entrada: Optional[int] = Field(None, ge=0, description="Valor de entrada/adiantamento em centavos")
+    forma_pagamento_entrada_id: Optional[int] = Field(None, description="Forma de pagamento usada no adiantamento")
     taxa_entrega: Optional[int] = Field(None, ge=0, description="Taxa de entrega/frete em centavos")
     acrescimo: Optional[int] = Field(None, ge=0, description="Acréscimo de juros/cartão em centavos")
 
@@ -404,6 +405,7 @@ class OrdemServicoUpdate(BaseModel):
     # Financeiro e datas
     desconto: Optional[int] = Field(None, ge=0, description="Novo desconto em centavos (recalcula valor_total automaticamente)")
     valor_entrada: Optional[int] = Field(None, ge=0, description="Novo valor de entrada/adiantamento em centavos")
+    forma_pagamento_entrada_id: Optional[int] = Field(None, description="Nova forma de pagamento do adiantamento")
     garantia: Optional[str] = Field(None, max_length=20, description="Nova garantia")
     data_previsao: Optional[datetime] = Field(None, description="Nova data prevista")
     funcionario_id: Optional[int] = Field(None, description="ID do novo funcionário responsável")
@@ -444,6 +446,11 @@ class OrdemServicoRead(OrdemServicoBase):
     equipamento: Optional[OSEquipamentoRead] = Field(None, description="Equipamento em serviço (retrocompatibilidade)")
     itens: Sequence[OSItemRead] = Field(..., description="Itens e serviços da OS")
     pagamentos: Sequence[OSPagamentoRead] = Field(default=[], description="Pagamentos registrados (populado após finalização)")
+    # O adiantamento nao vive em `pagamentos` (ver models/ordem_servico.py), entao
+    # a forma dele vem por fora. None em OS aberta antes deste campo existir.
+    forma_pagamento_entrada: Optional[FormaPagamentoRead] = Field(
+        None, description="Forma de pagamento usada no adiantamento"
+    )
     fotos: Sequence[OSFotoRead] = Field(default=[], description="Fotos de diagnóstico da OS")
 
 

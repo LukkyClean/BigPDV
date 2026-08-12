@@ -15,7 +15,14 @@ from typing import Any, Dict, List, Optional
 # campo que ninguem sabe renderizar -- metadado orfao e a unica forma de um
 # segmento novo quebrar uma tela em producao.
 
-TIPOS_DE_CAMPO_SUPORTADOS = ("texto", "numero", "inteiro", "opcao", "booleano")
+# "lista" e um campo REPETIVEL de texto: o valor gravado e uma list[str], nao
+# uma string. Nasceu da serigrafia, onde uma mesma OS produz sacolas de varios
+# tamanhos e o dono trabalha por REFERENCIA ("20.1", "22", "Bolo") em vez de
+# medida -- um campo de texto so nao comporta a lista. Fica no vocabulario do
+# motor, e nao num componente da serigrafia, porque a regra do projeto e que
+# segmento novo so acrescente declaracao: qualquer segmento futuro que precise
+# de "varios valores do mesmo tipo" ja tem onde se apoiar.
+TIPOS_DE_CAMPO_SUPORTADOS = ("texto", "numero", "inteiro", "opcao", "booleano", "lista")
 
 # Onde o valor e persistido de fato.
 #   dados_adicionais -> chave dentro do JSON (o caso de todo campo novo)

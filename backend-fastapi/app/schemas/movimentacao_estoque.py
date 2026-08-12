@@ -40,6 +40,15 @@ class MovimentacaoRead(BaseModel):
     id: int
     produto_id: int
     produto_nome: str
+    # Unidade do produto, para o painel escrever "2,5 kg" em vez de "2,5 un".
+    #
+    # Lida do produto no momento da consulta, e NAO desnormalizada como o
+    # `produto_nome`: o nome e desnormalizado para o historico sobreviver a um
+    # rename, mas a unidade descreve COMO a quantidade daquela linha deve ser
+    # lida -- se ela mudar no cadastro, as linhas antigas passam a ser lidas na
+    # unidade nova, que e o comportamento correto. Alem disso, evita migracao e
+    # backfill num historico que ja esta em producao.
+    unidade_medida: Optional[str] = None
     usuario_id: Optional[int]
     usuario_nome: str
     tipo: MovimentacaoTipo

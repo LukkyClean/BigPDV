@@ -48,6 +48,7 @@ export interface OSFormViewContext {
   displayValorDesconto: ComputedRef<number>;
   displayValorTotal: ComputedRef<number>;
   displayValorEntrada: ComputedRef<number>;
+  displayFormaPagamentoEntradaId: ComputedRef<number | null>;
   displayValorAcrescimo: ComputedRef<number>;
   formErrors: ComputedRef<Record<string, string | undefined>>;
   objetoFormData: ComputedRef<ObjetoFormData>;
@@ -82,6 +83,7 @@ export interface OSFormViewContext {
   handlePrioridadeUpdate: (value: OsPriorityEnumDataType) => void;
   handleDataPrevisaoUpdate: (value: string) => void;
   handleValorEntradaUpdate: (value: number) => void;
+  handleFormaPagamentoEntradaUpdate: (value: number | null) => void;
   handleValorEntregaUpdate: (value: number) => void;
   handleUsarCredito: () => void;
   saldoCreditoCliente: ComputedRef<number>;

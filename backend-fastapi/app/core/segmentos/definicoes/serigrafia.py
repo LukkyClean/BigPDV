@@ -26,6 +26,7 @@
 from typing import Any, Dict, List
 
 from ..campos import campo, tipo_de_trabalho
+from ..capacidades import CAP_IMAGEM_NA_ENTRADA
 
 SEGMENTO_SERIGRAFIA = "serigrafia"
 
@@ -102,11 +103,21 @@ _CAMISA = tipo_de_trabalho("camisa", "Camisa (pintura)", [
 _SACOLA_PLASTICA = tipo_de_trabalho("sacola_plastica", "Sacola plástica", [
     *_campos_da_arte(),
 
+    # Familias tiradas da tabela de referencias do proprio dono. "Vazada"
+    # generica virou "Branca vazada" e "Plena vazada" (sao duas numeracoes
+    # distintas na folha dele) e "Padrao" -- a familia com mais referencias --
+    # nao existia na lista. "Mileiro" e "Vazada" seguem no fim por serem valores
+    # que uma OS ja aberta pode ter gravado.
     campo("tipo_sacola", "Tipo de sacola", "opcao",
-          opcoes=["Alça fita", "Vazada", "Camiseta", "Mileiro"],
+          opcoes=["Padrão", "Camiseta", "Alça fita", "Branca vazada",
+                  "Plena vazada", "Mileiro", "Vazada"],
           escopo="os", grupo=GRUPO_SACOLA),
-    campo("medidas", "Medidas (L × A × fole)", "texto",
-          escopo="os", grupo=GRUPO_SACOLA),
+    # Referencia no lugar de medida: o dono nao pensa em "30x40x10 cm", pensa em
+    # "referencia 20.1". E REPETIVEL porque uma mesma producao sai com varios
+    # tamanhos. Texto (e nao numero) porque a numeracao dele tem "20.1",
+    # "24 reduzida", "Bolo" e "P/M/G" convivendo.
+    campo("referencias", "Referências", "lista",
+          escopo="os", grupo=GRUPO_SACOLA, largura="inteira"),
     campo("cor_sacola", "Cor da sacola", "texto", escopo="os", grupo=GRUPO_SACOLA),
     campo("cor_impressao", "Cor da impressão", "texto", escopo="os", grupo=GRUPO_SACOLA),
 ])
@@ -120,8 +131,8 @@ _SACOLA_PAPEL = tipo_de_trabalho("sacola_papel", "Sacola de papel", [
     campo("tipo_papel", "Tipo de papel", "opcao",
           opcoes=["Kraft", "Duplex", "Offset"],
           escopo="os", grupo=GRUPO_SACOLA),
-    campo("medidas", "Medidas (L × A × fole)", "texto",
-          escopo="os", grupo=GRUPO_SACOLA),
+    campo("referencias", "Referências", "lista",
+          escopo="os", grupo=GRUPO_SACOLA, largura="inteira"),
     campo("tipo_pintura", "Tipo da pintura", "opcao",
           opcoes=["Pintura frente", "Pintura total", "Pintura comum"],
           escopo="os", grupo=GRUPO_SACOLA),
@@ -150,6 +161,25 @@ SERIGRAFIA = {
     # responde pelo servico que esta sendo aberto.
     "rotulo_responsavel": "Responsável",
     "placeholder_defeito": "Ex: 100 camisas brancas, logo no peito, 2 cores",
+
+    # O desfecho da OS e o MESMO enum de sempre (REPARADO/SEM_REPARO/CONDENADO)
+    # -- so os rotulos mudam. O enum carrega uma regra que nao e de conserto:
+    # SEM_REPARO e CONDENADO dispensam o pagamento integral
+    # (services/ordem_servico.py), e e o unico jeito de fechar uma OS sem cobrar
+    # tudo. Numa serigrafia isso acontece quando o cliente desiste ou reprova a
+    # arte depois de adiantar.
+    #
+    # Trocar o enum exigiria migracao e mexeria em filtro, relatorio e badge de
+    # historico dos dois segmentos em producao. Trocar o rotulo nao mexe em nada.
+    #
+    # "Situacao da Arte", inteiro: a tela montava 'Situacao do ' + rotulo, o que
+    # imprimia "SITUACAO DO ARTE".
+    "rotulo_situacao": "Situação da Arte",
+    "rotulos_situacao": {
+        "REPARADO": "Produzido",
+        "SEM_REPARO": "Não produzido",
+        "CONDENADO": "Perda na produção",
+    },
     # `gerado` diz ao servico que o sistema cria este identificador -- o usuario
     # nao digita e o formulario nao pergunta. O codigo nasce do numero da OS
     # ("ART-0042"), entao e unico sem contador novo e sem corrida entre
@@ -176,7 +206,11 @@ SERIGRAFIA = {
     # Com o cliente no balcao, mostrar a tela e ouvir "pode fazer" e mais
     # simples do que pedir para ele escanear. Refazer, se a loja um dia tiver
     # endereco publico, esta no historico do git.
-    "capacidades": [],
+    # A UNICA capacidade daqui: a imagem e a arte a ser estampada, entao entra
+    # ja no primeiro cadastro e sai impressa na via de entrada -- e dela que
+    # quem pinta trabalha. Nos outros segmentos a foto e prova do estado do bem
+    # e nasce depois, com o aparelho na bancada.
+    "capacidades": [CAP_IMAGEM_NA_ENTRADA],
 
     # Vazios porque este segmento declara por tipo de trabalho. O guard
     # (test/core/test_registry_segmentos.py) proibe usar os dois caminhos.

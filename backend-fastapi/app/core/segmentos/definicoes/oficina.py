@@ -12,6 +12,7 @@ from ..capacidades import (
     CAP_APROVACAO_ITENS,
     CAP_DIAGNOSTICO,
     CAP_GARANTIA_ITENS,
+    CAP_GARANTIA_PRAZO,
     CAP_REVISOES,
     CAP_VISTORIA,
 )
@@ -43,6 +44,8 @@ OFICINA = {
         CAP_REVISOES,
         CAP_APROVACAO_ITENS,
         CAP_GARANTIA_ITENS,
+        # Ja era o comportamento: a garantia em dias sempre foi obrigatoria aqui.
+        CAP_GARANTIA_PRAZO,
     ],
 
     # --- Dados do veiculo (escopo=objeto) ---

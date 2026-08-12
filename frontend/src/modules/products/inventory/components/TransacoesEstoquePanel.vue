@@ -20,6 +20,7 @@ import { useMovimentacoesQuery } from '../composables/useMovimentacoesQuery';
 import { formatCurrency } from '@/shared/utils/finance';
 import type { ProdutoRead } from '../types/products.types';
 import { parseTimestampBackend } from '@/shared/utils/date.utils';
+import { formatarQuantidade, siglaUnidade } from '@/shared/utils/quantidade';
 
 interface Props {
   isOpen: boolean;
@@ -225,9 +226,11 @@ function quantidadeClass(tipo: string) {
                   <div class="text-right shrink-0">
                     <p class="text-base" :class="quantidadeClass(mov.tipo)">
                       {{ quantidadeLabel(mov.tipo, mov.quantidade) }}
-                      <span v-if="mov.tipo !== 'EDICAO_DADOS'"> un</span>
+                      <span v-if="mov.tipo !== 'EDICAO_DADOS'"> {{ siglaUnidade(mov.unidade_medida) }}</span>
                     </p>
-                    <p v-if="mov.tipo !== 'EDICAO_DADOS'" class="text-xs text-zinc-400">→ {{ mov.quantidade_posterior }} un</p>
+                    <p v-if="mov.tipo !== 'EDICAO_DADOS'" class="text-xs text-zinc-400">
+                      → {{ formatarQuantidade(mov.quantidade_posterior, mov.unidade_medida) }}
+                    </p>
                     <!--
                       Custo congelado nesta linha. É a trilha de auditoria do
                       lucro: dá para conferir, movimento a movimento, com que

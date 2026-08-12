@@ -11,6 +11,8 @@ interface UseOSFinancialSummaryParams {
   createDesconto: Ref<number | null | undefined>;
   createValorEntrada: Ref<number | null | undefined>;
   updateValorEntrada: Ref<number | null | undefined>;
+  createFormaPagamentoEntrada: Ref<number | null | undefined>;
+  updateFormaPagamentoEntrada: Ref<number | null | undefined>;
   updateTaxaEntrega: Ref<number | null | undefined>;
 }
 
@@ -21,6 +23,8 @@ export function useOSFinancialSummary({
   createDesconto,
   createValorEntrada,
   updateValorEntrada,
+  createFormaPagamentoEntrada,
+  updateFormaPagamentoEntrada,
   updateTaxaEntrega,
 }: UseOSFinancialSummaryParams) {
   // Item REPROVADO fora da soma — regra única em `itemContaNoTotal`, que espelha
@@ -73,6 +77,25 @@ export function useOSFinancialSummary({
     updateValorEntrada.value = value;
   }
 
+  // Forma de pagamento do adiantamento. `null` (não informado) é estado válido:
+  // é o de toda OS aberta antes deste campo existir.
+  const displayFormaPagamentoEntradaId = computed<number | null>(() => {
+    if (isCreateMode.value) return createFormaPagamentoEntrada.value ?? null;
+    return (
+      updateFormaPagamentoEntrada.value ??
+      currentOSData.value?.forma_pagamento_entrada?.id ??
+      null
+    );
+  });
+
+  function handleFormaPagamentoEntradaUpdate(value: number | null) {
+    if (isCreateMode.value) {
+      createFormaPagamentoEntrada.value = value;
+      return;
+    }
+    updateFormaPagamentoEntrada.value = value;
+  }
+
   const displayValorAcrescimo = computed(() => currentOSData.value?.acrescimo ?? 0);
 
   return {
@@ -82,7 +105,9 @@ export function useOSFinancialSummary({
     displayValorTotal,
     displayValorEntrada,
     displayValorAcrescimo,
+    displayFormaPagamentoEntradaId,
     handleValorEntradaUpdate,
     handleValorEntregaUpdate,
+    handleFormaPagamentoEntradaUpdate,
   };
 }

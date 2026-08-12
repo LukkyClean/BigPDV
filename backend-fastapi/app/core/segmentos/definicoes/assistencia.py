@@ -9,7 +9,7 @@
 # ---------------------------------------------------------------------------
 
 from ..campos import campo
-from ..capacidades import CAP_DIAGNOSTICO
+from ..capacidades import CAP_DIAGNOSTICO, CAP_GARANTIA_PRAZO
 
 SEGMENTO_ASSISTENCIA = "assistencia_tecnica"  # "informatica" no dia a dia
 
@@ -28,7 +28,8 @@ ASSISTENCIA = {
     # emite laudo -- e o que a tela dela ja faz hoje, agora declarado. Nao e uma
     # afirmacao de que informatica "nao pode" ter aprovacao de itens: o dia que
     # o produto quiser, e acrescentar CAP_APROVACAO_ITENS nesta lista.
-    "capacidades": [CAP_DIAGNOSTICO],
+    # Ja era o comportamento: a garantia em dias sempre foi obrigatoria aqui.
+    "capacidades": [CAP_DIAGNOSTICO, CAP_GARANTIA_PRAZO],
     "veiculo": [],  # nao se aplica
     # Todos em dados_adicionais (o padrao de `campo`): `imei` deixou de ser
     # coluna na refatoracao Equipamento -> ObjetoServico e hoje e uma property

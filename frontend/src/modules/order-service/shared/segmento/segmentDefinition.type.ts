@@ -14,7 +14,11 @@
  * aqui sem desenhá-lo lá **não compila**. É de propósito — é o que impede um
  * segmento novo de declarar campo que ninguém sabe mostrar.
  */
-export type SegmentFieldType = 'texto' | 'numero' | 'inteiro' | 'opcao' | 'booleano';
+/**
+ * `lista` é um campo REPETÍVEL de texto: o valor gravado é `string[]`, não uma
+ * string. Todos os outros tipos guardam um valor único.
+ */
+export type SegmentFieldType = 'texto' | 'numero' | 'inteiro' | 'opcao' | 'booleano' | 'lista';
 
 /** Onde o campo é persistido: no objeto (veículo) ou na OS (check-in). */
 export type SegmentFieldScope = 'objeto' | 'os';
@@ -92,7 +96,25 @@ export type SegmentCapability =
    * investiga e emite laudo. Sem isto, a aba deixa de pedir laudo técnico e
    * serve só para as imagens.
    */
-  | 'diagnostico';
+  | 'diagnostico'
+  /**
+   * A imagem faz parte do PEDIDO, não do laudo.
+   *
+   * Em oficina e informática a foto é prova do estado do bem: nasce depois, com
+   * o aparelho na bancada, e por isso a aba só existe na OS já salva. Em
+   * serigrafia a imagem É a arte a ser estampada — sem ela não há o que
+   * produzir. Liberar a aba na criação e imprimir as imagens na via de ENTRADA.
+   */
+  | 'imagem_na_entrada'
+  /**
+   * O serviço tem garantia contada em PRAZO (dias/meses), escolhida ao
+   * finalizar. Faz sentido onde se conserta — o reparo responde por um período.
+   *
+   * Numa serigrafia a estampa não tem prazo: se dura, mede-se em lavagens.
+   * Desligada, o campo some da finalização e o Termo de Garantia só é impresso
+   * quando houver prazo de fato.
+   */
+  | 'garantia_prazo';
 
 /**
  * Um processo de negócio dentro do mesmo segmento.
@@ -130,6 +152,23 @@ export interface SegmentDefinition {
    * é o responsável por ele.
    */
   rotulo_responsavel?: string;
+  /**
+   * Título da seção de desfecho na finalização. Ausente = "Situação do " + rótulo
+   * do objeto, que é o que oficina e informática mostram hoje.
+   *
+   * Vem inteiro, e não montado, porque português tem gênero: a montagem exibia
+   * "SITUAÇÃO DO ARTE".
+   */
+  rotulo_situacao?: string;
+  /**
+   * Rótulo de cada valor do desfecho, por chave do enum
+   * (`REPARADO` | `SEM_REPARO` | `CONDENADO`). Ausente = o rótulo de conserto.
+   *
+   * O enum NÃO muda: ele carrega a regra de dispensar o pagamento integral
+   * (SEM_REPARO/CONDENADO) e alimenta filtro, relatório e histórico. Só as
+   * palavras mudam — "Reparado" não descreve nada numa produção.
+   */
+  rotulos_situacao?: Record<string, string>;
   identificador: SegmentIdentifier;
   /** O que o segmento faz. Vazio = só o fluxo genérico de OS. */
   capacidades: SegmentCapability[];

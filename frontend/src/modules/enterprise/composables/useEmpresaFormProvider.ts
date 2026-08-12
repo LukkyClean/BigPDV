@@ -427,6 +427,41 @@ export function useEmpresaFormProvider() {
     }
   }
 
+  // =============================================
+  // Tipo de Pessoa (PF/PJ)
+  // =============================================
+
+  /**
+   * Alterna a empresa entre Pessoa Física (CPF) e Pessoa Jurídica (CNPJ).
+   *
+   * O documento é limpo na troca porque CPF e CNPJ têm máscaras diferentes —
+   * manter os dígitos antigos deixaria o campo com uma formatação que não
+   * corresponde ao novo tipo. Ao virar PF, os campos exclusivos de PJ também
+   * são zerados: a seção Dados Fiscais some da tela nesse modo, e um campo
+   * escondido continuaria sendo enviado no payload (IE de uma empresa que
+   * não tem IE).
+   *
+   * No-op quando o tipo não muda, para não marcar o formulário como sujo.
+   */
+  function setTipoPessoa(isCnpj: boolean) {
+    if (is_cnpj.value === isCnpj) return;
+
+    is_cnpj.value = isCnpj;
+    documento.value = '';
+
+    if (!isCnpj) {
+      inscricao_estadual.value = '';
+      inscricao_municipal.value = '';
+      regime_tributario.value = '';
+      indicador_ie.value = '';
+      natureza_juridica.value = '';
+      tipo_atividade.value = '';
+      cnae_principal.value = '';
+      cnaes_secundarios.value = '';
+      data_abertura.value = '';
+    }
+  }
+
   function handleTestSefaz() {
     if (!empresaId.value) return;
     testSefazMutation.mutate(empresaId.value);
@@ -545,6 +580,7 @@ export function useEmpresaFormProvider() {
 
     // Actions
     onSubmit,
+    setTipoPessoa,
     handleLogoUpload,
     handleCertUpload,
     handleTestSefaz,

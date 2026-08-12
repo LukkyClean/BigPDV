@@ -144,4 +144,18 @@ class MovimentacaoEstoque(Base):
 
     # Relacionamentos (somente leitura para auditoria)
     produto = relationship("Produto", doc="Produto movimentado")
+
+    @property
+    def unidade_medida(self) -> Optional[str]:
+        """
+        Unidade do produto, para a tela escrever "2,5 kg" em vez de "2,5 un".
+
+        Lida do produto (nao desnormalizada como `produto_nome`): a unidade diz
+        COMO a quantidade desta linha deve ser lida, entao corrigir a unidade no
+        cadastro tem que corrigir o historico junto. `produto_nome` e o oposto --
+        ele preserva o nome da epoca.
+
+        `None` se o produto sumiu; a tela cai em "un", como sempre foi.
+        """
+        return self.produto.unidade_medida if self.produto else None
     usuario = relationship("Usuario", doc="Usuário que realizou a movimentação")

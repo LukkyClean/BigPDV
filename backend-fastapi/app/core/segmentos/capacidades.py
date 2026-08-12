@@ -33,10 +33,38 @@ CAP_GARANTIA_ITENS = "garantia_itens"    # garantia (dias/KM) por item
 # continua existindo).
 CAP_DIAGNOSTICO = "diagnostico"
 
+# A imagem faz parte do PEDIDO, e nao do laudo.
+#
+# Em oficina e informatica a foto e prova do estado do bem: nasce depois, com o
+# aparelho ja na bancada, e por isso a aba de imagens so aparece na OS ja salva.
+# Em serigrafia a imagem E a arte a ser estampada -- sem ela nao ha o que
+# produzir. Ela precisa entrar no primeiro cadastro, junto com o pedido, e sair
+# na via de entrada para quem vai pintar poder trabalhar a partir do papel.
+#
+# Ligar esta capacidade faz duas coisas: libera a aba de imagens durante a
+# criacao da OS e imprime as imagens na via de ENTRADA. Segmento que nao a
+# declara continua exatamente como sempre foi.
+CAP_IMAGEM_NA_ENTRADA = "imagem_na_entrada"
+
+# O servico tem garantia contada em PRAZO (dias/meses), escolhida ao finalizar.
+#
+# Faz sentido onde se conserta: o reparo responde por um periodo. Numa
+# serigrafia a estampa nao tem prazo -- se dura, mede-se em LAVAGENS, e ninguem
+# conta dia de camisa. Pedir "90 dias" ali obriga o atendente a responder uma
+# pergunta que nao existe, e ainda faz a via prometer uma garantia que a loja
+# nao deu.
+#
+# Desligada, o campo some da finalizacao e o Termo de Garantia so e impresso
+# quando houver prazo de fato. As exclusoes de garantia (o "NAO COBRE") seguem
+# no pacote de textos, que e outro assunto.
+CAP_GARANTIA_PRAZO = "garantia_prazo"
+
 CAPACIDADES_CONHECIDAS = [
     CAP_VISTORIA,
     CAP_REVISOES,
     CAP_APROVACAO_ITENS,
     CAP_GARANTIA_ITENS,
     CAP_DIAGNOSTICO,
+    CAP_IMAGEM_NA_ENTRADA,
+    CAP_GARANTIA_PRAZO,
 ]

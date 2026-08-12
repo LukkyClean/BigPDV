@@ -17,7 +17,13 @@ export interface PendingPhoto {
 }
 
 interface Props {
-  osNumero: string;
+  /**
+   * Opcional: numa OS ainda não salva não existe número.
+   *
+   * Só é usado para APAGAR foto já gravada no servidor — e numa OS em criação
+   * não há nenhuma: tudo ali é foto pendente, que sai da lista em memória.
+   */
+  osNumero?: string;
   fotos: OsImageReadDataType[];
   pendingPhotos?: PendingPhoto[];
   readOnly?: boolean;
@@ -148,13 +154,15 @@ function closeDeleteModal() {
 }
 
 function confirmDelete() {
-  if (confirmDeleteModal.value.fotoId) {
+  // Sem `osNumero` não há foto salva para apagar (OS ainda em criação): foto
+  // pendente é removida da lista em memória, por `handleRemovePhoto`.
+  if (confirmDeleteModal.value.fotoId && props.osNumero) {
     deleteMutation.mutate(
       { osNumber: props.osNumero, fotoId: confirmDeleteModal.value.fotoId },
       { onSuccess: () => emit('deleted') },
     );
-    closeDeleteModal();
   }
+  closeDeleteModal();
 }
 
 // ─── Ações por tipo de foto ────────────────────────────────────────────────

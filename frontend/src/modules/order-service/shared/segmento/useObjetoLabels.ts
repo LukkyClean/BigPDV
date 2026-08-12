@@ -110,9 +110,31 @@ export function useObjetoLabels() {
     return campo?.label ?? padrao;
   }
 
+  /**
+   * Título da seção de desfecho na finalização.
+   *
+   * O padrão reproduz a montagem antiga (`'Situação do ' + rótulo`) para oficina
+   * e informática, que dizem "Situação do Veículo" e "Situação do Equipamento"
+   * — as duas certas no masculino. Quem tem objeto feminino declara o título
+   * inteiro no registry: a montagem exibia "SITUAÇÃO DO ARTE".
+   */
+  const labelSituacao = computed(
+    () => definicao.value?.rotulo_situacao ?? `Situação do ${labelSingular.value}`,
+  );
+
+  /**
+   * Rótulo de um valor do desfecho. O enum é o mesmo em todos os segmentos
+   * (ver segmentDefinition.type.ts); só as palavras mudam.
+   */
+  function rotuloSituacao(valor: string, padrao: string): string {
+    return definicao.value?.rotulos_situacao?.[valor] ?? padrao;
+  }
+
   return {
     definicao,
     objetoIcon,
+    labelSituacao,
+    rotuloSituacao,
     labelSingular,
     labelPlural,
     labelIdentificador,

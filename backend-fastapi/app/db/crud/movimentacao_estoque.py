@@ -3,7 +3,7 @@
 # DESCRIÇÃO: Operações de banco de dados para movimentações de estoque.
 # ---------------------------------------------------------------------------
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import select
 from typing import Sequence, Optional
 
@@ -29,7 +29,14 @@ def get_movimentacoes(
     Lista movimentações, opcionalmente filtrando por produto.
     Retorna as mais recentes primeiro.
     """
-    stmt = select(MovimentacaoEstoque).order_by(MovimentacaoEstoque.created_at.desc())
+    # joinedload do produto: a resposta expoe `unidade_medida`, lida do produto
+    # (ver MovimentacaoEstoque.unidade_medida). Sem isto seria uma consulta por
+    # linha -- ate 500 no limite maximo deste endpoint.
+    stmt = (
+        select(MovimentacaoEstoque)
+        .options(joinedload(MovimentacaoEstoque.produto))
+        .order_by(MovimentacaoEstoque.created_at.desc())
+    )
     if produto_id is not None:
         stmt = stmt.where(MovimentacaoEstoque.produto_id == produto_id)
     stmt = stmt.limit(limit)

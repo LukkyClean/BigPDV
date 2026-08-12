@@ -25,7 +25,7 @@ defineProps<Props>();
  * galeria de fotos, e em serigrafia a foto É a arte — é ela que o cliente
  * aprova pelo celular. Tirar a aba inteira tiraria o lugar de anexar o mockup.
  */
-const { temDiagnostico } = useCapacidades();
+const { temDiagnostico, temImagemNaEntrada } = useCapacidades();
 
 const emit = defineEmits<{
   'update:diagnostico': [value: string];
@@ -61,8 +61,17 @@ const emit = defineEmits<{
     </div>
 
     <div :class="temDiagnostico ? 'pt-4 border-t border-slate-200' : ''">
+      <!--
+        Sem número de OS a galeria ficava bloqueada: foto só depois de salvar.
+        Isso serve onde a foto é prova do estado do bem (oficina, informática),
+        que nasce com o aparelho já na bancada.
+
+        Onde a imagem é o PEDIDO — serigrafia, em que a foto é a arte a
+        estampar — ela precisa entrar no primeiro cadastro. As fotos ficam
+        pendentes em memória e sobem assim que a OS nasce (useOSPendingPhotos).
+      -->
       <OSFotoGallery
-        v-if="osNumero"
+        v-if="osNumero || temImagemNaEntrada"
         :os-numero="osNumero"
         :fotos="fotos"
         :pending-photos="pendingPhotos"

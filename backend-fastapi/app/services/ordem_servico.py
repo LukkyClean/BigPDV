@@ -96,6 +96,24 @@ os_fechada_exce = HTTPException(
     detail="Esta operação não é permitida para OS com status FINALIZADA ou CANCELADA"
 )
 
+
+def _assert_forma_pagamento_entrada(db: Session, fp_id: int | None) -> None:
+    """
+    Valida a forma de pagamento do adiantamento.
+
+    Mesma regra dos pagamentos da finalizacao (existir e estar ativa). A coluna
+    e um FK sem constraint no SQLite (ver a migration d3e4f5a6b7c8), entao um id
+    invalido passaria direto e so apareceria como forma vazia no resumo.
+
+    None e valido: adiantamento sem forma declarada e o estado de toda OS
+    anterior a este campo.
+    """
+    if fp_id is None:
+        return
+    forma_pagamento = fp_crud.get_forma_pagamento_by_id(db, fp_id=fp_id)
+    if not forma_pagamento or not forma_pagamento.ativo:
+        raise forma_pagamento_not_found_exce
+
 os_nao_pode_reabrir_exce = HTTPException(
     status_code=status.HTTP_409_CONFLICT,
     detail="Apenas OS com status FINALIZADA ou CANCELADA podem ser reabertas"
@@ -375,6 +393,7 @@ def create_ordem_servico(db: Session, os_to_create: OrdemServicoCreate) -> OSMod
         equipamento_to_db = OSEquipamentoModel(**objeto_data, cliente=cliente_in_db)
 
     valor_entrada = os_to_create.valor_entrada or 0
+    _assert_forma_pagamento_entrada(db, os_to_create.forma_pagamento_entrada_id)
     if os_to_create.usar_credito_cliente and valor_entrada > 0:
         if (cliente_in_db.saldo_credito or 0) < valor_entrada:
             raise HTTPException(
@@ -534,6 +553,13 @@ def update_ordem_servico(db: Session, numero_os: str, data: OrdemServicoUpdate) 
     new_status = update_data.get("status")
     if new_status in (OrdemServicoStatus.FINALIZADA, OrdemServicoStatus.CANCELADA):
         raise status_invalido_exce
+
+    if "forma_pagamento_entrada_id" in update_data:
+        _assert_forma_pagamento_entrada(db, update_data["forma_pagamento_entrada_id"])
+
+    # Adiantamento zerado nao pode manter forma de pagamento pendurada.
+    if update_data.get("valor_entrada") == 0:
+        update_data["forma_pagamento_entrada_id"] = None
 
     # Valida novo funcionário se informado
     novo_funcionario_id = update_data.pop("funcionario_id", None)
@@ -944,6 +970,10 @@ def finalizar_ordem_servico(
         os_in_db.desconto = (os_in_db.desconto or 0) + data.desconto
     if data.valor_entrada is not None:
         os_in_db.valor_entrada = data.valor_entrada
+        # Adiantamento zerado nao pode manter forma de pagamento pendurada:
+        # sobraria "pago em PIX" sem valor algum por tras.
+        if data.valor_entrada == 0:
+            os_in_db.forma_pagamento_entrada_id = None
     if data.taxa_entrega is not None:
         os_in_db.taxa_entrega = data.taxa_entrega
     if data.acrescimo is not None:
@@ -1059,6 +1089,7 @@ def cancelar_ordem_servico(
 
     if data.zerar_adiantamento:
         os_in_db.valor_entrada = 0
+        os_in_db.forma_pagamento_entrada_id = None
     elif os_in_db.valor_entrada > 0:
         cliente = os_in_db.equipamento.cliente if os_in_db.equipamento else None
         if cliente:
@@ -1120,6 +1151,7 @@ def reabrir_ordem_servico(
         os_in_db.credito_anterior = None
 
     os_in_db.valor_entrada = 0
+    os_in_db.forma_pagamento_entrada_id = None
     os_in_db.status = OrdemServicoStatus.EM_ANDAMENTO
     os_in_db.data_finalizacao = None
 

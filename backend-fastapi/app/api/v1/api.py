@@ -27,6 +27,7 @@ from app.api.v1.endpoints import configuracao
 from app.api.v1.endpoints import comunicado
 from app.api.v1.endpoints import licenca
 from app.api.v1.endpoints import checklist_mobile
+from app.api.v1.endpoints import backup
 
 # Cria a instância principal do roteador para a V1
 router = APIRouter()
@@ -101,3 +102,7 @@ router.include_router(licenca.router, prefix="/licenca", tags=["Licença"])
 # Inclui o roteador do checklist mobile (formulario web via QR code)
 # Endpoints publicos autenticados por token HMAC + gerador de token via JWT
 router.include_router(checklist_mobile.router, prefix="/checklist", tags=["Checklist Mobile"])
+
+# Inclui o roteador de backup sob o prefixo /backup
+# Restauracao de cadeia vinda da nuvem — exclusivo do Master
+router.include_router(backup.router, prefix="/backup", tags=["Backup"])

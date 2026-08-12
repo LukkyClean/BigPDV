@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from .ordem_servico_item import OrdemServicoItem
     from .ordem_servico_pagamento import OrdemServicoPagamento
     from .ordem_servico_foto import OrdemServicoFoto
+    from .forma_pagamento import FormaPagamento
 
 
 class OrdemServico(Base):
@@ -76,6 +77,18 @@ class OrdemServico(Base):
     valor_bruto: Mapped[int] = mapped_column(Integer, default=0, nullable=False, doc="Valor bruto antes de desconto (centavos)")
     desconto: Mapped[int] = mapped_column(Integer, default=0, nullable=False, doc="Desconto aplicado (centavos)")
     valor_entrada: Mapped[int] = mapped_column(Integer, default=0, nullable=False, doc="Valor de entrada/adiantamento (centavos)")
+    forma_pagamento_entrada_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("formas_pagamento.id"),
+        nullable=True,
+        doc=(
+            "Forma de pagamento do adiantamento. NULL em OS anterior a este campo "
+            "(e quando nao houve adiantamento). O adiantamento nao gera linha em "
+            "ordem_servico_pagamentos: a trava de finalizacao e "
+            "sum(pagamentos) + valor_entrada == valor_total, e criar a linha "
+            "contaria o valor duas vezes."
+        ),
+    )
     taxa_entrega: Mapped[int] = mapped_column(Integer, default=0, nullable=False, doc="Taxa de entrega/frete (centavos)")
     acrescimo: Mapped[int] = mapped_column(Integer, default=0, nullable=False, doc="Acréscimo de juros/cartão (centavos)")
     credito_anterior: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=None, doc="Crédito efetivo da finalização anterior ao reabrir (centavos)")
@@ -118,6 +131,14 @@ class OrdemServico(Base):
         back_populates="ordem_servico",
         cascade="all, delete-orphan",
         doc="Fotos da OS"
+    )
+    # Sem back_populates: FormaPagamento.pagamentos ja aponta para
+    # OrdemServicoPagamento, e o adiantamento nao e um pagamento daquela tabela.
+    forma_pagamento_entrada: Mapped[Optional["FormaPagamento"]] = relationship(
+        "FormaPagamento",
+        foreign_keys=[forma_pagamento_entrada_id],
+        lazy="joined",
+        doc="Forma de pagamento usada no adiantamento"
     )
 
     @property

@@ -1,5 +1,5 @@
 import { ref } from 'vue';
-import { imprimirComPagina } from '@/shared/utils/print.utils';
+import { imprimirComPagina, aguardarImagensDaImpressao } from '@/shared/utils/print.utils';
 import type { PrintFormat } from '@/shared/components/print/print.types';
 
 export function usePrintFlow<T extends string>() {
@@ -18,7 +18,13 @@ export function usePrintFlow<T extends string>() {
     printFormat.value = format;
     isPrintSelectModalOpen.value = false;
 
-    setTimeout(() => {
+    setTimeout(async () => {
+      // Sem esta espera, uma via com imagem (a arte da OS na serigrafia) podia
+      // sair com quadro em branco: os 100ms acima cobrem a renderização do DOM,
+      // não o download da imagem. Resolve na hora quando não há imagem pendente,
+      // então nenhuma via existente fica mais lenta.
+      await aguardarImagensDaImpressao();
+
       imprimirComPagina(format);
       printFormat.value = '' as PrintFormat;
       pendingPrintAction.value?.();

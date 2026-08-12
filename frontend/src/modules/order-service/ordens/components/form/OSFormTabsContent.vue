@@ -19,7 +19,7 @@ const view = useOSFormView();
 
 // Rótulo e ícone da aba do objeto vêm do contrato (Veículo/Equipamento).
 const { labelSingular, objetoIcon } = useObjetoLabels();
-const { temVistoria, temDiagnostico } = useCapacidades();
+const { temVistoria, temDiagnostico, temImagemNaEntrada } = useCapacidades();
 
 // Qual aba de objeto usar. `temTipos` só é verdadeiro para segmento que declara
 // tipos de trabalho no registry — oficina e informática não declaram, então
@@ -54,9 +54,21 @@ const allTabs = computed<{ id: TabType; label: string; icon: Component }[]>(() =
   return tabs;
 });
 
-const visibleTabs = computed(() =>
-  view.isCreateMode.value ? allTabs.value.filter((tab) => tab.id !== 'diagnostico') : allTabs.value,
-);
+/**
+ * Na criação a aba de imagens some — a foto de oficina/informática é prova do
+ * estado do bem e nasce depois, com o aparelho na bancada.
+ *
+ * Onde a imagem é o PEDIDO (serigrafia: a foto é a arte a estampar), ela precisa
+ * entrar já no primeiro cadastro. Quem decide é a capacidade do registry, não o
+ * nome do segmento — as fotos ficam pendentes em memória e sobem assim que a OS
+ * nasce (useOSPendingPhotos).
+ */
+const visibleTabs = computed(() => {
+  const escondeImagens = view.isCreateMode.value && !temImagemNaEntrada.value;
+  return escondeImagens
+    ? allTabs.value.filter((tab) => tab.id !== 'diagnostico')
+    : allTabs.value;
+});
 
 const objetoModel = computed<ObjetoFormData>({
   get: () => view.objetoFormData.value,

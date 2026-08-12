@@ -106,6 +106,12 @@ export interface MovimentacaoRead {
   id: number;
   produto_id: number;
   produto_nome: string;
+  /**
+   * Unidade do produto, para o painel escrever "2,5 kg" em vez de "2,5 un".
+   * Vem do produto no momento da consulta; nula se ele não tiver unidade
+   * cadastrada — a tela cai em "un", como sempre foi.
+   */
+  unidade_medida?: string | null;
   usuario_id: number | null;
   usuario_nome: string;
   tipo: MovimentacaoTipo;

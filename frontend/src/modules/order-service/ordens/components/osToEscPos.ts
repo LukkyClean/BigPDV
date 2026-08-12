@@ -42,10 +42,13 @@ const TEXTOS_PADRAO: TextosCupomOS = {
   condicoesEntrada:
     'O cliente declara estar ciente que a empresa nao se responsabiliza por perda de dados nem por '
     + 'chips/cartoes deixados no aparelho. Autorizo a analise tecnica do objeto.',
-  prazoRetirada:
-    'PRAZO DE RETIRADA: Objetos nao retirados em 90 dias apos aviso de conclusao serao considerados '
-    + 'abandonados, conforme Art. 1.275 do Codigo Civil Brasileiro.',
+  prazoRetirada: (dias) =>
+    `PRAZO DE RETIRADA: Objetos nao retirados em ${dias} dias apos aviso de conclusao serao `
+    + 'considerados abandonados, conforme Art. 1.275 do Codigo Civil Brasileiro.',
 }
+
+/** Espelha o default de `configuracoes_os.prazo_abandono_dias` no backend. */
+const PRAZO_ABANDONO_PADRAO = 90
 
 export interface OsEscPosOptions {
   bobina: Bobina
@@ -58,6 +61,8 @@ export interface OsEscPosOptions {
   rotuloIdentificador?: string
   /** Termos jurídicos do segmento. Padrão: os da assistência técnica. */
   textos?: TextosCupomOS
+  /** `configuracoes_os.prazo_abandono_dias` da loja. Padrão: 90. */
+  prazoAbandonoDias?: number
   /** Atributos extras do objeto (oficina: Ano, Chassi, KM). Padrão: nenhum. */
   atributos?: AtributoImpresso[]
 }
@@ -201,6 +206,9 @@ export function osToEscPos(
     if (adiantamento > 0) {
       b.separador().negrito(true).linha('ADIANTAMENTO (ENTRADA)').negrito(false)
       b.parLados('Recebido na entrada:', formatCurrency(adiantamento))
+      // Ausente em OS anterior a este campo: a via sai como saía antes.
+      const formaEntrada = os.forma_pagamento_entrada?.nome
+      if (formaEntrada) b.parLados('Forma:', formaEntrada)
     }
 
     // Pagamentos no fechamento
@@ -281,7 +289,7 @@ export function osToEscPos(
     b.separador()
     b.linha(t.condicoesEntrada)
     b.separador()
-    b.linha(t.prazoRetirada)
+    b.linha(t.prazoRetirada(opts.prazoAbandonoDias ?? PRAZO_ABANDONO_PADRAO))
   }
 
   // Assinaturas — as duas, como na via em papel (lá elas são blocos empilhados,

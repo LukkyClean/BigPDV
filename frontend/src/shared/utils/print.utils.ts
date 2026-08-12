@@ -211,6 +211,42 @@ export function getImageUrl(path: string | null | undefined): string | null {
  * último no <head> — última fonte da mesma origem vence a cascata — e a
  * removemos assim que a impressão termina.
  */
+/**
+ * Espera as imagens do `.print-container` terminarem de carregar.
+ *
+ * `window.print()` fotografa a página como ela está: imagem que ainda não
+ * chegou sai como quadro em branco no papel. Até então isso não aparecia porque
+ * a única imagem das vias era a logo, que já vem do cache do cabeçalho do
+ * sistema — a arte da OS é buscada do backend na hora da impressão.
+ *
+ * O teto de tempo é obrigatório: uma URL quebrada não pode deixar o usuário
+ * preso olhando para uma tela que nunca abre o diálogo de impressão. Estourando
+ * o teto, imprime como estiver — melhor uma via sem a foto do que via nenhuma.
+ */
+export async function aguardarImagensDaImpressao(timeoutMs = 4000): Promise<void> {
+  const imagens = Array.from(
+    document.querySelectorAll<HTMLImageElement>('.print-container img'),
+  );
+
+  const pendentes = imagens.filter((img) => !img.complete || img.naturalWidth === 0);
+  if (pendentes.length === 0) return;
+
+  const carregadas = Promise.all(
+    pendentes.map(
+      (img) =>
+        new Promise<void>((resolve) => {
+          // `error` também resolve: imagem quebrada não deve segurar a via.
+          img.addEventListener('load', () => resolve(), { once: true });
+          img.addEventListener('error', () => resolve(), { once: true });
+        }),
+    ),
+  ).then(() => undefined);
+
+  const teto = new Promise<void>((resolve) => setTimeout(resolve, timeoutMs));
+
+  await Promise.race([carregadas, teto]);
+}
+
 export function imprimirComPagina(format: PrintFormat): void {
   const size = format === 'CUPOM' ? '80mm auto' : 'A4';
   const style = document.createElement('style');

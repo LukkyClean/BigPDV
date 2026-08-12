@@ -124,6 +124,10 @@ const subtotalItens = computed(() => somarItensDaOS(props.ordemServico?.itens));
 const desconto = computed(() => props.descontoOs);
 const taxaEntrega = computed(() => props.ordemServico?.taxa_entrega ?? 0);
 const valorEntrada = computed(() => props.ordemServico?.valor_entrada ?? 0);
+// Null em OS aberta antes deste campo: mostra só o valor, sem inventar forma.
+const formaEntradaNome = computed(
+  () => props.ordemServico?.forma_pagamento_entrada?.nome ?? null,
+);
 const creditoAoReabrir = computed(() => props.creditoAoReabrir ?? null);
 // Só o juros REPASSADO entra no total da OS. O absorvido pela loja não é cobrado
 // do cliente — ele é custo, e aparece separado.
@@ -471,7 +475,8 @@ watch(() => props.isOpen, (open) => {
 
             <div v-if="valorEntrada > 0" class="flex justify-between items-center">
               <span class="text-xs text-emerald-600 flex items-center gap-1">
-                <CheckCircle2 :size="12" /> Adiantamento
+                <CheckCircle2 :size="12" />
+                Adiantamento<span v-if="formaEntradaNome" class="text-zinc-400">· {{ formaEntradaNome }}</span>
               </span>
               <span class="text-base font-semibold text-emerald-600">- {{ formatCurrency(valorEntrada) }}</span>
             </div>

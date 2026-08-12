@@ -15,6 +15,7 @@
 import pytest
 
 from app.core.segmentos import CAPACIDADES_CONHECIDAS, DEFINICOES
+from app.core.segmentos.capacidades import CAP_GARANTIA_PRAZO, CAP_IMAGEM_NA_ENTRADA
 from app.core.segmentos.campos import (
     ESCOPOS_SUPORTADOS,
     LARGURAS_SUPORTADAS,
@@ -197,3 +198,118 @@ def test_segmento_com_tipos_nao_usa_veiculo_nem_checkin():
             continue
         assert not definicao.get("veiculo"), segmento
         assert not definicao.get("checkin"), segmento
+
+
+# ===========================================================================
+# Campo `lista` (repetivel)
+# ===========================================================================
+
+def test_sacola_pede_referencias_e_nao_medida_unica():
+    """
+    O dono da serigrafia trabalha por REFERENCIA ("20.1", "22", "Bolo"), nao por
+    medida em centimetros, e uma mesma producao sai com varios tamanhos -- o
+    campo precisa ser repetivel.
+
+    Trava as duas pontas: que os dois tipos de sacola declaram `referencias` do
+    tipo `lista`, e que a `medidas` de valor unico saiu de cena (era ela que
+    obrigava a escrever tudo numa linha so).
+    """
+    tipos_de_sacola = [
+        tipo
+        for tipo in DEFINICOES["serigrafia"].get("tipos", [])
+        if tipo["id"].startswith("sacola_")
+    ]
+    assert tipos_de_sacola, "serigrafia deveria declarar tipos de sacola"
+
+    for tipo in tipos_de_sacola:
+        por_nome = {campo["nome"]: campo for campo in tipo["campos"]}
+
+        assert "referencias" in por_nome, f"{tipo['id']}: sem campo de referencias"
+        assert por_nome["referencias"]["tipo"] == "lista", (
+            f"{tipo['id']}: referencia precisa ser repetivel"
+        )
+        assert "medidas" not in por_nome, (
+            f"{tipo['id']}: 'medidas' foi substituido por 'referencias'"
+        )
+
+
+def test_ids_dos_tipos_da_serigrafia_sao_contrato_com_o_frontend():
+    """
+    Estes ids nao sao detalhe interno: o pacote de textos das vias impressas
+    (frontend/src/modules/order-service/shared/segmento/textosImpressaoOS.ts)
+    indexa `porTipoTrabalho` por eles para trocar os termos entre camisa e
+    sacola -- a clausula de "pecas entregues pelo cliente" vale para camisa e
+    nao para sacola, que a loja produz do zero.
+
+    Renomear um id aqui nao quebraria build nenhum: a sobrescrita simplesmente
+    deixaria de casar, e a via da sacola voltaria a sair com o texto de camisa,
+    em silencio, no papel entregue ao cliente. Este teste e o aviso.
+    """
+    ids = {tipo["id"] for tipo in DEFINICOES["serigrafia"].get("tipos", [])}
+
+    assert {"camisa", "sacola_plastica", "sacola_papel"} <= ids, (
+        f"ids esperados pelo pacote de textos das vias nao encontrados: {ids}"
+    )
+
+
+def test_imagem_na_entrada_e_exclusiva_da_serigrafia_por_enquanto():
+    """
+    A capacidade libera a aba de imagens durante a CRIACAO da OS e imprime as
+    imagens na via de entrada.
+
+    Em serigrafia a imagem e a arte a estampar: sem ela nao ha o que produzir, e
+    quem pinta trabalha a partir do papel. Em oficina e informatica a foto e
+    prova do estado do bem -- nasce depois, com o aparelho na bancada, e nao vai
+    para a via do cliente.
+
+    Ligar isto em oficina ou informatica passaria a imprimir foto de aparelho na
+    via de entrada dos dois clientes em producao. Se um dia for intencional,
+    este teste e o lugar de dizer isso em voz alta.
+    """
+    assert CAP_IMAGEM_NA_ENTRADA in DEFINICOES["serigrafia"]["capacidades"]
+    assert CAP_IMAGEM_NA_ENTRADA not in DEFINICOES["oficina_mecanica"]["capacidades"]
+    assert CAP_IMAGEM_NA_ENTRADA not in DEFINICOES["assistencia_tecnica"]["capacidades"]
+
+
+def test_garantia_por_prazo_segue_ligada_em_quem_conserta():
+    """
+    A garantia em dias e obrigatoria em oficina e informatica desde sempre --
+    desligar aqui deixaria de exigir o prazo e faria a via de saida das duas
+    lojas em producao sair sem o Termo de Garantia.
+
+    Serigrafia nao declara: estampa nao tem prazo (se dura, mede-se em lavagens)
+    e o fallback da via prometeria "90 (noventa) dias" que a loja nunca deu.
+    """
+    assert CAP_GARANTIA_PRAZO in DEFINICOES["oficina_mecanica"]["capacidades"]
+    assert CAP_GARANTIA_PRAZO in DEFINICOES["assistencia_tecnica"]["capacidades"]
+    assert CAP_GARANTIA_PRAZO not in DEFINICOES["serigrafia"]["capacidades"]
+
+
+def test_rotulos_de_situacao_nao_inventam_valor_de_enum():
+    """
+    O desfecho e o MESMO enum em todo segmento: ele carrega a regra de dispensar
+    o pagamento integral (SEM_REPARO/CONDENADO) e alimenta filtro, relatorio e
+    historico. So os ROTULOS mudam.
+
+    Uma chave fora do enum viraria botao que nunca casa com o valor salvo --
+    silenciosamente, porque o frontend cai no rotulo padrao.
+    """
+    validas = {"REPARADO", "SEM_REPARO", "CONDENADO"}
+
+    for segmento, definicao in DEFINICOES.items():
+        rotulos = definicao.get("rotulos_situacao")
+        if not rotulos:
+            continue  # segmento sem rotulo proprio usa o de conserto
+        assert set(rotulos) <= validas, f"{segmento}: chave fora do enum -> {set(rotulos) - validas}"
+        assert all(str(v).strip() for v in rotulos.values()), f"{segmento}: rotulo vazio"
+
+
+def test_objeto_feminino_declara_o_titulo_da_situacao_inteiro():
+    """
+    A tela montava 'Situacao do ' + rotulo do objeto, o que exibia
+    "SITUACAO DO ARTE". Objeto de genero feminino precisa declarar o titulo
+    inteiro -- e a mesma razao pela qual `tituloObjeto` existe no pacote de
+    textos das vias.
+    """
+    serigrafia = DEFINICOES["serigrafia"]
+    assert serigrafia.get("rotulo_situacao") == "Situação da Arte"

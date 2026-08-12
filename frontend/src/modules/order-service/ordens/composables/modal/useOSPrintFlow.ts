@@ -9,6 +9,7 @@ import { carregarLogoRaster } from '@/shared/services/escposImagem';
 import { useObjetoLabels } from '@/modules/order-service/shared/segmento/useObjetoLabels';
 import { useTextosImpressaoOS } from '@/modules/order-service/shared/segmento/textosImpressaoOS';
 import { useAtributosImpressaoOS } from '@/modules/order-service/shared/segmento/useAtributosImpressaoOS';
+import { useConfiguracoesStore } from '@/shared/stores/configuracoes.store';
 import type { OrderServiceReadDataType } from '../../schemas/orderServiceQuery.schema';
 import type { PrintFormat } from '@/shared/components/print/print.types';
 
@@ -36,8 +37,14 @@ export function useOSPrintFlow({ onClose, getOS }: UseOSPrintFlowParams) {
   const impressaoStore = useImpressaoStore();
   const { companyInfo } = useCompanyPrintInfo();
   const { labelSingular } = useObjetoLabels();
-  const { textos, identificadorCupom } = useTextosImpressaoOS();
+  // Termos variam com o tipo de trabalho (camisa x sacola). `getOS` já é a
+  // fonte da OS corrente neste fluxo — o getter mantém a resolução reativa.
+  const { textos, identificadorCupom } = useTextosImpressaoOS(
+    () => (getOS?.()?.dados_adicionais as Record<string, unknown> | undefined)
+      ?.tipo_trabalho as string | undefined,
+  );
   const { atributos } = useAtributosImpressaoOS();
+  const configuracoesStore = useConfiguracoesStore();
 
   /** Manda o cupom térmico direto pra impressora configurada; false = sem impressora/falhou */
   async function imprimirEscPosDireto(tipo: 'ENTRADA' | 'SAIDA'): Promise<boolean> {
@@ -53,6 +60,7 @@ export function useOSPrintFlow({ onClose, getOS }: UseOSPrintFlowParams) {
       rotuloObjeto: labelSingular.value,
       rotuloIdentificador: identificadorCupom.value,
       textos: textos.value.cupom,
+      prazoAbandonoDias: configuracoesStore.prazoAbandonoDias,
       atributos: atributos(os.objeto?.dados_adicionais, os.dados_adicionais),
     });
     return impressao.imprimirCupom(dados);

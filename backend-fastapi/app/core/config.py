@@ -46,6 +46,17 @@ os.makedirs(data_dir, exist_ok=True)
 DB_FILENAME = "start_big.db"
 LEGACY_DB_FILENAMES = ("startbig.db",)
 
+# Alias do nome canonico. O modulo de backup (services/backup.py, vindo do
+# master) importa DB_NAME e o usa como arcname do banco DENTRO do zip e como
+# nome do arquivo esperado no staging da restauracao.
+#
+# E de proposito que ele nao aponte para o basename de `database_path`: se a
+# loja ainda estiver no banco legado, o zip continua sendo gravado com o nome
+# canonico, e a restauracao escreve por cima de `database_path` (o caminho
+# real, legado ou nao). Amarrar DB_NAME ao legado propagaria o nome errado
+# para dentro dos backups e para a nuvem.
+DB_NAME = DB_FILENAME
+
 database_path = os.path.join(data_dir, DB_FILENAME)
 
 if not os.path.exists(database_path):

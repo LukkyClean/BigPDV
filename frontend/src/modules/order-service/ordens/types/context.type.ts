@@ -15,6 +15,7 @@ export interface OSCreateFormContext {
   observacoes: Ref<string | null | undefined>;
   desconto: Ref<number | null | undefined>;
   valor_entrada: Ref<number | null | undefined>;
+  forma_pagamento_entrada_id: Ref<number | null | undefined>;
   garantia: Ref<string | null | undefined>;
   data_previsao: Ref<string | null | undefined>;
   senha_aparelho: Ref<string | null | undefined>;
@@ -69,6 +70,7 @@ export interface OSUpdateGeralFormContext {
   observacoes: Ref<string | null | undefined>;
   desconto: Ref<number | null | undefined>;
   valor_entrada: Ref<number | null | undefined>;
+  forma_pagamento_entrada_id: Ref<number | null | undefined>;
   taxa_entrega: Ref<number | null | undefined>;
   garantia: Ref<string | null | undefined>;
   data_previsao: Ref<string | null | undefined>;
@@ -84,6 +86,8 @@ export interface OSUpdateGeralFormContext {
 
   onSubmit: (e?: Event) => void;
   onSubmitTextOnly: () => void;
+  /** Grava e ESPERA o servidor, sem fechar o modal. Usado antes de finalizar. */
+  salvarPendentes: () => Promise<void>;
   resetForm: () => void;
   populateForm: (os: OrderServiceReadDataType) => void;
 }

@@ -93,8 +93,9 @@ async function resolverPendentes(status: 'APROVADO' | 'REPROVADO') {
   }
 }
 
-const { temRevisoes } = useCapacidades();
-const { labelSingular, labelIdentificador, objetoIcon } = useObjetoLabels();
+const { temRevisoes, temGarantiaPrazo } = useCapacidades();
+const { labelSingular, labelIdentificador, objetoIcon, labelSituacao, rotuloSituacao } =
+  useObjetoLabels();
 const toast = useToast();
 const impressaoStore = useImpressaoStore();
 
@@ -218,6 +219,12 @@ const existingDesconto = computed(() => props.ordemServico?.desconto ?? 0);
 
 const valorEntrada = computed(() => props.ordemServico?.valor_entrada ?? 0);
 
+// Como o cliente adiantou. Null em OS aberta antes deste campo existir — nesse
+// caso mostramos só o valor, sem inventar forma de pagamento.
+const formaEntradaNome = computed(
+  () => props.ordemServico?.forma_pagamento_entrada?.nome ?? null,
+);
+
 const aCobrar = computed(() => {
   const total = Math.max(0, subtotalItens.value + taxaEntrega.value - existingDesconto.value - desconto.value);
   return Math.max(0, total - pagoAnteriormente.value - valorEntrada.value);
@@ -234,16 +241,23 @@ const desconto = computed(() => {
 });
 
 // ─── Situação ─────────────────────────────────────────────────────────────────
-const situacoesEquipamento: {
+/**
+ * Desfecho da OS. O ENUM é o mesmo em todos os segmentos — ele carrega a regra
+ * de dispensar o pagamento integral (SEM_REPARO/CONDENADO) e alimenta filtro,
+ * relatório e histórico. Só os RÓTULOS mudam, e vêm do registry.
+ *
+ * Os padrões abaixo são as palavras que oficina e informática mostram hoje.
+ */
+const situacoesEquipamento = computed<{
   value: OsEquipSituacaoEnumDataType;
   label: string;
   icon: unknown;
   activeClass: string;
-}[] = [
-  { value: 'REPARADO',   label: 'Reparado',   icon: CheckCircle2,  activeClass: 'border-emerald-500 bg-emerald-50 text-emerald-700' },
-  { value: 'SEM_REPARO', label: 'Sem reparo', icon: AlertTriangle, activeClass: 'border-amber-400 bg-amber-50 text-amber-700' },
-  { value: 'CONDENADO',  label: 'Condenado',  icon: XCircle,       activeClass: 'border-red-500 bg-red-50 text-red-700' },
-];
+}[]>(() => [
+  { value: 'REPARADO',   label: rotuloSituacao('REPARADO', 'Reparado'),     icon: CheckCircle2,  activeClass: 'border-emerald-500 bg-emerald-50 text-emerald-700' },
+  { value: 'SEM_REPARO', label: rotuloSituacao('SEM_REPARO', 'Sem reparo'), icon: AlertTriangle, activeClass: 'border-amber-400 bg-amber-50 text-amber-700' },
+  { value: 'CONDENADO',  label: rotuloSituacao('CONDENADO', 'Condenado'),   icon: XCircle,       activeClass: 'border-red-500 bg-red-50 text-red-700' },
+]);
 
 function toggleSituacao(value: OsEquipSituacaoEnumDataType) {
   situacao_equipamento.value = situacao_equipamento.value === value ? undefined : value;
@@ -307,7 +321,16 @@ watch(() => props.isOpen, (open) => {
 });
 
 // ─── Avançar ─────────────────────────────────────────────────────────────────
-const garantiaObrigatoria = computed(() => situacao_equipamento.value === 'REPARADO' || !situacao_equipamento.value);
+/**
+ * Garantia em dias só é exigida onde o serviço responde por um PRAZO — o caso
+ * de quem conserta. Numa serigrafia a estampa não tem prazo (se dura, mede-se
+ * em lavagens), e pedir "90 dias" ali obrigava o atendente a responder uma
+ * pergunta que não existe e fazia a via prometer garantia que a loja não deu.
+ */
+const garantiaObrigatoria = computed(
+  () => temGarantiaPrazo.value
+    && (situacao_equipamento.value === 'REPARADO' || !situacao_equipamento.value),
+);
 
 function buildDesconto() {
   return descontoTipo.value === 'percentual'
@@ -557,7 +580,7 @@ async function handleEmitEntrega(zerarAdiantamento: boolean) {
       <div>
         <div class="flex items-center gap-1.5 mb-2">
           <ShieldCheck :size="14" class="text-brand-primary" />
-          <span class="text-xs font-semibold text-zinc-500 uppercase tracking-wide">Situação do {{ labelSingular }}</span>
+          <span class="text-xs font-semibold text-zinc-500 uppercase tracking-wide">{{ labelSituacao }}</span>
           <span class="text-[10px] text-zinc-400">(opcional)</span>
         </div>
         <div class="grid grid-cols-3 gap-2">
@@ -579,8 +602,8 @@ async function handleEmitEntrega(zerarAdiantamento: boolean) {
         </div>
       </div>
 
-      <!-- ── Linha 4: Garantia ── -->
-      <div>
+      <!-- ── Linha 4: Garantia (só onde o serviço responde por um prazo) ── -->
+      <div v-if="temGarantiaPrazo">
         <div class="flex items-center gap-1.5 mb-2">
           <span class="text-xs font-semibold text-zinc-500 uppercase tracking-wide">Garantia</span>
           <span v-if="garantiaObrigatoria" class="text-[10px] text-red-400">*</span>
@@ -688,9 +711,18 @@ async function handleEmitEntrega(zerarAdiantamento: boolean) {
           </template>
           <span class="text-zinc-300 font-light">=</span>
           <span class="font-semibold text-brand-primary">Total: {{ formatCurrency(subtotalItens - existingDesconto - desconto + taxaEntrega) }}</span>
-          <template v-if="jaPago > 0">
+          <!-- Adiantamento e crédito de finalização anterior eram somados num
+               "Já pago" só. Separados, dá para conferir de onde veio cada valor. -->
+          <template v-if="valorEntrada > 0">
             <span class="text-zinc-300 font-light">−</span>
-            <span class="text-zinc-500">Já pago: <strong class="text-emerald-600">{{ formatCurrency(jaPago) }}</strong></span>
+            <span class="text-zinc-500">
+              Adiantamento<template v-if="formaEntradaNome"> ({{ formaEntradaNome }})</template>:
+              <strong class="text-emerald-600">{{ formatCurrency(valorEntrada) }}</strong>
+            </span>
+          </template>
+          <template v-if="pagoAnteriormente > 0">
+            <span class="text-zinc-300 font-light">−</span>
+            <span class="text-zinc-500">Pago antes: <strong class="text-emerald-600">{{ formatCurrency(pagoAnteriormente) }}</strong></span>
           </template>
         </div>
 
@@ -714,6 +746,22 @@ async function handleEmitEntrega(zerarAdiantamento: boolean) {
           </div>
 
           <div class="h-8 w-px bg-zinc-200 shrink-0" />
+
+          <!-- Adiantamento em destaque, ao lado do "A cobrar".
+               Antes ele só existia somado dentro do "Já pago", atrás do
+               "ver resumo" (fechado por padrão): na tela ficava só o que
+               faltava pagar, e o que o cliente já tinha dado sumia. -->
+          <div v-if="valorEntrada > 0" class="shrink-0">
+            <p class="text-[10px] font-semibold text-emerald-500 uppercase tracking-wide leading-none mb-0.5">
+              Adiantado
+            </p>
+            <p class="text-xl font-bold text-emerald-600 leading-none">{{ formatCurrency(valorEntrada) }}</p>
+            <p v-if="formaEntradaNome" class="text-[10px] text-zinc-400 mt-0.5 leading-none">
+              em {{ formaEntradaNome }}
+            </p>
+          </div>
+
+          <div v-if="valorEntrada > 0" class="h-8 w-px bg-zinc-200 shrink-0" />
 
           <!-- Valor em destaque: A cobrar (OS reaberta) ou Total (com desconto) -->
           <div v-if="jaPago > 0" class="shrink-0">

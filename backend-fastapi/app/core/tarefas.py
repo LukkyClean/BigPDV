@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta
 
 from fastapi import FastAPI
 
@@ -12,6 +13,8 @@ from app.db.models.contador_venda import ContadorVenda
 from app.db.models.forma_pagamento import FormaPagamento
 from app.services.limpeza_temporal import cancelar_vendas_ativas_expiradas, limpar_orcamentos_expirados, limpar_temp_data
 from app.services.licenca import enviar_heartbeat, renovar_licenca_background, desconectar_terminal
+from app.services.backup import create_backup, get_last_backup, apply_pending_restore
+from app.services import cloud_sync
 from app.db.crud import terminal_conectado as terminal_crud
 
 from app.core.discovery import register_service, stop_discovery
@@ -21,6 +24,13 @@ logger = logging.getLogger(__name__)
 INTERVALO_LIMPEZA_HORAS = 6
 INTERVALO_HEARTBEAT_SEGUNDOS = 100  # 5 minutos
 INTERVALO_RENOVACAO_SEGUNDOS = 3600  # 1 hora
+
+ATRASO_INICIAL_BACKUP_SEGUNDOS = 180
+INTERVALO_BACKUP_SEGUNDOS = 3600
+INTERVALO_BACKUP_HORAS = 8
+
+ATRASO_INICIAL_SYNC_SEGUNDOS = 300
+INTERVALO_SYNC_SEGUNDOS = 3600
 
 
 async def _loop_limpeza_temporal():
@@ -37,6 +47,53 @@ async def _loop_limpeza_temporal():
             logger.exception("Erro na limpeza automatica temporal")
 
         await asyncio.sleep(INTERVALO_LIMPEZA_HORAS * 3600)
+
+
+async def _loop_backup():
+    """Loop em segundo plano que mantem o backup local em dia (a cada 8h)."""
+    await asyncio.sleep(ATRASO_INICIAL_BACKUP_SEGUNDOS)
+
+    while True:
+        try:
+            last_backup = await asyncio.to_thread(get_last_backup)
+            last_backup_created_at = datetime.fromisoformat(last_backup.criado_em) if last_backup else None
+
+            need_backup = (
+                last_backup_created_at is None
+                or datetime.now() - last_backup_created_at >= timedelta(hours=INTERVALO_BACKUP_HORAS)
+            )
+
+            if need_backup:
+                print(f"[BACKUP] Criando backup automático (último backup: {last_backup.criado_em if last_backup else 'nenhum'})")
+                backup_info = await asyncio.to_thread(create_backup)
+                print(f'[BACKUP] Backup automático criado: {backup_info.arquivo} ({backup_info.tamanho_bytes} Bytes)')
+        except Exception as e:
+            print(f"[BACKUP] Erro ao criar backup automático: {type(e).__name__}: {e}")
+            print(f"[BACKUP] Próxima tentativa em 1 hora")
+
+        await asyncio.sleep(INTERVALO_BACKUP_SEGUNDOS)
+
+
+async def _loop_cloud_sync():
+    """Loop em segundo plano que envia o backup local para a nuvem (a cada 1h)."""
+    await asyncio.sleep(ATRASO_INICIAL_SYNC_SEGUNDOS)
+
+    while True:
+        try:
+            db = SessionLocal()
+
+            try:
+                print("[SYNC] Iniciando ciclo de sincronização com nuvem...")
+                summary = await cloud_sync.sync(db)
+                print(f"[SYNC] Status da sincronização: {summary}")
+            except Exception as e:
+                print(f"[SYNC] Erro durante a sincronização: {type(e).__name__}: {e}")
+            finally:
+                db.close()
+        except cloud_sync.CloudSyncError as e:
+            print(f"[SYNC] Ciclo encerrado: {e} (codigo={e.code})")
+
+        await asyncio.sleep(INTERVALO_SYNC_SEGUNDOS)
 
 
 async def _loop_heartbeat_licenca():
@@ -119,8 +176,26 @@ async def lifespan(app: FastAPI):
     Gerenciador de ciclo de vida do FastAPI.
     Inicia tarefas em segundo plano ao iniciar e cancela ao encerrar.
     """
+    # PRIMEIRA COISA DO BOOT, antes de create_all/migracoes: a restauracao troca
+    # o ARQUIVO do banco no disco. Se rodasse depois, o create_all abriria o
+    # banco antigo e as migracoes seriam aplicadas no arquivo que esta prestes a
+    # ser substituido. So faz algo se houver um marcador pendente confirmado.
+    try:
+        result = apply_pending_restore()
+        if result:
+            print(f"[RESTORE] Restauração aplicada no boot: "
+                  f"ciclo {result['restored_cycle']}. "
+                  f"Cópia de segurança em {result.get('old_db')}")
+            print(f"[RESTORE] Licença: {result.get('license')}")
+    except Exception as e:
+        print(f"[RESTORE] Erro ao aplicar restauração pendente: {type(e).__name__}: {e}")
+
     await asyncio.to_thread(limpar_temp_data)
 
+    # create_all CONTINUA AQUI. A versao do master removeu esta linha porque la
+    # o Alembic tem um baseline unico que cria o schema inteiro; nesta branch a
+    # cadeia de migracoes pressupoe que o create_all rodou antes (ver
+    # db/migrations.py e CLAUDE.md). Remover isto deixaria banco novo sem tabelas.
     Base.metadata.create_all(bind=engine)
 
     # Limpar terminais conectados da sessão anterior (stale após restart)
@@ -137,6 +212,12 @@ async def lifespan(app: FastAPI):
     _seed_contador_venda()
     print("Iniciando tarefa de limpeza automatica temporal...")
     tarefa_limpeza = asyncio.create_task(_loop_limpeza_temporal())
+
+    print("Iniciando tarefa de backup automático...")
+    tarefa_backup = asyncio.create_task(_loop_backup())
+
+    print("Iniciando tarefa de sincronização com nuvem automático...")
+    tarefa_cloud_sync = asyncio.create_task(_loop_cloud_sync())
 
     print("Iniciando tarefa de heartbeat de licenca...")
     tarefa_heartbeat = asyncio.create_task(_loop_heartbeat_licenca())
@@ -158,9 +239,11 @@ async def lifespan(app: FastAPI):
     
     print("Encerrando tarefas em segundo plano...")
     tarefa_limpeza.cancel()
+    tarefa_backup.cancel()
+    tarefa_cloud_sync.cancel()
     tarefa_heartbeat.cancel()
     tarefa_renovacao.cancel()
-    for tarefa in (tarefa_limpeza, tarefa_heartbeat, tarefa_renovacao):
+    for tarefa in (tarefa_limpeza, tarefa_backup, tarefa_cloud_sync, tarefa_heartbeat, tarefa_renovacao):
         try:
             await tarefa
         except asyncio.CancelledError:

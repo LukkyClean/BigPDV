@@ -87,6 +87,17 @@ export function useAtributosImpressaoOS() {
       // Campo em branco não vira linha "Chassi: -": na via em papel o espaço é
       // caro e um rótulo sem valor só ocupa lugar.
       if (valor === null || valor === undefined || valor === '') return;
+
+      // Campo `lista` (ex: referências de sacola). Sem este ramo o `String()`
+      // abaixo sairia "20.1,22" — colado, sem espaço — e uma lista vazia viraria
+      // um rótulo com valor em branco na via.
+      if (Array.isArray(valor)) {
+        const itens = valor.filter((item) => item !== null && item !== undefined && item !== '');
+        if (itens.length === 0) return;
+        lista.push({ label: campo.label, valor: itens.map(String).join(', ') });
+        return;
+      }
+
       // Booleano só faz sentido impresso como palavra.
       const texto = typeof valor === 'boolean' ? (valor ? 'Sim' : 'Não') : String(valor);
       lista.push({ label: campo.label, valor: texto });

@@ -243,6 +243,7 @@ export interface EmpresaFormContext {
 
   // ========== ACTIONS ==========
   onSubmit: (e?: Event) => void;
+  setTipoPessoa: (isCnpj: boolean) => void;
   handleLogoUpload: (file: File) => void;
   handleCertUpload: (file: File, senha: string) => void;
   handleTestSefaz: () => void;

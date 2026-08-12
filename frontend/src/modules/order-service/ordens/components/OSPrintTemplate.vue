@@ -6,6 +6,7 @@ import {
   CreditCard,
   Receipt,
   Banknote,
+  Image as ImageIcon,
 } from 'lucide-vue-next';
 import type { OrderServiceReadDataType } from '../schemas/orderServiceQuery.schema';
 import { formatCurrency } from '@/shared/utils/finance';
@@ -21,6 +22,7 @@ import {
   formatPrintDoc,
   tipoObjetoRelevante,
   pixParaImpressao,
+  getImageUrl,
 } from '@/shared/utils/print.utils';
 
 import PixQrPrint from '@/shared/components/print/PixQrPrint.vue';
@@ -28,9 +30,11 @@ import PrintCompanyHeader from '@/shared/components/print/a4/PrintCompanyHeader.
 import PrintSignatures from '@/shared/components/print/a4/PrintSignatures.vue';
 import PrintFooter from '@/shared/components/print/a4/PrintFooter.vue';
 import { useObjetoLabels } from '@/modules/order-service/shared/segmento/useObjetoLabels';
-import { useTextosImpressaoOS } from '@/modules/order-service/shared/segmento/textosImpressaoOS';
+import { useTextosImpressaoOS, prazoPorExtenso } from '@/modules/order-service/shared/segmento/textosImpressaoOS';
+import { useConfiguracoesStore } from '@/shared/stores/configuracoes.store';
 import { useTiposDeTrabalho } from '@/modules/order-service/shared/segmento/useTiposDeTrabalho';
 import { useAtributosImpressaoOS } from '@/modules/order-service/shared/segmento/useAtributosImpressaoOS';
+import { useCapacidades } from '@/modules/order-service/shared/segmento/useCapacidades';
 import { formatGarantiaItem } from '@/modules/order-service/shared/utils/formatters';
 
 const props = defineProps<{
@@ -41,8 +45,62 @@ const props = defineProps<{
 const { companyInfo } = useCompanyPrintInfo();
 const { labelSingular, objetoIcon, labelDaColuna } = useObjetoLabels();
 const { tipoPorId } = useTiposDeTrabalho();
-const { textos, identificadorA4 } = useTextosImpressaoOS();
+// Gate das imagens na via: capacidade do registry, não nome de segmento.
+const { temImagemNaEntrada, temGarantiaPrazo } = useCapacidades();
+// Os termos mudam com o tipo de trabalho: a cláusula de "peças entregues pelo
+// cliente" é de camisa e não vale para sacola, que a loja produz do zero.
+const { textos, identificadorA4 } = useTextosImpressaoOS(
+  () => (props.ordemServico?.dados_adicionais as Record<string, unknown> | undefined)
+    ?.tipo_trabalho as string | undefined,
+);
 const { atributos } = useAtributosImpressaoOS();
+
+/**
+ * Prazo de abandono vindo de Configurações → Ordens de Serviço. Estava chumbado
+ * em "90 (noventa)" aqui: a loja mudava a configuração, o relatório de abandono
+ * obedecia e o papel entregue ao cliente continuava prometendo 90.
+ */
+const configuracoesStore = useConfiguracoesStore();
+const prazoAbandonoTexto = computed(() =>
+  prazoPorExtenso(configuracoesStore.prazoAbandonoDias),
+);
+
+/**
+ * A cláusula do Termo de Garantia sempre escreveu o prazo sem o por extenso
+ * ("90 dias", não "90 (noventa) dias"). Mantido como estava.
+ */
+const prazoAbandonoSimples = computed(
+  () => `${configuracoesStore.prazoAbandonoDias} dias`,
+);
+
+/**
+ * Imagens que saem na via de entrada, já com a URL absoluta do backend.
+ *
+ * Teto de 4: a via de entrada é uma folha só e precisa caber com os termos e as
+ * assinaturas. Quem anexou mais continua vendo tudo na galeria da OS.
+ */
+const MAX_FOTOS_IMPRESSAS = 4;
+
+const fotosImpressas = computed(() =>
+  (props.ordemServico?.fotos ?? [])
+    .slice(0, MAX_FOTOS_IMPRESSAS)
+    .map((foto) => ({ ...foto, src: getImageUrl(foto.url) ?? '' }))
+    .filter((foto) => foto.src !== ''),
+);
+
+/**
+ * Divide a cláusula no prazo para manter o número em negrito, como as vias em
+ * produção sempre imprimiram. Determinístico: as duas pontas do corte são
+ * strings que nós mesmos montamos. Se o prazo não for encontrado (pacote
+ * reescrito sem ele), imprime a frase inteira sem negrito em vez de sumir.
+ */
+const prazoRetiradaPartes = computed(() => {
+  const prazo = prazoAbandonoTexto.value;
+  const frase = textos.value.prazoRetiradaEntradaA4(prazo);
+  const corte = frase.indexOf(prazo);
+  if (corte === -1) return { antes: frase, depois: '' };
+  return { antes: frase.slice(0, corte), depois: frase.slice(corte + prazo.length) };
+});
 
 /**
  * Atributos do segmento além das linhas fixas (oficina: Ano, Chassi, KM de
@@ -154,6 +212,10 @@ const temGarantiaPorItem = computed(() =>
 );
 
 const adiantamento = computed(() => props.ordemServico?.valor_entrada ?? 0);
+// Null em OS anterior a este campo: a via sai só com o valor, como antes.
+const formaEntradaNome = computed(
+  () => props.ordemServico?.forma_pagamento_entrada?.nome ?? null,
+);
 
 const adiantamentoUtilizado = computed(() => {
   const entrada = adiantamento.value;
@@ -267,6 +329,47 @@ const pix = computed(() =>
       </div>
     </div>
 
+    <!--
+      Imagens na via de ENTRADA — só onde a imagem é o pedido (serigrafia: a
+      foto é a arte a estampar, e é dela que quem pinta trabalha). Em oficina e
+      informática a foto é prova do estado do bem e não vai para o papel: por
+      isso o gate é a capacidade, não o segmento.
+    -->
+    <div
+      v-if="type === 'ENTRADA' && temImagemNaEntrada && fotosImpressas.length"
+      class="mb-3 border border-neutral-300 rounded-lg overflow-hidden print-fotos"
+    >
+      <div class="bg-neutral-100 px-3 py-1 border-b border-neutral-200 flex items-center gap-2">
+        <ImageIcon :size="14" class="text-neutral-800" />
+        <h3 class="text-xs font-bold uppercase text-neutral-800">
+          {{ fotosImpressas.length === 1 ? 'Arte para Produção' : 'Artes para Produção' }}
+        </h3>
+      </div>
+      <div class="p-2" :class="fotosImpressas.length === 1 ? '' : 'grid grid-cols-2 gap-2'">
+        <figure
+          v-for="foto in fotosImpressas"
+          :key="foto.id"
+          class="border border-neutral-200 rounded overflow-hidden bg-white"
+        >
+          <!--
+            Altura em MILÍMETROS, e não na escala do Tailwind: o papel é medido
+            em mm, e é o que decide se a via cabe numa folha só.
+
+            90mm empurrava termos e assinaturas para a segunda folha; 55mm ainda
+            deixava o rodapé ("Emitido em...") transbordar sozinho. 42mm fecha a
+            via em uma página e mantém a arte legível para produzir — ela ocupa
+            a largura inteira do bloco, então o corte é só na altura.
+          -->
+          <img
+            :src="foto.src"
+            :alt="foto.nome_arquivo"
+            class="w-full object-contain"
+            :style="{ maxHeight: fotosImpressas.length === 1 ? '42mm' : '28mm' }"
+          />
+        </figure>
+      </div>
+    </div>
+
     <!-- ── SAÍDA ── -->
     <template v-if="type === 'SAIDA'">
       <div v-if="ordemServico.solucao || ordemServico.diagnostico" class="mb-4 border border-neutral-300 rounded-lg overflow-hidden">
@@ -321,7 +424,9 @@ const pix = computed(() =>
           <div v-if="adiantamento > 0" class="flex justify-between items-center text-xs bg-neutral-50 p-1.5 rounded border border-neutral-200 mb-1.5">
             <div class="flex items-center gap-2">
               <Banknote :size="12" class="text-neutral-800" />
-              <span class="font-semibold text-neutral-900">Adiantamento (entrada)</span>
+              <span class="font-semibold text-neutral-900">
+                Adiantamento (entrada)<template v-if="formaEntradaNome"> — {{ formaEntradaNome }}</template>
+              </span>
             </div>
             <span class="font-bold text-neutral-900">{{ formatCurrency(adiantamento) }}</span>
           </div>
@@ -390,8 +495,16 @@ const pix = computed(() =>
         <PixQrPrint :payload="pix.payload" :valor-centavos="pix.valorCentavos" lado="30mm" />
       </div>
 
-      <!-- Termo de Garantia (só para REPARADO) -->
-      <div v-if="!isSemReparo" class="border border-neutral-300 bg-neutral-50 rounded-lg p-3 text-[10px] text-neutral-800 text-justify leading-relaxed mb-6">
+      <!--
+        Termo de Garantia — só para REPARADO e só onde há PRAZO de garantia.
+
+        O texto abaixo cai em '90 (noventa) dias' quando `garantia` está vazia.
+        Isso é correto onde a garantia é obrigatória (oficina, informática:
+        sempre preenchida). Num segmento sem prazo — serigrafia, em que a
+        estampa se mede em lavagens — o fallback faria a via PROMETER 90 dias de
+        garantia que a loja nunca deu.
+      -->
+      <div v-if="!isSemReparo && temGarantiaPrazo" class="border border-neutral-300 bg-neutral-50 rounded-lg p-3 text-[10px] text-neutral-800 text-justify leading-relaxed mb-6">
         <div class="flex items-center gap-2 mb-1 font-bold text-neutral-900 uppercase">
           <Receipt :size="12" />
           Termo de Garantia
@@ -401,7 +514,7 @@ const pix = computed(() =>
         <template v-else>cobrindo exclusivamente os serviços prestados e peças substituídas descritos neste documento.</template>
         A garantia <strong>NÃO COBRE</strong>: {{ textos.garantiaExclusoes }}
         <br/>
-        IMPORTANTE: {{ textos.objetoPlural }} não retirados no prazo de 90 dias após notificação de conclusão serão considerados abandonados e poderão ser vendidos para custeio das despesas, conforme Art. 1.275 do Código Civil Brasileiro.
+        IMPORTANTE: {{ textos.prazoRetiradaGarantiaA4(prazoAbandonoSimples) }}
       </div>
 
       <!-- Declaração de entrega sem reparo (SEM_REPARO / CONDENADO) -->
@@ -440,7 +553,7 @@ const pix = computed(() =>
       </p>
       <p class="border-t border-neutral-200 pt-2">
         <strong class="text-neutral-800 uppercase">⚠ Prazo de Retirada:</strong>
-        {{ textos.objetoPlural }} com serviço concluído que não forem retirados no prazo de <strong class="text-neutral-800">90 (noventa) dias</strong> após notificação serão considerados abandonados e poderão ser destinados para cobrir as despesas do serviço, conforme Art. 1.275 do Código Civil Brasileiro.
+        {{ prazoRetiradaPartes.antes }}<strong class="text-neutral-800">{{ prazoAbandonoTexto }}</strong>{{ prazoRetiradaPartes.depois }}
       </p>
     </div>
 

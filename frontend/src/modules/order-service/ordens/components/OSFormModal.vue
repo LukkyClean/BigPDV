@@ -72,7 +72,7 @@ const {
   printEntrada,
   printSaida,
   printEntradaAndClose,
-  handleFinalizarOS,
+  handleFinalizarOS: abrirFinalizarModal,
   closeFinalizarModal,
   onFinalized,
   handlePrintFormatSelected,
@@ -85,8 +85,25 @@ const {
 const form = useOSFormProvider({
   osNumber,
   isCreateMode,
-  onCreateSuccess: (os: OrderServiceReadDataType) => {
+  onCreateSuccess: async (os: OrderServiceReadDataType) => {
     localOSData.value = os;
+
+    // Foto anexada durante a CRIAÇÃO (serigrafia: a imagem é a arte a estampar).
+    // Sobe antes de imprimir e recarrega a OS: a via de entrada imprime as
+    // imagens, e o objeto devolvido pelo POST ainda vem com `fotos: []` — sem
+    // esta espera o papel sairia sem justamente o que o pintor precisa ver.
+    // `osNumber` já aponta para a OS nova (deriva de `localOSData`).
+    if (pendingPhotos.value.length > 0) {
+      try {
+        await uploadPendingPhotos();
+        await refreshCurrentOSData();
+      } catch {
+        // OS já existe: falhar o upload não pode travar a impressão nem o
+        // fechamento. A galeria segue disponível para reenviar na edição.
+        toast.error('OS criada, mas não foi possível enviar as imagens.');
+      }
+    }
+
     printEntradaAndClose();
   },
   onUpdateSuccess: async () => {
@@ -183,8 +200,10 @@ const {
   displayValorTotal,
   displayValorEntrada,
   displayValorAcrescimo,
+  displayFormaPagamentoEntradaId,
   handleValorEntradaUpdate,
   handleValorEntregaUpdate,
+  handleFormaPagamentoEntradaUpdate,
 } = useOSFinancialSummary({
   isCreateMode,
   createItems: computed(() => form.criar.itens.value.map(item => item.value)),
@@ -192,6 +211,8 @@ const {
   createDesconto: form.criar.desconto,
   createValorEntrada: form.criar.valor_entrada,
   updateValorEntrada: form.atualizarGeral.valor_entrada,
+  createFormaPagamentoEntrada: form.criar.forma_pagamento_entrada_id,
+  updateFormaPagamentoEntrada: form.atualizarGeral.forma_pagamento_entrada_id,
   updateTaxaEntrega: form.atualizarGeral.taxa_entrega,
 });
 const {
@@ -226,6 +247,34 @@ function handleLocalSubmit() {
     form.atualizarGeral.onSubmit();
   }
 }
+/**
+ * Grava o que está na tela ANTES de abrir a finalização.
+ *
+ * O modal de finalização e o de pagamento leem `ordemServico.valor_entrada` do
+ * SERVIDOR, não o que está digitado no resumo lateral. Quem preenchia o
+ * adiantamento e clicava direto em Finalizar via R$ 0,00: o valor só passava a
+ * valer depois de um Salvar, e nada na tela dizia isso.
+ *
+ * Salvar aqui é melhor do que fazer o modal ler o valor pendente: a forma de
+ * pagamento do adiantamento não viaja no payload de finalização, então ela se
+ * perderia. Gravando antes, existe uma fonte da verdade só.
+ *
+ * Falhando o PATCH, a finalização não abre — abrir com valor defasado é o
+ * problema que estamos corrigindo.
+ */
+async function handleFinalizarOS() {
+  if (!isCreateMode.value && reopenMode.value !== 'TEXT_ONLY') {
+    try {
+      await form.atualizarGeral.salvarPendentes();
+      await refreshCurrentOSData();
+    } catch {
+      toast.error('Não foi possível salvar as alterações antes de finalizar.');
+      return;
+    }
+  }
+  abrirFinalizarModal();
+}
+
 function handleClose() {
   form.criar.resetForm();
   form.atualizarGeral.resetForm();
@@ -508,6 +557,7 @@ useOSFormViewProvider({
   displayValorTotal,
   displayValorEntrada,
   displayValorAcrescimo,
+  displayFormaPagamentoEntradaId,
   formErrors,
   objetoFormData,
   objetoDados,
@@ -541,6 +591,7 @@ useOSFormViewProvider({
   handleDataPrevisaoUpdate,
   handleValorEntradaUpdate,
   handleValorEntregaUpdate,
+  handleFormaPagamentoEntradaUpdate,
   handleUsarCredito,
   saldoCreditoCliente,
   setObjetoFormData,
