@@ -20,6 +20,7 @@ import PixQrPrint from '@/shared/components/print/PixQrPrint.vue';
 import PrintCompanyHeader from '@/shared/components/print/a4/PrintCompanyHeader.vue';
 import PrintSignatures from '@/shared/components/print/a4/PrintSignatures.vue';
 import PrintFooter from '@/shared/components/print/a4/PrintFooter.vue';
+import { usePerfilComprovante } from '@/shared/composables/usePerfilComprovante';
 
 const props = defineProps<{
   sale: SaleRead | OrcamentoRead | null;
@@ -28,6 +29,9 @@ const props = defineProps<{
 }>();
 
 const { companyInfo } = useCompanyPrintInfo();
+
+// Densidade do layout. Venda e orçamento seguem o mesmo documento comercial.
+const { classeDensidade } = usePerfilComprovante('venda_recibo');
 
 const isVenda = computed(() => props.type === 'VENDA');
 
@@ -62,7 +66,11 @@ const pix = computed(() =>
 
 <template>
   <Teleport to="body">
-  <div v-if="sale" class="print-container hidden print:block bg-white text-black font-sans leading-tight">
+  <div
+    v-if="sale"
+    class="print-container hidden print:block bg-white text-black font-sans leading-tight"
+    :class="classeDensidade"
+  >
     <PrintCompanyHeader
       :company="companyInfo"
       :document-label="documentLabel"

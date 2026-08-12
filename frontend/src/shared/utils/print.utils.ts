@@ -271,6 +271,18 @@ export function imprimirComPagina(
   // A bobina deixou de ser fixa em 80mm: numa loja de 58mm a via HTML saía com
   // a página larga demais e o conteúdo desalinhado do papel.
   const size = format === 'CUPOM' ? `${bobina}mm auto` : folha;
+
+  // Limpa sobras de uma impressão anterior ANTES de injetar a nova. A limpeza
+  // migrou para cá de propósito: antes havia um `setTimeout(limpar, 1500)` como
+  // rede de segurança do `afterprint`, e 1,5s é MENOS do que alguém leva para
+  // olhar a pré-visualização e clicar em Imprimir. O timer disparava com o
+  // diálogo ABERTO, arrancava a regra e a página voltava para o A4 do
+  // print-a4.css — pedir A5 e sair A4 era exatamente esse sintoma.
+  //
+  // Deixar a regra no DOM até a próxima impressão é inócuo: ela vive dentro de
+  // `@media print` e não afeta a tela.
+  document.querySelectorAll('style[data-print-page]').forEach((s) => s.remove());
+
   const style = document.createElement('style');
   style.setAttribute('data-print-page', '');
   style.textContent = `@media print{@page{size:${size};margin:0}}`;
@@ -282,9 +294,9 @@ export function imprimirComPagina(
   };
   window.addEventListener('afterprint', limpar);
   window.print();
-  // Fallback: em alguns motores o evento afterprint não dispara de forma
-  // confiável — garante que a regra injetada não fique presa no <head>.
-  setTimeout(limpar, 1500);
+  // Sem timer de fallback aqui: ele corria contra o diálogo aberto (ver acima).
+  // Se o `afterprint` não disparar, a regra fica no <head> até a próxima
+  // impressão, que a remove — e enquanto isso não faz nada, porque é `@media print`.
 }
 
 // --- Company info composable ---
