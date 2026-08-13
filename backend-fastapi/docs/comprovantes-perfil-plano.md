@@ -107,7 +107,7 @@ entregou. O sistema não permite.
 Perfil de comprovante = **suporte × densidade**, por documento.
 
 ```
-suporte      cupom58 · cupom80 · A5 (meia folha) · A4
+suporte      cupom58 · cupom80 · A5 (metade de cima de uma A4) · A4
 densidade    normal (o de hoje) · compacto
 logo         com · sem
 documento    os_entrada · os_entrega · venda_recibo
@@ -237,10 +237,77 @@ total) · QR do PIX · termo de garantia ou declaração de entrega
 Todos permanecem **sempre presentes** (§4.0). O catálogo serve para saber o que a
 densidade precisa saber compactar, não o que ligar e desligar.
 
-### Fase 2 — suporte de papel
-Acrescentar `A5` ao mapa do `@page` em `imprimirComPagina` e fazer o template
-respeitar a largura. Entrega "meia folha".
-*Risco: baixo, frontend puro.*
+### Fase 2 — suporte de papel ✅ FECHADA (13/08/2026)
+
+O desenho original — "acrescentar `A5` ao mapa do `@page`" — foi implementado assim
+e **estava errado**. `@page { size: A5 }` põe a página em 148mm de **largura**: o
+layout inteiro reflui numa coluna estreita e **cresce** em vez de encolher. Meia
+folha de A4 não é A5 em pé, é 210×148 — largura de A4, altura pela metade.
+
+**O que ficou:** o `@page` continua **A4** (a folha que a loja tem na gaveta). A via
+é confinada aos 148mm de cima por uma classe `.meia-folha` no container, com linha de
+corte tracejada no fim da metade. O papel não muda, então o resultado não depende do
+driver decidir escalar, centralizar ou cortar — o que varia por modelo de impressora.
+
+**Corpo de letra fixo, folha que cresce.** A primeira versão calculava o `zoom` por
+via, para caber sempre nos 148mm. Funcionava, mas cada recibo saía com uma letra de
+tamanho diferente (0,94 numa venda de 3 itens, 0,81 numa de 8) — e a loja imprime
+dezenas por dia. **Corte do dono:** fixar a letra e deixar a folha aumentar.
+
+O zoom é fixo em `10/12` — o fator que põe o texto da via em 10px. Não dá para fazer
+isso pelo `font-size` do container: o template usa classes **absolutas** do Tailwind
+(`text-xs`, `text-[10px]`, `text-[8px]`), que não herdam. Os 148mm viraram **piso**:
+via curta é completada até a metade (o corte cai sempre na mesma altura), via longa
+desce pela folha. Medido no comprovante de venda, largura A4, Chrome:
+
+| itens | normal | compacto | via impressa (corpo 10) | folhas |
+|---|---|---|---|---|
+| 1 | 209mm | 146mm | 148mm | 1 |
+| 3 | 227mm | 157mm | 148mm | 1 |
+| 5 | 244mm | 168mm | 148mm | 1 |
+| 8 | 271mm | 184mm | 153mm | 1 |
+| 12 | — | 205mm | 171mm | 1 |
+| 20 | — | 248mm | 207mm | 1 |
+| 38 | — | 344mm | 287mm | 1 |
+| 50 | — | 408mm | 293mm (aperta p/ 0,72) | 1 |
+
+O encolhimento extra só entra acima de ~40 itens, quando a via passaria da folha
+inteira; o alvo é 293mm e não 297mm porque mirar na folha exata ainda dava segunda
+folha (não sobra nada para o arredondamento nem para os blocos que não se partem).
+Piso de `ZOOM_MINIMO` 0,7.
+
+**Meia folha liga o compacto sozinha**: a 209mm com 1 item, o layout normal não é uma
+escolha de forma na metade da folha, é um pedido impossível.
+
+**A arte em retrato é o único tamanho elástico da via.** A foto da serigrafia usava
+`w-full` + `object-contain` com teto de 42mm: a arte deitada preenchia a largura, mas
+uma foto de celular (retrato) saía com ~31mm de largura cercada de branco — um quarto
+da área, pequena demais para produzir. Agora a imagem é limitada pelos dois lados (a
+caixa encolhe até ela) e o retrato tem teto próprio de 68mm, que iguala as duas em
+tamanho aparente (51×68mm contra 180×45mm).
+
+Como 68mm arrisca a segunda folha na folha inteira — o histórico do template conta que
+55mm já deixava o rodapé transbordar sozinho —, o teto **não é fixo**:
+`ajustarArteParaCaber` mede a via e desce os degraus 68/55/45/38/30mm até fechar em uma
+folha. Em OS curta a arte sai grande; em OS cheia, cede o necessário e só o necessário;
+se nem o menor degrau resolver, a arte volta ao tamanho bom (a segunda folha ali é
+conteúdo, e imprimir a arte pequena junto não compraria nada). Cede a arte porque é o
+único elemento negociável — o resto é o conteúdo que protege o cliente (§4).
+
+Na meia folha o ajuste não roda: o corpo 10 já reduz tudo em 17% e a via cresce dentro
+da mesma folha.
+
+**Consequência de arquitetura:** as medidas do documento (padding, corpo de letra,
+densidade) saíram de dentro do `@media print` no `print-a4.css` — a medição acontece
+na tela, e precisa ler o mesmo layout que sai no papel. O arquivo passou a ter três
+camadas comentadas: a página (só impressão), o documento, a meia folha. Nada vaza
+para a tela porque `.print-container` é `hidden` fora da impressão.
+
+**O achado lateral da Fase 0 estava certo, só no caso errado.** O
+`page-break-inside: avoid` que pega todo card é exatamente o que fazia a página 1
+terminar nas assinaturas com um vão enorme e a página 2 vir só com o rodapé — não na
+folha inteira (onde a 2ª folha vem cheia, é conteúdo), mas na meia folha, onde o card
+do cliente sozinho tem 36mm de 148mm.
 
 ### Fase 3 — densidade compacta
 A variante `compacto` do layout: cards viram linha corrida, rótulo inline, mais

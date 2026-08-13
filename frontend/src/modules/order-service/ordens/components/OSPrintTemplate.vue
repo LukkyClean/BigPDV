@@ -96,6 +96,32 @@ const fotosImpressas = computed(() =>
 );
 
 /**
+ * Densidade do layout desta via.
+ *
+ * A via de entrada que LEVA ARTE é **sempre compacta**, por mais que a empresa
+ * tenha escolhido Normal. Não é preferência de forma: é a diferença entre a
+ * arte sair utilizável ou não. Medido nesta mesma via (foto de celular, folha
+ * A4, uma página): no Normal a via fecha em 291mm de 293mm disponíveis e a arte
+ * cabe em 34x45mm; no compacto a via cai para 286mm e a arte sobe para 90x120mm
+ * — sete vezes a área, na mesma folha única.
+ *
+ * O compacto não tira informação nenhuma (§4 do plano): encolhe moldura e
+ * espaçamento. Numa via cujo motivo de existir é a arte que o cliente aprovou e
+ * o estampador vai reproduzir, gastar esses milímetros com respiro é o mesmo
+ * que imprimir a via errada.
+ *
+ * Repare no `fotosImpressas.length`: a condição é a arte ESTAR NA VIA, não o
+ * segmento poder ter arte. Numa OS sem foto anexada o bloco nem é renderizado —
+ * não há o que espremer, e sobrescrever a escolha da empresa ali seria mudar o
+ * comprovante dela sem nada em troca.
+ */
+const classeImpressao = computed(() =>
+  props.type === 'ENTRADA' && temImagemNaEntrada.value && fotosImpressas.value.length
+    ? 'compacto'
+    : classeDensidade.value,
+);
+
+/**
  * Divide a cláusula no prazo para manter o número em negrito, como as vias em
  * produção sempre imprimiram. Determinístico: as duas pontas do corte são
  * strings que nós mesmos montamos. Se o prazo não for encontrado (pacote
@@ -255,7 +281,7 @@ const pix = computed(() =>
   <div
     v-if="ordemServico"
     class="print-container hidden print:block bg-white text-black font-sans leading-tight"
-    :class="classeDensidade"
+    :class="classeImpressao"
   >
     <PrintCompanyHeader
       :company="companyInfo"
@@ -349,6 +375,7 @@ const pix = computed(() =>
     <div
       v-if="type === 'ENTRADA' && temImagemNaEntrada && fotosImpressas.length"
       class="mb-3 border border-neutral-300 rounded-lg overflow-hidden print-fotos"
+      :class="{ varias: fotosImpressas.length > 1 }"
     >
       <div class="bg-neutral-100 px-3 py-1 border-b border-neutral-200 flex items-center gap-2">
         <ImageIcon :size="14" class="text-neutral-800" />
@@ -363,20 +390,13 @@ const pix = computed(() =>
           class="border border-neutral-200 rounded overflow-hidden bg-white"
         >
           <!--
-            Altura em MILÍMETROS, e não na escala do Tailwind: o papel é medido
-            em mm, e é o que decide se a via cabe numa folha só.
-
-            90mm empurrava termos e assinaturas para a segunda folha; 55mm ainda
-            deixava o rodapé ("Emitido em...") transbordar sozinho. 42mm fecha a
-            via em uma página e mantém a arte legível para produzir — ela ocupa
-            a largura inteira do bloco, então o corte é só na altura.
+            Sem `w-full`, sem `object-contain` e sem tamanho aqui: o tamanho
+            impresso está no CSS (`.print-fotos img`), em MILÍMETROS, e a classe
+            `foto-retrato` é posta por `classificarOrientacaoDasFotos`
+            (print.utils.ts) na hora de imprimir — quando as imagens já
+            carregaram e `naturalWidth/Height` valem alguma coisa.
           -->
-          <img
-            :src="foto.src"
-            :alt="foto.nome_arquivo"
-            class="w-full object-contain"
-            :style="{ maxHeight: fotosImpressas.length === 1 ? '42mm' : '28mm' }"
-          />
+          <img :src="foto.src" :alt="foto.nome_arquivo" />
         </figure>
       </div>
     </div>
@@ -581,4 +601,63 @@ const pix = computed(() =>
 
 <style>
 @import '@/shared/components/print/styles/print-a4.css';
+
+/* =====================================================================
+   ARTE PARA PRODUÇÃO (via de entrada, segmentos com imagem no pedido)
+
+   A imagem NÃO usa `w-full`/`object-contain`. Aquela combinação dava à foto
+   uma caixa da largura inteira do bloco e encaixava o retrato no meio dela:
+   uma foto de celular saía com ~31mm de largura cercada de branco, pequena
+   demais para produzir. Aqui a imagem é limitada pelos dois lados e a caixa
+   encolhe até ela — o branco em volta some.
+
+   Alturas em MILÍMETROS: o papel é medido em mm, e é o que decide se a via
+   fecha em uma folha. Histórico do teto da arte deitada: 90mm empurrava termos
+   e assinaturas para a segunda folha, 55mm ainda deixava o rodapé transbordar
+   sozinho, 45mm fecha a via.
+
+   O retrato tem teto maior de propósito. Não é privilégio: a 45mm uma foto 3:4
+   ocupa 34x45mm, contra os ~155x45mm da arte deitada — um quarto da área. Os
+   68mm igualam as duas em tamanho aparente (51x68mm), e custam altura só na OS
+   que tem foto de celular.
+   ===================================================================== */
+.print-fotos img {
+  display: block;
+  margin: 0 auto;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 45mm;
+}
+
+/* A moldura acompanha a foto em vez de atravessar a via.
+   Com a moldura em largura total, um retrato de 25mm ficava no meio de um
+   retângulo vazio de 175mm — o branco em volta parecia defeito de impressão, e
+   era a maior parte do bloco.
+
+   `fit-content` + `margin-inline: auto` e não `inline-block` + `text-align` do
+   pai: assim a centralização mora inteira na própria moldura e não depende de
+   classe nenhuma no elemento de cima. Só no caso de arte única — com duas ou
+   mais, cada célula da grade já tem metade da largura. */
+.print-fotos:not(.varias) figure {
+  width: fit-content;
+  margin-inline: auto;
+}
+
+/* O teto do retrato é o único tamanho ELÁSTICO da via: quando a folha inteira
+   não fecha em uma página, `ajustarArteParaCaber` (print.utils.ts) baixa esta
+   variável degrau a degrau até caber. A arte é o que dá para ceder — o resto do
+   comprovante é conteúdo que protege o cliente. */
+.print-fotos img.foto-retrato {
+  max-height: var(--arte-retrato, 68mm);
+}
+
+/* Duas ou mais artes dividem a linha: cada uma cabe em metade do espaço. */
+.print-fotos.varias img {
+  max-height: 30mm;
+}
+
+.print-fotos.varias img.foto-retrato {
+  max-height: 45mm;
+}
 </style>

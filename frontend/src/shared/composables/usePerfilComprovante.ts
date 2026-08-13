@@ -84,9 +84,17 @@ export function usePerfilComprovante(documento: DocumentoComprovante = 'os_entre
 
   const perfil = computed<PerfilComprovante>(() => perfilDe(documento));
 
-  /** Classe de densidade para o container de impressão. '' quando normal. */
+  /**
+   * Classe de densidade para o container de impressão. '' quando normal.
+   *
+   * Meia folha implica compacto, independente do que a empresa escolheu: medido
+   * no comprovante de venda, o layout normal custa 209mm já com 1 item — 61mm
+   * além da metade da folha, ou seja, nunca seria meia folha. O compacto cai
+   * para 146mm com 1 item e 157mm com 3, que é a faixa onde a via realmente
+   * cabe na metade no corpo de letra fixo (ver ZOOM_MEIA_FOLHA).
+   */
   const classeDensidade = computed(() =>
-    perfil.value.densidade === 'compacto' ? 'compacto' : '',
+    perfil.value.densidade === 'compacto' || perfil.value.folha === 'A5' ? 'compacto' : '',
   );
 
   return { perfil, perfilDe, classeDensidade, opcoesPaginaDe };

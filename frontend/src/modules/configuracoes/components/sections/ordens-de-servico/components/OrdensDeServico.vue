@@ -172,22 +172,32 @@ defineExpose({ form, isDirty, resetar })
             <label class="text-xs font-medium text-zinc-600">Papel</label>
             <select
               v-model="form[doc.campoFolha]"
-              class="mt-1 block w-40 rounded-md border-2 border-zinc-200 px-2 py-1.5 text-sm focus:outline-none focus:border-brand-primary"
+              class="mt-1 block w-56 rounded-md border-2 border-zinc-200 px-2 py-1.5 text-sm focus:outline-none focus:border-brand-primary"
             >
-              <option value="A4">A4 — folha inteira</option>
-              <option value="A5">A5 — meia folha</option>
+              <option value="A4">Folha inteira (A4)</option>
+              <option value="A5">Meia folha — metade de uma A4</option>
             </select>
           </div>
 
           <div>
             <label class="text-xs font-medium text-zinc-600">Layout</label>
+            <!--
+              Na meia folha o layout não é uma escolha: o Normal custa 209mm já
+              com um item, contra 148mm de metade de folha. Trancar o campo é
+              mais honesto do que deixar o lojista escolher Normal e receber
+              silenciosamente a via encolhida.
+            -->
             <select
               v-model="form[doc.campoDensidade]"
-              class="mt-1 block w-40 rounded-md border-2 border-zinc-200 px-2 py-1.5 text-sm focus:outline-none focus:border-brand-primary"
+              :disabled="form[doc.campoFolha] === 'A5'"
+              class="mt-1 block w-40 rounded-md border-2 border-zinc-200 px-2 py-1.5 text-sm focus:outline-none focus:border-brand-primary disabled:bg-zinc-50 disabled:text-zinc-400 disabled:cursor-not-allowed"
             >
               <option value="normal">Normal</option>
               <option value="compacto">Compacto</option>
             </select>
+            <p v-if="form[doc.campoFolha] === 'A5'" class="text-[10px] text-zinc-400 mt-1">
+              Meia folha usa sempre o compacto.
+            </p>
           </div>
         </div>
       </div>
@@ -196,6 +206,12 @@ defineExpose({ form, isDirty, resetar })
         O <strong>Compacto</strong> aproveita melhor a folha reduzindo molduras e espaços,
         sem tirar informação. É o caminho quando a via está passando para a segunda página.
         Em impressora térmica esta escolha não se aplica — o cupom já sai condensado.
+      </p>
+      <p class="text-[11px] text-zinc-400 mt-2 leading-relaxed">
+        Na <strong>meia folha</strong> a impressora continua usando papel A4: a via ocupa a
+        metade de cima, em letra menor, e sai uma linha de corte. Se tiver itens demais para
+        caber na metade, a via cresce para baixo — a letra é sempre a mesma, e ela continua
+        saindo em uma folha só.
       </p>
     </div>
 

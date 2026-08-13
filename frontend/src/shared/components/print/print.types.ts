@@ -1,7 +1,15 @@
 /** Classe do dispositivo: folha ou bobina. Decidida pela MÁQUINA (que impressora tem). */
 export type PrintFormat = 'A4' | 'CUPOM';
 
-/** Tamanho do papel dentro da classe folha. Decidido pela EMPRESA/segmento. */
+/**
+ * Quanto papel a via ocupa dentro da classe folha. Decidido pela EMPRESA/segmento.
+ *
+ * `A4` é a folha inteira. `A5` é MEIA FOLHA — e é meia folha de A4, não papel
+ * A5: a impressora continua recebendo uma A4 e o comprovante fica na metade de
+ * cima, com linha de corte. O nome ficou 'A5' porque é o valor já gravado em
+ * `configuracoes_os` nas lojas, e trocá-lo custaria migração para nada: o
+ * lojista sempre viu isso escrito como "meia folha" na tela.
+ */
 export type TamanhoFolha = 'A4' | 'A5';
 
 /** Largura da bobina dentro da classe cupom. */
