@@ -13,7 +13,7 @@ import {
   useWindowsCertificatesQuery,
 } from './useEmpresaQuery';
 import { useAuthStore } from '@/shared/stores/auth.store';
-import { DEFAULT_FISCAL_SETTINGS, DEFAULT_ENDERECO } from '../constants/empresa.constants';
+import { DEFAULT_FISCAL_SETTINGS, DEFAULT_ENDERECO, FIELD_LABELS } from '../constants/empresa.constants';
 import {
   formatCEP,
   formatCNPJ,
@@ -77,6 +77,37 @@ function formatDocumento(documento: string, isCnpj: boolean | undefined): string
   if (digits.length === 14) return formatCNPJ(digits);
   if (digits.length === 11) return formatCPF(digits);
   return documento;
+}
+
+const ROTULOS: Record<string, string> = FIELD_LABELS;
+
+/**
+ * Traduz a chave de um campo reprovado para o nome que ele tem NA TELA.
+ *
+ * "endereco_principal.cep" -> "Endereço: CEP"; "razao_social" -> "Razão Social".
+ *
+ * Os rótulos de identificação mudam com o tipo de pessoa — a mesma chave
+ * `documento` é CNPJ para PJ e CPF para PF, e é assim que o campo aparece em
+ * IdentificationSection. Avisar "documento inválido" quando a tela diz "CPF"
+ * manda o usuário procurar um campo que não existe.
+ *
+ * `fiscal_settings` ganha prefixo próprio porque essas seções SAÍRAM desta tela
+ * (commit d7e2f0e): se uma delas reprovar, não há campo onde olhar, e o aviso
+ * precisa dizer isso em vez de citar um rótulo fantasma.
+ */
+function rotuloDoCampo(chave: string, isCnpj: boolean): string {
+  const endereco = chave.match(/^endereco_principal\.(.+)$/);
+  if (endereco) return `Endereço: ${ROTULOS[endereco[1]] ?? endereco[1]}`;
+
+  const fiscal = chave.match(/^fiscal_settings\.(.+)$/);
+  if (fiscal) return `Dados fiscais: ${fiscal[1]}`;
+
+  if (chave === 'documento') return isCnpj ? 'CNPJ' : 'CPF';
+  if (chave === 'razao_social') return isCnpj ? 'Razão Social' : 'Nome Completo';
+  if (chave === 'nome_fantasia') return isCnpj ? 'Nome Fantasia' : 'Nome do Negócio';
+  if (chave === 'email') return 'E-mail';
+
+  return ROTULOS[chave] ?? chave;
 }
 
 /**
@@ -494,6 +525,15 @@ export function useEmpresaFormProvider() {
       if (!parseResult.success) {
         const firstError = parseResult.error.errors[0];
         apiError.value = firstError.message;
+        // A tarja de `apiError` mora no TOPO do formulário, e o botão Salvar fica
+        // na coluna da direita com a página rolada — na prática ela nasce fora da
+        // tela. O toast é o único canal que alcança o usuário de onde ele está.
+        toast.error(
+          firstError.message,
+          firstError.path.length
+            ? rotuloDoCampo(firstError.path.join('.'), is_cnpj.value)
+            : undefined,
+        );
         console.error('[Zod Validation Failed]', parseResult.error.errors);
         return;
       }
@@ -515,13 +555,39 @@ export function useEmpresaFormProvider() {
             resetForm({ values: { ...values } });
           },
           onError: (error: any) => {
-            apiError.value = error?.response?.data?.detail || 'Erro ao salvar empresa';
+            // Um 422 traz `detail` como LISTA de {field, message}. Jogada crua numa
+            // tarja que espera texto, ela vira ruído ilegível — reduz ao primeiro item.
+            const detail = error?.response?.data?.detail;
+            apiError.value =
+              (typeof detail === 'string'
+                ? detail
+                : Array.isArray(detail)
+                  ? detail[0]?.message
+                  : null) || 'Erro ao salvar empresa';
           },
         },
       );
     },
-    (validationErrors) => {
-      console.log('[DEBUG] VeeValidate errors:', validationErrors);
+    ({ errors: camposInvalidos }) => {
+      // O handleSubmit do vee-validate falha CALADO: reprovando, ele não chama a
+      // mutation e não avisa ninguém. Aqui só havia um console.log — e o release
+      // do Tauri não tem devtools, então o usuário clicava em Salvar, o modal de
+      // confirmação fechava e nada acontecia, sem pista alguma.
+      //
+      // Pior nos campos sem `:error` na tela (Complemento) e nos que nem existem
+      // mais nesta tela (fiscal_settings): ali o erro não tinha ONDE aparecer.
+      // Foi assim que um `complemento` nulo bloqueou o cadastro inteiro de uma
+      // loja sem deixar rastro.
+      const nomes = Object.keys(camposInvalidos).map((chave) =>
+        rotuloDoCampo(chave, is_cnpj.value),
+      );
+      const unicos = [...new Set(nomes)];
+      toast.error(
+        unicos.length === 1
+          ? `Verifique o campo: ${unicos[0]}`
+          : `Verifique ${unicos.length} campos`,
+        unicos.join(' • '),
+      );
     },
   );
 
