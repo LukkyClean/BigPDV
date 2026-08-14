@@ -116,6 +116,13 @@ function normalizeEmpresaToForm(data: EmpresaRead): EmpresaFormData {
     endereco_principal: enderecoPrincipal
       ? {
           ...enderecoPrincipal,
+          // `complemento` é o único campo anulável do endereço, e o espalhamento
+          // acima traz o valor cru da API — enquanto todos os outros campos desta
+          // função passam por `?? ''`. Vindo `null`, o Zod do formulário reprovava
+          // (aceita '' e undefined, não null) e derrubava o submit INTEIRO: nada
+          // era salvo, nem documento nem razão social. E em silêncio, porque o
+          // handler de submit inválido só loga e este campo não tem `:error`.
+          complemento: enderecoPrincipal.complemento ?? '',
           cep: formatCEP(enderecoPrincipal.cep ?? ''),
         }
       : DEFAULT_ENDERECO,
