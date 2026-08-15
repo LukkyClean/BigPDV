@@ -94,6 +94,11 @@ const homeRoutes: RouteRecordRaw[] = [
           subtitle: 'Gerencie os serviços da sua organização de forma centralizada.',
           tabId: 'services',
           requiresAuth: true,
+          // Esconder o item do menu NÃO basta: sem esta marca, digitar
+          // /servicos na barra de endereço (ou uma aba salva do navegador)
+          // abriria a tela de OS numa loja que não tem o módulo. O guard em
+          // router/index.ts lê esta flag.
+          exigeOrdemServico: true,
         },
       },
       {

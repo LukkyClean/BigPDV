@@ -20,7 +20,11 @@ export const SEGMENTOS = [
   'assistencia_tecnica',
   'oficina_mecanica',
   'serigrafia',
-  'mercado',
+  // Era 'mercado'. Virou 'pdv' porque o produto é o mesmo para adega,
+  // mercearia, papelaria e distribuidora — o nome do valor tem que dizer o que
+  // ele é, não o ramo de um cliente. É também o único segmento sem Ordem de
+  // Serviço. A migration b3c4d5e6f7a8 converte as empresas já gravadas.
+  'pdv',
   'marcenaria',
   'eletricista',
   'outros',

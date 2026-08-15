@@ -15,6 +15,7 @@ import RankingSection from '../components/RankingSection.vue';
 import ComissaoSection from '../components/ComissaoSection.vue';
 import EstoqueSection from '../components/EstoqueSection.vue';
 import OSPerformanceSection from '../components/OSPerformanceSection.vue';
+import { useOrdemServico } from '@/shared/composables/useOrdemServico';
 
 const inicio = ref('');
 const fim = ref('');
@@ -24,6 +25,7 @@ function onPeriodo(r: { inicio: string; fim: string }) {
 }
 
 const { data, isLoading, isError } = useFaturamentoQuery(inicio, fim);
+const { usaOrdemServico } = useOrdemServico();
 
 /** Só mostra o bloco de juros quando houve juros — repassado ou absorvido. */
 const jurosTotal = computed(
@@ -104,7 +106,9 @@ async function imprimirFinanceiro() {
           :icon="Banknote"
           :hint="jurosTotal > 0
             ? `Bruto ${formatCurrency(data?.faturamento_total ?? 0)} − ${formatCurrency(jurosTotal)} de juros`
-            : `${data?.qtd_vendas ?? 0} vendas · ${data?.qtd_os ?? 0} OS`"
+            : usaOrdemServico
+              ? `${data?.qtd_vendas ?? 0} vendas · ${data?.qtd_os ?? 0} OS`
+              : `${data?.qtd_vendas ?? 0} vendas`"
         />
         <KpiCard label="Ticket médio" :value="formatCurrency(data?.ticket_medio ?? 0)" :icon="Receipt" />
         <KpiCard
@@ -113,7 +117,9 @@ async function imprimirFinanceiro() {
           :icon="ShoppingCart"
           :hint="`${data?.qtd_vendas ?? 0} finalizadas`"
         />
+        <!-- Loja sem Ordem de Serviço não tem faturamento de serviço para mostrar. -->
         <KpiCard
+          v-if="usaOrdemServico"
           label="Serviços (OS)"
           :value="formatCurrency(data?.faturamento_os ?? 0)"
           :icon="Wrench"
@@ -260,8 +266,9 @@ async function imprimirFinanceiro() {
       <!-- Estoque e Curva ABC -->
       <EstoqueSection :inicio="inicio" :fim="fim" />
 
-      <!-- Desempenho de OS -->
-      <OSPerformanceSection :inicio="inicio" :fim="fim" />
+      <!-- Desempenho de OS. O v-if desmonta o componente, e com ele a
+           useOSPerformanceQuery: numa loja de PDV a requisição nem sai. -->
+      <OSPerformanceSection v-if="usaOrdemServico" :inicio="inicio" :fim="fim" />
 
       <!-- Tabela -->
       <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">

@@ -100,6 +100,24 @@ router.beforeEach(async (to) => {
       };
     }
   }
+
+  // -----------------------------------------------------------------------
+  // ETAPA 3: Módulos que o segmento da loja não usa
+  // -----------------------------------------------------------------------
+  // Roda DEPOIS da autenticação de propósito: a resposta depende de
+  // `userData.empresa`, que só existe com o usuário carregado. Antes disso
+  // `usa_ordem_servico` seria indefinido e cairia no padrão (tem OS) — que é
+  // seguro, mas deixaria a rota passar.
+  //
+  // Esconder o item do menu não basta: sem isto, digitar /servicos na barra de
+  // endereço abriria a tela de OS numa loja que não tem o módulo.
+  if (to.meta.exigeOrdemServico) {
+    const authStore = useAuthStore();
+    const usaOrdemServico = authStore.userData?.empresa?.usa_ordem_servico ?? true;
+    if (!usaOrdemServico) {
+      return { name: 'home' };
+    }
+  }
 });
 
 router.afterEach((to) => {

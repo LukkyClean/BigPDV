@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useOrdemServico } from '@/shared/composables/useOrdemServico';
 import { ArrowUpRight, ArrowDownRight } from 'lucide-vue-next';
 import { storeToRefs } from 'pinia';
 
@@ -23,6 +24,8 @@ import { useOSAtrasadasEmpresaQuery } from '../../composables/queries/useOSAtras
 import { useTendenciaQuery } from '../../composables/queries/useTendenciaQuery';
 
 import type { PeriodFilter } from '../../types/dashboard.types';
+
+const { usaOrdemServico } = useOrdemServico();
 
 const authStore = useAuthStore();
 const { userData, isLoading } = storeToRefs(authStore);
@@ -71,7 +74,7 @@ const periods: { id: PeriodFilter; label: string }[] = [
     />
 
     <!-- Banner OS Atrasadas (só aparece quando há) -->
-    <OSAtrasadasEmpresaBanner
+    <OSAtrasadasEmpresaBanner v-if="usaOrdemServico"
       :items="atrasadasQuery.data.value?.items ?? []"
       :total="atrasadasQuery.data.value?.total ?? 0"
     />
@@ -200,7 +203,7 @@ const periods: { id: PeriodFilter; label: string }[] = [
         />
       </div>
       <div class="lg:col-span-2">
-        <OSPorStatusWidget
+        <OSPorStatusWidget v-if="usaOrdemServico"
           :items="osPorStatusQuery.data.value?.items ?? []"
           :total-ativas="osPorStatusQuery.data.value?.total_ativas ?? 0"
           :is-loading="osPorStatusQuery.isLoading.value"
@@ -220,7 +223,7 @@ const periods: { id: PeriodFilter; label: string }[] = [
         />
       </div>
       <div class="lg:col-span-3">
-        <OSVencendoTable :items="osVencendo" :is-loading="isLoadingOS" :is-error="isErrorOS" />
+        <OSVencendoTable v-if="usaOrdemServico" :items="osVencendo" :is-loading="isLoadingOS" :is-error="isErrorOS" />
       </div>
     </div>
 

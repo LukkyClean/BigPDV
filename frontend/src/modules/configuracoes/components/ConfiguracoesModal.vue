@@ -44,6 +44,7 @@ import RegrasDeVendas from './sections/regras-de-vendas/components/RegrasDeVenda
 import Seguranca from './sections/seguranca/components/Seguranca.vue'
 import ProdutosEstoque from './sections/produtos-estoque/components/ProdutosEstoque.vue'
 import OrdensDeServico from './sections/ordens-de-servico/components/OrdensDeServico.vue'
+import { useOrdemServico } from '@/shared/composables/useOrdemServico'
 import ClientesCadastro from './sections/clientes-cadastro/components/ClientesCadastro.vue'
 import IntegracoesAPIs from './sections/integracoes-apis/components/IntegracoesAPIs.vue'
 import ImpressaoPeriferico from './sections/impressao/components/ImpressaoPeriferico.vue'
@@ -68,6 +69,7 @@ const { mutate: salvarTema, isPending: isPendingTema } = useUpdateEmpresaMutatio
 const configuracoesStore = useConfiguracoesStore()
 const impressaoStore = useImpressaoStore()
 const { secoesProtegidas, temPinConfigurado } = storeToRefs(configuracoesStore)
+const { usaOrdemServico } = useOrdemServico()
 const gerenteConfig = useGerenteAprovacao()
 const confirmacao = useConfirmacao()
 const toast = useToast()
@@ -257,6 +259,17 @@ const componenteMap: Record<SecaoId, Component> = {
   'suporte':           Suporte,
 }
 
+/**
+ * As secoes que esta loja realmente tem.
+ *
+ * "Ordens de Servico" numa adega e uma aba inteira de configuracao de um modulo
+ * que nao existe ali -- e das piores de esquecer, porque o dono entra em
+ * Configuracoes e encontra prazos e numeracao de OS.
+ */
+const secoesVisiveis = computed(() =>
+  secoes.filter((s) => s.id !== 'ordens-de-servico' || usaOrdemServico.value),
+)
+
 const componenteAtivo = computed(() => componenteMap[secaoAtiva.value])
 const labelSecaoAtiva = computed(() => secoes.find((s) => s.id === secaoAtiva.value)?.label ?? '')
 </script>
@@ -311,7 +324,7 @@ const labelSecaoAtiva = computed(() => secoes.find((s) => s.id === secaoAtiva.va
         </p>
 
         <button
-          v-for="secao in secoes"
+          v-for="secao in secoesVisiveis"
           :key="secao.id"
           type="button"
           :class="[

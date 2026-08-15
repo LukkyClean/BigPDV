@@ -12,6 +12,7 @@ import AppLogo from '@/shared/components/AppLogo.vue';
 import { SIDEBAR_SECTIONS } from '@/modules/mainLayout/constants/layout.constants';
 import { computed, onMounted, onUnmounted } from 'vue';
 import { useCheckPermission } from '@/modules/mainLayout/composables/useCheckPermission';
+import { useOrdemServico } from '@/shared/composables/useOrdemServico';
 
 const layoutStore = useLayoutStore();
 const { activeTab, isMobile, isMobileOpen } = storeToRefs(layoutStore);
@@ -20,11 +21,17 @@ const authStore = useAuthStore()
 const { userData, isLoading } = storeToRefs(authStore);
 
 const { hasPermission } = useCheckPermission();
+const { usaOrdemServico } = useOrdemServico();
 
 const filteredSidebar = computed(() => {
   return SIDEBAR_SECTIONS.map((section) => ({
     ...section,
-    options: section.options.filter((opt) => hasPermission(opt.requiredPermission)),
+    options: section.options.filter((opt) => {
+      // Loja sem Ordem de Serviço não vê o módulo. Único item gateado por
+      // segmento aqui; todo o resto continua sendo só permissão.
+      if (opt.id === 'services' && !usaOrdemServico.value) return false;
+      return hasPermission(opt.requiredPermission);
+    }),
   })).filter((section) => section.options.length > 0);
 });
 

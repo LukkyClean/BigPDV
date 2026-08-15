@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useOrdemServico } from '@/shared/composables/useOrdemServico';
 /**
  * @component ComissaoSection
  * @description Override de comissão POR FUNCIONÁRIO. Todos os campos vazios =
@@ -27,6 +28,8 @@ const {
   meta_mensal,
   comissao_modo,
 } = useEmployeeForm();
+
+const { usaOrdemServico } = useOrdemServico();
 
 // Conversão só na exibição: o form guarda basis points e centavos.
 function bpParaStr(bp: number | null | undefined): string {
@@ -89,7 +92,10 @@ const MODOS: { id: 'herda' | 'direto' | 'meta'; titulo: string; ajuda: string }[
           <span class="text-sm font-medium text-zinc-400">%</span>
         </div>
       </div>
-      <div class="col-span-6 md:col-span-3">
+      <!-- Loja sem OS nao tem servico para comissionar: metade do formulario
+           seria sobre algo que nao existe ali. O campo continua na tabela; some
+           so da tela. -->
+      <div v-if="usaOrdemServico" class="col-span-6 md:col-span-3">
         <label class="mb-1 block text-xs font-medium text-zinc-600">% sobre serviços</label>
         <div class="flex items-center gap-1.5">
           <BaseInput v-model="comissaoServicoPct" type="number" placeholder="herda" :disabled="disabled" />

@@ -11,6 +11,7 @@ from typing import Any, Dict, Optional
 
 from .assistencia import ASSISTENCIA, SEGMENTO_ASSISTENCIA
 from .oficina import OFICINA, PLACA_REGEX, SEGMENTO_OFICINA
+from .pdv import PDV, SEGMENTO_PDV
 from .serigrafia import SEGMENTO_SERIGRAFIA, SERIGRAFIA
 
 # Cada definicao carrega o proprio identificador na chave "segmento", entao o
@@ -18,7 +19,7 @@ from .serigrafia import SEGMENTO_SERIGRAFIA, SERIGRAFIA
 # atualizar.
 DEFINICOES: Dict[str, Dict[str, Any]] = {
     d["segmento"]: d
-    for d in (OFICINA, ASSISTENCIA, SERIGRAFIA)
+    for d in (OFICINA, ASSISTENCIA, SERIGRAFIA, PDV)
 }
 
 
@@ -33,6 +34,28 @@ def get_definicao_segmento(segmento: Optional[str]) -> Optional[Dict[str, Any]]:
 def segmento_tem_definicao(segmento: Optional[str]) -> bool:
     """True se o segmento possui uma definicao dedicada de campos."""
     return get_definicao_segmento(segmento) is not None
+
+
+def segmento_usa_ordem_servico(segmento: Optional[str]) -> bool:
+    """True se a loja deste segmento trabalha com Ordem de Servico.
+
+    O PADRAO E TER OS, e isso e a coisa mais importante desta funcao. Quem
+    responde False e SO quem declara `usa_ordem_servico: False` -- hoje, apenas
+    o PDV.
+
+    Fosse ao contrario -- "so tem OS quem declarar que tem" -- ligar esta regra
+    apagaria o modulo de Ordem de Servico de toda loja cujo segmento nao tivesse
+    arquivo de definicao (marcenaria, eletricista, outros, e qualquer empresa
+    cadastrada sem segmento). O sintoma chegaria como "sumiu o menu de
+    Servicos", numa loja que estava trabalhando normalmente.
+
+    Segmento nulo tambem responde True: empresa sem segmento definido e uma
+    instalacao antiga, e antiga sempre teve OS.
+    """
+    definicao = get_definicao_segmento(segmento)
+    if not definicao:
+        return True
+    return definicao.get("usa_ordem_servico", True)
 
 
 def get_identificador_segmento(segmento: Optional[str]) -> Optional[Dict[str, Any]]:
@@ -82,8 +105,11 @@ __all__ = [
     "SEGMENTO_OFICINA",
     "SEGMENTO_ASSISTENCIA",
     "SEGMENTO_SERIGRAFIA",
+    "SEGMENTO_PDV",
+    "PDV",
     "get_definicao_segmento",
     "segmento_tem_definicao",
+    "segmento_usa_ordem_servico",
     "get_identificador_segmento",
     "identificador_e_gerado",
     "gerar_identificador",

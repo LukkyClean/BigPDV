@@ -6,7 +6,7 @@
 from datetime import datetime
 from typing import List, Optional, Sequence
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.endereco import Endereco, EnderecoRead, EnderecoUpdate
 
@@ -547,12 +547,28 @@ class EmpresaUserRead(BaseModel):
         max_length=50,
         description="Segmento de negócio da empresa",
     )
+    # Derivado do registry, não gravado no banco. Vai junto do /usuarios/me de
+    # propósito: o frontend precisa dessa resposta no BOOT para decidir se
+    # desenha o módulo de Ordem de Serviço, e uma requisição separada faria o
+    # menu piscar com "Serviços" antes de sumir. Ver
+    # `segmento_usa_ordem_servico`: o padrão é True para todo mundo.
+    usa_ordem_servico: bool = Field(
+        True,
+        description="Se a loja deste segmento trabalha com Ordem de Serviço",
+    )
     enderecos: Optional[Sequence["EnderecoRead"]] = Field(
         None,
         description="Enderecos cadastrados",
     )
 
     model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="after")
+    def _derivar_usa_ordem_servico(self) -> "EmpresaUserRead":
+        from app.core.segmentos import segmento_usa_ordem_servico
+
+        self.usa_ordem_servico = segmento_usa_ordem_servico(self.segmento)
+        return self
 
 
 EmpresaCreate.model_rebuild()

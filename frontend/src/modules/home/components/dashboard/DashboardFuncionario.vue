@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useOrdemServico } from '@/shared/composables/useOrdemServico';
 import { ref, computed } from 'vue';
 import { TrendingUp, ShoppingCart, Wrench, CheckCircle } from 'lucide-vue-next';
 import { storeToRefs } from 'pinia';
@@ -23,6 +24,8 @@ import { useMinhaAtividadeHojeQuery } from '../../composables/queries/useMinhaAt
 import { useMinhaTendenciaQuery } from '../../composables/queries/useMinhaTendenciaQuery';
 
 import type { PeriodFilter } from '../../types/dashboard.types';
+
+const { usaOrdemServico } = useOrdemServico();
 
 const authStore = useAuthStore();
 const { userData, isLoading: isLoadingUser } = storeToRefs(authStore);
@@ -116,7 +119,7 @@ const atividade      = computed(() => atividadeQuery.data.value?.items ?? []);
     />
 
     <!-- Banner OS Atrasadas (só aparece quando há) -->
-    <OSAtrasadasBanner :items="osAtrasadas" :total="totalAtrasadas" />
+    <OSAtrasadasBanner v-if="usaOrdemServico" :items="osAtrasadas" :total="totalAtrasadas" />
 
     <!-- Stats Section -->
     <div class="space-y-4">
@@ -206,7 +209,7 @@ const atividade      = computed(() => atividadeQuery.data.value?.items ?? []);
     <!-- Linha 1: Minha Fila (3/5) + Últimas Vendas (2/5) -->
     <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
       <div class="lg:col-span-3">
-        <MinhaFilaTable
+        <MinhaFilaTable v-if="usaOrdemServico"
           :items="minhaFila"
           :is-loading="filaQuery.isLoading.value"
           :is-error="filaQuery.isError.value"
@@ -225,7 +228,7 @@ const atividade      = computed(() => atividadeQuery.data.value?.items ?? []);
     <!-- Linha 2: OS Aguardando Retirada (2/5) + Atividade de Hoje (3/5) -->
     <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
       <div class="lg:col-span-2">
-        <OSAguardandoRetiradaTable
+        <OSAguardandoRetiradaTable v-if="usaOrdemServico"
           :items="retirada"
           :is-loading="retiradaQuery.isLoading.value"
           :is-error="retiradaQuery.isError.value"

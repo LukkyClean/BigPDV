@@ -73,12 +73,52 @@ def test_chave_do_mapa_bate_com_o_segmento_declarado():
 
 
 def test_toda_definicao_tem_rotulos_e_identificador():
+    """Todo segmento COM OS descreve o objeto que entra na loja.
+
+    Quem nao tem OS e dispensado do identificador, e nao por conveniencia: sem
+    Ordem de Servico nao existe objeto de servico para identificar. Exigir um
+    obrigaria o PDV a inventar "numero de serie" para uma garrafa de cerveja.
+    """
     for segmento, definicao in DEFINICOES.items():
         assert definicao.get("rotulo_objeto_singular"), segmento
         assert definicao.get("rotulo_objeto_plural"), segmento
+
+        if not definicao.get("usa_ordem_servico", True):
+            assert not definicao.get("checkin"), f"{segmento}: sem OS, nao ha check-in"
+            assert not definicao.get("vistoria"), f"{segmento}: sem OS, nao ha vistoria"
+            continue
+
         identificador = definicao.get("identificador")
         assert identificador, segmento
         assert set(identificador) >= {"nome", "label", "regex"}, segmento
+
+
+def test_ordem_de_servico_e_o_padrao_para_quem_nao_declara():
+    """A trava mais importante desta regra.
+
+    Se o padrao virasse "so tem OS quem declarar", ligar isto apagaria o modulo
+    de Ordem de Servico de toda loja cujo segmento nao tem arquivo de definicao
+    -- marcenaria, eletricista, outros, e qualquer empresa cadastrada sem
+    segmento. O sintoma na loja seria "sumiu o menu de Servicos".
+    """
+    from app.core.segmentos import segmento_usa_ordem_servico
+
+    # Os tres que ja rodam em producao.
+    assert segmento_usa_ordem_servico("assistencia_tecnica") is True
+    assert segmento_usa_ordem_servico("oficina_mecanica") is True
+    assert segmento_usa_ordem_servico("serigrafia") is True
+
+    # Segmentos sem arquivo de definicao continuam com OS.
+    assert segmento_usa_ordem_servico("marcenaria") is True
+    assert segmento_usa_ordem_servico("eletricista") is True
+    assert segmento_usa_ordem_servico("outros") is True
+    assert segmento_usa_ordem_servico("segmento_que_nao_existe") is True
+
+    # Instalacao antiga, sem segmento gravado.
+    assert segmento_usa_ordem_servico(None) is True
+
+    # O unico que nao tem.
+    assert segmento_usa_ordem_servico("pdv") is False
 
 
 def test_capacidades_declaradas_sao_conhecidas():

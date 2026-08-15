@@ -30,10 +30,10 @@ const CARDS: Record<Segmento, Omit<SegmentOption, 'id'>> = {
     icon: 'shirt',
     description: 'Estamparia de camisas, sacolas e brindes',
   },
-  mercado: {
-    label: 'Mercado',
+  pdv: {
+    label: 'PDV / Frente de Caixa',
     icon: 'store',
-    description: 'Supermercados, mercearias e vendas no varejo',
+    description: 'Adegas, mercearias, mercados e lojas que vendem produto no balcão',
   },
   marcenaria: {
     label: 'Marcenaria',
@@ -79,8 +79,8 @@ export const SEGMENT_TIPS: Record<Segmento, string> = {
     'Para oficinas mecânicas, você poderá cadastrar veículos e peças no módulo de OS.',
   serigrafia:
     'Para serigrafias, cadastre a pintura por número de cores em Serviços e os tipos de sacola em Produtos — a OS já multiplica pelo que o cliente pedir.',
-  mercado:
-    'Para mercados, o módulo de estoque e PDV estarão prontos para uso imediato.',
+  pdv:
+    'Sua loja abre direto no PDV, sem Ordem de Serviço. Ative o controle de caixa em Configurações › Regras de Vendas para abrir turno, sangrar e fechar conferindo.',
   marcenaria:
     'Para marcenarias, as ordens de serviço com orçamento detalhado serão seu principal recurso.',
   eletricista:
