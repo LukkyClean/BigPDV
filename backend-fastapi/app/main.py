@@ -18,11 +18,14 @@ from fastapi.staticfiles import StaticFiles
 
 from app.core.exceptions import setup_exception_handlers
 from app.core.tarefas import lifespan
-from app.core.config import BASE_DIR, BACKEND_DIR
+from app.core.config import BASE_DIR, data_dir
+from app.core.migracoes_dir import migrar_estrutura_diretorios
+
+migrar_estrutura_diretorios()
 
 import app.db.models  # noqa: F401 — registra todos os modelos no Base.metadata
 
-STATIC_DIR = os.path.join(BASE_DIR, 'static')
+STATIC_DIR = os.path.join(data_dir, 'static')
 
 if not os.path.exists(STATIC_DIR):
     os.makedirs(STATIC_DIR, exist_ok=True)
