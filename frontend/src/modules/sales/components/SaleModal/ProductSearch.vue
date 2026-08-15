@@ -10,6 +10,8 @@ import AvisoEstoqueNegativoModal from './AvisoEstoqueNegativoModal.vue';
 import { useProductSearch } from '../../composables/flows/useProductSearch';
 import { useItemModal } from '../../composables/flows/useItemModal';
 import { SALE_SHORTCUTS, ORCAMENTO_SHORTCUTS } from '../../constants';
+import { productService } from '../../api.service';
+import { encontrarPorCodigoExato, pareceCodigoDeBarras } from '../../leitorCodigoBarras.util';
 
 import type { ProductSaleRead } from '../../schemas/productSale.schema';
 
@@ -73,8 +75,50 @@ function handleAutoAdd(product: { nome: string; id: number; estoque: number }) {
   tryAutoAdd(props.saleId, product.id, product.nome, product.estoque);
 }
 
+/**
+ * O atalho do LEITOR de código de barras.
+ *
+ * O leitor digita o código todo em milissegundos e manda Enter na sequência —
+ * antes da busca debounced (300 ms) sair. Por isso este caminho consulta o
+ * serviço DIRETO, sem esperar o debounce, e só age quando há certeza: um único
+ * produto com aquele código exato.
+ *
+ * Devolve `true` quando bipou e resolveu; `false` devolve o Enter para o fluxo
+ * normal de quem está digitando.
+ */
+const bipando = ref(false);
+
+async function tentarBipar(): Promise<boolean> {
+  const codigo = searchTerm.value.trim();
+  if (!pareceCodigoDeBarras(codigo) || bipando.value) return false;
+
+  bipando.value = true;
+  try {
+    const encontrados = await productService.searchProducts(codigo);
+    const produto = encontrarPorCodigoExato(codigo, encontrados);
+    if (!produto) return false; // sem certeza: cai na lista, a pessoa escolhe
+
+    // Passa pelo mesmo `tryAutoAdd` do Enter comum, então o aviso de estoque
+    // insuficiente continua aparecendo — bipar não atropela a confirmação.
+    handleAutoAdd(produto);
+    return true;
+  } catch {
+    return false; // falhou a consulta: o fluxo normal assume
+  } finally {
+    bipando.value = false;
+  }
+}
+
 // Enter no teclado: seleciona e já adiciona com qtde 1 (sem campo de quantidade)
-function handleKeydown(e: KeyboardEvent) {
+async function handleKeydown(e: KeyboardEvent) {
+  // O ramo do leitor vem ANTES e só morde quando o texto tem cara de código de
+  // barras. Quem digita nome ou código curto nunca chega aqui: o caminho de
+  // sempre (debounce, lista, seta) segue intocado.
+  if (e.key === 'Enter' && pareceCodigoDeBarras(searchTerm.value)) {
+    e.preventDefault();
+    if (await tentarBipar()) return;
+  }
+
   const wasSearching = isSearching.value;
   composableKeydown(e);
   if (e.key === 'Enter' && wasSearching) {

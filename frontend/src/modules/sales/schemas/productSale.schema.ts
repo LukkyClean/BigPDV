@@ -100,6 +100,10 @@ export const ProductSaleListItemSchema = z
     id: z.number(),
     nome: z.string(),
     sku: z.string().nullable().optional(),
+    // Usado só pelo leitor de código de barras: é o que permite exigir
+    // correspondência exata antes de somar um item ao carrinho sozinho.
+    // Opcional porque backend mais antigo que o frontend não devolve o campo.
+    codigo_barras: z.string().nullable().optional(),
     preco: z.number(),
     estoque: z.number(),
     quantidade_minima: z.number().nullable().optional(),
