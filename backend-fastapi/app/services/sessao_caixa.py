@@ -90,9 +90,10 @@ def _validar_autorizacao_sangria(
     para colocar troco — o atrito que faz loja desligar o controle e voltar para
     o caderno.
     """
-    config = _config(db, empresa_id)
-    if not (config and config.sangria_exige_autorizacao):
+    config_seg = config_seg_crud.get_configuracao_seguranca(db, empresa_id=empresa_id)
+    if not (config_seg and config_seg.requer_pin_sangria):
         return
+    # A partir daqui a loja EXIGE autorização para sangrar.
 
     # Master e quem tem permissão ampla não precisam pedir licença a ninguém.
     if usuario_token.get("is_master") is True:
@@ -101,7 +102,6 @@ def _validar_autorizacao_sangria(
     if permissoes.get("all") or permissoes.get("manage_sales"):
         return
 
-    config_seg = config_seg_crud.get_configuracao_seguranca(db, empresa_id=empresa_id)
     pin = getattr(config_seg, "pin_gerente", None)
     if not pin:
         # Exigir autorização sem PIN configurado travaria a sangria para sempre.

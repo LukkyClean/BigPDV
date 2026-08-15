@@ -234,7 +234,7 @@ def test_suprimento_soma_e_sangria_subtrai_da_gaveta(client, db_session):
     header = _auth(client)
     _funcionario(client, header)
     _forma(client, header)
-    _config_caixa(db_session, controlar_caixa=True, sangria_exige_autorizacao=False)
+    _config_caixa(db_session, controlar_caixa=True)
 
     client.post("/api/v1/caixa/abrir", json={"saldo_inicial": 10000}, headers=header)
 
@@ -257,7 +257,7 @@ def test_sangria_sem_motivo_e_recusada(client, db_session):
     header = _auth(client)
     _funcionario(client, header)
     _forma(client, header)
-    _config_caixa(db_session, controlar_caixa=True, sangria_exige_autorizacao=False)
+    _config_caixa(db_session, controlar_caixa=True)
     client.post("/api/v1/caixa/abrir", json={"saldo_inicial": 10000}, headers=header)
 
     r = client.post("/api/v1/caixa/sangria", json={"valor": 1000}, headers=header)
@@ -273,7 +273,7 @@ def test_suprimento_nao_exige_autorizacao_mesmo_com_a_trava_ligada(client, db_se
     header = _auth(client)
     _funcionario(client, header)
     _forma(client, header)
-    _config_caixa(db_session, controlar_caixa=True, sangria_exige_autorizacao=True)
+    _config_caixa(db_session, controlar_caixa=True)
     client.post("/api/v1/caixa/abrir", json={"saldo_inicial": 10000}, headers=header)
 
     r = client.post("/api/v1/caixa/suprimento",
@@ -380,15 +380,54 @@ def test_pagamento_com_vencimento_futuro_nao_entra_na_gaveta(client, db_session)
     assert venda.status.value == "FINALIZADA"
 
 
-def test_exigir_caixa_aberto_bloqueia_a_venda(client, db_session):
+def test_exigir_caixa_aberto_bloqueia_a_venda_ja_na_criacao(client, db_session):
+    """A venda pertence a um turno: sem caixa aberto ela nem comeca.
+
+    Bloquear so na finalizacao fazia o operador montar o carrinho inteiro e
+    descobrir no checkout, com o cliente esperando.
+    """
+    header = _auth(client)
+    funcionario_id = _funcionario(client, header)
+    _config_caixa(db_session, controlar_caixa=True, exigir_caixa_aberto=True)
+
+    r = client.post("/api/v1/vendas/", json={"funcionario_id": funcionario_id}, headers=header)
+    assert r.status_code == status.HTTP_400_BAD_REQUEST
+    assert "abra o caixa" in r.json()["detail"].lower()
+
+
+def test_fechar_o_caixa_no_meio_ainda_bloqueia_a_finalizacao(client, db_session):
+    """A trava da finalizacao e a garantia de verdade, e continua valendo.
+
+    Cenario real: o operador comeca a venda com o caixa aberto, alguem fecha o
+    turno, e ele tenta finalizar. O dinheiro nao tem onde cair -- tem que
+    recusar, mesmo com a venda ja criada.
+    """
     header = _auth(client)
     funcionario_id = _funcionario(client, header)
     fp_id = _forma(client, header)
     produto_id = _produto(client, header)
     _config_caixa(db_session, controlar_caixa=True, exigir_caixa_aberto=True)
 
-    # Sem abrir o caixa:
-    _, _, fin = _venda_finalizada(client, header, db_session, funcionario_id, produto_id, fp_id)
+    client.post("/api/v1/caixa/abrir", json={"saldo_inicial": 10000}, headers=header)
+
+    if not db_session.query(ContadorVenda).first():
+        db_session.add(ContadorVenda(id=1, proximo_numero=1))
+        db_session.commit()
+    cv = client.post("/api/v1/vendas/", json={"funcionario_id": funcionario_id}, headers=header)
+    assert cv.status_code == 201, cv.text
+    venda_id = cv.json()["id"]
+    add = client.post(f"/api/v1/vendas/{venda_id}/itens", json={
+        "tipo_produto": "CADASTRADO", "produto_id": produto_id, "quantidade": 1,
+    }, headers=header)
+    total = add.json()["financeiro_atualizado"]["total"]
+
+    # O turno fecha com a venda no ar.
+    client.post("/api/v1/caixa/fechar", json={"saldo_contado": 10000}, headers=header)
+
+    fin = client.post(f"/api/v1/vendas/{venda_id}/finalizar", json={
+        "pagamentos": [{"forma_pagamento_id": fp_id, "valor": total,
+                        "parcelado": False, "qtd_parcelas": None}],
+    }, headers=header)
     assert fin.status_code == status.HTTP_400_BAD_REQUEST
     assert "abra o caixa" in fin.json()["detail"].lower()
 
@@ -413,7 +452,7 @@ def test_fechamento_calcula_a_diferenca_entre_contado_e_esperado(client, db_sess
     header = _auth(client)
     _funcionario(client, header)
     _forma(client, header)
-    _config_caixa(db_session, controlar_caixa=True, sangria_exige_autorizacao=False)
+    _config_caixa(db_session, controlar_caixa=True)
 
     client.post("/api/v1/caixa/abrir", json={"saldo_inicial": 10000}, headers=header)
     client.post("/api/v1/caixa/suprimento", json={"valor": 5000, "motivo": "Troco"}, headers=header)

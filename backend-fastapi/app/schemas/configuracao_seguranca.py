@@ -36,6 +36,8 @@ class ConfiguracaoSegurancaRead(BaseModel):
     requer_pin_desconto_venda: bool
     requer_pin_alterar_preco_venda: bool
 
+    requer_pin_sangria: bool
+
     requer_pin_cancelar_os: bool
     requer_pin_reabrir_os: bool
     requer_pin_desconto_os: bool
@@ -83,6 +85,8 @@ class ConfiguracaoSegurancaUpdate(BaseModel):
     requer_pin_reabrir_venda: Optional[bool] = None
     requer_pin_desconto_venda: Optional[bool] = None
     requer_pin_alterar_preco_venda: Optional[bool] = None
+
+    requer_pin_sangria: Optional[bool] = None
 
     requer_pin_cancelar_os: Optional[bool] = None
     requer_pin_reabrir_os: Optional[bool] = None

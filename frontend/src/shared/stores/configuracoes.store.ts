@@ -98,13 +98,11 @@ export const useConfiguracoesStore = defineStore('configuracoes', () => {
   const controlarCaixa = computed(() => configVendas.value?.controlar_caixa ?? false)
   const exigirCaixaAberto = computed(() => configVendas.value?.exigir_caixa_aberto ?? false)
   const fechamentoCego = computed(() => configVendas.value?.fechamento_cego ?? false)
-  const sangriaExigeAutorizacao = computed(
-    () => configVendas.value?.sangria_exige_autorizacao ?? true,
-  )
 
   // ── Segurança: PINs ──
   const requerPinDescontoVenda = computed(() => configSeguranca.value?.requer_pin_desconto_venda ?? false)
   const requerPinAlterarPreco = computed(() => configSeguranca.value?.requer_pin_alterar_preco_venda ?? false)
+  const requerPinSangria = computed(() => configSeguranca.value?.requer_pin_sangria ?? false)
   const requerPinCancelarVenda = computed(() => configSeguranca.value?.requer_pin_cancelar_venda ?? false)
   const requerPinReabrirVenda = computed(() => configSeguranca.value?.requer_pin_reabrir_venda ?? false)
   const requerPinCancelarOS = computed(() => configSeguranca.value?.requer_pin_cancelar_os ?? false)
@@ -168,10 +166,10 @@ export const useConfiguracoesStore = defineStore('configuracoes', () => {
     controlarCaixa,
     exigirCaixaAberto,
     fechamentoCego,
-    sangriaExigeAutorizacao,
 
     requerPinDescontoVenda,
     requerPinAlterarPreco,
+    requerPinSangria,
     requerPinCancelarVenda,
     requerPinReabrirVenda,
     requerPinCancelarOS,

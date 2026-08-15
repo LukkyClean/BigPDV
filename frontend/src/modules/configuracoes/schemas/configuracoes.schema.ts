@@ -77,7 +77,6 @@ export const ConfiguracaoVendasSchema = z.object({
   controlar_caixa: z.boolean().catch(false),
   exigir_caixa_aberto: z.boolean().catch(false),
   fechamento_cego: z.boolean().catch(false),
-  sangria_exige_autorizacao: z.boolean().catch(true),
 
   data_atualizacao: z.string(),
 })
@@ -142,6 +141,10 @@ export const ConfiguracaoSegurancaSchema = z.object({
   tem_pin_configurado: z.boolean(),
 
   secoes_protegidas: z.array(z.string()),
+  // Sangria mora aqui, junto das outras aprovações de gerente: é proteção
+  // por PIN, e o lojista procura todas no mesmo lugar.
+  requer_pin_sangria: z.boolean().catch(false),
+
   requer_pin_cancelar_venda: z.boolean(),
   requer_pin_reabrir_venda: z.boolean(),
   requer_pin_desconto_venda: z.boolean(),

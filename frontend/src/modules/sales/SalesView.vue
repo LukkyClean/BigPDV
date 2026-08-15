@@ -16,6 +16,7 @@ import PrintFormatSelectModal from '@/shared/components/print/PrintFormatSelectM
 import SalesStatus from './components/SalesStatus.vue';
 import SaleTable from './components/SaleTable.vue';
 import CaixaBar from './caixa/components/CaixaBar.vue';
+import { useSessaoCaixaQuery } from './caixa/composables/queries/useSessaoCaixaQuery';
 import SaleModal from './components/SaleModal.vue';
 import SalePrintTemplate from './components/print/SalePrintTemplate.vue';
 import SalePrintCupom from './components/print/SalePrintCupom.vue';
@@ -54,6 +55,19 @@ const pageDescription = computed(() =>
 const authStore = useAuthStore();
 
 const { openCustomerModal, openCustomerModalForConversion } = useCustomerSearchModal();
+
+// Trava do caixa na porta de entrada.
+//
+// A garantia de verdade esta no backend (create_sale e finish_sale); isto aqui e
+// para o operador nao montar o carrinho inteiro e descobrir no checkout que o
+// caixa esta fechado. O botao de abrir o caixa fica logo acima, na mesma tela.
+//
+// `vendaBloqueada` so e verdadeira com as DUAS chaves ligadas e sem turno
+// aberto: loja que nao usa caixa nunca ve diferenca.
+const { caixaAberto, caixaHabilitado, exigeCaixaAberto } = useSessaoCaixaQuery();
+const vendaBloqueada = computed(
+  () => caixaHabilitado.value && exigeCaixaAberto.value && !caixaAberto.value,
+);
 const { openSaleEditModal, saleModalIsOpen } = useSaleModal();
 const { openFinishModal } = useFinishSaleModal();
 const { openOrcamentoModal, closeOrcamentoModal, orcamentoModalIsOpen } = useOrcamentoModal();
@@ -87,6 +101,8 @@ whenever(F2, () => {
   if (saleModalIsOpen.value || orcamentoModalIsOpen.value) return;
 
   if (activeTab.value === 'vendas') {
+    // O atalho tem que respeitar a mesma trava do botao, senao F2 fura a regra.
+    if (vendaBloqueada.value) return;
     openCustomerModal();
   } else {
     handleNewOrcamento();
@@ -249,6 +265,8 @@ function handleOpenSaleFromOrcamento(saleId: number) {
           size="md"
           type="button"
           class="flex gap-1"
+          :disabled="vendaBloqueada"
+          :title="vendaBloqueada ? 'Abra o caixa para começar a vender' : ''"
           @click="openCustomerModal"
         >
           <Plus :size="20" />

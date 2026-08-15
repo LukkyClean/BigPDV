@@ -123,8 +123,14 @@ def get_funcionario_by_search(db: Session, search: str | None) -> Sequence[Funci
     """Delega busca para o CRUD."""
     return funcionario_crud.get_funcionario_by_search(db, search=search)
 
-def funcionario_exists(db: Session, funcionario_id: int) -> None:
-    """Verifica se um funcionário existe no banco."""
+def funcionario_exists(db: Session, funcionario_id: int) -> FuncionarioModel:
+    """Verifica se um funcionário existe no banco e o devolve.
+
+    A anotação dizia `-> None` e mentia: a função sempre devolveu o objeto, e há
+    chamador que depende disso. Corrigida para que ninguém "conserte" o retorno
+    achando que é sobra — quem lê o funcionário daqui perderia a validação em
+    silêncio.
+    """
     funcionario_in_db = funcionario_crud.get_funcionario_by_id(db, funcionario_id=funcionario_id)
     if not funcionario_in_db:
         raise not_found_exce

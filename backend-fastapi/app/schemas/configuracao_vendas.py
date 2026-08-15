@@ -21,7 +21,6 @@ class ConfiguracaoVendasRead(BaseModel):
     controlar_caixa: bool
     exigir_caixa_aberto: bool
     fechamento_cego: bool
-    sangria_exige_autorizacao: bool
 
     data_atualizacao: datetime
 
@@ -39,4 +38,3 @@ class ConfiguracaoVendasUpdate(BaseModel):
     controlar_caixa: Optional[bool] = None
     exigir_caixa_aberto: Optional[bool] = None
     fechamento_cego: Optional[bool] = None
-    sangria_exige_autorizacao: Optional[bool] = None

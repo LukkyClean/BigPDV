@@ -15,7 +15,6 @@ const {
   controlarCaixa,
   exigirCaixaAberto,
   fechamentoCego,
-  sangriaExigeAutorizacao,
 } = storeToRefs(configStore)
 
 function valoresDoStore() {
@@ -30,7 +29,6 @@ function valoresDoStore() {
       controlar_caixa: controlarCaixa.value,
       exigir_caixa_aberto: exigirCaixaAberto.value,
       fechamento_cego: fechamentoCego.value,
-      sangria_exige_autorizacao: sangriaExigeAutorizacao.value,
     },
     estoque: {
       permitir_venda_estoque_zerado: permitirVendaEstoqueZerado.value,
@@ -72,7 +70,6 @@ defineExpose({
         controlar_caixa: form.vendas.controlar_caixa,
         exigir_caixa_aberto: form.vendas.exigir_caixa_aberto,
         fechamento_cego: form.vendas.fechamento_cego,
-        sangria_exige_autorizacao: form.vendas.sangria_exige_autorizacao,
       },
       estoque: {
         permitir_venda_estoque_zerado: form.estoque.permitir_venda_estoque_zerado,
@@ -171,20 +168,11 @@ defineExpose({
         </button>
       </div>
 
-      <div class="flex items-center justify-between py-3 border-b border-zinc-100">
-        <div>
-          <p class="text-sm font-medium text-zinc-800">Sangria exige PIN do gerente</p>
-          <p class="text-xs text-zinc-500 mt-0.5">Suprimento continua livre — pôr dinheiro na gaveta não é risco</p>
-        </div>
-        <button
-          type="button"
-          :disabled="!form.vendas.controlar_caixa"
-          :class="['relative w-9 h-4.5 rounded-full transition-colors duration-200 shrink-0', !form.vendas.controlar_caixa ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer', form.vendas.sangria_exige_autorizacao ? 'bg-brand-primary' : 'bg-zinc-200']"
-          @click="form.vendas.controlar_caixa && (form.vendas.sangria_exige_autorizacao = !form.vendas.sangria_exige_autorizacao)"
-        >
-          <span :class="['absolute left-0 top-0.5 w-3.5 h-3.5 bg-white rounded-full shadow transition-transform duration-200', form.vendas.sangria_exige_autorizacao ? 'translate-x-5' : 'translate-x-0.5']" />
-        </button>
-      </div>
+      <p class="text-xs text-zinc-500 mt-3">
+        A exigência de PIN para sangria fica em
+        <strong class="text-zinc-700">Segurança</strong>, junto das outras
+        aprovações de gerente.
+      </p>
     </div>
 
     <!-- Estoque e Clientes -->

@@ -65,12 +65,26 @@ def _payments_valid(db: Session, payments: Sequence[PagamentoVendaCreate]) -> Se
         sale_payments.append(PagamentoVenda(**dados))
     return sale_payments
 
-def create_sale(db: Session, sale: VendaCreate) -> VendaRead:
+def create_sale(
+    db: Session,
+    sale: VendaCreate,
+    operador_funcionario_id: int | None = None,
+) -> VendaRead:
 
     # Valida existência de cliente (se informado) e funcionário
     if sale.cliente_id is not None:
         cliente_exists(db, sale.cliente_id)
-    funcionario_exists(db, sale.funcionario_id)
+    funcionario = funcionario_exists(db, sale.funcionario_id)
+
+    # A venda pertence a um turno: sem caixa aberto ela nem comeca.
+    #
+    # A trava existe TAMBEM na finalizacao, e la e a garantia de verdade -- e o
+    # momento do dinheiro. Aqui e para o operador saber ANTES de montar o
+    # carrinho inteiro, em vez de descobrir no checkout com o cliente esperando.
+    # So morde com `controlar_caixa` E `exigir_caixa_aberto` ligados.
+    caixa_service.exigir_caixa_aberto_para_vender(
+        db, funcionario, operador_funcionario_id
+    )
 
     sale_data = Venda(
         **sale.model_dump(exclude_unset=True),

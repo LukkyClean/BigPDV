@@ -58,14 +58,6 @@ class ConfiguracaoVendas(Base):
     fechamento_cego: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="0", nullable=False
     )
-    # Sangria pede permissao ou autorizacao de supervisor na hora. LIGADO por
-    # padrao, ao contrario das outras: e a unica que protege dinheiro saindo.
-    # Suprimento fica livre de proposito -- por dinheiro na gaveta nao cria risco
-    # de desvio, e travar os dois faria o operador chamar o gerente para colocar
-    # troco, que e o atrito que faz loja desligar o controle.
-    sangria_exige_autorizacao: Mapped[bool] = mapped_column(
-        Boolean, default=True, server_default="1", nullable=False
-    )
 
     data_atualizacao: Mapped[datetime] = mapped_column(
         DateTime,

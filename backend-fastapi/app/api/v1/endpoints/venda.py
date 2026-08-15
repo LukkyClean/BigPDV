@@ -64,7 +64,10 @@ def criar_venda(
     return _handle_db_transaction(
         db,
         venda_service.create_sale,
-        payload
+        payload,
+        # Quem esta abrindo a venda e quem esta NO CAIXA -- nem sempre o mesmo
+        # que `payload.funcionario_id`, que e o VENDEDOR (o da comissao).
+        user_token.get("funcionario_id"),
     )
 
 

@@ -12,6 +12,7 @@ const configStore = useConfiguracoesStore()
 const {
   requerPinDescontoVenda,
   requerPinAlterarPreco,
+  requerPinSangria,
   requerPinCancelarVenda,
   requerPinReabrirVenda,
   requerPinCancelarOS,
@@ -40,6 +41,7 @@ function valoresDoStore() {
     ) as Record<string, boolean>,
     requer_pin_desconto_venda: requerPinDescontoVenda.value,
     requer_pin_alterar_preco_venda: requerPinAlterarPreco.value,
+    requer_pin_sangria: requerPinSangria.value,
     requer_pin_cancelar_venda: requerPinCancelarVenda.value,
     requer_pin_reabrir_venda: requerPinReabrirVenda.value,
     requer_pin_cancelar_os: requerPinCancelarOS.value,
@@ -81,6 +83,7 @@ defineExpose({
       secoes_protegidas: SECOES_PROTEGIVEIS.filter((s) => form.secoes_protegidas[s.id]).map((s) => s.id),
       requer_pin_desconto_venda: form.requer_pin_desconto_venda,
       requer_pin_alterar_preco_venda: form.requer_pin_alterar_preco_venda,
+      requer_pin_sangria: form.requer_pin_sangria,
       requer_pin_cancelar_venda: form.requer_pin_cancelar_venda,
       requer_pin_reabrir_venda: form.requer_pin_reabrir_venda,
       requer_pin_cancelar_os: form.requer_pin_cancelar_os,
@@ -206,6 +209,23 @@ defineExpose({
           @click="form.requer_pin_alterar_preco_venda = !form.requer_pin_alterar_preco_venda"
         >
           <span :class="['absolute left-0 top-0.5 w-3.5 h-3.5 bg-white rounded-full shadow transition-transform duration-200', form.requer_pin_alterar_preco_venda ? 'translate-x-5' : 'translate-x-0.5']" />
+        </button>
+      </div>
+
+      <!-- Sangria: retirada de dinheiro da gaveta. Suprimento NAO pede PIN de
+           proposito -- por dinheiro na gaveta nao cria risco de desvio, e travar
+           os dois faria o operador chamar o gerente so para colocar troco. -->
+      <div class="flex items-center justify-between py-3 border-b border-zinc-100">
+        <div>
+          <p class="text-sm font-medium text-zinc-800">Sangria do caixa</p>
+          <p class="text-xs text-zinc-500 mt-0.5">Exige PIN para retirar dinheiro da gaveta</p>
+        </div>
+        <button
+          type="button"
+          :class="['relative w-9 h-4.5 rounded-full transition-colors duration-200 cursor-pointer shrink-0', form.requer_pin_sangria ? 'bg-brand-primary' : 'bg-zinc-200']"
+          @click="form.requer_pin_sangria = !form.requer_pin_sangria"
+        >
+          <span :class="['absolute left-0 top-0.5 w-3.5 h-3.5 bg-white rounded-full shadow transition-transform duration-200', form.requer_pin_sangria ? 'translate-x-5' : 'translate-x-0.5']" />
         </button>
       </div>
 
