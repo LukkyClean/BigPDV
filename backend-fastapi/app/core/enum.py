@@ -183,3 +183,39 @@ class JurosResponsavel(str, enum.Enum):
     """
     CLIENTE = "CLIENTE"
     LOJA = "LOJA"
+
+
+class MovimentacaoFinanceiraTipo(str, enum.Enum):
+    """Direção do dinheiro no livro financeiro.
+
+    Existe desde a primeira versão da tabela de propósito: "contas a pagar" é
+    justamente o lado SAIDA, e uma tabela que nascesse só pensando em recebimento
+    precisaria ser alterada depois — com dado real de loja dentro.
+    """
+    ENTRADA = "ENTRADA"
+    SAIDA = "SAIDA"
+
+
+class MovimentacaoFinanceiraOrigem(str, enum.Enum):
+    """De onde veio uma movimentação de dinheiro.
+
+    `movimentacoes_financeiras` é o livro-razão ÚNICO do dinheiro, no mesmo
+    espírito de `movimentacoes_estoque` (ver MovimentacaoOrigem). Todo dinheiro
+    que entra ou sai passa por lá, venha de onde vier, e a origem é o que permite
+    responder "isto foi venda, sangria ou pagamento de fornecedor?" sem depender
+    de texto livre.
+
+    ATENÇÃO — cobrança não é movimento. Uma venda a prazo gera a COBRANÇA hoje
+    (em `pagamentos_venda`) e NENHUM movimento; o movimento nasce no dia em que o
+    dinheiro entra de fato, com origem RECEBIMENTO. É essa separação que faz o
+    fechamento de caixa bater numa loja que vende fiado.
+    """
+    VENDA = "VENDA"
+    ORDEM_SERVICO = "ORDEM_SERVICO"
+    ABERTURA = "ABERTURA"          # troco inicial posto na gaveta
+    SANGRIA = "SANGRIA"            # retirada que não é venda
+    SUPRIMENTO = "SUPRIMENTO"      # entrada que não é venda
+    # Reservados para o módulo de gestão financeira. Declarados agora para que a
+    # tabela não precise ser alterada quando ele chegar.
+    RECEBIMENTO = "RECEBIMENTO"    # baixa de conta a receber (fiado, boleto)
+    DESPESA = "DESPESA"            # conta a pagar (aluguel, fornecedor)

@@ -65,6 +65,19 @@ class PagamentoVenda(Base):
     detalhes: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True, doc="Detalhes adicionais do pagamento (ex: banco/NSU de transferencia)")
     data_pagamento: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), doc="Momento exato do registro do pagamento")
 
+    # Turno de caixa em que esta cobranca foi registrada. Conveniencia de
+    # consulta -- o fechamento soma o LIVRO (movimentacoes_financeiras), nao
+    # esta coluna, porque uma venda reaberta e refinalizada em outro dia mexeria
+    # no caixa de ontem se a fonte fosse o documento.
+    # NULL em toda loja que nao usa controle de caixa, como sempre foi.
+    sessao_caixa_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("sessao_caixa.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        doc="Sessao de caixa em que o pagamento foi registrado",
+    )
+
     # --- Relacionamentos ---
     venda: Mapped["Venda"] = relationship(back_populates="pagamentos")
     forma_pagamento: Mapped["FormaPagamento"] = relationship("FormaPagamento", back_populates="pagamentos_venda")
