@@ -110,10 +110,14 @@ def _validar_autorizacao_sangria(
             detail="A sangria exige autorização, mas nenhum PIN de gerente está "
                    "configurado em Configurações > Segurança"
         )
+    # Sentinelas, e não frases: é o contrato que o frontend já usa para abrir o
+    # modal de PIN em cancelamento, reabertura e desconto
+    # (shared/composables/useGerenteAprovacao). Inventar mensagem nova aqui
+    # deixaria a sangria de fora do fluxo que já existe.
     if not codigo_gerente:
-        raise BadRequestException(detail="Esta sangria exige o PIN do gerente")
+        raise BadRequestException(detail="REQUER_APROVACAO_GERENTE")
     if not verify_password(codigo_gerente, pin):
-        raise BadRequestException(detail="PIN do gerente inválido")
+        raise BadRequestException(detail="PIN_GERENTE_INVALIDO")
 
 
 # ===========================================================================

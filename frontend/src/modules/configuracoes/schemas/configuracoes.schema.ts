@@ -68,6 +68,17 @@ export const ConfiguracaoVendasSchema = z.object({
   permitir_parcelamento: z.boolean(),
   parcelas_maximas: z.number().int().min(1).max(48),
 
+  /**
+   * Controle de caixa. `.catch(false)` de propósito: um backend mais antigo que
+   * o frontend não devolve estes campos, e sem o fallback o Zod reprovaria a
+   * resposta inteira — derrubando a tela de configurações por causa de um campo
+   * que a loja nem usa.
+   */
+  controlar_caixa: z.boolean().catch(false),
+  exigir_caixa_aberto: z.boolean().catch(false),
+  fechamento_cego: z.boolean().catch(false),
+  sangria_exige_autorizacao: z.boolean().catch(true),
+
   data_atualizacao: z.string(),
 })
 

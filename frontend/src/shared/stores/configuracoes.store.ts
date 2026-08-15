@@ -93,6 +93,15 @@ export const useConfiguracoesStore = defineStore('configuracoes', () => {
   const permitirParcelamento = computed(() => configVendas.value?.permitir_parcelamento ?? true)
   const parcelasMaximas = computed(() => configVendas.value?.parcelas_maximas ?? 12)
 
+  // Controle de caixa. Os padrões repetem o comportamento de hoje de propósito:
+  // enquanto a loja não ligar nada, tudo se comporta como antes de existirem.
+  const controlarCaixa = computed(() => configVendas.value?.controlar_caixa ?? false)
+  const exigirCaixaAberto = computed(() => configVendas.value?.exigir_caixa_aberto ?? false)
+  const fechamentoCego = computed(() => configVendas.value?.fechamento_cego ?? false)
+  const sangriaExigeAutorizacao = computed(
+    () => configVendas.value?.sangria_exige_autorizacao ?? true,
+  )
+
   // ── Segurança: PINs ──
   const requerPinDescontoVenda = computed(() => configSeguranca.value?.requer_pin_desconto_venda ?? false)
   const requerPinAlterarPreco = computed(() => configSeguranca.value?.requer_pin_alterar_preco_venda ?? false)
@@ -156,6 +165,10 @@ export const useConfiguracoesStore = defineStore('configuracoes', () => {
     valorMinimoVenda,
     permitirParcelamento,
     parcelasMaximas,
+    controlarCaixa,
+    exigirCaixaAberto,
+    fechamentoCego,
+    sangriaExigeAutorizacao,
 
     requerPinDescontoVenda,
     requerPinAlterarPreco,

@@ -12,6 +12,10 @@ const {
   permitirParcelamento,
   parcelasMaximas,
   permitirVendaEstoqueZerado,
+  controlarCaixa,
+  exigirCaixaAberto,
+  fechamentoCego,
+  sangriaExigeAutorizacao,
 } = storeToRefs(configStore)
 
 function valoresDoStore() {
@@ -23,6 +27,10 @@ function valoresDoStore() {
       valor_minimo_venda_reais: (valorMinimoVenda.value / 100) as number,
       permitir_parcelamento: permitirParcelamento.value,
       parcelas_maximas: parcelasMaximas.value,
+      controlar_caixa: controlarCaixa.value,
+      exigir_caixa_aberto: exigirCaixaAberto.value,
+      fechamento_cego: fechamentoCego.value,
+      sangria_exige_autorizacao: sangriaExigeAutorizacao.value,
     },
     estoque: {
       permitir_venda_estoque_zerado: permitirVendaEstoqueZerado.value,
@@ -61,6 +69,10 @@ defineExpose({
         valor_minimo_venda: Math.round(form.vendas.valor_minimo_venda_reais * 100),
         permitir_parcelamento: form.vendas.permitir_parcelamento,
         parcelas_maximas: form.vendas.parcelas_maximas,
+        controlar_caixa: form.vendas.controlar_caixa,
+        exigir_caixa_aberto: form.vendas.exigir_caixa_aberto,
+        fechamento_cego: form.vendas.fechamento_cego,
+        sangria_exige_autorizacao: form.vendas.sangria_exige_autorizacao,
       },
       estoque: {
         permitir_venda_estoque_zerado: form.estoque.permitir_venda_estoque_zerado,
@@ -105,6 +117,73 @@ defineExpose({
           :disabled="!form.vendas.permitir_desconto"
           class="mt-1.5 w-full border border-zinc-200 rounded-lg px-3 py-2.5 bg-zinc-50 text-sm text-zinc-700 focus:outline-none focus:ring-2 focus:ring-brand-primary/30 disabled:opacity-40 disabled:cursor-not-allowed"
         />
+      </div>
+    </div>
+
+    <!-- Controle de Caixa -->
+    <!-- Chaves por EMPRESA, e não por segmento: quem tem balcão e recebe
+         dinheiro na mão pode querer o controle, seja adega, mercado ou oficina.
+         Todas nascem desligadas — a segurança é o padrão, não esconder a opção. -->
+    <div class="flex flex-col">
+      <p class="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-3">Controle de Caixa</p>
+
+      <div class="flex items-center justify-between py-3 border-b border-zinc-100">
+        <div>
+          <p class="text-sm font-medium text-zinc-800">Usar controle de caixa</p>
+          <p class="text-xs text-zinc-500 mt-0.5">Abertura com troco, sangria, suprimento e fechamento conferido</p>
+        </div>
+        <button
+          type="button"
+          :class="['relative w-9 h-4.5 rounded-full transition-colors duration-200 cursor-pointer shrink-0', form.vendas.controlar_caixa ? 'bg-brand-primary' : 'bg-zinc-200']"
+          @click="form.vendas.controlar_caixa = !form.vendas.controlar_caixa"
+        >
+          <span :class="['absolute left-0 top-0.5 w-3.5 h-3.5 bg-white rounded-full shadow transition-transform duration-200', form.vendas.controlar_caixa ? 'translate-x-5' : 'translate-x-0.5']" />
+        </button>
+      </div>
+
+      <div class="flex items-center justify-between py-3 border-b border-zinc-100">
+        <div>
+          <p class="text-sm font-medium text-zinc-800">Exigir caixa aberto para vender</p>
+          <p class="text-xs text-zinc-500 mt-0.5">Sem um turno aberto, a venda não é finalizada</p>
+        </div>
+        <button
+          type="button"
+          :disabled="!form.vendas.controlar_caixa"
+          :class="['relative w-9 h-4.5 rounded-full transition-colors duration-200 shrink-0', !form.vendas.controlar_caixa ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer', form.vendas.exigir_caixa_aberto ? 'bg-brand-primary' : 'bg-zinc-200']"
+          @click="form.vendas.controlar_caixa && (form.vendas.exigir_caixa_aberto = !form.vendas.exigir_caixa_aberto)"
+        >
+          <span :class="['absolute left-0 top-0.5 w-3.5 h-3.5 bg-white rounded-full shadow transition-transform duration-200', form.vendas.exigir_caixa_aberto ? 'translate-x-5' : 'translate-x-0.5']" />
+        </button>
+      </div>
+
+      <div class="flex items-center justify-between py-3 border-b border-zinc-100">
+        <div>
+          <p class="text-sm font-medium text-zinc-800">Fechamento às cegas</p>
+          <p class="text-xs text-zinc-500 mt-0.5">O operador conta a gaveta sem ver o valor esperado</p>
+        </div>
+        <button
+          type="button"
+          :disabled="!form.vendas.controlar_caixa"
+          :class="['relative w-9 h-4.5 rounded-full transition-colors duration-200 shrink-0', !form.vendas.controlar_caixa ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer', form.vendas.fechamento_cego ? 'bg-brand-primary' : 'bg-zinc-200']"
+          @click="form.vendas.controlar_caixa && (form.vendas.fechamento_cego = !form.vendas.fechamento_cego)"
+        >
+          <span :class="['absolute left-0 top-0.5 w-3.5 h-3.5 bg-white rounded-full shadow transition-transform duration-200', form.vendas.fechamento_cego ? 'translate-x-5' : 'translate-x-0.5']" />
+        </button>
+      </div>
+
+      <div class="flex items-center justify-between py-3 border-b border-zinc-100">
+        <div>
+          <p class="text-sm font-medium text-zinc-800">Sangria exige PIN do gerente</p>
+          <p class="text-xs text-zinc-500 mt-0.5">Suprimento continua livre — pôr dinheiro na gaveta não é risco</p>
+        </div>
+        <button
+          type="button"
+          :disabled="!form.vendas.controlar_caixa"
+          :class="['relative w-9 h-4.5 rounded-full transition-colors duration-200 shrink-0', !form.vendas.controlar_caixa ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer', form.vendas.sangria_exige_autorizacao ? 'bg-brand-primary' : 'bg-zinc-200']"
+          @click="form.vendas.controlar_caixa && (form.vendas.sangria_exige_autorizacao = !form.vendas.sangria_exige_autorizacao)"
+        >
+          <span :class="['absolute left-0 top-0.5 w-3.5 h-3.5 bg-white rounded-full shadow transition-transform duration-200', form.vendas.sangria_exige_autorizacao ? 'translate-x-5' : 'translate-x-0.5']" />
+        </button>
       </div>
     </div>
 

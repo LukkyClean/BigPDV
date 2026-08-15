@@ -15,6 +15,7 @@ import PrintFormatSelectModal from '@/shared/components/print/PrintFormatSelectM
 
 import SalesStatus from './components/SalesStatus.vue';
 import SaleTable from './components/SaleTable.vue';
+import CaixaBar from './caixa/components/CaixaBar.vue';
 import SaleModal from './components/SaleModal.vue';
 import SalePrintTemplate from './components/print/SalePrintTemplate.vue';
 import SalePrintCupom from './components/print/SalePrintCupom.vue';
@@ -270,6 +271,10 @@ function handleOpenSaleFromOrcamento(saleId: number) {
 
     <!-- Tab: Vendas -->
     <template v-if="activeTab === 'vendas'">
+      <!-- Barra do caixa. Não renderiza NADA quando a loja não usa controle de
+           caixa (o padrão), e a query do turno nem chega a ser disparada — tela
+           e rede idênticas para quem não ligou a chave. -->
+      <CaixaBar />
       <SalesStatus />
       <SaleTable
         @cancel="handleCancelFromTable"

@@ -14,6 +14,15 @@ class ConfiguracaoVendasRead(BaseModel):
     permitir_parcelamento: bool
     parcelas_maximas: int
 
+    # Controle de caixa. Sao lidas pela TELA DE VENDAS, e nao so pela de
+    # configuracoes: e por `controlar_caixa` que o PDV decide se mostra o botao
+    # do caixa. Sem expor aqui, o frontend nao teria como saber e o caixa
+    # apareceria para todo mundo.
+    controlar_caixa: bool
+    exigir_caixa_aberto: bool
+    fechamento_cego: bool
+    sangria_exige_autorizacao: bool
+
     data_atualizacao: datetime
 
     model_config = {"from_attributes": True}
@@ -26,3 +35,8 @@ class ConfiguracaoVendasUpdate(BaseModel):
     valor_minimo_venda: Optional[int] = Field(None, ge=0)
     permitir_parcelamento: Optional[bool] = None
     parcelas_maximas: Optional[int] = Field(None, ge=1, le=48)
+
+    controlar_caixa: Optional[bool] = None
+    exigir_caixa_aberto: Optional[bool] = None
+    fechamento_cego: Optional[bool] = None
+    sangria_exige_autorizacao: Optional[bool] = None
