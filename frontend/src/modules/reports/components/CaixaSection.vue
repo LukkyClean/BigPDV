@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { z } from 'zod';
 import { useQuery } from '@tanstack/vue-query';
 import { ChevronDown, ChevronRight, Wallet } from 'lucide-vue-next';
 
@@ -21,31 +22,49 @@ const props = defineProps<{ inicio: string; fim: string }>();
 
 const expandida = ref<number | null>(null);
 
+/**
+ * O contrato da listagem, validado.
+ *
+ * Sem esta validação, um backend mais antigo (que devolve o formato anterior de
+ * `GET /caixa/`) preenchia a tabela com campos indefinidos — e a tela mostrava
+ * R$ 0,00 em tudo. Um relatório de dinheiro tem que QUEBRAR quando não entende
+ * a resposta, não inventar zeros.
+ */
+const HistoricoItemSchema = z.object({
+  sessao_id: z.number(),
+  status: z.string(),
+  funcionario_nome: z.string().nullable().optional(),
+  terminal_nome: z.string().nullable().optional(),
+  data_abertura: z.string(),
+  data_fechamento: z.string().nullable().optional(),
+  saldo_inicial: z.number(),
+  saldo_esperado: z.number().nullable(),
+  saldo_contado: z.number().nullable(),
+  diferenca: z.number().nullable(),
+});
+
+const CONTRATO_INVALIDO = 'CONTRATO_INVALIDO';
+
 const historico = useQuery({
   queryKey: computed(() => ['caixa', 'historico', props.inicio, props.fim]),
   queryFn: async () => {
     const { data } = await api.get('/caixa/', {
       params: { inicio: props.inicio, fim: props.fim },
     });
-    return data as Array<{
-      sessao_id: number;
-      status: string;
-      funcionario_nome: string | null;
-      terminal_nome: string | null;
-      data_abertura: string;
-      data_fechamento: string | null;
-      saldo_inicial: number;
-      saldo_esperado: number | null;
-      saldo_contado: number | null;
-      diferenca: number | null;
-    }>;
+    const parsed = z.array(HistoricoItemSchema).safeParse(data);
+    if (!parsed.success) throw new Error(CONTRATO_INVALIDO);
+    return parsed.data;
   },
-  // 403/400 aqui é esperado para quem não é gerente — não vale reexecutar.
+  // 403 (não é gerente) e contrato inválido não melhoram com repetição.
   retry: false,
 });
 
 const sessoes = computed(() => historico.data.value ?? []);
-const semPermissao = computed(() => historico.isError.value);
+
+const contratoInvalido = computed(
+  () => (historico.error.value as Error | null)?.message === CONTRATO_INVALIDO,
+);
+const semPermissao = computed(() => historico.isError.value && !contratoInvalido.value);
 
 const extrato = useQuery({
   queryKey: computed(() => ['caixa', 'sessao', expandida.value]),
@@ -60,19 +79,32 @@ function alternar(sessaoId: number) {
   expandida.value = expandida.value === sessaoId ? null : sessaoId;
 }
 
-/** Falta é o que dói; sobra é sinal de lançamento perdido. Cores diferentes. */
-function classeDiferenca(diferenca: number | null): string {
-  if (diferenca === null) return 'text-slate-400';
+/**
+ * Falta é o que dói; sobra é sinal de lançamento perdido. Cores diferentes.
+ *
+ * `== null` pega null E undefined de propósito. A versão anterior usava
+ * `=== null`, e um campo AUSENTE (backend mais antigo, resposta truncada)
+ * escapava por baixo dos dois `if` e caía no último caso — que dizia
+ * "Bateu certo". Uma tela de dinheiro que, sem dado, AFIRMA que está tudo certo
+ * é pior que uma tela quebrada: o dono acredita e não confere.
+ */
+function classeDiferenca(diferenca: number | null | undefined): string {
+  if (diferenca == null) return 'text-slate-400';
   if (diferenca < 0) return 'text-red-600 font-bold';
   if (diferenca > 0) return 'text-amber-600 font-semibold';
   return 'text-emerald-600';
 }
 
-function rotuloDiferenca(diferenca: number | null): string {
-  if (diferenca === null) return '—';
+function rotuloDiferenca(diferenca: number | null | undefined): string {
+  if (diferenca == null) return '—';
   if (diferenca < 0) return `${formatarCentavos(diferenca)} · faltou`;
   if (diferenca > 0) return `+${formatarCentavos(diferenca)} · sobrou`;
   return 'Bateu certo';
+}
+
+/** Valor monetário que pode não ter vindo. Ausente vira travessão, nunca zero. */
+function moeda(valor: number | null | undefined): string {
+  return valor == null ? '—' : formatarCentavos(valor);
 }
 
 const ORIGEM_ROTULO: Record<string, string> = {
@@ -93,7 +125,13 @@ const ORIGEM_ROTULO: Record<string, string> = {
       <h3 class="text-sm font-bold text-slate-700">Caixa — turnos do período</h3>
     </div>
 
-    <p v-if="semPermissao" class="text-sm text-slate-500 py-6 text-center">
+    <p v-if="contratoInvalido" class="text-sm text-red-600 py-6 text-center">
+      Não foi possível ler o histórico de caixas: o servidor respondeu num
+      formato que esta tela não entende. Se o sistema foi atualizado agora,
+      reinicie o servidor.
+    </p>
+
+    <p v-else-if="semPermissao" class="text-sm text-slate-500 py-6 text-center">
       Só o responsável pela loja pode ver o histórico de caixas.
     </p>
 
@@ -139,10 +177,10 @@ const ORIGEM_ROTULO: Record<string, string> = {
                 <span v-else class="text-emerald-600 font-medium">Em aberto</span>
               </td>
               <td class="py-2 px-2 text-right tabular-nums text-slate-600">
-                {{ s.saldo_esperado === null ? '—' : formatarCentavos(s.saldo_esperado) }}
+                {{ moeda(s.saldo_esperado) }}
               </td>
               <td class="py-2 px-2 text-right tabular-nums text-slate-600">
-                {{ s.saldo_contado === null ? '—' : formatarCentavos(s.saldo_contado) }}
+                {{ moeda(s.saldo_contado) }}
               </td>
               <td class="py-2 px-2 text-right tabular-nums" :class="classeDiferenca(s.diferenca)">
                 {{ rotuloDiferenca(s.diferenca) }}
