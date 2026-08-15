@@ -144,6 +144,44 @@ class SessaoCaixaResumo(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class SessaoCaixaHistoricoItem(BaseModel):
+    """Uma linha do histórico de turnos, na visão do dono.
+
+    Responde as duas perguntas que ele faz: **quem fechou faltando dinheiro** e
+    **quem fechou sobrando**. As duas saem do mesmo campo — `diferenca` negativa
+    é falta, positiva é sobra — e as duas importam: sobra costuma ser troco não
+    registrado ou venda não lançada, que é problema tanto quanto a falta.
+
+    Os valores de fechamento são LIDOS da sessão, não recalculados: foram
+    congelados no momento em que o operador conferiu. Recalcular depois faria o
+    passado mudar quando um lançamento atrasado entrasse.
+    """
+
+    sessao_id: int
+    status: SessaoCaixaStatus
+
+    funcionario_id: int
+    funcionario_nome: Optional[str] = None
+    terminal_hwid: Optional[str] = None
+    terminal_nome: Optional[str] = None
+
+    data_abertura: datetime
+    data_fechamento: Optional[datetime] = None
+
+    saldo_inicial: int
+    saldo_esperado: Optional[int] = Field(
+        None, description="O que o sistema calculou que deveria estar na gaveta"
+    )
+    saldo_contado: Optional[int] = Field(
+        None, description="O que o operador declarou ter contado"
+    )
+    diferenca: Optional[int] = Field(
+        None, description="contado - esperado. Negativo = faltou; positivo = sobrou"
+    )
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class SessaoCaixaRead(BaseModel):
     """A sessão em si, sem o resumo financeiro."""
 

@@ -3,6 +3,7 @@
 # DESCRIÇÃO: Acesso a dados do turno de caixa e do livro do dinheiro.
 # ---------------------------------------------------------------------------
 
+from datetime import datetime
 from typing import List, Optional, Sequence
 
 from sqlalchemy import func, select
@@ -77,16 +78,33 @@ def criar_sessao(
 def listar_sessoes(
     db: Session,
     empresa_id: int,
+    inicio: Optional[datetime] = None,
+    fim: Optional[datetime] = None,
     limit: int = 50,
 ) -> Sequence[SessaoCaixa]:
-    """Histórico de turnos da empresa, mais recentes primeiro."""
+    """Histórico de turnos da empresa, mais recentes primeiro.
+
+    O filtro é pela ABERTURA do turno: é o que o dono tem na cabeça quando
+    pergunta "o caixa de ontem". Um turno que virou a madrugada aparece no dia em
+    que começou, e não no dia em que foi fechado.
+
+    `inicio` e `fim` já chegam em UTC (ver app/core/tempo.py) — quem converte o
+    dia da loja é quem chama.
+    """
     from app.db.models.funcionario import Funcionario
 
-    return (
+    consulta = (
         db.query(SessaoCaixa)
         .join(Funcionario, Funcionario.id == SessaoCaixa.funcionario_id)
         .filter(Funcionario.empresa_id == empresa_id)
-        .order_by(SessaoCaixa.data_abertura.desc())
+    )
+    if inicio is not None:
+        consulta = consulta.filter(SessaoCaixa.data_abertura >= inicio)
+    if fim is not None:
+        consulta = consulta.filter(SessaoCaixa.data_abertura <= fim)
+
+    return (
+        consulta.order_by(SessaoCaixa.data_abertura.desc())
         .limit(limit)
         .all()
     )

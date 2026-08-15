@@ -10,6 +10,7 @@
 # turno, sem sangria e sem nada gravado no livro do dinheiro. É essa porta
 # fechada que permite o caixa existir sem incomodar as lojas que já rodam.
 
+from datetime import date
 from typing import Any, Dict, List, Optional, Sequence
 
 from sqlalchemy.orm import Session
@@ -19,7 +20,9 @@ from app.core.enum import (
     MovimentacaoFinanceiraTipo,
     SessaoCaixaStatus,
 )
+from app.core.depends import is_visao_gerencial
 from app.core.security import verify_password
+from app.core.tempo import fim_do_dia_utc, inicio_do_dia_utc
 from app.helpers.exceptions import BadRequestException, NotFoundException
 from app.db.crud import configuracao_seguranca as config_seg_crud
 from app.db.crud import configuracao_vendas as config_vendas_crud
@@ -28,6 +31,7 @@ from app.db.models.forma_pagamento import FormaPagamento
 from app.db.models.sessao_caixa import SessaoCaixa
 from app.schemas.sessao_caixa import (
     MovimentoCaixaCreate,
+    SessaoCaixaHistoricoItem,
     MovimentoCaixaRead,
     SessaoCaixaAbrir,
     SessaoCaixaFechar,
@@ -310,8 +314,79 @@ def get_resumo_de_sessao(
     return montar_resumo(db, sessao, usuario_token, ocultar_esperado=ocultar)
 
 
-def listar_sessoes(db: Session, usuario_token: Dict[str, Any], limit: int = 50) -> Sequence[SessaoCaixa]:
-    return caixa_crud.listar_sessoes(db, empresa_id=usuario_token["empresa_id"], limit=limit)
+def listar_historico(
+    db: Session,
+    usuario_token: Dict[str, Any],
+    inicio: Optional[date] = None,
+    fim: Optional[date] = None,
+    limit: int = 50,
+) -> List[SessaoCaixaHistoricoItem]:
+    """O histórico de turnos como o DONO precisa ver.
+
+    Responde as duas perguntas dele: quem fechou faltando dinheiro e quem fechou
+    sobrando. As duas saem de `diferenca` — negativa é falta, positiva é sobra —
+    e as duas merecem atenção: sobra costuma ser troco não registrado ou venda
+    não lançada.
+
+    VISÃO GERENCIAL APENAS. O operador vê o próprio turno pelo PDV; o histórico
+    de quem fechou com quanto é do dono. Sem isso, um operador veria a diferença
+    dos colegas.
+    """
+    if not is_visao_gerencial(usuario_token):
+        raise BadRequestException(
+            detail="Apenas o responsável pela loja pode ver o histórico de caixas"
+        )
+
+    dt_inicio = inicio_do_dia_utc(inicio) if inicio else None
+    dt_fim = fim_do_dia_utc(fim) if fim else None
+
+    sessoes = caixa_crud.listar_sessoes(
+        db,
+        empresa_id=usuario_token["empresa_id"],
+        inicio=dt_inicio,
+        fim=dt_fim,
+        limit=limit,
+    )
+
+    # Nome do terminal resolvido de uma vez: uma consulta por linha viraria N+1
+    # numa lista que o dono abre todo dia.
+    from app.db.models.terminal_conectado import TerminalConectado
+
+    hwids = {s.terminal_hwid for s in sessoes if s.terminal_hwid}
+    nomes_terminal: Dict[str, Optional[str]] = {}
+    if hwids:
+        for terminal in (
+            db.query(TerminalConectado)
+            .filter(TerminalConectado.hwid.in_(hwids))
+            .all()
+        ):
+            nomes_terminal[terminal.hwid] = terminal.nome
+
+    itens: List[SessaoCaixaHistoricoItem] = []
+    for sessao in sessoes:
+        esperado = sessao.saldo_final_esperado
+        contado = sessao.saldo_final_informado
+        # Só há diferença depois do fechamento: turno aberto ainda não foi
+        # conferido, e mostrar um número ali sugeriria uma quebra que não existe.
+        diferenca = None if (esperado is None or contado is None) else int(contado - esperado)
+
+        itens.append(
+            SessaoCaixaHistoricoItem(
+                sessao_id=sessao.id,
+                status=sessao.status,
+                funcionario_id=sessao.funcionario_id,
+                funcionario_nome=getattr(sessao.funcionario, "nome", None),
+                terminal_hwid=sessao.terminal_hwid,
+                terminal_nome=nomes_terminal.get(sessao.terminal_hwid or ""),
+                data_abertura=sessao.data_abertura,
+                data_fechamento=sessao.data_fechamento,
+                saldo_inicial=sessao.saldo_inicial,
+                saldo_esperado=esperado,
+                saldo_contado=contado,
+                diferenca=diferenca,
+            )
+        )
+    return itens
 
 
 # ===========================================================================

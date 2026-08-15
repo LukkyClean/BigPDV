@@ -3,6 +3,7 @@
 # DESCRIÇÃO: Endpoints do turno de caixa (abrir, suprir, sangrar, fechar).
 # ---------------------------------------------------------------------------
 
+from datetime import date
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Path, Query, status
@@ -14,6 +15,7 @@ from app.schemas.sessao_caixa import (
     MovimentoCaixaCreate,
     SessaoCaixaAbrir,
     SessaoCaixaFechar,
+    SessaoCaixaHistoricoItem,
     SessaoCaixaRead,
     SessaoCaixaResumo,
 )
@@ -103,16 +105,25 @@ def fechar_caixa(
 
 @router.get(
     "/",
-    response_model=List[SessaoCaixaRead],
+    response_model=List[SessaoCaixaHistoricoItem],
     status_code=status.HTTP_200_OK,
-    summary="Histórico de turnos da empresa",
+    summary="Histórico de turnos — quem abriu, quem fechou e com qual diferença",
 )
-def listar_sessoes(
+def listar_historico(
+    inicio: Optional[date] = Query(None, description="Data inicial (dia da loja)"),
+    fim: Optional[date] = Query(None, description="Data final (dia da loja)"),
     limit: int = Query(50, ge=1, le=200),
     usuario_token: dict = Depends(check_permission(required_permission=PERMISSAO)),
     db: Session = Depends(get_db),
 ):
-    return _handle_db_transaction(db, caixa_service.listar_sessoes, usuario_token, limit)
+    """Só para visão gerencial — o service recusa quem não for.
+
+    O operador vê o próprio turno pelo PDV; saber quem fechou faltando dinheiro
+    é do dono.
+    """
+    return _handle_db_transaction(
+        db, caixa_service.listar_historico, usuario_token, inicio, fim, limit
+    )
 
 
 @router.get(

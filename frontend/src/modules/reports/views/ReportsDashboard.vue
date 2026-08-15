@@ -15,7 +15,9 @@ import RankingSection from '../components/RankingSection.vue';
 import ComissaoSection from '../components/ComissaoSection.vue';
 import EstoqueSection from '../components/EstoqueSection.vue';
 import OSPerformanceSection from '../components/OSPerformanceSection.vue';
+import CaixaSection from '../components/CaixaSection.vue';
 import { useOrdemServico } from '@/shared/composables/useOrdemServico';
+import { useSessaoCaixaQuery } from '@/modules/sales/caixa/composables/queries/useSessaoCaixaQuery';
 
 const inicio = ref('');
 const fim = ref('');
@@ -26,6 +28,7 @@ function onPeriodo(r: { inicio: string; fim: string }) {
 
 const { data, isLoading, isError } = useFaturamentoQuery(inicio, fim);
 const { usaOrdemServico } = useOrdemServico();
+const { caixaHabilitado } = useSessaoCaixaQuery();
 
 /** Só mostra o bloco de juros quando houve juros — repassado ou absorvido. */
 const jurosTotal = computed(
@@ -262,6 +265,10 @@ async function imprimirFinanceiro() {
 
       <!-- Comissão por funcionário -->
       <ComissaoSection :inicio="inicio" :fim="fim" />
+
+      <!-- Caixa: quem abriu, quem fechou e com qual diferenca. So aparece
+           para quem usa controle de caixa. -->
+      <CaixaSection v-if="caixaHabilitado" :inicio="inicio" :fim="fim" />
 
       <!-- Estoque e Curva ABC -->
       <EstoqueSection :inicio="inicio" :fim="fim" />
