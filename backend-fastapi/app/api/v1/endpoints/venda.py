@@ -283,7 +283,12 @@ def finalizar_venda(
         venda_service.finish_sale,
         venda_id,
         payload.pagamentos,
-        payload.acrescimo or 0
+        payload.acrescimo or 0,
+        # Quem esta finalizando e quem esta NO CAIXA -- e nem sempre e o mesmo
+        # que `venda.funcionario_id`, que e o VENDEDOR (o que conta comissao).
+        # Numa loja onde um atende e outro recebe, o dinheiro cai no turno de
+        # quem recebeu. Opcional: sem controle de caixa ligado, e ignorado.
+        user_token.get("funcionario_id"),
     )
 
 @router.get(

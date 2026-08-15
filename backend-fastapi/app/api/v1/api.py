@@ -18,6 +18,7 @@ from app.api.v1.endpoints import cargo
 from app.api.v1.endpoints import usuario
 from app.api.v1.endpoints import ordem_servico
 from app.api.v1.endpoints import forma_pagamento
+from app.api.v1.endpoints import sessao_caixa
 from app.api.v1.endpoints import venda
 from app.api.v1.endpoints import orcamento
 from app.api.v1.endpoints import dashboard
@@ -76,6 +77,11 @@ router.include_router(forma_pagamento.router, prefix="/formas-pagamento", tags=[
 # Inclui o roteador de vendas (PDV) sob o prefixo /vendas
 # Contém sub-recursos: itens do carrinho e ações de status (cancelar, finalizar)
 router.include_router(venda.router, prefix="/vendas", tags=["Vendas"])
+
+# Turno de caixa (abrir, sangria, suprimento, fechar).
+# So responde quando a empresa liga `controlar_caixa`; sem isso o service
+# recusa toda operacao -- a rota existir nao muda nada para quem nao usa.
+router.include_router(sessao_caixa.router, prefix="/caixa", tags=["Caixa"])
 
 # Inclui o roteador de orcamentos sob o prefixo /orcamentos
 router.include_router(orcamento.router, prefix="/orcamentos", tags=["Orcamentos"])

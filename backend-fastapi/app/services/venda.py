@@ -10,6 +10,7 @@ from app.schemas.vendas import VendaCreate, VendaSearchFilters, VendaStatusSumma
 from app.services.cliente import cliente_exists
 from app.services.funcionario import funcionario_exists
 from app.services import produto as produto_service
+from app.services import sessao_caixa as caixa_service
 
 from app.db.crud import venda as venda_crud
 from app.db.crud import forma_pagamento as forma_pagamento_crud
@@ -258,7 +259,13 @@ def delete_draft_sale(db: Session, sale_id: int) -> None:
     db.commit()
 
 
-def finish_sale(db: Session, sale_id: int, payments: Sequence[PagamentoVendaCreate], acrescimo: int = 0):
+def finish_sale(
+    db: Session,
+    sale_id: int,
+    payments: Sequence[PagamentoVendaCreate],
+    acrescimo: int = 0,
+    operador_funcionario_id: int | None = None,
+):
     sale_in_db = get_sale_by_id(db, sale_id=sale_id)
 
     if sale_in_db.status != VendaStatus.ATIVA:
@@ -268,6 +275,13 @@ def finish_sale(db: Session, sale_id: int, payments: Sequence[PagamentoVendaCrea
     config_vendas = config_vendas_crud.get_configuracao_vendas(db, empresa_id=empresa_id)
     if config_vendas and config_vendas.exigir_cliente_identificado and not sale_in_db.cliente_id:
         raise BadRequestException(detail="Esta venda exige um cliente identificado para ser finalizada")
+
+    # Trava do caixa: so morde quando a loja ligou AS DUAS chaves
+    # (`controlar_caixa` e `exigir_caixa_aberto`). Loja que nao ligou nada passa
+    # reto -- e o que mantem as tres lojas em producao vendendo como sempre.
+    caixa_service.exigir_caixa_aberto_para_vender(
+        db, sale_in_db.funcionario, operador_funcionario_id
+    )
 
     valid_payments_to_db = _payments_valid(db, payments)
 
@@ -319,6 +333,15 @@ def finish_sale(db: Session, sale_id: int, payments: Sequence[PagamentoVendaCrea
 
     sale_in_db.status = VendaStatus.FINALIZADA
     sale_in_db.pagamentos = valid_payments_to_db
+
+    # Lanca os pagamentos no livro do dinheiro. Sai na primeira linha quando o
+    # controle de caixa esta desligado, entao para quem nao usa esta chamada
+    # custa uma consulta a configuracao e nada mais: nenhuma linha nova gravada.
+    # Precisa vir DEPOIS do flush dos pagamentos, senao eles ainda nao teriam id
+    # para o movimento apontar.
+    db.flush()
+    caixa_service.registrar_pagamentos_de_venda(db, sale_in_db, operador_funcionario_id)
+
     return venda_crud.update_sale(db, sale_in_db)
 
 def cancel_sale(db: Session, sale_id: int, motivo: str, codigo_gerente: str | None = None) -> Venda:
