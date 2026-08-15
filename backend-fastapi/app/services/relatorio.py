@@ -9,6 +9,7 @@ from datetime import date, datetime, timedelta
 from sqlalchemy.orm import Session
 
 from app.core.enum import SituacaoEquipamento, MovimentacaoTipo
+from app.core.tempo import intervalo_utc
 from app.db.crud import dashboard as dashboard_crud
 from app.db.crud import relatorio as relatorio_crud
 from app.schemas.relatorio import (
@@ -38,8 +39,7 @@ def get_faturamento(db: Session, inicio: date, fim: date, empresa_id: int) -> Re
     Os KPIs reusam get_stats_agregados (mesma base do dashboard), entao a soma da
     serie por dia bate com o faturamento_total.
     """
-    dt_inicio = datetime.combine(inicio, datetime.min.time())
-    dt_fim = datetime.combine(fim, datetime.max.time())
+    dt_inicio, dt_fim = intervalo_utc(inicio, fim)
 
     stats = dashboard_crud.get_stats_agregados(db, dt_inicio, dt_fim, empresa_id)
     faturamento_vendas = stats.vendas_total
@@ -147,8 +147,7 @@ def get_ranking(db: Session, inicio: date, fim: date, empresa_id: int) -> Relato
 
     Só entram funcionarios que faturaram algo (total > 0), ja ordenados desc pelo crud.
     """
-    dt_inicio = datetime.combine(inicio, datetime.min.time())
-    dt_fim = datetime.combine(fim, datetime.max.time())
+    dt_inicio, dt_fim = intervalo_utc(inicio, fim)
 
     rows = relatorio_crud.get_ranking_faturamento(db, dt_inicio, dt_fim, empresa_id)
     itens: list[RankingFuncionarioItem] = []
@@ -187,8 +186,7 @@ def get_comissao(db: Session, inicio: date, fim: date, empresa_id: int) -> Relat
                   entao cai em 'direto' (nao zera ninguem em silencio).
     Taxa em basis points (500 = 5,00% -> divide por 10000).
     """
-    dt_inicio = datetime.combine(inicio, datetime.min.time())
-    dt_fim = datetime.combine(fim, datetime.max.time())
+    dt_inicio, dt_fim = intervalo_utc(inicio, fim)
 
     rows = relatorio_crud.get_comissao_base(db, dt_inicio, dt_fim, empresa_id)
     itens: list[ComissaoFuncionarioItem] = []
@@ -271,8 +269,7 @@ def get_estoque(db: Session, inicio: date, fim: date, empresa_id: int) -> Relato
     período) — custo usa o custo médio ponderado e cai para valor_entrada enquanto a
     média não existir; sem nenhum dos dois, conta como 0 (não estima).
     """
-    dt_inicio = datetime.combine(inicio, datetime.min.time())
-    dt_fim = datetime.combine(fim, datetime.max.time())
+    dt_inicio, dt_fim = intervalo_utc(inicio, fim)
 
     vendas = relatorio_crud.get_vendas_por_produto(db, dt_inicio, dt_fim, empresa_id)
     faturamento_total = sum((r.faturamento or 0) for r in vendas)
@@ -386,8 +383,7 @@ def get_os_performance(db: Session, inicio: date, fim: date, empresa_id: int) ->
     data_criacao. Tempo médio usa _duracao_horas (piso 0). Por técnico só entra OS
     com funcionário atribuído.
     """
-    dt_inicio = datetime.combine(inicio, datetime.min.time())
-    dt_fim = datetime.combine(fim, datetime.max.time())
+    dt_inicio, dt_fim = intervalo_utc(inicio, fim)
 
     rows = relatorio_crud.get_os_finalizadas_periodo(db, dt_inicio, dt_fim, empresa_id)
     finalizadas = len(rows)
