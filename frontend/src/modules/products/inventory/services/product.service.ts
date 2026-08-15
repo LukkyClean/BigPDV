@@ -16,11 +16,18 @@ export const PRODUCT_PERMISSION = ENDPOINT_PERMISSION_MAP[BASE_URL];
 
 /**
  * Lista produtos ativos ou busca por termo
- * @param buscar - Termo de busca opcional (nome ou codigo)
+ * @param buscar - Termo de busca opcional (nome, codigo, codigo de barras, marca ou categoria)
+ * @param limite - Teto de resultados. Sem valor, o backend devolve tudo —
+ *                 a tela de Produtos depende disso para listar o catalogo.
  */
-export async function getProdutos(buscar?: string): Promise<ProdutoRead[]> {
-  const params = buscar ? { buscar } : undefined;
-  const { data } = await api.get<ProdutoRead[]>(`${BASE_URL}/`, { params });
+export async function getProdutos(buscar?: string, limite?: number): Promise<ProdutoRead[]> {
+  const params = {
+    ...(buscar && { buscar }),
+    ...(limite && { limite }),
+  };
+  const { data } = await api.get<ProdutoRead[]>(`${BASE_URL}/`, {
+    params: Object.keys(params).length ? params : undefined,
+  });
   return data;
 }
 

@@ -95,6 +95,11 @@ export interface EmpresaRead {
   telefone?: string;
   celular?: string;
   url_logo?: string;
+  /** Cor da marca (#RRGGBB). Ausente/null = paleta de fábrica. */
+  cor_tema?: string | null;
+  /** Chave PIX do recebedor. O QR e montado offline a partir dela. */
+  chave_pix?: string | null;
+  pix_ativo?: boolean;
   fiscal_settings?: FiscalSettings;
   enderecos?: Endereco[];
 }
@@ -121,6 +126,11 @@ export interface EmpresaUpdate {
   telefone?: string;
   celular?: string;
   url_logo?: string;
+  /** Cor da marca (#RRGGBB). Ausente/null = paleta de fábrica. */
+  cor_tema?: string | null;
+  /** Chave PIX do recebedor. O QR e montado offline a partir dela. */
+  chave_pix?: string | null;
+  pix_ativo?: boolean;
   endereco?: Endereco[];
   fiscal_settings?: Partial<FiscalSettings> & {
     certificado_senha?: string;

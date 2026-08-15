@@ -4,7 +4,7 @@
 # ---------------------------------------------------------------------------
 
 from pydantic import BaseModel, Field
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional, Literal
 
 
@@ -13,10 +13,17 @@ from typing import Optional, Literal
 # ===========================================================================
 
 class DashboardStats(BaseModel):
+    # Numero-heroi: faturamento total da loja = vendas + OS finalizadas no periodo.
+    faturamento_total: int = Field(0, description="Faturamento total (vendas + OS finalizadas) no periodo (centavos)")
+    faturamento_total_variacao: float = Field(0.0, description="Variacao percentual vs periodo anterior")
+
     vendas_total: int = Field(0, description="Valor total de vendas finalizadas no periodo (centavos)")
     vendas_total_variacao: float = Field(0.0, description="Variacao percentual vs periodo anterior")
 
-    os_count: int = Field(0, description="Quantidade de OS criadas no periodo")
+    os_total: int = Field(0, description="Faturamento de OS finalizadas no periodo (centavos)")
+    os_total_variacao: float = Field(0.0, description="Variacao percentual vs periodo anterior")
+
+    os_count: int = Field(0, description="Quantidade de OS FINALIZADAS no periodo (mesma ancora do os_total)")
     os_count_variacao: float = Field(0.0, description="Variacao percentual vs periodo anterior")
 
     novos_clientes: int = Field(0, description="Novos clientes cadastrados no periodo")
@@ -24,6 +31,21 @@ class DashboardStats(BaseModel):
 
     ticket_medio: int = Field(0, description="Ticket medio geral combinado vendas + OS (centavos)")
     ticket_medio_variacao: float = Field(0.0, description="Variacao percentual vs periodo anterior")
+
+
+# ===========================================================================
+# Tendencia — serie de faturamento por dia (grafico)
+# ===========================================================================
+
+class TendenciaDiaItem(BaseModel):
+    dia: date = Field(..., description="Dia da serie (YYYY-MM-DD)")
+    total_vendas: int = Field(0, description="Faturamento de vendas no dia (centavos)")
+    total_os: int = Field(0, description="Faturamento de OS no dia (centavos)")
+    total_geral: int = Field(0, description="Soma vendas + OS no dia (centavos)")
+
+
+class TendenciaResponse(BaseModel):
+    items: list[TendenciaDiaItem] = Field(default_factory=list)
 
 
 # ===========================================================================
@@ -79,8 +101,11 @@ class UltimasVendasResponse(BaseModel):
 # ===========================================================================
 
 class MeuResumoStats(BaseModel):
+    # Numero-heroi pessoal: meu faturamento = minhas vendas + minhas OS finalizadas.
+    meu_faturamento: int = Field(0, description="Meu faturamento (minhas vendas + minhas OS finalizadas) no periodo (centavos)")
     minhas_vendas_valor: int = Field(0, description="Total em centavos das vendas finalizadas pelo funcionario no periodo")
     minhas_vendas_count: int = Field(0, description="Quantidade de vendas finalizadas pelo funcionario no periodo")
+    minhas_os_valor: int = Field(0, description="Faturamento das OS finalizadas pelo funcionario no periodo (centavos)")
     minhas_os_abertas: int = Field(0, description="OS em andamento atribuidas ao funcionario")
     minhas_os_concluidas: int = Field(0, description="OS finalizadas pelo funcionario no periodo")
 
@@ -160,6 +185,8 @@ class RankingFuncionarioItem(BaseModel):
     id: int
     nome: str
     total_vendas_valor: int
+    total_os_valor: int = Field(0, description="Faturamento de OS finalizadas no periodo (centavos)")
+    total_geral: int = Field(0, description="Faturamento total (vendas + OS) — base do ranking (centavos)")
     qtd_vendas: int
     qtd_os_fechadas: int
 

@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/vue-query';
 import { getAllOs, getUniqueOS, getStatsOS, getOsByClienteId } from '../../services/orderServiceGet.service';
 
 import { OsStatusEnumDataType } from '../../schemas/enums/osEnums.schema';
+import { isDesfechoKey, type OsEstadoKey } from '../../constants/ordemServico.constants';
 
 import {
   ORDER_SERVICE_QUERY_KEY,
@@ -16,12 +17,22 @@ import {
 export function useOrderServiceQueryAll() {
   const searchQuery = ref<string | undefined>(undefined);
   const deboucedSearchQuery = refDebounced(searchQuery, 1000);
-  const activeStatusFilterQuery = ref<OsStatusEnumDataType | undefined>(undefined);
+  // Uma seleção só na UI, dois parâmetros possíveis na API: o menu de filtro
+  // lista status do fluxo E desfechos ("Condenado"/"Sem Reparo"), que no backend
+  // são o campo `situacao_equipamento`.
+  const activeStatusFilterQuery = ref<OsEstadoKey | undefined>(undefined);
   const activePriorityFilterQuery = ref<boolean>(false);
   const currentPage = ref<number>(1);
 
   watch([deboucedSearchQuery, activeStatusFilterQuery, activePriorityFilterQuery], () => {
     currentPage.value = 1;
+  });
+
+  const filtroEstado = computed(() => {
+    const key = activeStatusFilterQuery.value;
+    if (!key) return {};
+    if (isDesfechoKey(key)) return { situacao_equipamento: key };
+    return { status: key as OsStatusEnumDataType };
   });
 
   const query = useQuery({
@@ -35,7 +46,7 @@ export function useOrderServiceQueryAll() {
     queryFn: () =>
       getAllOs({
         search: deboucedSearchQuery.value,
-        status: activeStatusFilterQuery.value,
+        ...filtroEstado.value,
         priority_sort: activePriorityFilterQuery.value,
         page: currentPage.value,
       }),

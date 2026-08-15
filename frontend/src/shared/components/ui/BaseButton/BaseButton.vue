@@ -18,7 +18,7 @@ const props = withDefaults(defineProps<ButtonProps>(), {
 });
 
 const variants: Record<string, string> = {
-  primary: 'bg-brand-primary text-white shadow-sm shadow-brand-secondary hover:bg-blue-950 hover:cursor-pointer',
+  primary: 'bg-brand-primary text-white shadow-sm shadow-brand-secondary hover:bg-brand-primary-hover hover:cursor-pointer',
   secondary: 'bg-gray-200 text-gray-800 hover:bg-gray-300 focus:ring-gray-500 hover:cursor-pointer',
   danger: 'bg-red-600 text-white hover:bg-red-700 focus:ring-red-500 hover:cursor-pointer',
   ghost: 'bg-transparent text-brand-primary border border-brand-primary hover:bg-brand-primary/10 hover:cursor-pointer',

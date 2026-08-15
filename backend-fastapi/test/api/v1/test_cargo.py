@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 TEST_USER_EMAIL = "teste.funcionario@example.com"
 TEST_USER_PASSWORD = "senhaSegura456"
+TEST_HWID = "test-terminal-hwid"
 
 PREFIX = "/api/v1/cargos"
 
@@ -34,7 +35,7 @@ def create_test_cargo(client: TestClient, header_with_token: dict):
 @pytest.fixture(scope="function")
 def header_with_token(client: TestClient, db_session: Session, create_test_empresa) -> dict:
 
-    login_data = {"username": TEST_USER_EMAIL, "password": TEST_USER_PASSWORD}
+    login_data = {"username": TEST_USER_EMAIL, "password": TEST_USER_PASSWORD, "hwid": TEST_HWID}
     response = client.post("/api/v1/auth/login", data=login_data)
     assert response.status_code == 200 
     

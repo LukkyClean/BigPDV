@@ -13,6 +13,7 @@ export type SidebarLabelOptions =
     | 'Serviços'
     | 'Clientes'
     | 'Produtos'
+    | 'Relatórios'
     | 'Estoque'
     | 'Dados da Empresa'
     | 'Gestão de Equipe'

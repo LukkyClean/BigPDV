@@ -10,6 +10,7 @@ import { obterHwid } from '@/shared/services/system/hwid.service';
 export interface LicencaStatusResponse {
   status: 'online_valid' | 'offline_valid';
   dias_restantes?: number;
+  /** Só presente quando a licença é um trial. Ausente = licença paga. */
   trial?: boolean;
 }
 

@@ -18,6 +18,7 @@ CARGO_PREFIX = "/api/v1/cargos"
 # Dados fixos para autenticação (Setup inicial)
 TEST_USER_EMAIL = "teste.funcionario@example.com"
 TEST_USER_PASSWORD = "senhaSegura456"
+TEST_HWID = "test-terminal-hwid"
 
 # ===========================================================================
 # 1. FIXTURES (PREPARAÇÃO DE AMBIENTE)
@@ -26,7 +27,7 @@ TEST_USER_PASSWORD = "senhaSegura456"
 @pytest.fixture(scope="function")
 def header_with_token(client: TestClient, db_session, create_test_empresa) -> dict:
     """Autentica o usuário admin e retorna o header Authorization."""
-    login_data = {"username": TEST_USER_EMAIL, "password": TEST_USER_PASSWORD}
+    login_data = {"username": TEST_USER_EMAIL, "password": TEST_USER_PASSWORD, "hwid": TEST_HWID}
     response = client.post(f"{AUTH_PREFIX}/login", data=login_data)
     assert response.status_code == 200, "Falha crítica: Login de setup falhou"
     token = response.json()["access_token"]

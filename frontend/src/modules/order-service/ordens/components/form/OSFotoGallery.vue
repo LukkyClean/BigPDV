@@ -190,7 +190,7 @@ function getPhotoSrc(photo: { url: string; isPending: boolean }) {
         <ImageIcon :size="24" class="text-slate-400" />
       </div>
       <p class="text-sm text-slate-500 font-medium">Nenhuma foto adicionada</p>
-      <p class="text-xs text-slate-400 mt-1">Fotos do equipamento e diagnóstico aparecerão aqui.</p>
+      <p class="text-xs text-slate-400 mt-1">Fotos do objeto e diagnóstico aparecerão aqui.</p>
     </div>
 
     <!-- Slideshow -->

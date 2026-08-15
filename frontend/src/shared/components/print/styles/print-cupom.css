@@ -4,9 +4,27 @@
     size: 80mm auto;
   }
 
+  /* Mesmo motivo do print-a4.css: o BaseModal deixa `overflow: hidden` inline
+     no body enquanto o modal está aberto, e a impressão sai de dentro dele.
+     Vale aqui também porque o cupom cai no window.print() quando não há
+     impressora térmica configurada. */
+  html,
+  body {
+    overflow: visible !important;
+    height: auto !important;
+  }
+
   body {
     visibility: hidden;
     background: white;
+  }
+
+  /* Mesma exceção do print-a4.css, e pelo mesmo motivo: os dois arquivos são
+     globais e convivem. `visibility: hidden` sozinho não bastava — os elementos
+     do app continuavam ocupando layout e empurravam o cupom para fora do papel.
+     Remover do fluxo resolve; a exceção mantém os dois templates vivos. */
+  body > *:not(.print-cupom-container):not(.print-container) {
+    display: none !important;
   }
 
   .print-cupom-container {

@@ -17,10 +17,11 @@ from app.db.models.ordem_servico import OrdemServico as OSModel
 from app.db.models.ordem_servico_item import OrdemServicoItem as OSItemModel
 from app.db.models.ordem_servico_pagamento import OrdemServicoPagamento as OSPagamentoModel
 from app.db.models.ordem_servico_foto import OrdemServicoFoto as OSFotoModel
-from app.db.models.ordem_servico_equipamento import OrdemServicoEquipamento as OSEquipamentoModel
+from app.db.models.objeto_servico import ObjetoServico as OSEquipamentoModel
 
 from app.db.models.cliente import Cliente as ClienteModel, ClientePF as ClientePFModel, ClientePJ as ClientePJModel
 
+from app.core.busca import filtro_busca
 from app.core.enum import OrdemServicoStatus, OrdemServicoPrioridade
 
 
@@ -38,6 +39,95 @@ def get_ordem_servico_by_numero_os(db: Session, numero_os: str) -> OSModel | Non
     return db.scalar(select(OSModel).where(OSModel.numero_os == numero_os))
 
 
+def get_ordens_by_objeto_id(db: Session, objeto_id: int) -> Sequence[OSModel]:
+    """Retorna todas as OS de um objeto/veículo, da mais antiga para a mais recente."""
+    stmt = (
+        select(OSModel)
+        .where(OSModel.objeto_id == objeto_id)
+        .order_by(OSModel.data_criacao.asc())
+    )
+    return db.scalars(stmt).all()
+
+
+def get_objetos_com_revisao_agendada(db: Session) -> Sequence[OSEquipamentoModel]:
+    """Objetos ativos que têm alguma revisão agendada (por data e/ou KM)."""
+    stmt = select(OSEquipamentoModel).where(
+        OSEquipamentoModel.ativo == True,  # noqa: E712
+        or_(
+            OSEquipamentoModel.proxima_revisao_data.isnot(None),
+            OSEquipamentoModel.proxima_revisao_km.isnot(None),
+        ),
+    )
+    return db.scalars(stmt).all()
+
+
+def get_objeto_ativo_by_cliente_e_serie(
+    db: Session, cliente_id: int, numero_serie: str
+) -> OSEquipamentoModel | None:
+    """
+    Objeto ativo do cliente com o mesmo identificador (placa/serial), se existir.
+    Base do reuso: o mesmo bem físico é UM registro que acumula histórico entre OSs
+    (KM, revisão), em vez de ser duplicado a cada nova OS. Match case-insensitive.
+    """
+    stmt = select(OSEquipamentoModel).where(
+        OSEquipamentoModel.cliente_id == cliente_id,
+        OSEquipamentoModel.ativo == True,  # noqa: E712
+        func.lower(OSEquipamentoModel.numero_serie) == numero_serie.strip().lower(),
+    )
+    return db.scalars(stmt).first()
+
+
+def _identificador_normalizado_sql(coluna):
+    """Coluna comparavel a `normalizar_identificador`: sem espaco nem hifen, maiusculo.
+
+    A placa e gravada como o usuario digitou ('ABC-1D23', 'abc 1d23'), entao a
+    igualdade crua erra o alvo. Normalizar dos dois lados e o que faz 'abc-1d23'
+    achar 'ABC1D23' ja cadastrado.
+    """
+    return func.upper(func.replace(func.replace(coluna, "-", ""), " ", ""))
+
+
+def get_objetos_ativos_por_identificador(
+    db: Session,
+    identificador: str,
+    cliente_id: int | None = None,
+    excluir_cliente_id: int | None = None,
+) -> Sequence[OSEquipamentoModel]:
+    """
+    Objetos ativos com o mesmo identificador (placa/serial), comparado de forma
+    normalizada. Diferente de `get_objeto_ativo_by_cliente_e_serie`, esta NAO se
+    limita a um cliente -- e o que permite avisar que a maquina ja esta cadastrada
+    no nome de outra pessoa.
+
+    cliente_id          → restringe a um cliente (checar se o dono atual ja o tem)
+    excluir_cliente_id  → tudo MENOS esse cliente (achar os donos concorrentes)
+    """
+    alvo = func.upper(func.replace(func.replace(identificador.strip(), "-", ""), " ", ""))
+
+    stmt = select(OSEquipamentoModel).where(
+        OSEquipamentoModel.ativo == True,  # noqa: E712
+        _identificador_normalizado_sql(OSEquipamentoModel.numero_serie) == alvo,
+    )
+    if cliente_id is not None:
+        stmt = stmt.where(OSEquipamentoModel.cliente_id == cliente_id)
+    if excluir_cliente_id is not None:
+        stmt = stmt.where(OSEquipamentoModel.cliente_id != excluir_cliente_id)
+
+    return db.scalars(stmt).all()
+
+
+def get_ultima_os_do_objeto(db: Session, objeto_id: int) -> OSModel | None:
+    """OS mais recente de um objeto — usada para datar o cadastro no aviso de
+    duplicidade ('última OS em 12/03/2026')."""
+    stmt = (
+        select(OSModel)
+        .where(OSModel.objeto_id == objeto_id)
+        .order_by(OSModel.data_criacao.desc())
+        .limit(1)
+    )
+    return db.scalars(stmt).first()
+
+
 def get_ordens_servico_by_search(
     db: Session,
     filters: dict,
@@ -48,9 +138,10 @@ def get_ordens_servico_by_search(
     Busca avançada de OS com filtros dinâmicos e paginação.
 
     Filtros suportados:
-      search        → busca por numero_os, nome do cliente PF, razão social/nome fantasia PJ
-      status        → filtra por OrdemServicoStatus
-      priority_sort → se True, ordena por prioridade (URGENTE=1 → BAIXA=4)
+      search               → busca por numero_os, nome do cliente PF, razão social/nome fantasia PJ
+      status               → filtra por OrdemServicoStatus
+      situacao_equipamento → filtra pelo desfecho do objeto (só OS FINALIZADA)
+      priority_sort        → se True, ordena por prioridade (URGENTE=1 → BAIXA=4)
     """
     query = select(OSModel)
 
@@ -62,23 +153,25 @@ def get_ordens_servico_by_search(
 
         query = (
             query
-            .join(OSModel.equipamento)
+            .join(OSModel.objeto)
             .join(OSEquipamentoModel.cliente)
             .outerjoin(client_pj, ClienteModel.id == client_pj.id)
             .outerjoin(client_pf, ClienteModel.id == client_pf.id)
         )
 
-        like_search = f"%{search}%"
-        query = query.where(
-            or_(
-                OSModel.numero_os.ilike(like_search),
-                OSEquipamentoModel.numero_serie.ilike(like_search),
-                OSEquipamentoModel.modelo.ilike(like_search),
-                client_pf.nome.ilike(like_search),
-                client_pj.razao_social.ilike(like_search),
-                client_pj.nome_fantasia.ilike(like_search)
-            )
-        )
+        # Busca por palavras soltas e sem acento: "silva honda" encontra a OS
+        # do cliente Silva com a moto Honda, mesmo os dois vindo de campos
+        # (e tabelas) diferentes.
+        filtro = filtro_busca(search, (
+            OSModel.numero_os,
+            OSEquipamentoModel.numero_serie,
+            OSEquipamentoModel.modelo,
+            client_pf.nome,
+            client_pj.razao_social,
+            client_pj.nome_fantasia,
+        ))
+        if filtro is not None:
+            query = query.where(filtro)
 
     funcionario_id = filters.get("funcionario_id")
     if funcionario_id:
@@ -87,6 +180,17 @@ def get_ordens_servico_by_search(
     status = filters.get("status")
     if status:
         query = query.where(OSModel.status == status)
+
+    situacao = filters.get("situacao_equipamento")
+    if situacao:
+        # O desfecho só vale para uma OS de fato encerrada. Reabrir NÃO limpa
+        # `situacao_equipamento` (é o último desfecho conhecido do objeto), então
+        # sem o status junto o filtro "Condenado" devolveria também OS que já
+        # voltaram para a bancada — justo as que a tela mostra como EM_ANDAMENTO.
+        query = query.where(
+            OSModel.situacao_equipamento == situacao,
+            OSModel.status == OrdemServicoStatus.FINALIZADA,
+        )
 
     sort_by_priority = filters.get("priority_sort")
     if sort_by_priority:
@@ -127,7 +231,7 @@ def get_ordens_servico_by_cliente_id(
     """
     query = (
         select(OSModel)
-        .join(OSModel.equipamento)
+        .join(OSModel.objeto)
         .where(OSEquipamentoModel.cliente_id == cliente_id)
         .order_by(OSModel.data_criacao.desc())
     )

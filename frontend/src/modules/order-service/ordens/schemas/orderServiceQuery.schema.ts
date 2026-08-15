@@ -10,7 +10,7 @@ import {
   CustomerPJReadSchema,
 } from './relationship/customer/customer.schema';
 import { EmployeeReadSchema } from './relationship/employee/employee.schema';
-import { OsEquipReadSchema } from './relationship/osEquip.schema';
+import { OsObjetoReadSchema } from './relationship/osObjeto.schema';
 import { OsItemReadSchema } from './relationship/osItem.schema';
 import { OsPaymentReadSchema } from './relationship/osPayment.schema';
 import { OsImageReadSchema } from './relationship/osPhoto.schema';
@@ -19,6 +19,7 @@ import { PaginationBaseSchema } from '@/shared/schemas/pagination/pagination.sch
 const OrderServiceParamsSchema = z.object({
   search: z.string().max(255, 'A busca pode ter no máximo 255 caracteres').optional().nullable(),
   status: OsStatusEnum.optional().nullable(),
+  situacao_equipamento: OsEquipSituacaoEnum.optional().nullable(),
   priority_sort: z.boolean().optional(),
   page: z.number().int().min(1).optional(),
   limit: z.number().int().min(1).max(100).optional(),
@@ -56,7 +57,7 @@ export const OrderServiceReadSchema = z.object({
   // Relacionamentos
   cliente: z.union([CustomerPFReadSchema, CustomerPJReadSchema]),
   funcionario: EmployeeReadSchema,
-  equipamento: OsEquipReadSchema,
+  objeto: OsObjetoReadSchema,
   itens: z.array(OsItemReadSchema),
   pagamentos: z.array(OsPaymentReadSchema),
   fotos: z.array(OsImageReadSchema),

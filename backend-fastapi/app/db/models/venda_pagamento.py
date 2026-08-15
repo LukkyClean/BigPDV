@@ -4,10 +4,10 @@
 #            Armazena multiplas formas de pagamento para uma unica venda.
 # ---------------------------------------------------------------------------
 
-from datetime import datetime
-from sqlalchemy import Integer, Boolean, DateTime, ForeignKey, CheckConstraint, func
+from datetime import datetime, date
+from sqlalchemy import Integer, Boolean, DateTime, Date, String, JSON, ForeignKey, CheckConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from typing import TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
 
 from app.db.base import Base
 
@@ -22,7 +22,12 @@ class PagamentoVenda(Base):
     __tablename__ = "pagamentos_venda"
     __table_args__ = (
         CheckConstraint("valor > 0", name="ck_pagamento_venda_valor_positivo"),
-        CheckConstraint("(parcelado IS FALSE) AND (qtd_parcelas >= 1)", name="ck_pagamento_venda_parcelas_min_1"),
+        # A vista: parcelado=0 e qtd_parcelas NULO. Parcelado: parcelado=1 e qtd_parcelas >= 1.
+        # (A regra antiga exigia parcelado sempre FALSO, o que rejeitava qualquer parcelamento.)
+        CheckConstraint(
+            "(NOT parcelado AND qtd_parcelas IS NULL) OR (parcelado AND qtd_parcelas >= 1)",
+            name="ck_pagamento_venda_parcelas_min_1",
+        ),
     )
 
     # --- Identificacao ---
@@ -44,9 +49,20 @@ class PagamentoVenda(Base):
     )
 
     # --- Dados do Pagamento ---
-    valor: Mapped[int] = mapped_column(Integer, nullable=False, doc="Fracao financeira paga neste metodo (centavos)")
+    valor: Mapped[int] = mapped_column(Integer, nullable=False, doc="Fracao financeira paga pelo cliente neste metodo (centavos)")
+    juros_valor: Mapped[int] = mapped_column(
+        Integer, default=0, nullable=False, server_default="0",
+        doc="Juros calculados neste pagamento (centavos). Ver juros_responsavel para saber quem paga."
+    )
+    juros_responsavel: Mapped[str] = mapped_column(
+        String(10), default="CLIENTE", nullable=False, server_default="CLIENTE",
+        doc="CLIENTE = juros repassado (embutido em valor); LOJA = juros absorvido pela loja (fora de valor)"
+    )
     parcelado: Mapped[bool] = mapped_column(Boolean, default=False, nullable=True, doc="Flag indicando compra a prazo")
     qtd_parcelas: Mapped[int] = mapped_column(Integer, nullable=True, doc="Quantidade de parcelas (1 = a vista)")
+    bandeira_cartao: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, doc="Bandeira do cartao (VISA, MASTERCARD, etc)")
+    vencimento: Mapped[Optional[date]] = mapped_column(Date, nullable=True, doc="Data de vencimento do pagamento (ex: boletos)")
+    detalhes: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True, doc="Detalhes adicionais do pagamento (ex: banco/NSU de transferencia)")
     data_pagamento: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), doc="Momento exato do registro do pagamento")
 
     # --- Relacionamentos ---

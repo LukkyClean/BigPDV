@@ -4,9 +4,10 @@ import { Receipt, Banknote, CreditCard, Wallet, QrCode, FileText, Truck, CheckCi
 import BaseMoneyInput from '@/shared/components/ui/BaseMoneyInput/MoneyInput.vue';
 import { formatCurrency } from '@/shared/utils/finance';
 import type { OsPaymentReadSchemaDataType } from '../../schemas/relationship/osPayment.schema';
-import type { OsStatusEnumDataType } from '../../schemas/enums/osEnums.schema';
+import type { OsStatusEnumDataType, OsEquipSituacaoEnumDataType } from '../../schemas/enums/osEnums.schema';
 import { inferPaymentType, getPaymentDisplayName } from '@/shared/utils/print.utils';
-import { getStatusLabel, getStatusColor } from '../../../shared/utils/formatters';
+import { getEstadoOS } from '../../../shared/utils/formatters';
+import { formatDataHora } from '@/shared/utils/date.utils';
 
 interface Props {
   subtotal: number;
@@ -21,6 +22,7 @@ interface Props {
   creditoAoReabrir?: number | null;
   saldoCreditoCliente?: number;
   status?: OsStatusEnumDataType | null;
+  situacaoEquipamento?: OsEquipSituacaoEnumDataType | null;
   osNumber?: string | null;
   dataCriacao?: string | Date;
   dataFinalizacao?: string | Date | null;
@@ -105,38 +107,16 @@ const restante = computed(() => {
 
 // --- Dados de OS (movidos de OSClientCard) ---
 
-const statusLabel = computed(() => {
-  if (!props.status) return 'Nova OS';
-  return getStatusLabel(props.status);
-});
+const estado = computed(() => getEstadoOS(props.status, props.situacaoEquipamento));
 
-const statusColorClass = computed(() => {
-  const status = props.status || 'ABERTA';
-  const color = getStatusColor(status);
-  const map: Record<string, string> = {
-    blue: 'bg-brand-primary-light text-brand-primary border-brand-primary/20',
-    yellow: 'bg-yellow-50 text-yellow-700 border-yellow-200',
-    orange: 'bg-orange-50 text-orange-700 border-orange-200',
-    purple: 'bg-purple-50 text-purple-700 border-purple-200',
-    indigo: 'bg-indigo-50 text-indigo-700 border-indigo-200',
-    green: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-    red: 'bg-red-50 text-red-700 border-red-200',
-    gray: 'bg-zinc-50 text-zinc-700 border-zinc-200',
-  };
-  return map[color] || map.gray;
-});
+const statusLabel = computed(() => (props.status ? estado.value.label : 'Nova OS'));
 
-const formattedDataEntrada = computed(() => {
-  if (!props.dataCriacao) return '-';
-  const date = typeof props.dataCriacao === 'string' ? new Date(props.dataCriacao) : props.dataCriacao;
-  return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-});
+const statusColorClass = computed(() => `${estado.value.badge} ${estado.value.border}`);
 
-const formattedDataSaida = computed(() => {
-  if (!props.dataFinalizacao) return '-';
-  const date = typeof props.dataFinalizacao === 'string' ? new Date(props.dataFinalizacao) : props.dataFinalizacao;
-  return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-});
+// Timestamps de evento: gravados em UTC no backend.
+const formattedDataEntrada = computed(() => formatDataHora(props.dataCriacao));
+
+const formattedDataSaida = computed(() => formatDataHora(props.dataFinalizacao));
 </script>
 
 <template>

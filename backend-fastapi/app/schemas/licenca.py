@@ -80,7 +80,12 @@ class LicencaStatusResponse(BaseModel):
     """Resposta do GET /licenca/status para o frontend."""
     status: str = Field(..., description="online_valid | offline_valid")
     dias_restantes: Optional[int] = Field(
-        None, description="Dias restantes de validade offline"
+        None, description="Dias restantes até o vencimento (online) ou de validade offline"
+    )
+    trial: Optional[bool] = Field(
+        None,
+        description="True quando a licença é um trial. Reservado: depende de a "
+        "API StartBig repassar essa informação; hoje não é preenchido.",
     )
 
 

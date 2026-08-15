@@ -12,7 +12,7 @@ import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue'
 import BaseFooter from '@/shared/components/layout/BaseFooter.vue'
 import { useNetworkConfigStore } from '@/shared/stores/networkConfig.store'
 import { verificarSaude } from '@/shared/services/system/health.service' 
-import logoImage from '@/shared/assets/images/login/start-logo.png'
+import AppLogo from '@/shared/components/AppLogo.vue'
 
 const router = useRouter()
 const networkStore = useNetworkConfigStore()
@@ -50,7 +50,7 @@ async function reconfigurarConexao() {
     <div class="flex flex-col items-center flex-1 justify-center max-w-md w-full">
       <!-- Logo -->
       <div class="flex justify-center mb-6">
-        <img :src="logoImage" alt="Start Big Logo" class="h-16 w-auto" />
+        <AppLogo class="h-16 w-auto" />
       </div>
 
       <!-- Icone e Titulo -->

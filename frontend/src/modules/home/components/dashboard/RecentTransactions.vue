@@ -3,6 +3,7 @@ import { ShoppingBag } from 'lucide-vue-next';
 import { formatCurrency } from '@/shared/utils/finance';
 import { useSaleModal } from '@/modules/sales/composables/flows/useSaleModal';
 import type { UltimaVendaItemData } from '../../schemas/dashboard.schema';
+import { formatHora } from '@/shared/utils/date.utils';
 
 interface Props {
   vendas: UltimaVendaItemData[];
@@ -43,9 +44,8 @@ function getInitial(name: string | null): string {
   return name.charAt(0).toUpperCase();
 }
 
-function formatTime(dateStr: string): string {
-  return new Date(dateStr).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-}
+// `criado_em` é timestamp de evento (UTC no backend) — converte para hora local.
+const formatTime = formatHora;
 </script>
 
 <template>

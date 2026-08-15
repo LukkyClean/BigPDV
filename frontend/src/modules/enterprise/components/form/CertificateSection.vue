@@ -181,7 +181,7 @@ function onSelectWindowsCert(event: Event) {
             type="radio"
             value="ARQUIVO"
             :disabled="disabled"
-            class="radio radio-primary radio-sm"
+            class="radio radio-primary radio-sm accent-brand-primary"
           />
           <span class="text-sm font-medium text-gray-700">Arquivo (A1)</span>
         </label>
@@ -191,7 +191,7 @@ function onSelectWindowsCert(event: Event) {
             type="radio"
             value="WINDOWS"
             :disabled="disabled"
-            class="radio radio-primary radio-sm"
+            class="radio radio-primary radio-sm accent-brand-primary"
           />
           <span class="text-sm font-medium text-gray-700">Instalado no Windows (A1 ou A3)</span>
         </label>

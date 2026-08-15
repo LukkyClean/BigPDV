@@ -1,12 +1,12 @@
 from pydantic import BaseModel, Field, model_validator, ConfigDict
 from app.core.enum import VendaStatus
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional, Sequence
 
 from app.schemas.cliente import ClienteRead, ClienteSimpleRead
 from app.schemas.cargo import CargoBase
 
-from app.core.enum import TipoProdutoVenda
+from app.core.enum import TipoProdutoVenda, JurosResponsavel
 
 # Schemas para criação de venda, produtos e pagamentos relacionados a uma venda
 
@@ -16,6 +16,15 @@ class ProdutoVendaCreate(BaseModel):
     quantidade: int = Field(0, gt=0, description="Quantidade do produto, obrigatório")
     descricao_avulsa: Optional[str] = Field(None, max_length=100, description="Descrição do produto avulso, obrigatório se não for um produto cadastrado")
     valor_unitario: Optional[int] = Field(None, ge=0, description="Valor unitário do produto, obrigatório")
+    custo_unitario: Optional[int] = Field(
+        None,
+        ge=0,
+        description=(
+            "Quanto a loja PAGOU por unidade, em centavos. Só para item AVULSO — o "
+            "cadastrado tem o custo no livro de estoque, e contar os dois dobraria "
+            "o CMV. Campo interno: nunca sai em via impressa."
+        )
+    )
     desconto: int = Field(0, ge=0, description="Desconto do produto, obrigatório")
 
     @model_validator(mode='after')
@@ -37,7 +46,9 @@ class ProdutoVendaCreate(BaseModel):
         if self.descricao_avulsa is not None:
             raise ValueError("O campo 'descricao_avulsa' deve ser nulo quando o tipo de produto é 'CADASTRADO'.")
         if self.valor_unitario is not None:
-            raise ValueError("O campo 'valor_unitario' deve ser nulo quando o tipo de produto é 'CADASTRADO'.")    
+            raise ValueError("O campo 'valor_unitario' deve ser nulo quando o tipo de produto é 'CADASTRADO'.")
+        if self.custo_unitario is not None:
+            raise ValueError("O campo 'custo_unitario' deve ser nulo quando o tipo de produto é 'CADASTRADO': o custo vem do livro de estoque.")
         return self
         
 
@@ -45,7 +56,15 @@ class PagamentoVendaCreate(BaseModel):
     forma_pagamento_id: int = Field(..., description="ID da forma de pagamento, obrigatório")
     parcelado: bool = Field(False, description="Indica se o pagamento é parcelado")
     qtd_parcelas: Optional[int] = Field(1, gt=0, description="Quantidade de parcelas")
-    valor: int = Field(..., ge=0, description="Valor do pagamento, obrigatório")
+    valor: int = Field(..., ge=0, description="Valor pago pelo cliente neste método (centavos), obrigatório")
+    juros_valor: int = Field(0, ge=0, description="Juros calculados neste pagamento (centavos)")
+    juros_responsavel: JurosResponsavel = Field(
+        JurosResponsavel.CLIENTE,
+        description="CLIENTE: juros embutido em `valor`. LOJA: juros absorvido, fora de `valor`.",
+    )
+    bandeira_cartao: Optional[str] = Field(None, max_length=50, description="Bandeira do cartão (VISA, MASTERCARD, etc.)")
+    vencimento: Optional[date] = Field(None, description="Data de vencimento do pagamento (ex: boletos)")
+    detalhes: Optional[dict] = Field(None, description="Dados adicionais do pagamento em formato JSON (ex: banco/NSU)")
 
     @model_validator(mode='after')
     def check_pagamento_fields(self) -> 'PagamentoVendaCreate':
@@ -66,6 +85,7 @@ class ProdutoVendaUpdate(BaseModel):
     quantidade: Optional[int] = Field(None, gt=0, description="Quantidade do produto")
     descricao_avulsa: Optional[str] = Field(None, max_length=100, description="Descrição do produto avulso")
     valor_unitario: Optional[int] = Field(None, ge=0, description="Valor unitário do produto")
+    custo_unitario: Optional[int] = Field(None, ge=0, description="Custo interno por unidade (item avulso). Nunca impresso.")
     desconto: Optional[int] = Field(None, ge=0, description="Desconto do produto")
     codigo_gerente: Optional[str] = Field(None, description="PIN do gerente para aprovar alteração de preço")
 
@@ -98,6 +118,10 @@ class ProdutoVendaRead(BaseModel):
     nome: str = Field(..., description="Nome do produto, preenchido automaticamente com base no tipo do produto e suas referências")
     quantidade: int = Field(0, gt=0, description="Quantidade do produto, obrigatório")
     valor_unitario: int = Field(0, ge=0, description="Valor unitário do produto, obrigatório")
+    custo_unitario: Optional[int] = Field(
+        None,
+        description="Custo interno por unidade (só item avulso). Nunca impresso na via do cliente."
+    )
     desconto: int = Field(0, ge=0, description="Desconto do produto, obrigatório")
     subtotal: int = Field(0, ge=0, description="Subtotal do produto (quantidade * valor_unitario - desconto)")
     total: int = Field(0, ge=0, description="Total do produto (subtotal - desconto)")
@@ -139,6 +163,7 @@ class VendaRead(VendaSimpleRead):
     entrega: int = Field(0, ge=0, description="Valor da entrega")
     subtotal: int = Field(0, ge=0, description="Subtotal da venda")
     descontos: int = Field(0, ge=0, description="Desconto da venda")
+    acrescimo: int = Field(0, ge=0, description="Acréscimo de juros/cartão aplicado no checkout")
     troco: int = Field(0, ge=0, description="Valor do troco a ser devolvido ao cliente")
     observacao: Optional[str] = Field(None, max_length=500, description="Observação da venda")
     observacao_interna: Optional[str] = Field(None, max_length=500, description="Observação interna (não impressa no comprovante)")
@@ -166,6 +191,7 @@ class ProdutosAlterSummary(BaseModel):
 
 class FinalizarVendaPayload(BaseModel):
     pagamentos: list[PagamentoVendaCreate] = Field(..., min_length=1, description="Lista de pagamentos para finalizar a venda")
+    acrescimo: Optional[int] = Field(0, ge=0, description="Acréscimo total de juros/cartão a ser somado ao total da venda (centavos)")
 
 class CancelarVendaPayload(BaseModel):
     motivo: str = Field(..., min_length=10, max_length=500, description="Motivo do cancelamento da venda (mínimo 10 caracteres)")

@@ -90,10 +90,20 @@ class SituacaoEquipamento(str, enum.Enum):
 
 class OrdemServicoItemTipo(str, enum.Enum):
     PRODUTO = "PRODUTO"
-    SERVICO = "SERVICO"  
+    SERVICO = "SERVICO"
+
+class OrdemServicoItemAprovacao(str, enum.Enum):
+    """Status de aprovação de um item da OS (usado no fluxo de orçamento).
+
+    Default APROVADO preserva o comportamento existente (todos os itens contam
+    no total). REPROVADO exclui o item do total; PENDENTE aguarda decisão."""
+    PENDENTE = "PENDENTE"
+    APROVADO = "APROVADO"
+    REPROVADO = "REPROVADO"
 
 class TipoEquipamento(str, enum.Enum):
     COMPUTADOR = "COMPUTADOR"
+    NOTEBOOK = "NOTEBOOK"
     CELULAR = "CELULAR"
     TABLET = "TABLET"
     IMPRESSORA = "IMPRESSORA"
@@ -145,3 +155,31 @@ class MovimentacaoTipo(str, enum.Enum):
     SAIDA = "SAIDA"
     AJUSTE = "AJUSTE"
     EDICAO_DADOS = "EDICAO_DADOS"
+
+class MovimentacaoOrigem(str, enum.Enum):
+    """De onde veio uma movimentação de estoque.
+
+    `movimentacoes_estoque` é o livro-razão ÚNICO do estoque: toda alteração de
+    quantidade passa por lá, venha de onde vier. A origem é o que permite
+    responder "esta peça saiu por venda ou por OS?" sem depender de texto livre.
+
+    LEGADO: linhas anteriores à criação deste campo. A origem real delas não é
+    recuperável — não presuma que eram manuais.
+    """
+    LEGADO = "LEGADO"
+    MANUAL = "MANUAL"
+    CADASTRO = "CADASTRO"
+    VENDA = "VENDA"
+    ORDEM_SERVICO = "ORDEM_SERVICO"
+
+
+class JurosResponsavel(str, enum.Enum):
+    """Define quem arca com os juros de um pagamento parcelado/cartão.
+
+    CLIENTE: juros repassado — o cliente paga a mais e o `valor` do pagamento
+             já inclui o acréscimo (comportamento histórico, é o padrão).
+    LOJA:    juros absorvido — o cliente paga o preço cheio sem acréscimo e a
+             loja recebe menos; `valor` NÃO inclui o juros.
+    """
+    CLIENTE = "CLIENTE"
+    LOJA = "LOJA"

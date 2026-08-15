@@ -1,8 +1,8 @@
 import { ref } from 'vue';
 import type { OrderServiceReadDataType } from '../schemas/orderServiceQuery.schema';
 import type { CustomerUnionReadSchemaDataType } from '../schemas/relationship/customer/customer.schema';
-import type { EquipamentoHistorico } from '@/modules/customers/types/clientes.types';
-import { getClientEquipments } from '@/modules/customers/services/customerGet.service';
+import type { ObjetoHistorico } from '@/modules/customers/types/clientes.types';
+import { getClientObjetos } from '@/modules/customers/services/customerGet.service';
 
 // =============================================
 // Shared State (singleton pattern)
@@ -10,12 +10,15 @@ import { getClientEquipments } from '@/modules/customers/services/customerGet.se
 
 const isClienteSearchOpen = ref(false);
 const isFormModalOpen = ref(false);
-const isEquipSelectOpen = ref(false);
+const isObjetoSelectOpen = ref(false);
 const isCreditAlertOpen = ref(false);
+// Quando a OS é aberta a partir do botão "Reabrir" da tabela, o formulário já
+// abre com o modal de opções de reabertura (fluxo correto fica dentro do form).
+const autoOpenReopen = ref(false);
 const selectedCliente = ref<CustomerUnionReadSchemaDataType | null>(null);
 const selectedOS = ref<OrderServiceReadDataType | null>(null);
-const equipamentosHistoricoFlow = ref<EquipamentoHistorico[]>([]);
-const selectedEquipamento = ref<EquipamentoHistorico | null>(null);
+const objetosHistoricoFlow = ref<ObjetoHistorico[]>([]);
+const selectedObjeto = ref<ObjetoHistorico | null>(null);
 const autoUsarCredito = ref(false);
 
 // =============================================
@@ -27,14 +30,14 @@ async function _continuarFluxoCliente() {
   if (!cliente) return;
 
   try {
-    const history = await getClientEquipments(cliente.id);
+    const history = await getClientObjetos(cliente.id);
     if (history.length > 0) {
-      equipamentosHistoricoFlow.value = history;
-      isEquipSelectOpen.value = true;
+      objetosHistoricoFlow.value = history;
+      isObjetoSelectOpen.value = true;
       return;
     }
   } catch {
-    // histórico de equipamentos é opcional
+    // histórico de objetos é opcional
   }
 
   isFormModalOpen.value = true;
@@ -48,21 +51,22 @@ export function useOSCreateFlow() {
   function openNovaOS() {
     selectedOS.value = null;
     selectedCliente.value = null;
-    selectedEquipamento.value = null;
+    selectedObjeto.value = null;
     autoUsarCredito.value = false;
     isClienteSearchOpen.value = true;
   }
 
-  function openExistingOS(os: OrderServiceReadDataType) {
+  function openExistingOS(os: OrderServiceReadDataType, comReopen = false) {
     selectedOS.value = os;
     selectedCliente.value = null;
-    selectedEquipamento.value = null;
+    selectedObjeto.value = null;
+    autoOpenReopen.value = comReopen;
     isFormModalOpen.value = true;
   }
 
   async function handleClienteSelected(cliente: CustomerUnionReadSchemaDataType) {
     selectedCliente.value = cliente;
-    selectedEquipamento.value = null;
+    selectedObjeto.value = null;
     isClienteSearchOpen.value = false;
 
     const saldo = (cliente as { saldo_credito?: number }).saldo_credito ?? 0;
@@ -86,15 +90,15 @@ export function useOSCreateFlow() {
     await _continuarFluxoCliente();
   }
 
-  function handleEquipamentoSelectedFlow(equip: EquipamentoHistorico) {
-    selectedEquipamento.value = equip;
-    isEquipSelectOpen.value = false;
+  function handleObjetoSelectedFlow(objeto: ObjetoHistorico) {
+    selectedObjeto.value = objeto;
+    isObjetoSelectOpen.value = false;
     isFormModalOpen.value = true;
   }
 
-  function skipEquipamentoSelectFlow() {
-    selectedEquipamento.value = null;
-    isEquipSelectOpen.value = false;
+  function skipObjetoSelectFlow() {
+    selectedObjeto.value = null;
+    isObjetoSelectOpen.value = false;
     isFormModalOpen.value = true;
   }
 
@@ -111,28 +115,30 @@ export function useOSCreateFlow() {
     isFormModalOpen.value = false;
     selectedOS.value = null;
     selectedCliente.value = null;
-    selectedEquipamento.value = null;
-    equipamentosHistoricoFlow.value = [];
+    selectedObjeto.value = null;
+    objetosHistoricoFlow.value = [];
     autoUsarCredito.value = false;
+    autoOpenReopen.value = false;
   }
 
   return {
     isClienteSearchOpen,
     isFormModalOpen,
-    isEquipSelectOpen,
+    isObjetoSelectOpen,
     isCreditAlertOpen,
     selectedCliente,
     selectedOS,
-    equipamentosHistoricoFlow,
-    selectedEquipamento,
+    objetosHistoricoFlow,
+    selectedObjeto,
     autoUsarCredito,
+    autoOpenReopen,
     openNovaOS,
     openExistingOS,
     handleClienteSelected,
     handleCreditoUsado,
     handleCreditoIgnorado,
-    handleEquipamentoSelectedFlow,
-    skipEquipamentoSelectFlow,
+    handleObjetoSelectedFlow,
+    skipObjetoSelectFlow,
     handleChangeCliente,
     closeClienteSearch,
     closeFormModal,

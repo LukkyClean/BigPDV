@@ -2,11 +2,12 @@
 import { Ellipsis, Pencil, CheckCircle, XCircle, RotateCcw, Printer } from 'lucide-vue-next';
 import type { OrderServiceReadDataType } from '../schemas/orderServiceQuery.schema';
 import { OS_STATUS_FILTER_CONFIG } from '../constants/ordemServico.constants';
-import { getStatusLabel, getClienteNome } from '../../shared/utils/formatters';
+import { getEstadoOS, getClienteNome } from '../../shared/utils/formatters';
 import { formatCurrency } from '@/shared/utils/finance';
 import BaseTableContainer from '@/shared/components/commons/BaseTableContainer/BaseTableContainer.vue';
 import BaseSearchInput from '@/shared/components/ui/BaseSearchInput/BaseSearchInput.vue';
 import BaseFilter from '@/shared/components/ui/BaseFilter/BaseFilter.vue';
+import { parseTimestampBackend } from '@/shared/utils/date.utils';
 
 interface Props {
   ordensServico: OrderServiceReadDataType[];
@@ -36,25 +37,13 @@ const emit = defineEmits<{
 const search = defineModel<string>('search', { default: '' });
 const activeFilter = defineModel<string | null>('activeFilter', { default: null });
 
+// `data_criacao` é timestamp de evento (UTC no backend).
 function formatDate(dateValue: string | Date): string {
-  return new Date(dateValue).toLocaleDateString('pt-BR', {
+  return parseTimestampBackend(dateValue).toLocaleDateString('pt-BR', {
     day: '2-digit',
     month: '2-digit',
     year: '2-digit',
   });
-}
-
-function getStatusConfig(status: string) {
-  const configs: Record<string, { bg: string; text: string }> = {
-    ABERTA:               { bg: 'bg-blue-50',    text: 'text-blue-600'    },
-    EM_ANDAMENTO:         { bg: 'bg-amber-50',   text: 'text-amber-700'   },
-    AGUARDANDO_PECAS:     { bg: 'bg-orange-50',  text: 'text-orange-700'  },
-    AGUARDANDO_APROVACAO: { bg: 'bg-purple-50',  text: 'text-purple-700'  },
-    AGUARDANDO_RETIRADA:  { bg: 'bg-indigo-50',  text: 'text-indigo-700'  },
-    FINALIZADA:           { bg: 'bg-emerald-50', text: 'text-emerald-700' },
-    CANCELADA:            { bg: 'bg-red-50',     text: 'text-red-700'     },
-  };
-  return configs[status] || { bg: 'bg-zinc-50', text: 'text-zinc-700' };
 }
 
 function getOSSequence(numero_os: string): string {
@@ -91,7 +80,7 @@ function getOSSequence(numero_os: string): string {
         <thead>
           <tr class="bg-zinc-50/50 text-[10px] uppercase tracking-wider text-zinc-500 font-bold border-b border-zinc-100">
             <th class="px-4 md:px-6 py-3 md:py-4">OS</th>
-            <th class="px-4 md:px-6 py-3 md:py-4">Cliente / Equipamento</th>
+            <th class="px-4 md:px-6 py-3 md:py-4">Cliente / Objeto</th>
             <th class="px-4 md:px-6 py-3 md:py-4">Status</th>
             <th class="px-4 md:px-6 py-3 md:py-4">Data</th>
             <th class="px-4 md:px-6 py-3 md:py-4">Valor</th>
@@ -117,7 +106,7 @@ function getOSSequence(numero_os: string): string {
                 <span class="text-sm font-semibold text-zinc-900 group-hover:text-brand-primary transition-colors">
                   {{ getClienteNome(os.cliente) }}
                 </span>
-                <span class="text-[10px] text-zinc-400 mt-0.5">{{ os.equipamento.tipo_equipamento }}</span>
+                <span class="text-[10px] text-zinc-400 mt-0.5">{{ os.objeto.tipo_equipamento }}</span>
               </div>
             </td>
 
@@ -125,11 +114,10 @@ function getOSSequence(numero_os: string): string {
               <span
                 :class="[
                   'px-2 md:px-3 py-1 rounded-full text-[10px] md:text-[11px] font-bold whitespace-nowrap',
-                  getStatusConfig(os.status).bg,
-                  getStatusConfig(os.status).text,
+                  getEstadoOS(os.status, os.situacao_equipamento).badge,
                 ]"
               >
-                {{ getStatusLabel(os.status) }}
+                {{ getEstadoOS(os.status, os.situacao_equipamento).label }}
               </span>
             </td>
 

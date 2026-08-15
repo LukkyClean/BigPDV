@@ -60,7 +60,7 @@ export function useServicosQuery(params?: QueryParams) {
 
 export function useServicosStatsQuery() {
   const query = useQuery({
-    queryKey: [SERVICOS_STATS_QUERY_KEY],
+    queryKey: SERVICOS_STATS_QUERY_KEY,
     queryFn: getServicosStats,
     staleTime: SERVICOS_STALE_TIME,
     refetchInterval: REFETCH_CADASTROS,

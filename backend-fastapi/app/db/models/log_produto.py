@@ -19,7 +19,18 @@ if TYPE_CHECKING:
 
 
 class LogProduto(Base):
-    """Modelo ORM que representa um log de movimentacao de estoque na tabela 'logs_produto'."""
+    """LEGADO — nao recebe mais escritas. Mantido apenas pelos dados historicos.
+
+    Era o log de estoque exclusivo da venda: o CHECK abaixo exige `venda_id` em
+    toda saida, o que estruturalmente impedia registrar saida de OS ou ajuste
+    manual. O resultado era um historico de estoque partido em dois, e a tela de
+    movimentacoes nunca mostrava venda.
+
+    Desde a migration a4b5c6d7e8f9, `movimentacoes_estoque` e o livro-razao unico:
+    venda, OS, cadastro e ajuste manual gravam todos la, com a coluna `origem`
+    dizendo de onde veio. As linhas antigas daqui foram preservadas de proposito
+    (nada foi migrado nem apagado), mas nenhuma linha nova e criada.
+    """
 
     __tablename__ = "logs_produto"
     __table_args__ = (

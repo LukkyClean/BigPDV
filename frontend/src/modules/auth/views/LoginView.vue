@@ -15,7 +15,7 @@ import BaseFooter from '@/shared/components/layout/BaseFooter.vue';
 import { useLogin } from '../composables/useLogin';
 
 import backgroundImage from '@/shared/assets/images/login/background.png';
-import logoImage from '@/shared/assets/images/login/start-logo.png';
+import AppLogo from '@/shared/components/AppLogo.vue';
 
 const {
   loginData,
@@ -53,7 +53,7 @@ onMounted(() => {
       <div class="w-full max-w-xs flex flex-col items-center flex-1">
         <!-- Logo -->
         <div class="flex justify-center mb-8">
-          <img :src="logoImage" alt="Start Big Logo" class="h-20 w-auto" />
+          <AppLogo class="h-20 w-auto" />
         </div>
 
         <!-- Título -->

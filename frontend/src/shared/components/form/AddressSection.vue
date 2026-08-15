@@ -33,7 +33,10 @@ interface Props {
 const props = defineProps<Props>();
 
 function fieldError(index: number, field: string): string | undefined {
-  return props.errors?.[`enderecos.${index}.${field}`];
+  // A chave do vee-validate para arrays usa COLCHETE ("enderecos[0].cep"),
+  // não ponto — ver normalizeFormPath. Com ponto o lookup dava sempre
+  // undefined e o erro nunca aparecia.
+  return props.errors?.[`enderecos[${index}].${field}`];
 }
 
 // =============================================

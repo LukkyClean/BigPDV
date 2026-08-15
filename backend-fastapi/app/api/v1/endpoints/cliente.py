@@ -143,11 +143,18 @@ def get_cliente_simple_by_search(
     
 
 @router.get(
+    "/{cliente_id}/objetos",
+    response_model=list[EquipamentoHistoricoRead],
+    status_code=status.HTTP_200_OK,
+    summary="Histórico de Objetos de Serviço do Cliente",
+    description="Retorna objetos únicos (ativos) do cliente, ordenados do mais recente ao mais antigo."
+)
+@router.get(
     "/{cliente_id}/equipamentos",
     response_model=list[EquipamentoHistoricoRead],
     status_code=status.HTTP_200_OK,
-    summary="Histórico de Equipamentos do Cliente",
-    description="Retorna equipamentos únicos (ativos) do cliente, ordenados do mais recente ao mais antigo."
+    summary="Histórico de Equipamentos do Cliente (Legado)",
+    description="Retorna equipamentos únicos (ativos) do cliente, ordenados do mais recente ao mais antigo (compatibilidade)."
 )
 def get_equipamentos_by_cliente(
     user_token: dict = Depends(check_permission(required_permission="cliente")),
@@ -164,6 +171,22 @@ def get_equipamentos_by_cliente(
 # ===========================================================================
 # ROTAS DE ATUALIZAÇÃO (PUT)
 # ===========================================================================
+
+
+@router.get(
+    "/{cliente_id}",
+    response_model=ClienteRead,
+    status_code=status.HTTP_200_OK,
+    summary="Buscar cliente por ID",
+    description="Retorna o cadastro completo (PF ou PJ) do cliente pelo ID."
+)
+def get_cliente_by_id(
+    user_token: dict = Depends(check_permission(required_permission="cliente")),
+    cliente_id: int = Path(..., description="ID do cliente", ge=1),
+    *,
+    db: Session = Depends(get_db)
+):
+    return _handle_db_transaction(db, cliente_service.get_cliente_by_id, cliente_id)
 
 
 @router.put(

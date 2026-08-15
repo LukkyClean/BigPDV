@@ -1,8 +1,10 @@
 import { computed } from 'vue';
 import { useAuthStore } from '@/shared/stores/auth.store';
-import { formatCNPJ } from '@/shared/utils/document.utils';
+import { formatCNPJ, formatCPF } from '@/shared/utils/document.utils';
 import { getBackendBaseUrl } from '@/api/backendUrl';
-import type { CompanyPrintInfo } from '@/shared/components/print/print.types';
+import { montarPixBrCode } from '@/shared/utils/pixBrCode';
+import type { CompanyPrintInfo, PrintFormat } from '@/shared/components/print/print.types';
+import { parseTimestampBackend } from './date.utils';
 
 // --- Cliente helpers (union type PF/PJ) ---
 
@@ -20,6 +22,52 @@ export function getClienteDoc(cliente?: { cpf?: string; cnpj?: string } | null):
 export function getClientePhone(cliente?: { celular?: string | null; telefone?: string | null } | null): string {
   if (!cliente) return '';
   return (cliente as { celular?: string | null }).celular || (cliente as { telefone?: string | null }).telefone || '';
+}
+
+interface EnderecoCliente {
+  logradouro?: string | null;
+  numero?: string | null;
+  bairro?: string | null;
+  cidade?: string | null;
+  estado?: string | null;
+  cep?: string | null;
+  complemento?: string | null;
+}
+
+/** "00000000" -> "00000-000"; deixa como está se não tiver 8 dígitos. */
+function formatCep(cep?: string | null): string {
+  const so = (cep ?? '').replace(/\D/g, '');
+  return so.length === 8 ? `${so.slice(0, 5)}-${so.slice(5)}` : (cep ?? '');
+}
+
+/**
+ * Endereço do cliente em uma linha, para os recibos:
+ * "Rua X, 123 (Fundos) - Bairro, Cidade - UF, CEP 00000-000".
+ * Retorna '' se o cliente não tiver endereço cadastrado.
+ */
+export function getClienteEndereco(cliente?: { endereco?: EnderecoCliente | null } | null): string {
+  const e = cliente?.endereco;
+  if (!e || !e.logradouro) return '';
+
+  const rua = [e.logradouro, e.numero].filter(Boolean).join(', ');
+  const compl = e.complemento ? ` (${e.complemento})` : '';
+  const cidadeUf = e.cidade && e.estado ? `${e.cidade} - ${e.estado}` : e.cidade || e.estado || '';
+  const local = [e.bairro, cidadeUf].filter(Boolean).join(', ');
+  const cep = e.cep ? `, CEP ${formatCep(e.cep)}` : '';
+
+  return [rua + compl, local].filter(Boolean).join(' - ') + cep;
+}
+
+/**
+ * True quando o "tipo" do objeto acrescenta informação além do rótulo do
+ * segmento. Em oficina o tipo é deduzido como o próprio rótulo ("Veículo"),
+ * então repeti-lo no recibo é redundante → false. Em informática o tipo é
+ * específico ("COMPUTADOR" vs rótulo "Equipamento") → true, vale mostrar.
+ */
+export function tipoObjetoRelevante(tipo?: string | null, rotuloSegmento?: string | null): boolean {
+  const t = (tipo ?? '').trim();
+  if (!t) return false;
+  return t.toLowerCase() !== (rotuloSegmento ?? '').trim().toLowerCase();
 }
 
 // --- Payment helpers ---
@@ -64,11 +112,56 @@ export function inferPermiteParcelamento(tipo: string): boolean {
   return tipo === 'CARTAO_CREDITO';
 }
 
+// --- PIX no comprovante ---
+
+/** O que o comprovante precisa saber de um pagamento para decidir sobre o PIX. */
+export interface PagamentoImpresso {
+  /** Nome da forma já resolvido — na venda vem de um resolver, na OS vem embutido. */
+  nome: string;
+  /** Valor em centavos. */
+  valor: number;
+}
+
+/**
+ * Decide se o comprovante leva QR do PIX, e por qual valor.
+ *
+ * O valor é a soma **só dos pagamentos em PIX**, não o total do documento: numa
+ * venda paga metade em dinheiro e metade em PIX, o QR cobra a metade certa.
+ *
+ * Devolve `null` quando não há o que imprimir — sem chave, com o PIX desligado,
+ * ou sem nenhum pagamento em PIX no documento.
+ */
+export function pixParaImpressao(params: {
+  empresa: CompanyPrintInfo;
+  pagamentos?: PagamentoImpresso[] | null;
+  /** Identificador da cobrança (número da OS, por exemplo). */
+  txid?: string;
+}): { payload: string; valorCentavos: number } | null {
+  const { empresa } = params;
+  if (!empresa.pixAtivo || !empresa.chavePix) return null;
+
+  const valorCentavos = (params.pagamentos ?? [])
+    .filter((p) => inferPaymentType(p.nome) === 'PIX')
+    .reduce((soma, p) => soma + p.valor, 0);
+  if (valorCentavos <= 0) return null;
+
+  const payload = montarPixBrCode({
+    chave: empresa.chavePix,
+    valorCentavos,
+    nome: empresa.nome,
+    cidade: empresa.cidade,
+    txid: params.txid,
+  });
+
+  return payload ? { payload, valorCentavos } : null;
+}
+
 // --- Formatters ---
 
+/** Timestamp de evento do backend (UTC) → data e hora locais na via impressa. */
 export function formatPrintDate(dateStr?: string | Date | null): string {
   if (!dateStr) return '__/__/____';
-  return new Date(dateStr).toLocaleDateString('pt-BR', {
+  return parseTimestampBackend(dateStr).toLocaleDateString('pt-BR', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
@@ -107,6 +200,35 @@ export function getImageUrl(path: string | null | undefined): string | null {
   return `${getBackendBaseUrl()}/static/${cleanPath}`;
 }
 
+// --- Impressão: tamanho de página ---
+
+/**
+ * Dispara window.print() forçando o tamanho de página do formato atual.
+ *
+ * print-a4.css e print-cupom.css são globais e ambos declaram `@page { size }`
+ * (A4 vs 80mm). Como os dois convivem na cascata, o `size: A4` vencia e o cupom
+ * saía impresso numa folha A4. Aqui injetamos a regra do formato atual por
+ * último no <head> — última fonte da mesma origem vence a cascata — e a
+ * removemos assim que a impressão termina.
+ */
+export function imprimirComPagina(format: PrintFormat): void {
+  const size = format === 'CUPOM' ? '80mm auto' : 'A4';
+  const style = document.createElement('style');
+  style.setAttribute('data-print-page', '');
+  style.textContent = `@media print{@page{size:${size};margin:0}}`;
+  document.head.appendChild(style);
+
+  const limpar = () => {
+    style.remove();
+    window.removeEventListener('afterprint', limpar);
+  };
+  window.addEventListener('afterprint', limpar);
+  window.print();
+  // Fallback: em alguns motores o evento afterprint não dispara de forma
+  // confiável — garante que a regra injetada não fique presa no <head>.
+  setTimeout(limpar, 1500);
+}
+
 // --- Company info composable ---
 
 export function useCompanyPrintInfo() {
@@ -135,16 +257,35 @@ export function useCompanyPrintInfo() {
       ? `${endereco.cidade} - ${endereco.estado}`
       : '';
 
+    const docRaw = empresa?.documento || '';
+    const digits = docRaw.replace(/\D/g, '');
+    let formattedDoc = '';
+    let labelDoc = 'CNPJ';
+    if (digits.length === 11) {
+      formattedDoc = formatCPF(digits);
+      labelDoc = 'CPF';
+    } else if (digits.length === 14) {
+      formattedDoc = formatCNPJ(digits);
+      labelDoc = 'CNPJ';
+    } else if (docRaw) {
+      formattedDoc = docRaw;
+    }
+
     return {
       nome: empresa?.nome_fantasia || empresa?.razao_social || 'Empresa',
       razaoSocial: empresa?.razao_social || '',
-      cnpj: formatCNPJ(empresa?.documento || ''),
+      cnpj: formattedDoc,
+      documento: formattedDoc,
+      labelDocumento: labelDoc,
       endereco: enderecoParts.join(', ') || 'Endereço não cadastrado',
       enderecoLinha1: shortParts.join(', ') || 'Endereço não informado',
       enderecoLinha2: cityState,
-      contato: empresa?.telefone || empresa?.celular || '',
+      contato: formatPrintPhone(empresa?.telefone || empresa?.celular || ''),
       email: empresa?.email || '',
       logo: getImageUrl(empresa?.url_logo),
+      cidade: endereco?.cidade || '',
+      chavePix: empresa?.chave_pix ?? null,
+      pixAtivo: Boolean(empresa?.pix_ativo),
     };
   });
 

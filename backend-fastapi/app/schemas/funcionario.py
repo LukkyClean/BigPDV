@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, List
 from app.schemas.endereco import Endereco, EnderecoRead, EnderecoUpdate
 from app.schemas.usuario import UsuarioCreate, UsuarioRead
+from app.schemas.cargo import ComissaoModo
 from app.core.enum import Gender, BankAccountType
 
 # ===========================================================================
@@ -48,6 +49,13 @@ class FuncionarioBase(BaseModel):
     salario_bruto: Optional[int] = Field(None, description="Salário bruto mensal.")
     tipo_contrato: Optional[str] = Field(None, description="Tipo de contrato do funcionário.")
     data_admissao: Optional[date] = Field(None, description="Data de admissão no cargo.")
+
+    # Comissão (override do padrão do Cargo). Vazio = herda do cargo (cascata).
+    # Percentuais em BASIS POINTS (500 = 5,00%); meta em centavos.
+    comissao_venda_percentual: Optional[int] = Field(None, ge=0, le=10000, description="Override: comissão sobre vendas (basis points). Vazio herda do cargo.")
+    comissao_servico_percentual: Optional[int] = Field(None, ge=0, le=10000, description="Override: comissão sobre serviços/OS (basis points). Vazio herda do cargo.")
+    meta_mensal: Optional[int] = Field(None, ge=0, description="Override: meta mensal (centavos). Vazio herda do cargo.")
+    comissao_modo: Optional[ComissaoModo] = Field(None, description="Override: 'direto' | 'meta'. Vazio herda do cargo.")
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -153,7 +161,13 @@ class FuncionarioUpdate(BaseModel):
     tipo_contrato: Optional[str] = Field(None)
     data_admissao: Optional[date] = Field(None)
     cargo_id: Optional[int] = Field(None)
-    
+
+    # Comissão (override do cargo). Vazio = herda.
+    comissao_venda_percentual: Optional[int] = Field(None, ge=0, le=10000)
+    comissao_servico_percentual: Optional[int] = Field(None, ge=0, le=10000)
+    meta_mensal: Optional[int] = Field(None, ge=0)
+    comissao_modo: Optional[ComissaoModo] = Field(None)
+
     # Status
     ativo: Optional[bool] = Field(None)
 

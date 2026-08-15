@@ -16,6 +16,7 @@ export const OsItemTypeEnum = z.enum(['PRODUTO', 'SERVICO']);
 
 export const OsEquipTypeEnum = z.enum([
   'COMPUTADOR',
+  'NOTEBOOK',
   'CELULAR',
   'TABLET',
   'IMPRESSORA',
@@ -54,6 +55,34 @@ export const OsEquipSituacaoEnum = z.enum([
   'CONDENADO',
 ])
 
+// --- Segmento oficina: check-in do veículo ---
+export const OsCombustivelNivelEnum = z.enum([
+  'VAZIO',
+  '1/4',
+  '1/2',
+  '3/4',
+  'CHEIO',
+])
+
+export const OsCombustivelTipoEnum = z.enum([
+  'ALCOOL',
+  'GASOLINA',
+  'DIESEL',
+])
+
+export const OsEstadoConservacaoEnum = z.enum([
+  'BOM',
+  'REGULAR',
+  'RUIM',
+])
+
+// --- Aprovação por item (fluxo de orçamento) ---
+export const OsItemAprovacaoEnum = z.enum([
+  'PENDENTE',
+  'APROVADO',
+  'REPROVADO',
+])
+
 export type OsStatusEnumDataType = z.infer<typeof OsStatusEnum>
 export type OsPriorityEnumDataType = z.infer<typeof OsPriorityEnum>
 export type OsItemTypeEnumDataType = z.infer<typeof OsItemTypeEnum>
@@ -61,3 +90,7 @@ export type OsEquipTypeEnumDataType = z.infer<typeof OsEquipTypeEnum>
 export type OsItemMeasureEnumDataType = z.infer<typeof OsItemMeasureEnum>
 export type OsCardsFlagEnumDataType = z.infer<typeof OsCardsFlagEnum>
 export type OsEquipSituacaoEnumDataType = z.infer<typeof OsEquipSituacaoEnum>
+export type OsCombustivelNivelEnumDataType = z.infer<typeof OsCombustivelNivelEnum>
+export type OsCombustivelTipoEnumDataType = z.infer<typeof OsCombustivelTipoEnum>
+export type OsEstadoConservacaoEnumDataType = z.infer<typeof OsEstadoConservacaoEnum>
+export type OsItemAprovacaoEnumDataType = z.infer<typeof OsItemAprovacaoEnum>

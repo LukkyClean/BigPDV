@@ -16,6 +16,7 @@ import { OrderServiceCreateSchemaDataType } from '../../schemas/orderServiceMuta
 import { OrderServiceReadDataType } from '../../schemas/orderServiceQuery.schema';
 
 import { OsItemCreateRequest } from '../../types/requests.type';
+import { REVISOES_PENDENTES_QUERY_KEY } from '../../../shared/constants/queryKeys';
 
 export function useCreateOrderServiceMutation() {
   const toast = useToast();
@@ -31,6 +32,10 @@ export function useCreateOrderServiceMutation() {
       toast.success(`${data.numero_os} cadastrada com sucesso!`);
       queryClient.invalidateQueries({ queryKey: [ORDER_SERVICE_QUERY_KEY] });
       queryClient.invalidateQueries({ queryKey: [ORDER_SERVICE_STATS_QUERY_KEY] });
+      // A OS carrega o KM de entrada do veículo, e é ele que decide se uma
+      // revisão por KM venceu. Sem invalidar aqui, o veículo só aparecia na aba
+      // e no sino depois de recarregar a página.
+      queryClient.invalidateQueries({ queryKey: REVISOES_PENDENTES_QUERY_KEY });
     },
     onError: (error) => {
       toast.error(getErrorMessage(error, 'Erro ao cadastrar ordem de serviço') as string);

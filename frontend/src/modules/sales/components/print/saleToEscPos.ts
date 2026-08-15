@@ -10,27 +10,45 @@ import {
   getClienteNome,
   getClienteDoc,
   getClientePhone,
+  getClienteEndereco,
   formatPrintDate,
   formatPrintDoc,
+  pixParaImpressao,
 } from '@/shared/utils/print.utils'
-import type { Bobina } from '@/shared/services/escpos'
+import type { Bobina, RasterImage } from '@/shared/services/escpos'
 import type { CompanyPrintInfo } from '@/shared/components/print/print.types'
 import type { SaleRead } from '../../schemas/sale.schema'
+import type { OrcamentoRead } from '../../schemas/orcamento.schema'
 
 export interface SaleEscPosOptions {
   bobina: Bobina
   empresa: CompanyPrintInfo
   resolverPagamento?: (id: number) => string
   abrirGaveta?: boolean
+  /** 'ORCAMENTO' omite cliente, pagamentos e troco — igual ao SalePrintCupom.vue. */
+  tipo?: SalePrintKind
+  /** Logo já convertido em bitmap 1-bit; omitido = cupom sem logo. */
+  logoRaster?: RasterImage | null
 }
 
-export function saleToEscPos(sale: SaleRead, opts: SaleEscPosOptions): Uint8Array {
+export type SalePrintKind = 'VENDA' | 'ORCAMENTO'
+
+export function saleToEscPos(
+  sale: SaleRead | OrcamentoRead,
+  opts: SaleEscPosOptions,
+): Uint8Array {
   const b = new EscPosBuilder(opts.bobina)
   const { empresa } = opts
 
+  // O orçamento ainda não é uma venda: não tem cliente, pagamento nem troco.
+  // Espelha o `isVenda` do SalePrintCupom.vue para as duas vias baterem.
+  const isVenda = (opts.tipo ?? 'VENDA') === 'VENDA'
+  const venda = isVenda ? (sale as SaleRead) : null
+
   // Cabeçalho da empresa
   b.alinhar('centro')
-    .tamanhoDuplo(true)
+  if (opts.logoRaster) b.raster(opts.logoRaster).pular()
+  b.tamanhoDuplo(true)
     .linha(empresa.nome.toUpperCase())
     .tamanhoDuplo(false)
   if (empresa.cnpj) b.linha(empresa.cnpj)
@@ -40,27 +58,32 @@ export function saleToEscPos(sale: SaleRead, opts: SaleEscPosOptions): Uint8Arra
 
   b.separador()
     .negrito(true)
-    .linha('COMPROVANTE DE VENDA')
+    .linha(isVenda ? 'COMPROVANTE DE VENDA' : 'ORCAMENTO')
     .negrito(false)
     .separador()
 
   // Identificação
-  const numero = String(sale.numero_venda ?? sale.id ?? 0).padStart(6, '0')
+  const prefixo = isVenda ? 'VENDA' : 'ORC'
+  const numero = String((isVenda ? venda?.numero_venda ?? venda?.id : sale.id) ?? 0).padStart(6, '0')
   b.alinhar('esq')
     .negrito(true)
-    .linha(`VENDA: ${numero}`)
+    .linha(`${prefixo}: ${numero}`)
     .negrito(false)
     .linha(`Data: ${formatPrintDate(sale.criado_em)}`)
     .separador()
 
-  // Cliente
-  b.negrito(true).linha('CLIENTE').negrito(false)
-  b.linha(getClienteNome(sale.cliente as any))
-  const doc = getClienteDoc(sale.cliente as any)
-  if (doc) b.linha(`Doc: ${formatPrintDoc(doc)}`)
-  const tel = getClientePhone(sale.cliente as any)
-  if (tel) b.linha(`Tel: ${tel}`)
-  b.separador()
+  // Cliente (só na venda — orçamento ainda não tem cliente)
+  if (venda) {
+    b.negrito(true).linha('CLIENTE').negrito(false)
+    b.linha(getClienteNome(venda.cliente as any))
+    const doc = getClienteDoc(venda.cliente as any)
+    if (doc) b.linha(`Doc: ${formatPrintDoc(doc)}`)
+    const tel = getClientePhone(venda.cliente as any)
+    if (tel) b.linha(`Tel: ${tel}`)
+    const endCli = getClienteEndereco(venda.cliente as any)
+    if (endCli) b.linha(endCli)
+    b.separador()
+  }
 
   // Itens
   if (sale.produtos?.length) {
@@ -73,10 +96,10 @@ export function saleToEscPos(sale: SaleRead, opts: SaleEscPosOptions): Uint8Arra
     b.separador()
   }
 
-  // Pagamentos
-  if (sale.pagamentos?.length) {
+  // Pagamentos (só na venda)
+  if (venda?.pagamentos?.length) {
     b.negrito(true).linha('PAGAMENTOS').negrito(false)
-    for (const pgto of sale.pagamentos) {
+    for (const pgto of venda.pagamentos) {
       const nome = opts.resolverPagamento?.(pgto.forma_pagamento_id) ?? 'Pagamento'
       const parcelas = pgto.parcelado && pgto.qtd_parcelas ? ` (${pgto.qtd_parcelas}x)` : ''
       b.parLados(`${nome}${parcelas}`, formatCurrency(pgto.valor))
@@ -84,25 +107,62 @@ export function saleToEscPos(sale: SaleRead, opts: SaleEscPosOptions): Uint8Arra
     b.separador()
   }
 
-  // Totais
-  const totalPago = sale.pagamentos?.reduce((acc, pg) => acc + pg.valor, 0) ?? 0
+  // Totais — Total Pago e Troco só na venda (orçamento não tem pagamento)
   b.parLados('Subtotal:', formatCurrency(sale.subtotal))
   if (sale.descontos > 0) b.parLados('Desconto:', `-${formatCurrency(sale.descontos)}`)
   if (sale.entrega > 0) b.parLados('Entrega:', `+${formatCurrency(sale.entrega)}`)
   b.negrito(true).parLados('TOTAL:', formatCurrency(sale.total)).negrito(false)
-  b.parLados('Total Pago:', formatCurrency(totalPago))
-  if (sale.troco > 0) b.parLados('Troco:', formatCurrency(sale.troco))
+  if (venda) {
+    const totalPago = venda.pagamentos?.reduce((acc, pg) => acc + pg.valor, 0) ?? 0
+    b.parLados('Total Pago:', formatCurrency(totalPago))
+    if (venda.troco > 0) b.parLados('Troco:', formatCurrency(venda.troco))
+  }
+
+  // PIX: QR pago pelo papel. Vai depois dos totais, onde o cliente procura o
+  // que fazer em seguida — e com o valor só da parte paga em PIX.
+  const pix = pixParaImpressao({
+    empresa,
+    pagamentos: venda?.pagamentos?.map((p) => ({
+      nome: opts.resolverPagamento?.(p.forma_pagamento_id) ?? '',
+      valor: p.valor,
+    })),
+  })
+  if (pix) {
+    b.separador()
+      .alinhar('centro')
+      .negrito(true)
+      .linha('PAGUE COM PIX')
+      .negrito(false)
+      .linha(`Valor: ${formatCurrency(pix.valorCentavos)}`)
+      .pular()
+      .qrCode(pix.payload)
+      .pular()
+      .linha('Aponte a camera do celular')
+      .alinhar('esq')
+  }
 
   // Observações
   if (sale.observacao) {
     b.separador().negrito(true).linha('OBSERVACOES').negrito(false).linha(sale.observacao)
   }
 
-  // Assinaturas
-  b.pular(3)
+  // Assinaturas — as duas, como na via em papel (lá são blocos empilhados, não
+  // colunas, então cabem na bobina). Antes só existia a do cliente, e sem o
+  // nome embaixo da linha: mesma venda, dois comprovantes diferentes.
+  const linhaAssinatura = '_'.repeat(Math.min(28, b.colunas - 4))
+  b.pular(2)
     .alinhar('centro')
-    .linha('_'.repeat(Math.min(28, b.colunas - 4)))
-    .linha('Assinatura do Cliente')
+    .linha(linhaAssinatura)
+    .negrito(true)
+    .linha('Vendedor')
+    .negrito(false)
+    .pular(2)
+    .linha(linhaAssinatura)
+    .negrito(true)
+    // No orçamento é só "Assinatura" e sem nome: ainda não há cliente definido.
+    .linha(isVenda ? 'Assinatura do Cliente' : 'Assinatura')
+    .negrito(false)
+  if (venda?.cliente) b.linha(getClienteNome(venda.cliente))
 
   // Rodapé
   b.separador()

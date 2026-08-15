@@ -1,5 +1,6 @@
 import { SaleSearch } from "./schemas/sale.schema"
 import { OrcamentoSearch } from "./schemas/orcamento.schema"
+import { PRODUTOS_KEY, CLIENTES_KEY } from "@/shared/constants/entityKeys"
 
 export const saleKeys = {
     all: ['sales'] as const,
@@ -19,12 +20,18 @@ export const orcamentoKeys = {
     status: () => [...orcamentoKeys.all, 'status'] as const
 }
 
+// Pende do prefixo canônico 'produtos' (era 'products', ilha isolada): cadastro de
+// produto e movimentação de estoque invalidam esse prefixo, então produto novo
+// entra na busca da venda sem F5. O queryFn e o formato do dado seguem os de
+// vendas — só a chave passou a ser vizinha das outras.
 export const productKeys = {
-    all: ['products'] as const,
-    search: (term: string) => [...productKeys.all, 'search', term] as const,
+    all: [PRODUTOS_KEY] as const,
+    search: (term: string) => [...productKeys.all, 'venda-busca', term] as const,
 }
 
+// Mesmo racional de productKeys: pende do prefixo canônico, então cliente
+// cadastrado em qualquer módulo entra nesta busca sem F5.
 export const customerKeys = {
-    all: ['customers'] as const,
-    search: (term: string) => [...customerKeys.all, 'search', term] as const,
+    all: [CLIENTES_KEY] as const,
+    search: (term: string) => [...customerKeys.all, 'venda-busca', term] as const,
 }

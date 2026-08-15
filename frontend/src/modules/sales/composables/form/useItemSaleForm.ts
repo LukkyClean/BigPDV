@@ -21,6 +21,7 @@ export function useItemSaleForm(
   onSuccess?: () => void,
   isOrcamento = false,
   requerPinAlterarPreco: MaybeRef<boolean> | ComputedRef<boolean> = false,
+  descricaoInicial: MaybeRef<string> = '',
 ) {
   const addItemSaleMutation = useAddItemSaleMutation();
   const updateItemSaleMutation = useUpdateItemSaleMutation();
@@ -37,6 +38,7 @@ export function useItemSaleForm(
         valor_unitario: 0,
         quantidade: 1,
         desconto: 0,
+        custo: 0,
       },
     });
 
@@ -44,6 +46,7 @@ export function useItemSaleForm(
   const [valorUnitario] = defineField('valor_unitario');
   const [quantidade] = defineField('quantidade');
   const [desconto] = defineField('desconto');
+  const [custo] = defineField('custo');
 
   watch(
     selectedItem,
@@ -51,10 +54,13 @@ export function useItemSaleForm(
       if (!item) {
         resetForm({
           values: {
-            descricao: '',
+            // Abre com o que o usuário já tinha digitado na busca — ele
+            // procurou, não achou, e não deve redigitar.
+            descricao: unref(descricaoInicial) ?? '',
             valor_unitario: 0,
             quantidade: 1,
             desconto: 0,
+            custo: 0,
           },
         });
 
@@ -67,6 +73,7 @@ export function useItemSaleForm(
           valor_unitario: item.valor_unitario ? item.valor_unitario / 100 : 0,
           quantidade: item.quantidade ?? 1,
           desconto: item.desconto ? item.desconto / 100 : 0,
+          custo: item.custo_unitario ? item.custo_unitario / 100 : 0,
         },
       });
     },
@@ -122,6 +129,9 @@ export function useItemSaleForm(
       if (selectedItem.value.tipo_produto === 'AVULSO') {
         payload.descricao_avulsa = formValues.descricao;
         payload.valor_unitario = formValues.valor_unitario * 100;
+        // Custo interno só existe no avulso; no cadastrado quem manda é o livro
+        // de estoque, e o backend recusa se vier.
+        payload.custo_unitario = Math.round(formValues.custo * 100);
       } else if (selectedItem.value.tipo_produto === 'CADASTRADO' && unref(requerPinAlterarPreco)) {
         const novoPreco = Math.round(formValues.valor_unitario * 100);
         if (novoPreco !== selectedItem.value.valor_unitario) {
@@ -163,6 +173,7 @@ export function useItemSaleForm(
       valor_unitario: formValues.valor_unitario * 100,
       quantidade: formValues.quantidade,
       desconto: formValues.desconto * 100,
+      ...(formValues.custo > 0 && { custo_unitario: Math.round(formValues.custo * 100) }),
     };
 
     if (isOrcamento) {
@@ -209,6 +220,7 @@ export function useItemSaleForm(
     valorUnitario,
     quantidade,
     desconto,
+    custo,
     subtotal,
     total,
     submit,

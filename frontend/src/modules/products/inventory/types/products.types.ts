@@ -27,6 +27,14 @@ export interface EstoqueCreate {
 
 export interface EstoqueRead extends EstoqueCreate {
   id: number;
+  /**
+   * Custo médio ponderado calculado pelo livro de estoque. Somente leitura —
+   * não confundir com `valor_entrada`, que é o último preço de compra digitado
+   * no cadastro. É o custo médio que congela o CMV nas saídas; editar o preço
+   * de referência não pode reescrever o lucro já apurado.
+   * `null` enquanto o produto nunca teve uma compra com valor pago informado.
+   */
+  custo_medio?: number | null;
 }
 
 export interface EstoqueUpdate {
@@ -104,13 +112,22 @@ export interface MovimentacaoRead {
   quantidade: number;
   quantidade_anterior: number;
   quantidade_posterior: number;
+  /** Custo unitário congelado nesta linha (centavos). `null` nas linhas antigas. */
+  custo_unitario: number | null;
   observacao: string | null;
   created_at: string;
 }
 
 export interface MovimentacaoCreate {
   tipo: MovimentacaoTipo;
+  /** ENTRADA/SAIDA: unidades movimentadas. AJUSTE: a quantidade FINAL contada. */
   quantidade: number;
+  /**
+   * Valor pago por unidade nesta compra, em centavos. Só faz sentido em ENTRADA:
+   * é ele que recalcula a média ponderada. Omitir mantém a média intacta — é o
+   * caso da devolução, que não é compra.
+   */
+  custo_unitario?: number;
   observacao?: string;
 }
 

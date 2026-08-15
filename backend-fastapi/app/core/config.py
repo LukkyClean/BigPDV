@@ -12,6 +12,12 @@ from pydantic import ConfigDict
 APP_NAME = "StartBigERP"
 DB_NAME = "start_big.db"
 
+# Diretório raiz do backend (backend-fastapi), calculado a partir deste arquivo:
+# config.py -> core -> app -> backend-fastapi
+# NAO REMOVER: app/main.py importa BACKEND_DIR daqui — sem ele o backend nem sobe
+# (ImportError no import de app.main, antes de qualquer rota existir).
+BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 # .db path — BIGPDV_DATA_DIR fixa o caminho quando o processo roda como SYSTEM
 _override = os.getenv("BIGPDV_DATA_DIR")
 if _override:

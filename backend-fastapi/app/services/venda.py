@@ -28,7 +28,7 @@ def _recalc_total_sale(db: Session, sale_in_db: Venda) -> Venda:
     if sale_in_db.total_bruto < sale_in_db.descontos:
         raise BadRequestException(detail="O desconto não pode ser maior que o total da venda")
 
-    total_sale = sale_in_db.total_bruto - sale_in_db.descontos
+    total_sale = sale_in_db.total_bruto - sale_in_db.descontos + (sale_in_db.acrescimo or 0)
 
     sale_in_db.subtotal = sale_in_db.total_bruto
     sale_in_db.total = total_sale
@@ -57,7 +57,11 @@ def _payments_valid(db: Session, payments: Sequence[PagamentoVendaCreate]) -> Se
             raise BadRequestException(detail="Pagamentos parcelados devem ter no mínimo 1 parcela")
         if not payment.parcelado and payment.qtd_parcelas is not None:
             raise BadRequestException(detail="Pagamentos a vista não deve ter parcelas")
-        sale_payments.append(PagamentoVenda(**payment.model_dump()))
+        dados = payment.model_dump()
+        # O enum é str-subclass, mas gravamos o `.value` explicitamente para que a
+        # coluna String nunca dependa da representação do Enum.
+        dados["juros_responsavel"] = payment.juros_responsavel.value
+        sale_payments.append(PagamentoVenda(**dados))
     return sale_payments
 
 def create_sale(db: Session, sale: VendaCreate) -> VendaRead:
@@ -215,6 +219,15 @@ def update_item_in_sale(db: Session, sale_id: int, item_id: int, item_update: Pr
     item_in_db.descricao_avulsa = item_update.descricao_avulsa or item_in_db.descricao_avulsa
     item_in_db.quantidade = quantidade
     item_in_db.valor_unitario = preco_unitario
+    # Custo interno só existe no avulso. No cadastrado o custo vem do livro de
+    # estoque, e aceitar um valor aqui criaria dois números divergentes para a
+    # mesma peça — com o relatório somando os dois.
+    if item_update.custo_unitario is not None:
+        if item_in_db.tipo_produto == TipoProdutoVenda.CADASTRADO:
+            raise BadRequestException(
+                detail="Produto cadastrado tem o custo vindo do estoque; não informe custo manual"
+            )
+        item_in_db.custo_unitario = item_update.custo_unitario
     item_in_db.desconto = desconto
     item_in_db.subtotal = subtotal
 
@@ -245,7 +258,7 @@ def delete_draft_sale(db: Session, sale_id: int) -> None:
     db.commit()
 
 
-def finish_sale(db: Session, sale_id: int, payments: Sequence[PagamentoVendaCreate]):
+def finish_sale(db: Session, sale_id: int, payments: Sequence[PagamentoVendaCreate], acrescimo: int = 0):
     sale_in_db = get_sale_by_id(db, sale_id=sale_id)
 
     if sale_in_db.status != VendaStatus.ATIVA:
@@ -265,6 +278,12 @@ def finish_sale(db: Session, sale_id: int, payments: Sequence[PagamentoVendaCrea
                 raise BadRequestException(detail="Parcelamento não é permitido nas configurações de vendas")
             if p.parcelado and p.qtd_parcelas and p.qtd_parcelas > config_vendas.parcelas_maximas:
                 raise BadRequestException(detail=f"Máximo de {config_vendas.parcelas_maximas} parcelas permitido")
+
+    # Aplica o acréscimo (juros de cartão informado no checkout) e recalcula o total.
+    # O valor de cada pagamento já vem com o juros embutido; o acréscimo entra no
+    # total para que o excedente não seja tratado como troco.
+    sale_in_db.acrescimo = acrescimo or 0
+    sale_in_db = _recalc_total_sale(db, sale_in_db)
 
     total_payments = sum(payment.valor for payment in valid_payments_to_db)
     total_sale = sale_in_db.total or 0

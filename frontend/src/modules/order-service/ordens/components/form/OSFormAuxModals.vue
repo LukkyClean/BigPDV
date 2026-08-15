@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 
 import OSReopenOptionsModal from './OSReopenOptionsModal.vue';
 import OSItemFormModal from './OSItemFormModal.vue';
-import OSEquipamentoSelectModal from './OSEquipamentoSelectModal.vue';
+import OSObjetoSelectModal from './OSObjetoSelectModal.vue';
 import OSClientHistoryModal from './OSClientHistoryModal.vue';
 import OSPrintTemplate from '../OSPrintTemplate.vue';
 import OSPrintCupom from '../OSPrintCupom.vue';
@@ -15,6 +15,15 @@ import { useReadyOrderServiceMutation } from '../../composables/request/useOrder
 
 const view = useOSFormView();
 const finalizarEntregaMutation = useReadyOrderServiceMutation();
+
+// Valor já registrado como pago na OS — usado para perguntar "o cliente já pagou?"
+// na reabertura completa. Só pergunta quando há dinheiro em jogo.
+const valorJaPago = computed(() => {
+  const os = view.currentOSData.value;
+  if (!os) return 0;
+  const pagamentos = (os.pagamentos ?? []).reduce((s, p) => s + p.valor, 0);
+  return (os.credito_anterior ?? 0) + pagamentos + (os.valor_entrada ?? 0);
+});
 
 // ─── Estado do fluxo de finalização (dois modais) ─────────────────────────────
 const isPagamentoOpen = ref(false);
@@ -66,10 +75,14 @@ function handlePagamentoClose() {
   view.closeFinalizarModal();
 }
 
-function handleFinalized(payload: { shouldPrint: boolean }) {
+async function handleFinalized(payload: { shouldPrint: boolean }) {
   isPagamentoOpen.value = false;
   dadosFinalizacao.value = null;
   view.closeFinalizarModal();
+  // Recarrega a OS com os dados do fechamento (situação, solução, pagamentos)
+  // antes de imprimir; senão o cupom automático sai defasado (a via manual da
+  // lista já busca a OS fresca). Só recarrega quando de fato vai imprimir.
+  if (payload.shouldPrint) await view.refreshCurrentOSData();
   view.onFinalized(payload);
 }
 </script>
@@ -79,11 +92,13 @@ function handleFinalized(payload: { shouldPrint: boolean }) {
     :is-open="view.isHistoricoModalOpen.value"
     :cliente-id="view.currentCliente.value?.id ?? null"
     @close="view.closeHistoricoModal"
-    @reutilizar-equipamento="view.reutilizarEquipamento"
+    @reutilizar-objeto="view.reutilizarObjeto"
   />
 
   <OSReopenOptionsModal
     :is-open="view.isReopenOptionsOpen.value"
+    :tem-pagamento="valorJaPago > 0"
+    :valor-pago="valorJaPago"
     @cancel="view.handleReopenCancel"
     @text-only="view.handleReopenTextOnly"
     @full="view.handleReopenFull"
@@ -115,6 +130,7 @@ function handleFinalized(payload: { shouldPrint: boolean }) {
     :ordem-servico="view.currentOSData.value"
     @close="view.closeFinalizarModal"
     @advance="handleAdvance"
+    @itens-atualizados="view.refreshCurrentOSData"
   />
 
   <!-- Modal 2: Pagamento (overlay sobre Modal 1) -->
@@ -137,10 +153,10 @@ function handleFinalized(payload: { shouldPrint: boolean }) {
     @save="view.handleSaveItem"
   />
 
-  <OSEquipamentoSelectModal
-    :is-open="view.isEquipSelectModalOpen.value"
-    :equipamentos="view.equipamentosHistorico.value"
-    @close="view.closeEquipamentoModal"
-    @select="view.handleEquipamentoSelected"
+  <OSObjetoSelectModal
+    :is-open="view.isObjetoSelectModalOpen.value"
+    :objetos="view.objetosHistorico.value"
+    @close="view.closeObjetoModal"
+    @select="view.handleObjetoSelected"
   />
 </template>

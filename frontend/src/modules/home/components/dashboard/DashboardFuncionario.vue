@@ -10,6 +10,7 @@ import MinhaFilaTable from './MinhaFilaTable.vue';
 import RecentTransactions from './RecentTransactions.vue';
 import OSAguardandoRetiradaTable from './OSAguardandoRetiradaTable.vue';
 import AtividadeHoje from './AtividadeHoje.vue';
+import TendenciaChart from './TendenciaChart.vue';
 
 import { useAuthStore } from '@/shared/stores/auth.store';
 import { formatCurrency } from '@/shared/utils/finance';
@@ -19,6 +20,7 @@ import { useMinhaFilaQuery } from '../../composables/queries/useMinhaFilaQuery';
 import { useMinhasOSAtrasadasQuery } from '../../composables/queries/useMinhasOSAtrasadasQuery';
 import { useOSAguardandoRetiradaQuery } from '../../composables/queries/useOSAguardandoRetiradaQuery';
 import { useMinhaAtividadeHojeQuery } from '../../composables/queries/useMinhaAtividadeHojeQuery';
+import { useMinhaTendenciaQuery } from '../../composables/queries/useMinhaTendenciaQuery';
 
 import type { PeriodFilter } from '../../types/dashboard.types';
 
@@ -28,6 +30,7 @@ const { userData, isLoading: isLoadingUser } = storeToRefs(authStore);
 const activePeriod = ref<PeriodFilter>('hoje');
 
 const resumoQuery        = useMeuResumoQuery(activePeriod);
+const tendenciaQuery     = useMinhaTendenciaQuery(activePeriod);
 const vendasQuery        = useMinhasUltimasVendasQuery();
 const filaQuery          = useMinhaFilaQuery();
 const atrasadasQuery     = useMinhasOSAtrasadasQuery();
@@ -169,6 +172,34 @@ const atividade      = computed(() => atividadeQuery.data.value?.items ?? []);
             </template>
           </BaseStatsCard>
         </template>
+      </div>
+    </div>
+
+    <!-- Meu faturamento (número-herói) + minha tendência -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div class="bg-white p-5 md:p-6 rounded-2xl md:rounded-3xl border border-zinc-200 shadow-sm flex flex-col justify-center">
+        <span class="text-[11px] md:text-xs font-semibold uppercase tracking-wider text-zinc-400">
+          Meu faturamento
+        </span>
+        <p class="mt-1 text-2xl md:text-3xl font-bold text-zinc-900 tabular-nums leading-none">
+          {{ formatCurrency(d?.meu_faturamento ?? 0) }}
+        </p>
+        <div class="mt-3 text-xs text-zinc-500">
+          Vendas <span class="font-semibold text-zinc-700">{{ formatCurrency(d?.minhas_vendas_valor ?? 0) }}</span>
+          · Serviços <span class="font-semibold text-zinc-700">{{ formatCurrency(d?.minhas_os_valor ?? 0) }}</span>
+        </div>
+      </div>
+      <div class="lg:col-span-2 bg-white p-4 md:p-5 rounded-2xl md:rounded-3xl border border-zinc-200 shadow-sm">
+        <h3 class="text-sm font-bold text-zinc-700 mb-3">Minha tendência</h3>
+        <div class="h-48 md:h-56">
+          <TendenciaChart
+            v-if="tendenciaQuery.data.value && tendenciaQuery.data.value.items.length"
+            :por-dia="tendenciaQuery.data.value.items"
+          />
+          <div v-else class="h-full grid place-items-center text-xs text-zinc-400">
+            Sem faturamento no período.
+          </div>
+        </div>
       </div>
     </div>
 

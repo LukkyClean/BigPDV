@@ -36,11 +36,14 @@ if not os.path.exists(STATIC_DIR):
 if getattr(sys, 'frozen', False):
     FORM_DIR = os.path.join(sys._MEIPASS, 'form')
 else:
-    FORM_DIR = os.path.join(os.path.dirname(__file__), 'extend-form', 'dist')
+    # os.path.dirname(__file__) e a pasta 'app/', nao a raiz do backend: apontava
+    # para app/extend-form/dist, que nao existe, e o mount do /form caia calado
+    # (o `if os.path.exists(FORM_DIR)` la embaixo engole o erro).
+    FORM_DIR = os.path.join(BACKEND_DIR, 'extend-form', 'dist')
     
 app = FastAPI(
-    title="BigPDV Backend API",
-    description="Sistema de Ponto de Venda (PDV) - API",
+    title="StartBig Backend API",
+    description="StartBig ERP - API",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -58,6 +61,11 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 app.include_router(api.router, prefix="/api/v1")
+
+# Monta o formulario mobile APOS o include_router para nao interceptar rotas da API.
+# html=True serve index.html para qualquer rota SPA que nao case com um arquivo.
+if os.path.exists(FORM_DIR):
+    app.mount("/form", StaticFiles(directory=FORM_DIR, html=True), name="form")
 
 @app.get("/api/health", tags=["Health"])
 def health_check():

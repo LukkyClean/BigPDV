@@ -8,7 +8,6 @@ import {
   Package,
   ClipboardList,
   Users,
-  Banknote,
   Plug,
   Printer,
   Monitor,
@@ -29,6 +28,8 @@ import { useSalvarConfiguracoesOSMutation } from '../composables/mutates/useSalv
 import { useSalvarConfiguracoesVendasMutation } from '../composables/mutates/useSalvarConfiguracoesVendasMutation'
 import { useSalvarConfiguracoesSegurancaMutation } from '../composables/mutates/useSalvarConfiguracoesSegurancaMutation'
 import { useSalvarConfiguracaoBackupMutation } from '../composables/mutates/useSalvarConfiguracaoBackupMutation'
+import { useUpdateEmpresaMutation } from '@/modules/enterprise/composables/useEmpresaQuery'
+import { guardarCorLocalmente } from '@/shared/theme/aplicar'
 import type { SecaoConfiguracao, SecaoExposta, SecaoId } from '../types/configuracoes.types'
 import { useGerenteAprovacao } from '@/shared/composables/useGerenteAprovacao'
 import { useConfirmacao } from '@/shared/composables/useConfirmacao'
@@ -44,7 +45,6 @@ import Seguranca from './sections/seguranca/components/Seguranca.vue'
 import ProdutosEstoque from './sections/produtos-estoque/components/ProdutosEstoque.vue'
 import OrdensDeServico from './sections/ordens-de-servico/components/OrdensDeServico.vue'
 import ClientesCadastro from './sections/clientes-cadastro/components/ClientesCadastro.vue'
-import FinanceiroTaxas from './sections/financeiro-taxas/components/FinanceiroTaxas.vue'
 import IntegracoesAPIs from './sections/integracoes-apis/components/IntegracoesAPIs.vue'
 import ImpressaoPeriferico from './sections/impressao/components/ImpressaoPeriferico.vue'
 import FormatosExibicao from './sections/formatos-exibicao/components/FormatosExibicao.vue'
@@ -61,6 +61,9 @@ const { mutate: salvarOS, isPending: isPendingOS } = useSalvarConfiguracoesOSMut
 const { mutateAsync: salvarVendasAsync, isPending: isPendingVendas } = useSalvarConfiguracoesVendasMutation()
 const { mutate: salvarSeguranca, isPending: isPendingSeguranca } = useSalvarConfiguracoesSegurancaMutation()
 const { mutate: salvarBackup, isPending: isPendingBackup } = useSalvarConfiguracaoBackupMutation()
+// O tema mora na empresa (junto do logo), então reaproveita a mutation dela —
+// que já invalida o cache e sincroniza o auth store.
+const { mutate: salvarTema, isPending: isPendingTema } = useUpdateEmpresaMutation()
 
 const configuracoesStore = useConfiguracoesStore()
 const impressaoStore = useImpressaoStore()
@@ -105,7 +108,7 @@ async function navegarParaSecao(secaoId: SecaoId): Promise<void> {
   if (await verificarPinComRetry(pin)) irPara(secaoId)
 }
 
-const isPending = computed(() => isPendingClientes.value || isPendingEstoque.value || isPendingOS.value || isPendingVendas.value || isPendingSeguranca.value || isPendingBackup.value)
+const isPending = computed(() => isPendingClientes.value || isPendingEstoque.value || isPendingOS.value || isPendingVendas.value || isPendingSeguranca.value || isPendingTema.value || isPendingBackup.value)
 
 const activeComponentRef = ref<SecaoExposta | null>(null)
 const isDirtyAtivo = computed(() => activeComponentRef.value?.isDirty === true)
@@ -137,7 +140,7 @@ watch(() => props.isOpen, (aberto) => {
   }
 })
 
-const secoesFuncionais: SecaoId[] = ['seguranca', 'clientes-cadastro', 'produtos-estoque', 'ordens-de-servico', 'regras-de-vendas', 'impressao', 'backup-dados']
+const secoesFuncionais: SecaoId[] = ['seguranca', 'clientes-cadastro', 'produtos-estoque', 'ordens-de-servico', 'regras-de-vendas', 'impressao', 'formatos-exibicao', 'integracoes-apis', 'backup-dados']
 const secaoFuncional = computed(() => secoesFuncionais.includes(secaoAtiva.value))
 
 async function salvar(): Promise<void> {
@@ -182,6 +185,40 @@ async function salvar(): Promise<void> {
     case 'backup-dados':
       salvarBackup(comp.form as any, fecharAposSalvar)
       break
+    case 'formatos-exibicao': {
+      // Só o tema é gravável aqui (data e hora são informativos). A cor mora na
+      // empresa, junto do logo, e o PUT /empresas/ já exige master — a regra de
+      // "só o dono decide a identidade visual" vem da rota, não da tela.
+      const { cor_tema } = comp.form as { cor_tema: string | null }
+      salvarTema({ data: { cor_tema } }, {
+        // A mutation de empresa já emite o toast de sucesso e invalida o cache.
+        onSuccess: () => {
+          // Guardar ANTES de recarregar: é daqui que o boot tira a cor, e é o que
+          // faz a tela de login já abrir colorida.
+          guardarCorLocalmente(cor_tema)
+
+          // Recarrega ao salvar. É rede de segurança, não a correção: a prévia ao
+          // vivo continua sendo reativa (não dá para recarregar a cada movimento
+          // do mouse). O reload existe porque `<canvas>` não reage a CSS — o
+          // gráfico lê a cor uma vez ao montar — e garante que QUALQUER coisa que
+          // tenha capturado uma cor na montagem apareça correta, inclusive o que
+          // ainda não mapeamos.
+          //
+          // Custo aceito: perde-se o cache do TanStack e o toast. Tolerável porque
+          // trocar o tema é ação rara, feita pelo dono, a partir de um modal de
+          // configuração — não há trabalho em andamento para perder.
+          setTimeout(() => window.location.reload(), 600)
+        },
+      })
+      break
+    }
+    case 'integracoes-apis': {
+      // A chave PIX mora na empresa, como o logo e a cor: dado de identidade, não
+      // regra de negócio. Reaproveita a mutation dela, que já exige master.
+      const { chave_pix, pix_ativo } = comp.form as { chave_pix: string; pix_ativo: boolean }
+      salvarTema({ data: { chave_pix: chave_pix.trim() || null, pix_ativo } }, fecharAposSalvar)
+      break
+    }
     case 'regras-de-vendas': {
       const { vendas, estoque } = comp.form as { vendas: Record<string, unknown>; estoque: Record<string, unknown> }
       const resultados = await Promise.allSettled([
@@ -200,7 +237,6 @@ const secoes: SecaoConfiguracao[] = [
   { id: 'produtos-estoque',  label: 'Produtos e Estoque',    icone: Package },
   { id: 'ordens-de-servico', label: 'Ordens de Serviço',     icone: ClipboardList },
   { id: 'clientes-cadastro', label: 'Clientes e Cadastro',   icone: Users },
-  { id: 'financeiro-taxas',  label: 'Financeiro e Taxas',    icone: Banknote },
   { id: 'integracoes-apis',  label: 'Integrações e APIs',    icone: Plug },
   { id: 'impressao',         label: 'Impressão e Periféricos', icone: Printer },
   { id: 'formatos-exibicao', label: 'Formatos e Exibição',   icone: Monitor },
@@ -214,7 +250,6 @@ const componenteMap: Record<SecaoId, Component> = {
   'produtos-estoque':  ProdutosEstoque,
   'ordens-de-servico': OrdensDeServico,
   'clientes-cadastro': ClientesCadastro,
-  'financeiro-taxas':  FinanceiroTaxas,
   'integracoes-apis':  IntegracoesAPIs,
   'impressao':         ImpressaoPeriferico,
   'formatos-exibicao': FormatosExibicao,

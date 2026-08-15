@@ -27,7 +27,6 @@ const SECOES_PROTEGIVEIS = [
   { id: 'produtos-estoque', label: 'Produtos e Estoque' },
   { id: 'ordens-de-servico', label: 'Ordens de Serviço' },
   { id: 'clientes-cadastro', label: 'Clientes e Cadastro' },
-  { id: 'financeiro-taxas', label: 'Financeiro e Taxas' },
   { id: 'integracoes-apis', label: 'Integrações e APIs' },
   { id: 'impressao', label: 'Impressão e Periféricos' },
   { id: 'formatos-exibicao', label: 'Formatos e Exibição' },

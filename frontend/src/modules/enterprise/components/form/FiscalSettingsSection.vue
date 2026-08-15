@@ -51,7 +51,7 @@ function updateField<K extends keyof FiscalSettings>(field: K, value: FiscalSett
     <!-- Header -->
     <div class="flex items-center gap-3 mb-6">
       <div
-        class="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center text-blue-600"
+        class="w-10 h-10 bg-brand-primary-light rounded-xl flex items-center justify-center text-brand-primary"
       >
         <LucideIcon :icon="Settings"/>
       </div>
@@ -80,7 +80,7 @@ function updateField<K extends keyof FiscalSettings>(field: K, value: FiscalSett
                 type="radio"
                 name="ambiente_emissao"
                 :disabled="disabled"
-                class="radio radio-primary radio-xs"
+                class="radio radio-primary radio-xs accent-brand-primary"
                 @change="updateField('ambiente_emissao', 2)"
               />
               <span class="text-sm text-gray-700">Homologação (Testes)</span>
@@ -98,7 +98,7 @@ function updateField<K extends keyof FiscalSettings>(field: K, value: FiscalSett
                   type="radio"
                   name="ambiente_emissao"
                   :disabled="!canEmitirProducao || disabled"
-                  class="radio radio-error radio-xs"
+                  class="radio radio-error radio-xs accent-red-600"
                   @change="updateField('ambiente_emissao', 1)"
                 />
                 <span class="text-sm text-gray-700 font-bold">Produção</span>

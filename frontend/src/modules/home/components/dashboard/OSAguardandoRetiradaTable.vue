@@ -2,9 +2,11 @@
 import { ref } from 'vue';
 import { PackageCheck } from 'lucide-vue-next';
 import { useOSCreateFlow } from '@/modules/order-service/ordens/composables/useOSCreateFlow';
+import { useObjetoLabels } from '@/modules/order-service/shared/segmento/useObjetoLabels';
 import { getUniqueOS } from '@/modules/order-service/ordens/services/orderServiceGet.service';
 import { useToast } from '@/shared/composables/useToast';
 import type { OSAguardandoRetiradaItemData } from '../../schemas/dashboard.schema';
+import { formatData } from '@/shared/utils/date.utils';
 
 interface Props {
   items: OSAguardandoRetiradaItemData[];
@@ -15,6 +17,8 @@ interface Props {
 defineProps<Props>();
 
 const { openExistingOS } = useOSCreateFlow();
+// Rótulo do objeto por segmento: a oficina lê "Veículo" no cabeçalho, não "Equipamento".
+const { labelSingular } = useObjetoLabels();
 const toast = useToast();
 const loadingOS = ref<string | null>(null);
 
@@ -31,9 +35,9 @@ async function handleRowClick(item: OSAguardandoRetiradaItemData) {
   }
 }
 
+// `data_finalizacao` é timestamp de evento (UTC no backend).
 function formatDate(dateStr: string | null): string {
-  if (!dateStr) return '—';
-  return new Date(dateStr).toLocaleDateString('pt-BR');
+  return formatData(dateStr, '—');
 }
 </script>
 
@@ -61,7 +65,7 @@ function formatDate(dateStr: string | null): string {
           <tr class="bg-zinc-50/50 text-[10px] uppercase tracking-wider text-zinc-500 font-bold border-b border-zinc-100">
             <th class="px-4 py-3">N° OS</th>
             <th class="px-4 py-3">Cliente</th>
-            <th class="px-4 py-3">Equipamento</th>
+            <th class="px-4 py-3">{{ labelSingular }}</th>
             <th class="px-4 py-3">Finalizada</th>
           </tr>
         </thead>
@@ -88,7 +92,7 @@ function formatDate(dateStr: string | null): string {
     </div>
 
     <div v-else class="p-8 text-center text-zinc-400 text-sm flex-1 flex items-center justify-center">
-      Nenhum equipamento aguardando retirada
+      Nenhum {{ labelSingular.toLowerCase() }} aguardando retirada
     </div>
   </div>
 </template>

@@ -2,6 +2,7 @@ import { computed, type ComputedRef, type Ref } from 'vue';
 
 import type { OrderServiceReadDataType } from '../../schemas/orderServiceQuery.schema';
 import type { OsItemCreateSchemaDataType } from '../../schemas/relationship/osItem.schema';
+import { itemContaNoTotal, somarItensDaOS } from '../../../shared/utils/formatters';
 
 interface UseOSFinancialSummaryParams {
   isCreateMode: ComputedRef<boolean>;
@@ -22,14 +23,16 @@ export function useOSFinancialSummary({
   updateValorEntrada,
   updateTaxaEntrega,
 }: UseOSFinancialSummaryParams) {
+  // Item REPROVADO fora da soma — regra única em `itemContaNoTotal`, que espelha
+  // o `_item_conta_no_total` do backend. Na OS ainda não salva o valor da linha
+  // não existe pronto, por isso aqui o cálculo é quantidade × unitário.
   const displaySubtotal = computed(() => {
     if (isCreateMode.value) {
-      return createItems.value.reduce(
-        (sum, item) => sum + item.quantidade * item.valor_unitario,
-        0,
-      );
+      return createItems.value
+        .filter(itemContaNoTotal)
+        .reduce((sum, item) => sum + item.quantidade * item.valor_unitario, 0);
     }
-    return (currentOSData.value?.itens ?? []).reduce((sum, item) => sum + item.valor_total, 0);
+    return somarItensDaOS(currentOSData.value?.itens);
   });
 
   const displayValorEntrega = computed(() =>

@@ -3,6 +3,7 @@ import z from 'zod';
 import { ProductSaleReadSchema } from './productSale.schema';
 import { PaymentSaleReadSchema } from './paymentSale.schema';
 import { CustomerDiscriminatedSchema } from './customers.schema';
+import { parseTimestampBackend } from '@/shared/utils/date.utils';
 
 export const FuncionarioVendaReadSchema = z.object({
   id: z.number(),
@@ -52,8 +53,9 @@ export const SaleSimpleReadSchema = z.object({
 
   criado_em: z.string(),
 
+  // Timestamp de evento: gravado em UTC no backend.
   atualizado_em: z.string().transform((dateTimeStamp) =>
-    new Date(dateTimeStamp).toLocaleDateString('pt-BR', {
+    parseTimestampBackend(dateTimeStamp).toLocaleDateString('pt-BR', {
       day: '2-digit',
       month: '2-digit',
       year: '2-digit',
@@ -70,6 +72,7 @@ export const SaleReadSchema = SaleSimpleReadSchema.extend({
   entrega: z.number(),
   descontos: z.number(),
   subtotal: z.number(),
+  acrescimo: z.number(),
   troco: z.number(),
 
   observacao: z.string().nullable().optional(),

@@ -129,7 +129,7 @@ const isInactive = computed(() => !props.status);
       <!-- Entrada / Saída rápida -->
       <div class="flex gap-2 pt-2">
         <button
-          class="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 border bg-brand-primary text-white border-blue-500 hover:bg-blue-950 hover:border-blue-950 hover:shadow-lg hover:shadow-blue-200 cursor-pointer"
+          class="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 border bg-brand-primary text-white border-blue-500 hover:bg-brand-primary-hover hover:border-brand-primary-hover hover:shadow-lg hover:shadow-blue-200 cursor-pointer"
           title="Registrar entrada"
           :disabled="isInactive"
           @click="emit('entrada', id)"

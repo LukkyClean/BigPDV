@@ -5,9 +5,17 @@
 
 import type { Component } from 'vue';
 
+// Modo de comissão: 'direto' paga a taxa sobre tudo; 'meta' só paga ao bater a meta.
+export type ComissaoModo = 'direto' | 'meta';
+
 export interface CargoBase {
   nome: string;
   permissoes: Record<string, boolean>;
+  // Comissão: percentuais em BASIS POINTS (500 = 5,00%); meta em centavos.
+  comissao_venda_percentual?: number | null;
+  comissao_servico_percentual?: number | null;
+  meta_mensal?: number | null;
+  comissao_modo?: ComissaoModo | null;
 }
 
 export interface CargoCreate extends CargoBase {}
@@ -20,11 +28,20 @@ export interface CargoRead extends CargoBase {
 export interface CargoUpdate {
   nome?: string;
   permissoes?: Record<string, boolean>;
+  comissao_venda_percentual?: number | null;
+  comissao_servico_percentual?: number | null;
+  meta_mensal?: number | null;
+  comissao_modo?: ComissaoModo | null;
 }
 
 export interface PositionFormData {
   nome: string;
   permissoes: Record<string, boolean>;
+  // Mesmas unidades da API (basis points / centavos); a conversão p/ % e R$ é só no input.
+  comissao_venda_percentual: number | null;
+  comissao_servico_percentual: number | null;
+  meta_mensal: number | null;
+  comissao_modo: ComissaoModo | null;
 }
 
 export interface PermissionMatrixItem {
@@ -34,7 +51,8 @@ export interface PermissionMatrixItem {
   icon: Component;
   viewKey: string;
   manageKey: string;
-  deleteKey: string;
+  // Opcional: módulos read-only (ex.: Relatórios) não têm ação de excluir.
+  deleteKey?: string;
 }
 
 export interface PositionCardTheme {

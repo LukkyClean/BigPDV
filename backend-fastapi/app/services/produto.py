@@ -11,13 +11,12 @@ from typing import Sequence
 from app.schemas.produto import ProdutoCreate, ProdutoSimpleRead, ProdutoUpdate
 from app.db.models.produto import Produto as ProdutoModel
 from app.db.models.produto_fotos import ProdutoFoto as ProdutoFotoModel
-from app.db.models.movimentacao_estoque import MovimentacaoEstoque
 from app.db.models.estoque import Estoque as EstoqueModel
-from app.db.models.log_produto import LogProduto as LogProdutoModel
 from app.db.crud import produto as produto_crud
-from app.db.crud import movimentacao_estoque as mov_crud
+from app.db.crud import funcionario as funcionario_crud
+from app.services import movimentacao_estoque as mov_service
 
-from app.core.enum import TipoTransacaoEstoque, MovimentacaoTipo
+from app.core.enum import MovimentacaoTipo, MovimentacaoOrigem
 from app.core.imagem import salvar_imagem, deletar_imagem
 
 # Exceções reutilizáveis
@@ -68,6 +67,15 @@ def create_produto(db: Session, produto_to_add: ProdutoCreate, usuario_token: di
     produto_to_db = ProdutoModel(**produto_data)
 
     estoque_data = produto_to_add.estoque.model_dump()
+    quantidade_inicial = estoque_data.get("quantidade", 0) or 0
+
+    # Nasce zerado: a quantidade inicial entra pelo livro, logo abaixo. Se ela
+    # já viesse gravada aqui, a ENTRADA somaria em cima e o produto começaria
+    # com o dobro do estoque.
+    estoque_data["quantidade"] = 0
+    # A média ponderada começa no custo informado no cadastro — é a única compra
+    # conhecida deste produto até aqui.
+    estoque_data["custo_medio"] = estoque_data.get("valor_entrada")
     estoque_for_produto = EstoqueModel(**estoque_data)
 
     # Vincula estoque ao produto (Relacionamento 1:1)
@@ -75,21 +83,19 @@ def create_produto(db: Session, produto_to_add: ProdutoCreate, usuario_token: di
 
     produto_in_db = produto_crud.create_produto(db, produto_to_add=produto_to_db)
 
-    # Registra movimentação inicial se a quantidade for maior que zero
-    quantidade_inicial = estoque_data.get("quantidade", 0) or 0
-    if quantidade_inicial > 0:
-        mov = MovimentacaoEstoque(
-            produto_id=produto_in_db.id,
-            produto_nome=produto_in_db.nome,
-            usuario_id=int(usuario_token["sub"]) if usuario_token.get("sub") else None,
-            usuario_nome=usuario_token.get("nome", "Sistema"),
-            tipo=MovimentacaoTipo.ENTRADA,
-            quantidade=quantidade_inicial,
-            quantidade_anterior=0,
-            quantidade_posterior=quantidade_inicial,
-            observacao="Estoque inicial",
-        )
-        mov_crud.create_movimentacao(db, mov)
+    # Estoque inicial entra como qualquer outra compra: pelo registro central,
+    # com o custo informado, para o livro nascer contando a verdade (0 → N).
+    mov_service.registrar_movimentacao(
+        db,
+        produto=produto_in_db,
+        tipo=MovimentacaoTipo.ENTRADA,
+        quantidade=quantidade_inicial,
+        origem=MovimentacaoOrigem.CADASTRO,
+        usuario_id=int(usuario_token["sub"]) if usuario_token.get("sub") else None,
+        usuario_nome=usuario_token.get("nome", "Sistema"),
+        observacao="Estoque inicial",
+        custo_unitario=estoque_data.get("valor_entrada"),
+    )
 
     return produto_in_db
 
@@ -119,13 +125,21 @@ def create_produto_image(db: Session, produto_id: int, image_file: UploadFile, p
 # LÓGICA DE LEITURA (READ)
 # ===========================================================================
 
-def get_produto_by_search(db: Session, produto_search: str | None) -> Sequence[ProdutoModel]:
+def get_produto_by_search(
+    db: Session,
+    produto_search: str | None,
+    limite: int | None = None,
+) -> Sequence[ProdutoModel]:
     """Intermediário para busca de produtos via CRUD."""
-    return produto_crud.get_produto_by_search(db, search=produto_search)
+    return produto_crud.get_produto_by_search(db, search=produto_search, limite=limite)
 
-def get_produto_simple_by_search(db: Session, search: str | None) -> Sequence[ProdutoSimpleRead]:
+def get_produto_simple_by_search(
+    db: Session,
+    search: str | None,
+    limite: int | None = None,
+) -> Sequence[ProdutoSimpleRead]:
     """Intermediário para busca rápida de produtos."""
-    return produto_crud.get_produto_simple_by_search(db, search=search)
+    return produto_crud.get_produto_simple_by_search(db, search=search, limite=limite)
 
 # ===========================================================================
 # LÓGICA DE ATUALIZAÇÃO (UPDATE)
@@ -158,18 +172,16 @@ def _build_observacao_edicao(campos: list[str]) -> str:
 
 
 def _registrar_edicao(db, produto, usuario_token: dict, observacao: str) -> None:
-    mov = MovimentacaoEstoque(
-        produto_id=produto.id,
-        produto_nome=produto.nome,
-        usuario_id=int(usuario_token["sub"]) if usuario_token.get("sub") else None,
-        usuario_nome=usuario_token.get("nome", "Sistema"),
+    mov_service.registrar_movimentacao(
+        db,
+        produto=produto,
         tipo=MovimentacaoTipo.EDICAO_DADOS,
         quantidade=0,
-        quantidade_anterior=produto.estoque.quantidade,
-        quantidade_posterior=produto.estoque.quantidade,
+        origem=MovimentacaoOrigem.CADASTRO,
+        usuario_id=int(usuario_token["sub"]) if usuario_token.get("sub") else None,
+        usuario_nome=usuario_token.get("nome", "Sistema"),
         observacao=observacao,
     )
-    mov_crud.create_movimentacao(db, mov)
 
 
 def update_produto_by_id(db: Session, produto_id: int, produto_to_update: ProdutoUpdate, usuario_token: dict) -> ProdutoModel:
@@ -183,10 +195,16 @@ def update_produto_by_id(db: Session, produto_id: int, produto_to_update: Produt
 
     data_to_update = produto_to_update.model_dump(exclude_unset=True)
     campos_alterados: list[str] = []
+    # Quantidade não é um campo editável como os outros: ela precisa passar pelo
+    # livro de estoque. Fica de fora do setattr e é aplicada depois, como AJUSTE.
+    nova_quantidade: int | None = None
 
     # Tratamento para atualização de Estoque (Tabela Filha)
     if "estoque" in data_to_update:
         storage_data_to_update = produto_to_update.estoque.model_dump(exclude_unset=True)
+
+        if "quantidade" in storage_data_to_update:
+            nova_quantidade = storage_data_to_update.pop("quantidade")
 
         for key, value in storage_data_to_update.items():
             if getattr(produto_in_db.estoque, key, None) != value:
@@ -205,6 +223,22 @@ def update_produto_by_id(db: Session, produto_id: int, produto_to_update: Produt
 
     if campos_alterados:
         _registrar_edicao(db, produto_result, usuario_token, _build_observacao_edicao(campos_alterados))
+
+    # Mudança de quantidade pela tela de cadastro é uma CONTAGEM, e vai para o
+    # livro como AJUSTE. Antes ela era gravada direto no estoque e o histórico
+    # só registrava "Quantidade alterado", com anterior e posterior iguais: as
+    # unidades sumiam sem deixar rastro de quantas eram nem de quando foi.
+    if nova_quantidade is not None and nova_quantidade != (produto_result.estoque.quantidade or 0):
+        mov_service.registrar_movimentacao(
+            db,
+            produto=produto_result,
+            tipo=MovimentacaoTipo.AJUSTE,
+            quantidade=nova_quantidade,
+            origem=MovimentacaoOrigem.CADASTRO,
+            usuario_id=int(usuario_token["sub"]) if usuario_token.get("sub") else None,
+            usuario_nome=usuario_token.get("nome", "Sistema"),
+            observacao="Quantidade corrigida no cadastro",
+        )
 
     return produto_result
 
@@ -299,46 +333,66 @@ def delete_produto_image(db: Session, image_id: int):
     
     return produto_crud.delete_produto_image(db, image_to_delete=image_in_db)
 
+def _usuario_do_funcionario(db: Session, funcionario_id: int | None) -> tuple[int | None, str]:
+    """Resolve o usuário responsável a partir do funcionário da venda.
+
+    A movimentação de estoque registra USUÁRIO (quem operou o sistema); a venda
+    guarda FUNCIONÁRIO. São entidades diferentes ligadas por FK.
+    """
+    if not funcionario_id:
+        return None, "Sistema"
+    funcionario = funcionario_crud.get_funcionario_by_id(db, funcionario_id=funcionario_id)
+    if not funcionario:
+        return None, "Sistema"
+    return funcionario.usuario_id, funcionario.nome or "Sistema"
+
+
 def decrease_product_in_stock(db: Session, produto_id: int, quantidade: int, venda_id: int, funcionario_id: int):
+    """Baixa de estoque por venda.
+
+    NÃO permite estoque negativo: diferente da OS, aqui a peça ainda está na
+    prateleira e dá para simplesmente não vender.
+    """
     product_in_db = produto_crud.get_produto_by_id(db, produto_id=produto_id)
     if not product_in_db:
         raise not_found_exce
-    
-    qtd_stock = product_in_db.estoque.quantidade or 0
 
-    if quantidade > qtd_stock:
+    if quantidade > (product_in_db.estoque.quantidade or 0):
         raise _bad_request_exce
-    
-    product_in_db.estoque.quantidade = qtd_stock - quantidade
 
-    product_log = LogProdutoModel(
-        produto_id=produto_id,
+    usuario_id, usuario_nome = _usuario_do_funcionario(db, funcionario_id)
+    mov_service.registrar_movimentacao(
+        db,
+        produto=product_in_db,
+        tipo=MovimentacaoTipo.SAIDA,
+        quantidade=quantidade,
+        origem=MovimentacaoOrigem.VENDA,
+        usuario_id=usuario_id,
+        usuario_nome=usuario_nome,
         venda_id=venda_id,
-        funcionario_id=funcionario_id,
-        tipo_transacao=TipoTransacaoEstoque.SAIDA_VENDA,
-        quantidade=-quantidade
+        observacao="Baixa por venda",
     )
-
-    product_in_db.logs.append(product_log)
 
     return produto_crud.update_produto(db, product_in_db)
 
 def restore_product_to_stock(db: Session, produto_id: int, quantidade: int, venda_id: int, funcionario_id: int):
+    """Estorno de estoque por cancelamento de venda."""
     product_in_db = produto_crud.get_produto_by_id(db, produto_id=produto_id)
     if not product_in_db:
         raise not_found_exce
 
-    product_in_db.estoque.quantidade = (product_in_db.estoque.quantidade or 0) + quantidade
-
-    product_log = LogProdutoModel(
-        produto_id=produto_id,
+    usuario_id, usuario_nome = _usuario_do_funcionario(db, funcionario_id)
+    mov_service.registrar_movimentacao(
+        db,
+        produto=product_in_db,
+        tipo=MovimentacaoTipo.ENTRADA,
+        quantidade=quantidade,
+        origem=MovimentacaoOrigem.VENDA,
+        usuario_id=usuario_id,
+        usuario_nome=usuario_nome,
         venda_id=venda_id,
-        funcionario_id=funcionario_id,
-        tipo_transacao=TipoTransacaoEstoque.ESTORNO,
-        quantidade=quantidade
+        observacao="Estorno por cancelamento de venda",
     )
-
-    product_in_db.logs.append(product_log)
 
     return produto_crud.update_produto(db, product_in_db)
 

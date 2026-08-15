@@ -4,9 +4,9 @@
 # ---------------------------------------------------------------------------
 
 from datetime import datetime
-from sqlalchemy import Integer, String, Boolean, DateTime, Text, Enum as SqlAlchemyEnum, ForeignKey, func
+from sqlalchemy import Integer, String, Boolean, DateTime, Text, Enum as SqlAlchemyEnum, ForeignKey, JSON, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from typing import Optional, List, TYPE_CHECKING
+from typing import Optional, List, Dict, Any, TYPE_CHECKING
 
 from app.db.base import Base
 from app.core.enum import OrdemServicoStatus, OrdemServicoPrioridade, SituacaoEquipamento
@@ -14,7 +14,7 @@ from app.core.enum import OrdemServicoStatus, OrdemServicoPrioridade, SituacaoEq
 if TYPE_CHECKING:
     from .cliente import Cliente
     from .funcionario import Funcionario
-    from .ordem_servico_equipamento import OrdemServicoEquipamento
+    from .objeto_servico import ObjetoServico
     from .ordem_servico_item import OrdemServicoItem
     from .ordem_servico_pagamento import OrdemServicoPagamento
     from .ordem_servico_foto import OrdemServicoFoto
@@ -31,11 +31,11 @@ class OrdemServico(Base):
 
     # --- Vinculos ---
     funcionario_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("funcionarios.id"), nullable=True, doc="ID do funcionario responsavel (FK)")
-    equipamento_id: Mapped[int] = mapped_column(
+    objeto_id: Mapped[int] = mapped_column(
         Integer,
-        ForeignKey("ordem_servico_equipamentos.id"),
+        ForeignKey("objetos_servico.id"),
         nullable=False,
-        doc="ID do equipamento usado na OS (FK)"
+        doc="ID do objeto usado na OS (FK)"
     )
 
     # --- Status e Prioridade ---
@@ -63,10 +63,13 @@ class OrdemServico(Base):
     )
    
     # --- Observações do Servico ---
-    senha_aparelho: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, doc="Senha do aparelho")
-    acessorios: Mapped[Optional[str]] = mapped_column(Text, nullable=True, doc="Acessorios entregues junto")
-    condicoes_aparelho: Mapped[Optional[str]] = mapped_column(Text, nullable=True, doc="Condicoes fisicas do aparelho")
     observacoes: Mapped[Optional[str]] = mapped_column(Text, nullable=True, doc="Observacoes gerais")
+    dados_adicionais: Mapped[Optional[Dict[str, Any]]] = mapped_column(
+        JSON,
+        nullable=True,
+        default=dict,
+        doc="Dados adicionais específicos do segmento (ex: quilometragem, combustível, etc.)"
+    )
 
     # --- Financeiro (valores em centavos) ---
     valor_total: Mapped[int] = mapped_column(Integer, default=0, nullable=False, doc="Valor total da OS (centavos)")
@@ -93,10 +96,10 @@ class OrdemServico(Base):
         back_populates="ordens_servico",
         doc="Funcionario responsavel"
     )
-    equipamento: Mapped["OrdemServicoEquipamento"] = relationship(
-        "OrdemServicoEquipamento",
+    objeto: Mapped["ObjetoServico"] = relationship(
+        "ObjetoServico",
         back_populates="ordens_servico",
-        doc="Equipamento utilizado nesta OS"
+        doc="Objeto utilizado nesta OS"
     )
     itens: Mapped[List["OrdemServicoItem"]] = relationship(
         "OrdemServicoItem",
@@ -119,4 +122,46 @@ class OrdemServico(Base):
 
     @property
     def cliente(self) -> Optional["Cliente"]:
-        return self.equipamento.cliente if self.equipamento else None
+        return self.objeto.cliente if self.objeto else None
+
+    @property
+    def equipamento(self) -> Optional["ObjetoServico"]:
+        return self.objeto
+
+    def _set_dado_adicional(self, chave: str, valor: Optional[str]) -> None:
+        """Grava um campo legado de forma transparente na coluna JSON dados_adicionais."""
+        # Cria um novo dict para garantir que o SQLAlchemy detecte a mutação (JSON não é rastreado in-place).
+        dados = dict(self.dados_adicionais or {})
+        if valor is None:
+            dados.pop(chave, None)
+        else:
+            dados[chave] = valor
+        self.dados_adicionais = dados
+
+    @property
+    def senha_aparelho(self) -> Optional[str]:
+        return (self.dados_adicionais or {}).get("senha_aparelho")
+
+    @senha_aparelho.setter
+    def senha_aparelho(self, value: Optional[str]) -> None:
+        self._set_dado_adicional("senha_aparelho", value)
+
+    @property
+    def acessorios(self) -> Optional[str]:
+        # Compat multi-segmento: em TI é string ("carregador, capa..."); na oficina a
+        # chave "acessorios" guarda o checklist da vistoria (dict). Só expõe como string
+        # quando for string — evita quebrar a leitura da OS quando for o dict da vistoria.
+        val = (self.dados_adicionais or {}).get("acessorios")
+        return val if isinstance(val, str) else None
+
+    @acessorios.setter
+    def acessorios(self, value: Optional[str]) -> None:
+        self._set_dado_adicional("acessorios", value)
+
+    @property
+    def condicoes_aparelho(self) -> Optional[str]:
+        return (self.dados_adicionais or {}).get("condicoes_aparelho")
+
+    @condicoes_aparelho.setter
+    def condicoes_aparelho(self, value: Optional[str]) -> None:
+        self._set_dado_adicional("condicoes_aparelho", value)

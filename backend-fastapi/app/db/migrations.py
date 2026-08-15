@@ -126,8 +126,26 @@ def aplicar_migracoes():
             command.stamp(alembic_cfg, "head", purge=True)
         else:
             # Caso normal: aplica migrações pendentes
+        try:
             command.upgrade(alembic_cfg, "head")
-
+        except OperationalError as exc:
+            # create_all roda ANTES das migrações e já cria o schema completo a
+            # partir dos models. Quando o histórico tem galhos unidos depois
+            # (ex.: merge de heads oficina/vendas), o upgrade pode tentar recriar
+            # tabelas/colunas que o create_all já criou -> "already exists". Nesse
+            # caso o schema já está correto; basta registrar o banco na head, do
+            # mesmo jeito que já fazemos para bancos sem alembic_version. Qualquer
+            # outro erro sobe (não mascaramos falha real de migração).
+            msg = str(exc).lower()
+            if "already exists" in msg or "duplicate column" in msg:
+                logger.warning(
+                    "Upgrade encontrou schema já existente (create_all): %s. "
+                    "Registrando o banco na head via stamp.",
+                    exc,
+                )
+                command.stamp(alembic_cfg, "head")
+            else:
+                raise
         revisao_nova = _obter_revisao_atual()
         if revisao_nova != revisao_atual:
             logger.info("Banco atualizado: %s -> %s", revisao_atual, revisao_nova)

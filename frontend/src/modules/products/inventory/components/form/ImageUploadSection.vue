@@ -100,8 +100,8 @@ function handleDragLeave() {
         hasImage
           ? 'border-solid border-slate-200 bg-white'
           : isDragging
-            ? 'border-dashed border-blue-500 bg-linear-to-br from-blue-100 to-blue-200 scale-[1.02]'
-            : 'border-dashed border-slate-300 bg-linear-to-br from-slate-50 to-slate-100 hover:border-blue-500 hover:bg-linear-to-br hover:from-blue-50 hover:to-blue-100 hover:-translate-y-0.5 hover:shadow-[0_8px_24px_rgba(59,130,246,0.12)]',
+            ? 'border-dashed border-brand-primary bg-linear-to-br from-brand-primary-light to-brand-primary-light scale-[1.02]'
+            : 'border-dashed border-slate-300 bg-linear-to-br from-slate-50 to-slate-100 hover:border-brand-primary hover:bg-linear-to-br hover:from-blue-50 hover:to-brand-primary-light hover:-translate-y-0.5 hover:shadow-[0_8px_24px_rgba(59,130,246,0.12)]',
         disabled && 'opacity-60 cursor-not-allowed',
       ]"
       @dragover="handleDragOver"

@@ -5,7 +5,11 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 const PORTA_DESCOBERTA: u16 = 9101;
-const MENSAGEM_DESCOBERTA: &[u8] = b"BIGPDV_DISCOVER";
+const MENSAGEM_DESCOBERTA: &[u8] = b"STARTBIG_DISCOVER";
+// Sonda anterior ao rename do produto. Continua sendo aceita ao escutar e enviada no
+// broadcast para que um caixa ainda nao atualizado responda a descoberta de impressora.
+// Pode sair quando todos os terminais estiverem na versao nova.
+const MENSAGEM_DESCOBERTA_LEGADA: &[u8] = b"BIGPDV_DISCOVER";
 
 #[derive(Default)]
 pub struct EstadoServidorImpressao(pub(crate) Mutex<Option<Arc<AtomicBool>>>);
@@ -132,7 +136,10 @@ pub fn iniciar_servidor_impressao(
             let mut buffer = [0u8; 64];
             while rodando.load(Ordering::SeqCst) {
                 match udp.recv_from(&mut buffer) {
-                    Ok((n, origem)) if &buffer[..n] == MENSAGEM_DESCOBERTA => {
+                    Ok((n, origem))
+                        if &buffer[..n] == MENSAGEM_DESCOBERTA
+                            || &buffer[..n] == MENSAGEM_DESCOBERTA_LEGADA =>
+                    {
                         let ip_lan = ip_lan_privado()
                             .map(|ip| ip.to_string())
                             .unwrap_or_default();
@@ -169,6 +176,9 @@ pub fn descobrir_servidores_impressao() -> Result<Vec<ServidorDescoberto>, Strin
         .map_err(|e| e.to_string())?;
     udp.send_to(MENSAGEM_DESCOBERTA, ("255.255.255.255", PORTA_DESCOBERTA))
         .map_err(|e| format!("Falha ao enviar broadcast de descoberta: {}", e))?;
+    // Segunda sonda para caixas ainda na versao antiga. Respostas duplicadas do mesmo
+    // terminal caem na deduplicacao por IP mais abaixo.
+    let _ = udp.send_to(MENSAGEM_DESCOBERTA_LEGADA, ("255.255.255.255", PORTA_DESCOBERTA));
 
     let mut servidores: Vec<ServidorDescoberto> = Vec::new();
     let inicio = Instant::now();

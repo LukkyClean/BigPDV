@@ -17,6 +17,7 @@ SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
 
 TEST_USER_EMAIL = "teste.funcionario@example.com"
 TEST_USER_PASSWORD = "senhaSegura456"
+TEST_HWID = "test-terminal-hwid"
 
 # Criando a engine de teste
 engine = create_engine(
@@ -108,7 +109,7 @@ def create_test_empresa(client: TestClient):
         json=usuario_payload
     )
 
-    login_data = {"username": TEST_USER_EMAIL, "password": TEST_USER_PASSWORD}
+    login_data = {"username": TEST_USER_EMAIL, "password": TEST_USER_PASSWORD, "hwid": TEST_HWID}
     response = client.post("/api/v1/auth/login", data=login_data)
     
     token = response.json()["access_token"]

@@ -33,10 +33,10 @@ function confirmar() {
     <Transition name="fade">
       <div
         v-if="isOpen"
-        class="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+        class="fixed inset-0 z-200 flex items-center justify-center bg-black/60 backdrop-blur-sm"
         @click.self="emit('close')"
       >
-        <div class="bg-white rounded-2xl shadow-2xl w-[420px] flex flex-col overflow-hidden">
+        <div class="bg-white rounded-2xl shadow-2xl w-420px flex flex-col overflow-hidden">
           <!-- Header -->
           <div class="px-6 py-4 border-b border-zinc-100">
             <h3 class="text-sm font-bold text-zinc-800">Ajustar foto de perfil</h3>

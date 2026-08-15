@@ -3,8 +3,25 @@ import { Plus, Trash2, Package, Wrench, ShoppingBag, Pencil } from 'lucide-vue-n
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
 import { formatCurrency } from '@/shared/utils/finance';
 import type { OsItemCreateSchemaDataType, OsItemReadSchemaDataType } from '../../schemas/relationship/osItem.schema';
+import { useCapacidades } from '@/modules/order-service/shared/segmento/useCapacidades';
+import { formatGarantiaItem } from '@/modules/order-service/shared/utils/formatters';
 
 type OsItem = OsItemCreateSchemaDataType | OsItemReadSchemaDataType;
+
+const { temAprovacaoItens, temGarantiaItens } = useCapacidades();
+
+const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
+  APROVADO: { label: 'Aprovado', cls: 'bg-emerald-50 text-emerald-600' },
+  PENDENTE: { label: 'Pendente', cls: 'bg-amber-50 text-amber-600' },
+  REPROVADO: { label: 'Reprovado', cls: 'bg-red-50 text-red-600' },
+};
+
+function statusBadge(item: OsItem) {
+  return STATUS_BADGE[item.status_aprovacao ?? 'APROVADO'] ?? STATUS_BADGE.APROVADO;
+}
+
+// Mesma função das vias impressas: tela e papel não podem divergir na garantia.
+const garantiaLabel = formatGarantiaItem;
 
 interface Props {
   itens: OsItem[];
@@ -79,8 +96,20 @@ function getItemTotal(item: OsItem): number {
               <component :is="getItemIcon(item)" :size="18" />
             </div>
             <div class="min-w-0">
-              <p class="text-sm font-bold text-slate-700 truncate">{{ item.nome }}</p>
-              <p class="text-xs text-slate-500 truncate">{{ item.unidade_medida }}</p>
+              <div class="flex items-center gap-2 min-w-0">
+                <p class="text-sm font-bold text-slate-700 truncate">{{ item.nome }}</p>
+                <span
+                  v-if="temAprovacaoItens"
+                  class="text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0"
+                  :class="statusBadge(item).cls"
+                >
+                  {{ statusBadge(item).label }}
+                </span>
+              </div>
+              <p class="text-xs text-slate-500 truncate">
+                {{ item.unidade_medida }}
+                <span v-if="temGarantiaItens && garantiaLabel(item)"> · Garantia {{ garantiaLabel(item) }}</span>
+              </p>
             </div>
           </div>
 

@@ -52,6 +52,14 @@ class EstoqueRead(EstoqueCreate):
         ...,
         description="ID do produto (chave primária/estrangeira de Produto)"
     )
+    # Somente leitura: é calculado pelo livro de estoque a cada compra, nunca
+    # enviado pelo cliente. Editar o preço de custo de referência (valor_entrada)
+    # não altera este número — é o que impede um reajuste de fornecedor de
+    # reescrever o lucro já apurado.
+    custo_medio: Optional[int] = Field(
+        None,
+        description="Custo médio ponderado calculado, base do CMV (em centavos)."
+    )
 
 class EstoqueUpdate(BaseModel):
     """

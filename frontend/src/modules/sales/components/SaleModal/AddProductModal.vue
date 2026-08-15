@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue';
-import { PackageSearch, ArchiveX, ShoppingCart, Plus, Minus, Check } from 'lucide-vue-next';
+import { PackageSearch, ArchiveX, ShoppingCart, Plus, Minus, Check, PackagePlus } from 'lucide-vue-next';
 import BaseModal from '@/shared/components/commons/BaseModal/BaseModal.vue';
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
 import BaseSearchInput from '@/shared/components/ui/BaseSearchInput/BaseSearchInput.vue';
 import AvisoEstoqueNegativoModal from './AvisoEstoqueNegativoModal.vue';
 
 import { useProductSearch } from '../../composables/flows/useProductSearch';
+import { useItemModal } from '../../composables/flows/useItemModal';
 import { formatCurrency } from '@/shared/utils/finance';
+import { getImageUrl } from '@/shared/utils/print.utils';
 import type { ProductSaleRead } from '../../schemas/productSale.schema';
 
 const props = defineProps<{
@@ -46,8 +48,6 @@ const {
   addItemToSale,
   resetSelection,
 } = useProductSearch(props.isOrcamento, currentItemsRef, searchContainerRef);
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 watch(
   () => props.isOpen,
@@ -99,6 +99,19 @@ function confirmarVendaNegativa() {
   addItemToSale(pendingSaleId.value, false);
   pendingSaleId.value = null;
 }
+
+// Saída para item fora do catálogo. Sem isto, este modal era beco sem saída:
+// o produto não existe e não há nada a fazer além de fechar. O mesmo atalho já
+// existia na busca inline (ProductSearch), só faltava aqui.
+const { openCreateItemModal } = useItemModal();
+
+function handleAddAvulso() {
+  // Leva o termo digitado como descrição inicial — quem buscou "cabo hdmi" e
+  // não achou não deve ter que digitar de novo.
+  const termo = searchTerm.value.trim();
+  emit('close');
+  openCreateItemModal(termo);
+}
 </script>
 
 <template>
@@ -133,13 +146,25 @@ function confirmarVendaNegativa() {
           </div>
         </div>
 
-        <!-- Sem resultados -->
+        <!--
+          Sem resultados: é o momento exato em que o avulso é a resposta. Em vez
+          de só informar o fracasso, oferece a saída com o termo já digitado.
+        -->
         <div
           v-else-if="products.length === 0"
-          class="flex flex-col items-center justify-center py-16 gap-3 text-zinc-400"
+          class="flex flex-col items-center justify-center py-14 gap-3 text-zinc-400"
         >
           <ArchiveX :size="40" class="opacity-50" />
-          <p class="text-sm font-semibold">Nenhum produto encontrado</p>
+          <div class="text-center">
+            <p class="text-sm font-semibold text-zinc-500">Nenhum produto encontrado</p>
+            <p class="text-xs text-zinc-400 mt-0.5">
+              "{{ searchTerm }}" não está no catálogo
+            </p>
+          </div>
+          <BaseButton variant="primary" class="gap-2 mt-1" @click="handleAddAvulso">
+            <PackagePlus :size="16" />
+            Adicionar como produto avulso
+          </BaseButton>
         </div>
 
         <!-- Linhas de produto -->
@@ -162,7 +187,7 @@ function confirmarVendaNegativa() {
           >
             <img
               v-if="product.imagem_url"
-              :src="`${API_BASE_URL}/${product.imagem_url}`"
+              :src="getImageUrl(product.imagem_url) ?? ''"
               :alt="product.nome"
               class="h-full w-full object-cover"
             />
@@ -301,8 +326,21 @@ function confirmarVendaNegativa() {
 
     <!-- Rodapé -->
     <template #footer>
-      <div class="flex justify-end gap-3 w-full">
-        <BaseButton variant="secondary" class="px-5" @click="emit('close')">Fechar</BaseButton>
+      <div class="flex items-center justify-between gap-3 w-full">
+        <!--
+          Sempre visível: às vezes já se sabe de saída que o item não está no
+          catálogo, e obrigar a buscar antes só para descobrir isso é atrito.
+        -->
+        <button
+          type="button"
+          class="flex items-center gap-1.5 text-xs font-semibold text-brand-primary hover:underline cursor-pointer"
+          @click="handleAddAvulso"
+        >
+          <PackagePlus :size="14" />
+          Produto avulso
+        </button>
+
+        <div class="flex justify-end gap-3"><BaseButton variant="secondary" class="px-5" @click="emit('close')">Fechar</BaseButton>
         <BaseButton
           v-if="selectedProductId"
           variant="primary"
@@ -314,6 +352,7 @@ function confirmarVendaNegativa() {
           <ShoppingCart :size="16" />
           Adicionar ao Carrinho
         </BaseButton>
+        </div>
       </div>
     </template>
   </BaseModal>

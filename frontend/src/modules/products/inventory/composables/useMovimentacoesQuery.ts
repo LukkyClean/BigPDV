@@ -8,6 +8,7 @@ import { getMovimentacoes, createMovimentacao } from '../services/movimentacao.s
 import type { MovimentacaoCreate } from '../types/products.types';
 import { PRODUTOS_QUERY_KEY, PRODUTOS_REFETCH_INTERVAL } from '../../shared/constants/queryKeys';
 import { dashboardKeys } from '@/modules/home/constants/dashboard.constants';
+import { invalidarRelatorios } from '@/shared/utils/invalidarRelatorios';
 
 export const MOVIMENTACOES_QUERY_KEY = 'movimentacoes-estoque';
 
@@ -33,6 +34,9 @@ export function useCreateMovimentacaoMutation() {
       queryClient.invalidateQueries({ queryKey: [MOVIMENTACOES_QUERY_KEY] });
       queryClient.invalidateQueries({ queryKey: [PRODUTOS_QUERY_KEY] });
       queryClient.invalidateQueries({ queryKey: dashboardKeys.estoqueBaixo() });
+      // Movimentação manual muda o relatório de estoque (curva ABC, capital
+      // imobilizado, itens parados), não só a lista de produtos.
+      invalidarRelatorios(queryClient);
     },
     onError: () => {
       toast.error('Erro ao registrar movimentação. Verifique os dados.');

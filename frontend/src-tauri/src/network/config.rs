@@ -184,9 +184,10 @@ pub fn get_config(app: AppHandle) -> AppConfig {
 
 #[tauri::command]
 pub fn get_api_url(app: AppHandle) -> String {
-
+    // DEV (build debug): porta dedicada 8000, separada da faixa da loja (8080-8083).
+    // Rode o backend com `fastapi dev app/main.py` (padrão 8000). Não afeta o release.
     #[cfg(debug_assertions)] {
-        return format!("http://127.0.0.1:8080/api")
+        return format!("http://127.0.0.1:8000/api")
     }
 
     #[cfg(not(debug_assertions))]

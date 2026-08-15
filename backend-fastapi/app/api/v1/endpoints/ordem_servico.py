@@ -45,13 +45,90 @@ from app.schemas.ordem_servico import (
     OrdemServicoCancelar,
     OrdemServicoReabrir,
     OSFotoRead,
+    OSIdentificadorCheck,
 )
 from app.services import ordem_servico as os_service
 from app.services import ordem_servico_foto as os_foto_service
+from app.services import segmentos as segmentos_service
 
 router = APIRouter()
 
 module_permission = "servico"
+
+
+# ===========================================================================
+# DEFINIÇÃO DE CAMPOS DO SEGMENTO (GET /definicao-campos)
+# Rota estática — declarada antes das rotas com /{os_number}.
+# ===========================================================================
+
+@router.get(
+    "/definicao-campos",
+    summary="Definição de campos dinâmicos do segmento da empresa",
+    description=(
+        "Retorna o contrato de campos dinâmicos (veículo, check-in, acessórios e "
+        "vistoria) do segmento da empresa, para o frontend renderizar o formulário "
+        "de OS adequado. Segmentos sem definição dedicada retornam tem_definicao=false."
+    ),
+)
+def get_definicao_campos_segmento(
+    user_token: dict = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    return segmentos_service.get_definicao_campos(db)
+
+
+@router.get(
+    "/revisoes-pendentes",
+    summary="Veículos com revisão vencida (por data e/ou KM)",
+    description=(
+        "Lista os veículos cuja próxima revisão está vencida — por data "
+        "(proxima_revisao_data <= hoje) e/ou por KM (km atual >= proxima_revisao_km). "
+        "Objetos sem revisão agendada (ex: informática) não aparecem."
+    ),
+)
+def get_revisoes_pendentes(
+    user_token: dict = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    return os_service.get_revisoes_pendentes(db)
+
+
+@router.get(
+    "/objeto/{objeto_id}/historico-km",
+    summary="Histórico de KM do objeto/veículo",
+    description=(
+        "Retorna a evolução da quilometragem (km_entrada) de um objeto/veículo "
+        "ao longo das suas OS, da mais antiga para a mais recente. Útil para oficina."
+    ),
+)
+def get_historico_km_objeto(
+    objeto_id: int = Path(..., description="ID do objeto/veículo"),
+    user_token: dict = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    return os_service.get_historico_km(db, objeto_id)
+
+
+@router.get(
+    "/objeto/verificar-identificador",
+    response_model=OSIdentificadorCheck,
+    summary="Verificar se a placa/nº de série já está cadastrada",
+    description=(
+        "Procura objetos ativos com o mesmo identificador, **inclusive de outros "
+        "clientes** — o reuso comum é escopado ao dono e nunca enxerga esse caso. "
+        "É informativo: quem decide é o atendente, porque o bem pode ter sido vendido.\n\n"
+        "Não retorna conflito quando o texto não identifica um bem ('S/N', 'não sei') "
+        "nem quando o próprio `cliente_id` já possui um objeto com esse identificador — "
+        "aí é o mesmo cliente voltando com o mesmo bem."
+    ),
+)
+def verificar_identificador_objeto(
+    identificador: str = Query(..., min_length=1, max_length=100, description="Placa ou nº de série digitado"),
+    cliente_id: int | None = Query(None, description="Cliente selecionado na OS, se já houver"),
+    user_token: dict = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    return os_service.verificar_identificador_objeto(db, identificador, cliente_id)
 
 
 # ===========================================================================
@@ -235,12 +312,19 @@ def update_ordem_servico(
 # ===========================================================================
 
 @router.put(
+    "/{os_number}/objeto",
+    response_model=OrdemServicoRead,
+    status_code=status.HTTP_200_OK,
+    summary="Atualizar Objeto da OS",
+    description="Atualiza as informações do objeto associado à OS."
+)
+@router.put(
     "/{os_number}/equipamento",
     response_model=OrdemServicoRead,
     status_code=status.HTTP_200_OK,
-    summary="Atualizar Equipamento da OS",
+    summary="Atualizar Equipamento da OS (Legado)",
     description=(
-        "Atualiza as informações do equipamento associado à OS. "
+        "Atualiza as informações do equipamento associado à OS (compatibilidade). "
         "Permite também trocar o cliente proprietário do equipamento via cliente_id. "
         "Não é permitido em OS com status FINALIZADA ou CANCELADA."
     )
@@ -341,7 +425,7 @@ def finalizar_ordem_servico(
     data: OrdemServicoFinalizar,
     db: Session = Depends(get_db)
 ):
-    return _handle_db_transaction(db, os_service.finalizar_ordem_servico, os_number, data)
+    return _handle_db_transaction(db, os_service.finalizar_ordem_servico, os_number, data, user_token)
 
 
 @router.put(
@@ -361,7 +445,7 @@ def cancelar_ordem_servico(
     data: OrdemServicoCancelar,
     db: Session = Depends(get_db)
 ):
-    return _handle_db_transaction(db, os_service.cancelar_ordem_servico, os_number, data)
+    return _handle_db_transaction(db, os_service.cancelar_ordem_servico, os_number, data, user_token)
 
 
 @router.put(
@@ -382,7 +466,9 @@ def reabrir_ordem_servico(
     payload: OrdemServicoReabrir = OrdemServicoReabrir(),
     db: Session = Depends(get_db)
 ):
-    return _handle_db_transaction(db, os_service.reabrir_ordem_servico, os_number, payload.codigo_gerente)
+    return _handle_db_transaction(
+        db, os_service.reabrir_ordem_servico, os_number, payload.codigo_gerente, payload.cliente_pagou, user_token
+    )
 
 
 # ===========================================================================

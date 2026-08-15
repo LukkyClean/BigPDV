@@ -10,6 +10,11 @@ import {
   OrderServiceStatsDataType,
 } from '../schemas/orderServiceQuery.schema';
 
+import {
+  IdentificadorCheckSchema,
+  type IdentificadorCheckDataType,
+} from '../schemas/relationship/identificadorCheck.schema';
+
 import { BASE_ORDER_SERVICE_URL } from '../constants/core.constant';
 import { safeParseResponse } from '@/shared/utils/parse.utils';
 
@@ -20,6 +25,7 @@ export async function getAllOs(
   if (query.search) params.search = query.search;
   if (query.priority_sort !== undefined) params.priority_sort = query.priority_sort;
   if (query.status) params.status = query.status;
+  if (query.situacao_equipamento) params.situacao_equipamento = query.situacao_equipamento;
   if (query.page) params.page = query.page;
   if (query.limit) params.limit = query.limit;
 
@@ -61,4 +67,23 @@ export async function getOsAbandono(): Promise<OrderServiceReadDataType[]> {
 export async function getOsAtrasadas(): Promise<OrderServiceReadDataType[]> {
   const { data } = await api.get<OrderServiceReadDataType[]>(`${BASE_ORDER_SERVICE_URL}/atrasadas`);
   return data;
+}
+
+/**
+ * Verifica se a placa / nº de série digitada já pertence a um objeto cadastrado,
+ * inclusive de outro cliente. Informativo: quem decide é o atendente, porque o
+ * bem pode ter sido vendido.
+ */
+export async function verificarIdentificadorObjeto(
+  identificador: string,
+  clienteId?: number | null,
+): Promise<IdentificadorCheckDataType> {
+  const params: Record<string, string | number> = { identificador };
+  if (clienteId) params.cliente_id = clienteId;
+
+  const { data } = await api.get<IdentificadorCheckDataType>(
+    `${BASE_ORDER_SERVICE_URL}/objeto/verificar-identificador`,
+    { params },
+  );
+  return safeParseResponse(IdentificadorCheckSchema, data, 'verificarIdentificadorObjeto');
 }

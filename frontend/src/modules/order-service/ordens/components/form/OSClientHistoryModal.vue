@@ -6,9 +6,11 @@ import BaseModal from '@/shared/components/commons/BaseModal/BaseModal.vue';
 import BaseTableContainer from '@/shared/components/commons/BaseTableContainer/BaseTableContainer.vue';
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
 
-import { getStatusLabel, getStatusColor } from '../../../shared/utils/formatters';
+import { getEstadoOS } from '../../../shared/utils/formatters';
+import { useObjetoLabels } from '@/modules/order-service/shared/segmento/useObjetoLabels';
 import { useOrderServiceQueryByCliente } from '../../composables/request/useOrderServiceGet.queries';
 import type { OrderServiceReadDataType } from '../../schemas/orderServiceQuery.schema';
+import { parseTimestampBackend } from '@/shared/utils/date.utils';
 
 interface Props {
   isOpen: boolean;
@@ -17,9 +19,12 @@ interface Props {
 
 const props = defineProps<Props>();
 
+// Cabeçalho da coluna por segmento: a oficina lê "Veículo", não "Objeto".
+const { labelSingular } = useObjetoLabels();
+
 const emit = defineEmits<{
   close: [];
-  reutilizarEquipamento: [os: OrderServiceReadDataType];
+  reutilizarObjeto: [os: OrderServiceReadDataType];
 }>();
 
 const clienteIdRef = toRef(() => props.clienteId);
@@ -28,8 +33,9 @@ const { items, totalPages, totalItems, currentPage, isLoading, isError } =
 
 const isEmpty = computed(() => !isLoading.value && items.value.length === 0);
 
+// `data_criacao` é timestamp de evento (UTC no backend).
 function formatDate(date: string | Date): string {
-  const d = typeof date === 'string' ? new Date(date) : date;
+  const d = parseTimestampBackend(date);
   return d.toLocaleDateString('pt-BR', {
     day: '2-digit',
     month: '2-digit',
@@ -37,9 +43,9 @@ function formatDate(date: string | Date): string {
   });
 }
 
-function getEquipamentoLabel(os: OrderServiceReadDataType): string {
-  const equip = os.equipamento;
-  const parts = [equip.tipo_equipamento, equip.marca, equip.modelo].filter(Boolean);
+function getObjetoLabel(os: OrderServiceReadDataType): string {
+  const objeto = os.objeto;
+  const parts = [objeto.tipo_equipamento, objeto.marca, objeto.modelo].filter(Boolean);
   return parts.join(' · ') || '-';
 }
 
@@ -48,20 +54,6 @@ function truncate(text: string | null | undefined, maxLength: number): string {
   return text.length > maxLength ? text.slice(0, maxLength) + '…' : text;
 }
 
-const statusColorMap: Record<string, string> = {
-  blue: 'bg-brand-primary-light text-brand-primary',
-  yellow: 'bg-yellow-50 text-yellow-700',
-  orange: 'bg-orange-50 text-orange-700',
-  purple: 'bg-purple-50 text-purple-700',
-  indigo: 'bg-indigo-50 text-indigo-700',
-  green: 'bg-emerald-50 text-emerald-700',
-  red: 'bg-red-50 text-red-700',
-  gray: 'bg-zinc-50 text-zinc-700',
-};
-
-function getStatusClass(status: string): string {
-  return statusColorMap[getStatusColor(status as Parameters<typeof getStatusColor>[0])] || statusColorMap.gray;
-}
 </script>
 
 <template>
@@ -92,7 +84,7 @@ function getStatusClass(status: string): string {
             <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Nº OS</th>
             <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Data</th>
             <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Status</th>
-            <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Equipamento</th>
+            <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">{{ labelSingular }}</th>
             <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Defeito</th>
             <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Ação</th>
           </tr>
@@ -111,13 +103,16 @@ function getStatusClass(status: string): string {
             </td>
             <td class="px-4 py-3">
               <span
-                :class="['px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide', getStatusClass(os.status)]"
+                :class="[
+                  'px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide',
+                  getEstadoOS(os.status, os.situacao_equipamento).badge,
+                ]"
               >
-                {{ getStatusLabel(os.status) }}
+                {{ getEstadoOS(os.status, os.situacao_equipamento).label }}
               </span>
             </td>
             <td class="px-4 py-3 text-slate-600">
-              {{ getEquipamentoLabel(os) }}
+              {{ getObjetoLabel(os) }}
             </td>
             <td class="px-4 py-3 text-slate-500 max-w-50">
               {{ truncate(os.defeito_relatado, 50) }}
@@ -126,7 +121,7 @@ function getStatusClass(status: string): string {
               <BaseButton
                 variant="ghost"
                 size="sm"
-                @click="emit('reutilizarEquipamento', os)"
+                @click="emit('reutilizarObjeto', os)"
               >
                 <ArrowDownToLine :size="14" class="mr-1" />
                 Reutilizar

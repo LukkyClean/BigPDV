@@ -1,4 +1,4 @@
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 
 import { useCustomerQueryAll } from './request/useCustomerGet.queries';
 
@@ -39,10 +39,20 @@ function calculateStats(customers: CustomerUnionReadSchemaDataType[]): ClienteSt
 
 // ── Composable ─────────────────────────────────────────────────────────────
 
+/**
+ * Ao garimpar desativados a página vem cheia: o servidor devolve TODOS (não há
+ * modo "só inativos" na rota) e o recorte de inativos acontece aqui. Com a
+ * página padrão de 20, quem tem poucos inativos via tela vazia e paginação
+ * dizendo que havia mais. 100 é o teto da rota.
+ */
+const LIMITE_GARIMPO_INATIVOS = 100;
+
 export function useCustomers() {
   const {
     searchQuery,
     customers: rawCustomers,
+    onlyActive,
+    pageLimit,
     totalPages,
     totalItems,
     currentPage,
@@ -50,8 +60,25 @@ export function useCustomers() {
     setPage,
   } = useCustomerQueryAll();
 
-  // Filtro local por tipo (PF/PJ/active/inactive) — backend não suporta
   const activeFilterTipo = ref<CustomersTypes>(null);
+
+  /**
+   * O filtro da tela decide o que pedir ao servidor.
+   *
+   * Antes ele era só local, e "Desativado" procurava inativos numa lista da qual
+   * o servidor já tinha removido todos os inativos — não tinha como dar
+   * resultado nenhum. Um cliente desativado sumia da interface para sempre, sem
+   * caminho de volta.
+   */
+  watch(
+    activeFilterTipo,
+    (filtro) => {
+      const garimpandoInativos = filtro === 'inactive';
+      onlyActive.value = !garimpandoInativos;
+      pageLimit.value = garimpandoInativos ? LIMITE_GARIMPO_INATIVOS : undefined;
+    },
+    { immediate: true },
+  );
 
   const filteredCustomers = computed<ClienteFormatted[]>(() => {
     let result = rawCustomers.value;

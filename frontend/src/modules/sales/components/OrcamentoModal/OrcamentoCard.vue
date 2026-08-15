@@ -10,6 +10,7 @@ import MoneyInput from '@/shared/components/ui/BaseMoneyInput/MoneyInput.vue';
 import BaseTextarea from '@/shared/components/ui/BaseInput/BaseTextarea.vue';
 
 import { OrcamentoRead } from '../../schemas/orcamento.schema';
+import { formatDataHora } from '@/shared/utils/date.utils';
 
 const props = defineProps<{
   orcamento: OrcamentoRead | undefined;
@@ -24,19 +25,10 @@ const orcamentoDisplay = computed(() => {
   return `ORC #${String(props.orcamento.id).padStart(6, '0')}`;
 });
 
-const createdAt = computed(() => {
-  if (!props.orcamento?.criado_em) return null;
-
-  const date = new Date(props.orcamento.criado_em).toLocaleDateString('pt-BR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  });
-
-  const time = props.orcamento.criado_em.split('T')[1];
-
-  return `${date} as ${time}`;
-});
+// Mesmo caso do SaleCard: hora UTC crua virava texto na tela.
+const createdAt = computed(() =>
+  props.orcamento?.criado_em ? formatDataHora(props.orcamento.criado_em).replace(',', ' as') : null,
+);
 </script>
 <template>
   <BaseInfoCard :icon="Settings" title="Dados do orçamento">

@@ -7,7 +7,7 @@ import { useAuthStore } from '@/shared/stores/auth.store';
 import SidebarItem from './SidebarItem.vue';
 import CompanyCard from '../../ui/CompanyCard.vue';
 import SidebarSectionSkeleton from './SidebarSectionSkeleton.vue';
-import startLogo from '@/shared/assets/images/login/start-logo.png';
+import AppLogo from '@/shared/components/AppLogo.vue';
 
 import { SIDEBAR_SECTIONS } from '@/modules/mainLayout/constants/layout.constants';
 import { computed, onMounted, onUnmounted } from 'vue';
@@ -78,7 +78,7 @@ onUnmounted(() => {
 
       <!-- Logo rodapé -->
       <div class="p-4 mt-auto border-t border-zinc-800/60 flex items-center justify-center">
-        <img :src="startLogo" alt="StartBig" class="h-10 w-10 opacity-80" />
+        <AppLogo class="h-10 w-auto max-w-full object-contain opacity-80" />
       </div>
     </aside>
   </Transition>

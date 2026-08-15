@@ -14,7 +14,7 @@ import CustomerSearchModal from '@/modules/sales/components/CustomerSearchModal.
 import SaleModal from '@/modules/sales/components/SaleModal.vue';
 import OSClienteSearchModal from '@/modules/order-service/ordens/components/OSClienteSearchModal.vue';
 import OSFormModal from '@/modules/order-service/ordens/components/OSFormModal.vue';
-import OSEquipamentoSelectModal from '@/modules/order-service/ordens/components/form/OSEquipamentoSelectModal.vue';
+import OSObjetoSelectModal from '@/modules/order-service/ordens/components/form/OSObjetoSelectModal.vue';
 import OSCreditoAlertModal from '@/modules/order-service/ordens/components/OSCreditoAlertModal.vue';
 
 import { useLayoutStore } from '../store/layout.store';
@@ -33,12 +33,16 @@ import { useCustomerSearchModal } from '@/modules/sales/composables/flows/useCus
 import { useOSCreateFlow } from '@/modules/order-service/ordens/composables/useOSCreateFlow';
 import { useProductModal } from '@/modules/products/inventory/composables/useProductModal.ts';
 import { useServicoModal } from '@/modules/order-service/servicos/composables/useServicoModal';
+import { getRevisoesPendentes } from '@/modules/order-service/revisoes/services/revisao.service';
+import { REVISOES_PENDENTES_QUERY_KEY } from '@/modules/order-service/shared/constants/queryKeys';
+import { useCapacidades } from '@/modules/order-service/shared/segmento/useCapacidades';
 
 const layoutStore = useLayoutStore();
 const settingsStore = useSettingsStore();
 const configuracoesStore = useConfiguracoesStore();
 const impressaoStore = useImpressaoStore();
 const notificacoesStore = useNotificacoesStore();
+const { temRevisoes } = useCapacidades();
 const { isMobile, isMobileOpen, isQuickOpen, isSettingsOpen, isMinhaContaOpen, isConfiguracoesOpen, secaoConfiguracoesAtiva } = storeToRefs(layoutStore);
 
 const { data: osAbandonoData } = useQuery({
@@ -57,6 +61,22 @@ const { data: osAtrasadasData } = useQuery({
 });
 watch(osAtrasadasData, (lista) => {
   if (lista) notificacoesStore.setOsAtrasadas(lista);
+}, { immediate: true });
+
+// Revisões vencidas viram aviso no sino. Gateado pela capacidade: informática
+// não tem revisão (o backend já devolve vazio), e sem o gate a loja ficaria
+// batendo num endpoint inútil a cada 15 minutos.
+const { data: revisoesData } = useQuery({
+  // MESMA chave da aba Revisões: um cache só, uma requisição só, e os dois
+  // consumidores atualizam juntos. O refetch é rede de segurança — quem traz o
+  // aviso na hora é a invalidação disparada ao gravar o alvo da revisão.
+  queryKey: REVISOES_PENDENTES_QUERY_KEY,
+  queryFn: getRevisoesPendentes,
+  refetchInterval: 1000 * 60 * 15,
+  enabled: temRevisoes,
+});
+watch(revisoesData, (lista) => {
+  if (lista) notificacoesStore.setRevisoes(lista);
 }, { immediate: true });
 
 const { data: comunicadosData } = useQuery({
@@ -82,19 +102,20 @@ const { openCustomerModal } = useCustomerSearchModal();
 const {
   isClienteSearchOpen,
   isFormModalOpen,
-  isEquipSelectOpen,
+  isObjetoSelectOpen,
   isCreditAlertOpen,
   selectedCliente,
   selectedOS,
-  equipamentosHistoricoFlow,
-  selectedEquipamento,
+  objetosHistoricoFlow,
+  selectedObjeto,
+  autoOpenReopen,
   autoUsarCredito,
   openNovaOS,
   handleClienteSelected,
   handleCreditoUsado,
   handleCreditoIgnorado,
-  handleEquipamentoSelectedFlow,
-  skipEquipamentoSelectFlow,
+  handleObjetoSelectedFlow,
+  skipObjetoSelectFlow,
   handleChangeCliente,
   closeClienteSearch,
   closeFormModal,
@@ -206,19 +227,20 @@ whenever(Ctrl_K, () => {
       @fechar="handleCreditoIgnorado"
     />
 
-    <OSEquipamentoSelectModal
-      :is-open="isEquipSelectOpen"
-      :equipamentos="equipamentosHistoricoFlow"
-      @close="skipEquipamentoSelectFlow"
-      @select="handleEquipamentoSelectedFlow"
+    <OSObjetoSelectModal
+      :is-open="isObjetoSelectOpen"
+      :objetos="objetosHistoricoFlow"
+      @close="skipObjetoSelectFlow"
+      @select="handleObjetoSelectedFlow"
     />
 
     <OSFormModal
       :is-open="isFormModalOpen"
       :ordem-servico="selectedOS"
       :selected-cliente="selectedCliente"
-      :initial-equipamento="selectedEquipamento"
+      :initial-objeto="selectedObjeto"
       :auto-usar-credito="autoUsarCredito"
+      :auto-open-reopen="autoOpenReopen"
       @close="closeFormModal"
       @change-cliente="handleChangeCliente"
     />

@@ -4,6 +4,23 @@
 
 @theme {
   --color-brand-primary: #045ca1;
+  /* Tom claro da primária: fundo de caixas, ícones de seção e estados de hover
+     que levam texto/ícone em `brand-primary` por cima.
+
+     Estava sendo USADO em 46 lugares sem nunca ter sido definido aqui. O
+     Tailwind v4 só gera a utility se a variável `--color-*` existir, então
+     `bg-brand-primary-light` simplesmente não saía no CSS e dezenas de
+     elementos ficavam sem fundo — some sem quebrar, por isso passou batido.
+     O `check:tokens` agora barra o build se isso se repetir.
+
+     Valor escolhido por contraste, não a olho: 6,03:1 com `brand-primary` por
+     cima, folgado acima do mínimo de 4,5:1 exigido para texto. */
+  --color-brand-primary-light: #e8f1f9;
+  /* Hover do botão primário. Era `hover:bg-blue-950` chumbado dentro do
+     BaseButton, então o botão assumia a cor da empresa e voltava a AZUL ao
+     passar o mouse. Como token, o hover acompanha o tema. Valor mantido igual ao
+     blue-950 de antes para nenhuma instalação existente mudar de aparência. */
+  --color-brand-primary-hover: #172554;
   --color-brand-secondary: #5590bf;
   --color-brand-action: #151515;
   --color-brand-grey: #e9e9e9;

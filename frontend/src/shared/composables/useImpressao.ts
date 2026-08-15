@@ -38,10 +38,13 @@ export function useImpressao() {
   async function imprimirCupom(dados: Uint8Array): Promise<boolean> {
     try {
       await enviar(dados)
+      // Feedback discreto: o envio térmico é silencioso (sem diálogo), então
+      // sem isto o usuário não sabe se saiu — vale para o automático e o manual.
+      toast.success('Cupom enviado à impressora')
       return true
     } catch (error) {
       console.error('[Impressão] Falha ao imprimir cupom:', error)
-      toast.error('Falha ao imprimir o cupom', 'Verifique a impressora. Abrindo opções de impressão...')
+      toast.error('Falha ao imprimir o cupom', 'Verifique a impressora. Abrindo a via A4...')
       return false
     }
   }

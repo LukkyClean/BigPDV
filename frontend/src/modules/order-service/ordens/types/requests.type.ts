@@ -1,7 +1,7 @@
 import { OrderServiceUpdateDataType, OrderServiceReadyDataType, OrderServiceCancelDataType } from "../schemas/orderServiceMutate.schema";
 
 import { OsItemCreateSchemaDataType, OsItemUpdateSchemaDataType } from "../schemas/relationship/osItem.schema";
-import { OsEquipUpdateSchemaDataType } from "../schemas/relationship/osEquip.schema";
+import { OsObjetoUpdateSchemaDataType } from "../schemas/relationship/osObjeto.schema";
 
 export interface OsItemCreateRequest {
     osNumber: string,
@@ -19,9 +19,9 @@ export interface OrderServiceUpdateRequest {
     updatedOS: OrderServiceUpdateDataType
 }
 
-export interface OsEquipUpdateRequest {
+export interface OsObjetoUpdateRequest {
     osNumber: string,
-    updatedEquip: OsEquipUpdateSchemaDataType
+    updatedObjeto: OsObjetoUpdateSchemaDataType
 }
 
 export interface OsReadyUpdateRequest {

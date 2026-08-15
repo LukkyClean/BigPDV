@@ -5,6 +5,8 @@ import { useImpressaoStore } from '@/shared/stores/impressao.store';
 import { useCompanyPrintInfo, getPaymentDisplayName } from '@/shared/utils/print.utils';
 import { usePaymentMethodsQuery } from '../queries/usePaymentMethodsQuery';
 import { saleToEscPos } from '../../components/print/saleToEscPos';
+import { DOTS } from '@/shared/services/escpos';
+import { carregarLogoRaster } from '@/shared/services/escposImagem';
 import { saleService } from '../../api.service';
 import type { SaleRead } from '../../schemas/sale.schema';
 import type { PrintFormat } from '@/shared/components/print/print.types';
@@ -16,7 +18,6 @@ export function useSalePrintFlow() {
     printType,
     printFormat,
     isPrintSelectModalOpen,
-    openPrintSelect,
     printDirect,
     handlePrintFormatSelected: handlePrintFormatSelectedBase,
     closePrintSelectModal,
@@ -30,21 +31,30 @@ export function useSalePrintFlow() {
     return getPaymentDisplayName(method?.nome ?? 'Desconhecido');
   }
 
-  async function printSale(saleId: number, type: SalePrintType, afterPrint?: () => void) {
-    const sale = await saleService.getSale(saleId);
+  /**
+   * Regra única (sem perguntar formato): térmica configurada → cupom ESC/POS
+   * direto; sem térmica (ou falha) → recibo A4 abrindo o diálogo do sistema.
+   */
+  async function decidirEImprimir(sale: SaleRead, type: SalePrintType, afterPrint?: () => void) {
     saleForPrint.value = sale;
-    openPrintSelect(type, () => {
+    const finalizar = () => {
       saleForPrint.value = null;
       afterPrint?.();
-    });
+    };
+    if (await imprimirEscPosDireto(sale)) {
+      finalizar();
+      return;
+    }
+    printDirect(type, 'A4', finalizar);
+  }
+
+  async function printSale(saleId: number, type: SalePrintType, afterPrint?: () => void) {
+    const sale = await saleService.getSale(saleId);
+    await decidirEImprimir(sale, type, afterPrint);
   }
 
   function printSaleData(sale: SaleRead, type: SalePrintType, afterPrint?: () => void) {
-    saleForPrint.value = sale;
-    openPrintSelect(type, () => {
-      saleForPrint.value = null;
-      afterPrint?.();
-    });
+    void decidirEImprimir(sale, type, afterPrint);
   }
 
   const impressao = useImpressao();
@@ -60,10 +70,13 @@ export function useSalePrintFlow() {
   /** Manda o cupom térmico direto pra impressora configurada; false = sem impressora/falhou */
   async function imprimirEscPosDireto(sale: SaleRead): Promise<boolean> {
     if (!impressao.podeImprimirDireto.value) return false;
+    const bobina = impressaoStore.config.bobina;
+    const logoRaster = await carregarLogoRaster(companyInfo.value.logo, DOTS[bobina]);
     const dados = saleToEscPos(sale, {
-      bobina: impressaoStore.config.bobina,
+      bobina,
       empresa: companyInfo.value,
       resolverPagamento: resolvePaymentMethodName,
+      logoRaster,
       // Reimpressão manual não deve reabrir a gaveta (só a impressão pós-venda faz isso)
     });
     return impressao.imprimirCupom(dados);
@@ -98,31 +111,28 @@ export function useSalePrintFlow() {
       return;
     }
 
-    if (config.auto_imprimir_venda === 'automatico') {
-      if (config.formato_venda === 'a4') {
-        saleForPrint.value = sale;
-        printDirect('VENDA', 'A4', () => {
-          saleForPrint.value = null;
-          afterPrint?.();
-        });
+    // Térmica configurada → cupom direto (abre a gaveta quando for pagamento em dinheiro).
+    if (impressao.podeImprimirDireto.value) {
+      const logoRaster = await carregarLogoRaster(companyInfo.value.logo, DOTS[config.bobina]);
+      const dados = saleToEscPos(sale, {
+        bobina: config.bobina,
+        empresa: companyInfo.value,
+        resolverPagamento: resolvePaymentMethodName,
+        abrirGaveta: config.gaveta_ativa && config.abrir_gaveta_na_venda && vendaTemPagamentoDinheiro(sale),
+        logoRaster,
+      });
+      if (await impressao.imprimirCupom(dados)) {
+        afterPrint?.();
         return;
-      }
-
-      if (impressao.podeImprimirDireto.value) {
-        const dados = saleToEscPos(sale, {
-          bobina: config.bobina,
-          empresa: companyInfo.value,
-          resolverPagamento: resolvePaymentMethodName,
-          abrirGaveta: config.gaveta_ativa && config.abrir_gaveta_na_venda && vendaTemPagamentoDinheiro(sale),
-        });
-        if (await impressao.imprimirCupom(dados)) {
-          afterPrint?.();
-          return;
-        }
       }
     }
 
-    printSaleData(sale, 'VENDA', afterPrint);
+    // Sem térmica (ou falha na impressão) → recibo A4 abrindo o diálogo do sistema.
+    saleForPrint.value = sale;
+    printDirect('VENDA', 'A4', () => {
+      saleForPrint.value = null;
+      afterPrint?.();
+    });
   }
 
   return {

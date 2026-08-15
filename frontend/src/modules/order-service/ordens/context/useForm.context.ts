@@ -5,7 +5,7 @@ import type { OSFormContext } from '../types/context.type';
 import type { OrderServiceReadDataType } from '../schemas/orderServiceQuery.schema';
 import { useOSCreateForm } from '../composables/form/useOSCreate.form';
 import { useOSUpdateGeralForm } from '../composables/form/useOSUpdateGeral.form';
-import { useOSUpdateEquipForm } from '../composables/form/useOSUpdateEquip.form';
+import { useOSUpdateObjetoForm } from '../composables/form/useOSUpdateObjeto.form';
 import { useOSItemForm } from '../composables/form/useOSItem.form';
 import { useOSFinalizarForm } from '../composables/form/useOSFinalizar.form';
 import { useOSCancelarForm } from '../composables/form/useOSCancelar.form';
@@ -31,9 +31,9 @@ export function useOSFormProvider(opts: {
   });
 
 
-  const atualizarEquipamento = useOSUpdateEquipForm({
+  const atualizarObjeto = useOSUpdateObjetoForm({
     osNumber: opts.osNumber,
-    // sem onSuccess: equip auto-save não fecha o modal
+    // sem onSuccess: objeto auto-save não fecha o modal
   });
 
 
@@ -58,7 +58,7 @@ export function useOSFormProvider(opts: {
     isCreateMode: opts.isCreateMode,
     criar,
     atualizarGeral,
-    atualizarEquipamento,
+    atualizarObjeto,
     item,
     finalizar,
     cancelar,
@@ -88,7 +88,7 @@ export function useOSFormPendingState(context: OSFormContext): ComputedRef<boole
     () =>
       context.criar.isPending.value ||
       context.atualizarGeral.isPending.value ||
-      context.atualizarEquipamento.isPending.value ||
+      context.atualizarObjeto.isPending.value ||
       context.item.isPending.value ||
       context.finalizar.isPending.value ||
       context.cancelar.isPending.value,

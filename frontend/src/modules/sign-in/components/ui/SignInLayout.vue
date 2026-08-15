@@ -7,7 +7,7 @@
 import { ref, watch, nextTick } from 'vue';
 
 import backgroundImage from '@/shared/assets/images/login/background.png';
-import logoImage from '@/shared/assets/images/login/start-logo.png';
+import AppLogo from '@/shared/components/AppLogo.vue';
 
 import BaseFooter from '@/shared/components/layout/BaseFooter.vue';
 
@@ -48,7 +48,7 @@ watch(currentStep, async () => {
         <!-- Header para Step 0 (Welcome) - Apenas logo centralizado -->
         <header v-if="currentStep === 0" class="px-8 lg:px-12 pt-8 pb-4">
           <div class="flex justify-center">
-            <img :src="logoImage" alt="Start Big Logo" class="h-16 w-auto" />
+            <AppLogo class="h-16 w-auto" />
           </div>
         </header>
 
@@ -76,7 +76,7 @@ watch(currentStep, async () => {
             </div>
 
             <!-- Logo -->
-            <img :src="logoImage" alt="Start Big Logo" class="h-16 w-auto ml-4" />
+            <AppLogo class="h-16 w-auto ml-4" />
           </div>
 
           <!-- Indicador de etapa -->

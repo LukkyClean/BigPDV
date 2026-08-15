@@ -68,18 +68,31 @@ const cidadeRef = computed(() => endereco_principal.value?.cidade || '');
 const ufRef = computed(() => endereco_principal.value?.estado || '');
 
 const { codigoIbge, isLoading: isLoadingIbge } = useIbgeCityLookup(cidadeRef, ufRef);
+
+/**
+ * O campo é somente leitura e lê DAQUI — não do formulário. Nada precisa ser
+ * escrito no form para o código aparecer na tela.
+ *
+ * Existia aqui um `watch(codigoIbge)` que copiava o resultado para dentro do
+ * formulário, e ele causava um bug com cara de fantasma: a consulta ao IBGE vai
+ * pela INTERNET e a resposta chega depois dos 50 ms em que o provider congela o
+ * retrato usado para detectar alterações. O formulário passava a diferir do
+ * retrato sem o usuário ter tocado em nada, e sair da tela pedia para salvar.
+ *
+ * Só na primeira visita de cada sessão porque a lista de municípios fica 24 h em
+ * cache: da segunda vez o valor já está calculado na montagem e o `watch` nem
+ * disparava. Daí o sintoma "só depois de instalar".
+ *
+ * E salvar não resolvia: `codigo_ibge` NÃO EXISTE no backend — nem coluna nem
+ * schema (a palavra "ibge" não aparece no Python). O campo ia no payload e o
+ * Pydantic descartava. Escrever no formulário era, portanto, sujar o estado para
+ * alimentar algo que ninguém lê.
+ *
+ * Se um dia entrar NF-e, que precisa do código do município, o caminho é criar a
+ * coluna no backend — não ressuscitar esta cópia.
+ */
 const codigoIbgeDisplay = computed(() => {
   return codigoIbge.value || endereco_principal.value?.codigo_ibge || '';
-});
-
-// Auto-update codigo_ibge
-watch(codigoIbge, (code) => {
-  if (!endereco_principal.value) return;
-
-  endereco_principal.value = {
-    ...endereco_principal.value,
-    codigo_ibge: code || '',
-  };
 });
 </script>
 

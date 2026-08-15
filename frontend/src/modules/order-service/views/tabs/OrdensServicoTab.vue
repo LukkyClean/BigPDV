@@ -8,44 +8,26 @@ import OSPrintCupom from '../../ordens/components/OSPrintCupom.vue';
 import PrintFormatSelectModal from '@/shared/components/print/PrintFormatSelectModal.vue';
 import OSFinalizarModal, { type DadosFinalizacaoOS } from '../../ordens/components/OSFinalizarModal.vue';
 import OSPagamentoModal from '../../ordens/components/OSPagamentoModal.vue';
-import OSReopenOptionsModal from '../../ordens/components/form/OSReopenOptionsModal.vue';
 import type { PrintFormat } from '../../ordens/composables/modal/useOSPrintFlow';
-import GerenteAprovacaoModal from '@/shared/components/commons/GerenteAprovacaoModal/GerenteAprovacaoModal.vue';
 import { useImpressao } from '@/shared/composables/useImpressao';
 import { useImpressaoStore } from '@/shared/stores/impressao.store';
-import { useCompanyPrintInfo } from '@/shared/utils/print.utils';
+import { useCompanyPrintInfo, imprimirComPagina } from '@/shared/utils/print.utils';
 import { osToEscPos } from '../../ordens/components/osToEscPos';
+import { DOTS } from '@/shared/services/escpos';
+import { carregarLogoRaster } from '@/shared/services/escposImagem';
+import { useObjetoLabels } from '@/modules/order-service/shared/segmento/useObjetoLabels';
 
 import { useOrderServiceQueryAll, useOrderServiceQueryStats } from '../../ordens/composables/request/useOrderServiceGet.queries';
 import { getUniqueOS } from '../../ordens/services/orderServiceGet.service';
 
 import type { OrderServiceReadDataType } from '../../ordens/schemas/orderServiceQuery.schema';
-import type { OsStatusEnumDataType } from '../../ordens/schemas/enums/osEnums.schema';
+import type { OsEstadoKey } from '../../ordens/constants/ordemServico.constants';
 import { useToast } from '@/shared/composables/useToast';
-import { useReopenOrderServiceMutation, useReadyOrderServiceMutation } from '../../ordens/composables/request/useOrderServiceUpdate.mutate';
+import { useReadyOrderServiceMutation } from '../../ordens/composables/request/useOrderServiceUpdate.mutate';
 import { useOSCreateFlow } from '../../ordens/composables/useOSCreateFlow';
-import { useGerenteAprovacao } from '@/shared/composables/useGerenteAprovacao';
 
 const toast = useToast();
-const reopenMutation = useReopenOrderServiceMutation();
 const finalizarEntregaMutation = useReadyOrderServiceMutation();
-const gerenteReopen = useGerenteAprovacao();
-
-async function executarReopenOS(osNumber: string, codigoGerente?: string): Promise<void> {
-  try {
-    await reopenMutation.mutateAsync({ osNumber, codigoGerente });
-  } catch (error: any) {
-    const detail = error?.response?.data?.detail;
-    if (detail === 'REQUER_APROVACAO_GERENTE') {
-      const pin = await gerenteReopen.pedirPin();
-      if (pin) await executarReopenOS(osNumber, pin);
-    } else if (detail === 'PIN_GERENTE_INVALIDO') {
-      toast.error('PIN do gerente inválido');
-      const pin = await gerenteReopen.pedirPin();
-      if (pin) await executarReopenOS(osNumber, pin);
-    }
-  }
-}
 
 const {
   searchQuery,
@@ -71,8 +53,6 @@ const osToFinalizar = ref<OrderServiceReadDataType | null>(null);
 const isFinalizarDirectOpen = ref(false);
 const isPagamentoDirectOpen = ref(false);
 const dadosFinalizacaoDirect = ref<DadosFinalizacaoOS | null>(null);
-const osToReopen = ref<OrderServiceReadDataType | null>(null);
-const isReopenDirectOpen = ref(false);
 
 const creditoAoReabrirDirect = computed(() => {
   const os = osToFinalizar.value;
@@ -92,24 +72,31 @@ const pendingPrintAfterSelect = ref<(() => void) | null>(null);
 const impressao = useImpressao();
 const impressaoStore = useImpressaoStore();
 const { companyInfo } = useCompanyPrintInfo();
+const { labelSingular } = useObjetoLabels();
 
 /** Manda o cupom térmico direto pra impressora configurada; false = sem impressora/falhou */
-async function imprimirEscPosDireto(tipo: 'ENTRADA' | 'SAIDA'): Promise<boolean> {
+async function imprimirEscPosDireto(tipo: 'ENTRADA' | 'SAIDA' | 'CANCELAMENTO'): Promise<boolean> {
   if (!impressao.podeImprimirDireto.value) return false;
   const os = osToPrint.value;
   if (!os) return false;
+  const bobina = impressaoStore.config.bobina;
+  // Carrega a logo da empresa em bitmap 1-bit (igual ao useOSPrintFlow); sem isso
+  // o cupom da tabela saía sem a logo enquanto o do formulário saía com.
+  const logoRaster = await carregarLogoRaster(companyInfo.value.logo, DOTS[bobina]);
   const dados = osToEscPos(os, tipo, {
-    bobina: impressaoStore.config.bobina,
+    bobina,
     empresa: companyInfo.value,
+    logoRaster,
+    rotuloObjeto: labelSingular.value,
   });
   return impressao.imprimirCupom(dados);
 }
 
-// ─── Filtro de status ─────────────────────────────────────────────────────────
+// ─── Filtro de estado (status do fluxo + desfecho do objeto) ──────────────────
 const osActiveFilter = computed<string | null>({
   get: () => activeStatusFilterQuery.value ?? null,
   set: (val: string | null) => {
-    activeStatusFilterQuery.value = (val as OsStatusEnumDataType | null) ?? undefined;
+    activeStatusFilterQuery.value = (val as OsEstadoKey | null) ?? undefined;
   },
 });
 
@@ -193,7 +180,7 @@ async function handleFinalizadoDirect({ shouldPrint }: { shouldPrint: boolean })
       osToPrint.value = osAtualizada;
       printType.value = 'SAIDA';
       pendingPrintAfterSelect.value = () => handleCloseFinalizarDirect();
-      isPrintSelectOpen.value = true;
+      await imprimirComRegra();
       return;
     } catch {
       toast.error('Erro ao preparar impressão');
@@ -221,35 +208,22 @@ async function handleCancelled({ shouldPrint }: { shouldPrint: boolean }) {
       osToPrint.value = osAtualizada;
       printType.value = 'CANCELAMENTO';
       pendingPrintAfterSelect.value = null;
-      isPrintSelectOpen.value = true;
+      await imprimirComRegra();
     } catch {
       toast.error('Erro ao preparar impressão do cancelamento');
     }
   }
 }
 
-function handleReabrir(os: OrderServiceReadDataType) {
-  osToReopen.value = os;
-  isReopenDirectOpen.value = true;
-}
-
-function handleReopenCancel() {
-  isReopenDirectOpen.value = false;
-  osToReopen.value = null;
-}
-
-function handleReopenTextOnly() {
-  const osNumber = osToReopen.value?.numero_os;
-  isReopenDirectOpen.value = false;
-  osToReopen.value = null;
-  if (osNumber) void executarReopenOS(osNumber);
-}
-
-function handleReopenFull() {
-  const osNumber = osToReopen.value?.numero_os;
-  isReopenDirectOpen.value = false;
-  osToReopen.value = null;
-  if (osNumber) void executarReopenOS(osNumber);
+async function handleReabrir(os: OrderServiceReadDataType) {
+  // Abre a OS no formulário já com o modal de opções de reabertura (o fluxo
+  // correto — TEXT_ONLY destrava só texto, FULL reabre de fato — vive no form).
+  try {
+    const osCompleta = await getUniqueOS(os.numero_os);
+    openExistingOS(osCompleta, true);
+  } catch {
+    toast.error('Erro ao carregar OS para reabertura');
+  }
 }
 
 async function handlePrintOS(os: OrderServiceReadDataType) {
@@ -264,10 +238,36 @@ async function handlePrintOS(os: OrderServiceReadDataType) {
       printType.value = 'ENTRADA';
     }
     pendingPrintAfterSelect.value = null;
-    isPrintSelectOpen.value = true;
+    await imprimirComRegra();
   } catch {
     toast.error('Erro ao preparar impressão');
   }
+}
+
+/**
+ * Regra única (sem perguntar formato): térmica configurada → cupom ESC/POS
+ * direto; sem térmica (ou falha) → recibo A4 abrindo o diálogo do sistema.
+ */
+async function imprimirComRegra() {
+  const tipo = printType.value;
+  if (tipo && (await imprimirEscPosDireto(tipo))) {
+    pendingPrintAfterSelect.value?.();
+    pendingPrintAfterSelect.value = null;
+    osToPrint.value = null;
+    printType.value = null;
+    return;
+  }
+
+  printFormat.value = 'A4';
+  setTimeout(() => {
+    imprimirComPagina('A4');
+    setTimeout(() => {
+      pendingPrintAfterSelect.value?.();
+      pendingPrintAfterSelect.value = null;
+      osToPrint.value = null;
+      printType.value = null;
+    }, 500);
+  }, 100);
 }
 
 /**
@@ -276,7 +276,7 @@ async function handlePrintOS(os: OrderServiceReadDataType) {
  * impressão do sistema, onde o usuário escolhe a impressora/PDF.
  */
 async function handlePrintFormatSelected(format: PrintFormat) {
-  if (format === 'CUPOM' && (printType.value === 'ENTRADA' || printType.value === 'SAIDA')) {
+  if (format === 'CUPOM' && printType.value) {
     if (await imprimirEscPosDireto(printType.value)) {
       isPrintSelectOpen.value = false;
       pendingPrintAfterSelect.value?.();
@@ -291,7 +291,7 @@ async function handlePrintFormatSelected(format: PrintFormat) {
   isPrintSelectOpen.value = false;
 
   setTimeout(() => {
-    window.print();
+    imprimirComPagina(format);
     setTimeout(() => {
       pendingPrintAfterSelect.value?.();
       pendingPrintAfterSelect.value = null;
@@ -365,20 +365,6 @@ function handleClosePrintSelect() {
       @close="handleCloseFinalizarDirect"
       @voltar="handlePagamentoVoltarDirect"
       @finalized="handleFinalizadoDirect"
-    />
-
-    <OSReopenOptionsModal
-      :is-open="isReopenDirectOpen"
-      @cancel="handleReopenCancel"
-      @text-only="handleReopenTextOnly"
-      @full="handleReopenFull"
-    />
-
-    <GerenteAprovacaoModal
-      :is-open="gerenteReopen.isOpen.value"
-      :is-loading="gerenteReopen.isLoading.value"
-      @confirmar="gerenteReopen.confirmar"
-      @cancelar="gerenteReopen.cancelar"
     />
 
     <PrintFormatSelectModal
