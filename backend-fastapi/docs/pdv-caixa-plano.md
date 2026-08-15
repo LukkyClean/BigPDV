@@ -718,6 +718,37 @@ precisar, é **uma coluna nullable a mais** — não é motivo para inflar o des
 hoje. A regra que vale aqui é a mesma do resto do projeto: só entra o que tem dono
 pedindo.
 
+#### O financeiro vale para TODOS os segmentos — e as 2 condições para isso
+
+Confirmado na implementação da fase 2: o livro **não é do PDV**. A única coluna que
+o liga ao caixa é `sessao_caixa_id`, e ela é nullable — `NULL` significa "não passou
+por gaveta nenhuma". Uma assistência técnica, uma oficina ou uma serigrafia usam a
+mesma tabela sem nenhuma adaptação, e **nenhuma migração de dados será necessária**.
+
+Mas duas coisas ficaram propositalmente estreitas na fase 2, por segurança, e
+**precisam ser alargadas quando o módulo financeiro chegar**:
+
+**1. O portão da escrita.** Hoje o livro só é escrito com `controlar_caixa` ligado
+(`registrar_pagamentos_de_venda` sai na primeira linha sem isso). Foi assim para
+provar a inércia. Uma oficina que queira **financeiro sem caixa** teria o livro
+vazio — só apareceriam as despesas digitadas à mão, e nada do que entrou.
+
+*Como alargar:* o portão passa a ser `controlar_caixa` **OU** o financeiro ligado.
+Sem caixa, o movimento nasce com `sessao_caixa_id = NULL`, que é exatamente o que a
+coluna já significa. É uma condição a mais num `if`, não um remodelamento.
+
+**2. O lado da OS.** A fase 2 ligou só a **venda**. Para informática, oficina e
+serigrafia isso é o lado *menor* — o dinheiro delas entra pela **OS**. Sem o
+vínculo de 4.5.1, o financeiro desses segmentos nasceria enxergando quase nada.
+
+*Ou seja:* o que em 4.5.1 é "pré-requisito para empresa de serviço ligar o caixa"
+é, aqui, **pré-requisito para o financeiro servir os três segmentos que já rodam**.
+É o mesmo trabalho, e agora tem dois motivos.
+
+**Resumo para o planejamento:** o módulo financeiro atende todos os segmentos sem
+retrabalho de modelo. O que ele exige antes é ligar a OS ao livro e alargar o
+portão — as duas coisas aditivas, e as duas já mapeadas neste documento.
+
 ---
 
 ## 8. O que fica de fora (e por quê)
