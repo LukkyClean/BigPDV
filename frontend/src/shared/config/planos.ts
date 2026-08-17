@@ -19,7 +19,7 @@ type Recursos = {
 };
 
 const RECURSOS_POR_PLANO: Record<Plano, Recursos> = {
-  START: { nfe: false },
+  START: { nfe: true },
 };
 
 export type Recurso = keyof Recursos;

@@ -38,5 +38,6 @@ const view = useOSFormView();
       @update-cliente="view.handleUpdateCliente"
       @open-historico="view.openHistoricoModal"
     />
+
   </fieldset>
 </template>

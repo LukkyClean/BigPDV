@@ -67,12 +67,61 @@ def _revisao_existe_no_script(alembic_cfg: Config, revisao: str) -> bool:
 
 
 def _obter_revisao_baseline(alembic_cfg: Config) -> str:
-    """Retorna o ID da primeira migração (baseline, sem down_revision)."""
+    """Retorna o ID da baseline canônica (nova baseline, criada em 07/08/2026).
+
+    O diretório versions pode conter chains antigas (51db61228566, 5cf42db01be6)
+    que foram substituídas por esta baseline. get_bases() retornaria múltiplas
+    raízes, então usamos o ID fixo da baseline canônica.
+    """
+    return "b386f0ba5efd"
+
+
+def _corrigir_branches_inacessiveis(alembic_cfg: Config, revisao_atual: str | None) -> None:
+    """Registra via stamp branches que não são acessíveis a partir da revisão atual.
+
+    Cenário típico: dois conjuntos de migrations de branches git diferentes foram
+    unidos por merge sem um merge migration alembic. O create_all() do startup já
+    criou o schema completo (incluindo colunas das migrations inacessíveis), então
+    o stamp é seguro — apenas sincroniza o alembic_version com a realidade.
+
+    Verifica apenas os parents diretos do(s) head(s) atual(is), que é onde o
+    problema se manifesta (merge migrations com parent em branch inacessível).
+    """
+    if not revisao_atual:
+        return
+
     script = ScriptDirectory.from_config(alembic_cfg)
-    bases = list(script.get_bases())
-    if not bases:
-        raise RuntimeError("Nenhuma migração encontrada no diretório de versões.")
-    return bases[0]
+    heads = list(script.get_heads())
+
+    for head_id in heads:
+        rev = script.get_revision(head_id)
+        parents = rev.down_revision
+        if not parents:
+            continue
+        if isinstance(parents, str):
+            parents = (parents,)
+
+        for parent_id in parents:
+            # Verifica se parent_id e revisao_atual estão na mesma chain de
+            # ancestralidade (qualquer direção). Se estiverem, o upgrade normal
+            # é suficiente — sem necessidade de stamp.
+            na_mesma_chain = False
+            for upper, lower in [(parent_id, revisao_atual), (revisao_atual, parent_id)]:
+                try:
+                    list(script.iterate_revisions(upper, lower))
+                    na_mesma_chain = True
+                    break
+                except Exception:
+                    pass
+
+            if not na_mesma_chain:
+                logger.info(
+                    "Branch '%s' não é acessível a partir de '%s'. "
+                    "Registrando via stamp (schema já criado pelo create_all).",
+                    parent_id,
+                    revisao_atual,
+                )
+                command.stamp(alembic_cfg, parent_id)
 
 
 def aplicar_migracoes():
@@ -97,8 +146,12 @@ def aplicar_migracoes():
         ]
 
         if len(tabelas_existentes) == 0:
-            # DB completamente novo: upgrade cria tudo desde a baseline
-            logger.info("Banco novo detectado. Aplicando migrações desde o início...")
+            # DB completamente novo: create_all() já criou o schema completo.
+            # Stamp em todos os heads para evitar re-executar migrations que
+            # criariam tabelas que já existem; depois upgrade aplica apenas o
+            # merge migration (no-op) que une as chains.
+            logger.info("Banco novo detectado. Registrando heads e aplicando merge...")
+            command.stamp(alembic_cfg, "heads")
             command.upgrade(alembic_cfg, "head")
         else:
             # DB legado (criado por create_all): schema já existe
@@ -108,6 +161,7 @@ def aplicar_migracoes():
                 len(tabelas_existentes),
             )
             command.stamp(alembic_cfg, baseline)
+            _corrigir_branches_inacessiveis(alembic_cfg, baseline)
             command.upgrade(alembic_cfg, "head")
     else:
         revisao_atual = _obter_revisao_atual()
@@ -126,26 +180,27 @@ def aplicar_migracoes():
             command.stamp(alembic_cfg, "head", purge=True)
         else:
             # Caso normal: aplica migrações pendentes
-        try:
-            command.upgrade(alembic_cfg, "head")
-        except OperationalError as exc:
-            # create_all roda ANTES das migrações e já cria o schema completo a
-            # partir dos models. Quando o histórico tem galhos unidos depois
-            # (ex.: merge de heads oficina/vendas), o upgrade pode tentar recriar
-            # tabelas/colunas que o create_all já criou -> "already exists". Nesse
-            # caso o schema já está correto; basta registrar o banco na head, do
-            # mesmo jeito que já fazemos para bancos sem alembic_version. Qualquer
-            # outro erro sobe (não mascaramos falha real de migração).
-            msg = str(exc).lower()
-            if "already exists" in msg or "duplicate column" in msg:
-                logger.warning(
-                    "Upgrade encontrou schema já existente (create_all): %s. "
-                    "Registrando o banco na head via stamp.",
-                    exc,
-                )
-                command.stamp(alembic_cfg, "head")
-            else:
-                raise
+            _corrigir_branches_inacessiveis(alembic_cfg, revisao_atual)
+            try:
+                command.upgrade(alembic_cfg, "head")
+            except OperationalError as exc:
+                # create_all roda ANTES das migrações e já cria o schema completo a
+                # partir dos models. Quando o histórico tem galhos unidos depois
+                # (ex.: merge de heads oficina/vendas), o upgrade pode tentar recriar
+                # tabelas/colunas que o create_all já criou -> "already exists". Nesse
+                # caso o schema já está correto; basta registrar o banco na head, do
+                # mesmo jeito que já fazemos para bancos sem alembic_version. Qualquer
+                # outro erro sobe (não mascaramos falha real de migração).
+                msg = str(exc).lower()
+                if "already exists" in msg or "duplicate column" in msg:
+                    logger.warning(
+                        "Upgrade encontrou schema já existente (create_all): %s. "
+                        "Registrando o banco na head via stamp.",
+                        exc,
+                    )
+                    command.stamp(alembic_cfg, "head")
+                else:
+                    raise
         revisao_nova = _obter_revisao_atual()
         if revisao_nova != revisao_atual:
             logger.info("Banco atualizado: %s -> %s", revisao_atual, revisao_nova)

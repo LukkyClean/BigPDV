@@ -1,5 +1,7 @@
 import { FilterOption } from "@/shared/types/filter.types";
 
+export const PRODUTO_FISCAL_QUERY_KEY = 'produto-fiscal';
+
 export const FILTER_CONFIG: Record<string, FilterOption> = {
     active: {
         label: 'Ativos',

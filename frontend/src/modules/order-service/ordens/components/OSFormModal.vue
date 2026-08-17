@@ -28,6 +28,7 @@ import { useOSSelectOptions } from '../composables/modal/useOSSelectOptions';
 import { useOSPrintFlow } from '../composables/modal/useOSPrintFlow';
 import { useOSClientHistory } from '../composables/modal/useOSClientHistory';
 import { useOSFormViewProvider } from '../context/useOSFormView.context';
+import { provideOSFiscalSave } from '../composables/modal/useOSFiscalSave';
 import { getCustomerByIdForOS } from '../services/relationship/osRelationshipGet.service';
 interface Props {
   isOpen: boolean;
@@ -82,6 +83,8 @@ const {
   getOS: () => currentOSData.value,
 });
 
+const fiscalSaveFn = provideOSFiscalSave();
+
 const form = useOSFormProvider({
   osNumber,
   isCreateMode,
@@ -90,6 +93,7 @@ const form = useOSFormProvider({
     printEntradaAndClose();
   },
   onUpdateSuccess: async () => {
+    await fiscalSaveFn.value?.();
     await uploadPendingPhotos();
     handleClose();
   },

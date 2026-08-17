@@ -9,6 +9,8 @@ import type {
   ProdutoCreate,
   ProdutoRead,
   ProdutoUpdate,
+  ProdutoFiscalRead,
+  ProdutoFiscalUpdate,
 } from '../types/products.types';
 
 const BASE_URL = 'produtos' as const;
@@ -64,15 +66,21 @@ export async function replaceProdutoPrincipalImage(produtoId: number, file: File
 }
 
 /**
- * Atualiza um produto existente
- * @param id - ID do produto
- * @param produto - Dados para atualizar
+ * Atualiza um produto existente.
+ * Se `fiscal` estiver presente no payload, envia os dados fiscais em sequência
+ * via endpoint separado, de forma transparente para o chamador.
  */
 export async function updateProduto(
   id: number,
-  produto: ProdutoUpdate,
+  produto: ProdutoUpdate & { fiscal?: ProdutoFiscalUpdate | null },
 ): Promise<ProdutoRead> {
-  const { data } = await api.put<ProdutoRead>(`${BASE_URL}/${id}`, produto);
+  const { fiscal, ...dadosPrincipais } = produto;
+  const { data } = await api.put<ProdutoRead>(`${BASE_URL}/${id}`, dadosPrincipais);
+
+  if (fiscal) {
+    await upsertProdutoFiscal(id, fiscal);
+  }
+
   return data;
 }
 
@@ -82,5 +90,30 @@ export async function updateProduto(
  */
 export async function toggleProdutoAtivo(id: number): Promise<ProdutoRead> {
   const { data } = await api.put<ProdutoRead>(`${BASE_URL}/toggle_ativo/${id}`);
+  return data;
+}
+
+/**
+ * Retorna os dados fiscais de um produto.
+ * Lança erro 404 se ainda não foram preenchidos (tratado como `null` no composable).
+ */
+export async function getProdutoFiscal(produtoId: number): Promise<ProdutoFiscalRead | null> {
+  try {
+    const { data } = await api.get<ProdutoFiscalRead>(`${BASE_URL}/${produtoId}/fiscal`);
+    return data;
+  } catch (err: any) {
+    if (err?.response?.status === 404) return null;
+    throw err;
+  }
+}
+
+/**
+ * Cria ou atualiza os dados fiscais de um produto (upsert).
+ */
+export async function upsertProdutoFiscal(
+  produtoId: number,
+  dados: ProdutoFiscalUpdate,
+): Promise<ProdutoFiscalRead> {
+  const { data } = await api.put<ProdutoFiscalRead>(`${BASE_URL}/${produtoId}/fiscal`, dados);
   return data;
 }

@@ -4,9 +4,10 @@
 #            Define as estruturas de entrada (Create/Update) e saída (Read).
 # ---------------------------------------------------------------------------
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing import Optional, List
 
+from app.core.validators import validar_cnpj, validar_cpf
 from app.schemas.endereco import Endereco, EnderecoRead, EnderecoUpdate
 from app.core.enum import BankAccountType
 
@@ -108,6 +109,16 @@ class FornecedorCreate(BaseModel):
         description="Endereço do fornecedor"
     )
 
+    @field_validator("cpf", mode="before")
+    @classmethod
+    def validar_cpf_fornecedor(cls, v):
+        return validar_cpf(v)
+
+    @field_validator("cnpj", mode="before")
+    @classmethod
+    def validar_cnpj_fornecedor(cls, v):
+        return validar_cnpj(v)
+
     model_config = ConfigDict(
         from_attributes=True,
         json_schema_extra={
@@ -164,6 +175,16 @@ class FornecedorUpdate(BaseModel):
     tipo_conta: Optional[BankAccountType] = Field(None)
     pix: Optional[str] = Field(None, max_length=150)
     endereco: Optional[List[EnderecoUpdate]] = Field(None)
+
+    @field_validator("cpf", mode="before")
+    @classmethod
+    def validar_cpf_fornecedor(cls, v):
+        return validar_cpf(v)
+
+    @field_validator("cnpj", mode="before")
+    @classmethod
+    def validar_cnpj_fornecedor(cls, v):
+        return validar_cnpj(v)
 
     model_config = ConfigDict(
         from_attributes=True,

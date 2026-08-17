@@ -115,3 +115,37 @@ export const SalesStatusSchema = z.object({
 });
 
 export type SalesStatus = z.infer<typeof SalesStatusSchema>;
+
+// ---------------------------------------------------------------------------
+// Nota Fiscal por Venda
+// ---------------------------------------------------------------------------
+
+export const VendaNotaFiscalUpdateSchema = z.object({
+  natureza_operacao: z.string().max(60).nullable().optional(),
+  // 1=Normal, 2=Complementar, 3=Ajuste, 4=Devolução/Retorno
+  finalidade_emissao: z.number().int().min(1).max(4).nullable().optional(),
+  consumidor_final: z.boolean().nullable().optional(),
+  // 1=Presencial, 2=Internet, 3=Teleatendimento, 4=Entrega domiciliar, 9=Outros
+  indicador_presenca: z.number().int().refine((v) => [1, 2, 3, 4, 9].includes(v), {
+    message: 'indicador_presenca deve ser 1, 2, 3, 4 ou 9',
+  }).nullable().optional(),
+});
+
+export type VendaNotaFiscalUpdate = z.infer<typeof VendaNotaFiscalUpdateSchema>;
+
+export const VendaNotaFiscalReadSchema = VendaNotaFiscalUpdateSchema.extend({
+  id: z.number(),
+  venda_id: z.number(),
+  status_nota: z.string().nullable().optional(),
+  chave_acesso: z.string().nullable().optional(),
+  numero_nota: z.number().nullable().optional(),
+  serie: z.number().nullable().optional(),
+  protocolo_autorizacao: z.string().nullable().optional(),
+  data_autorizacao: z.string().nullable().optional(),
+  url_danfe: z.string().nullable().optional(),
+  mensagem_sefaz: z.string().nullable().optional(),
+  qrcode: z.string().nullable().optional(),
+  data_atualizacao: z.string(),
+});
+
+export type VendaNotaFiscalRead = z.infer<typeof VendaNotaFiscalReadSchema>;

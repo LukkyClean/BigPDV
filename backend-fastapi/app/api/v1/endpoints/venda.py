@@ -16,10 +16,12 @@
 #   POST   /{venda_id}/finalizar          → Finalizar venda (checkout)
 # ---------------------------------------------------------------------------
 
-from fastapi import APIRouter, Depends, Path, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from sqlalchemy.orm import Session
 
-from app.core.depends import check_permission, get_db, _handle_db_transaction, is_visao_gerencial
+from app.core.depends import check_permission, get_db, _handle_db_transaction, is_visao_gerencial, requer_modulo_fiscal
+from app.schemas.venda_nota_fiscal import VendaNotaFiscalRead, VendaNotaFiscalUpdate
+from app.services import venda_nota_fiscal as venda_nota_fiscal_service
 from app.schemas.vendas import (
     ProdutosAlterSummary,
     FinalizarVendaPayload,
@@ -286,6 +288,10 @@ def finalizar_venda(
         payload.acrescimo or 0
     )
 
+# ===========================================================================
+# LEITURA (GET) — estáticas antes das dinâmicas
+# ===========================================================================
+
 @router.get(
     "/",
     response_model=VendaListRead,
@@ -319,21 +325,6 @@ def listar_vendas(
         links=links
     )
 
-@router.get(
-    "/{venda_id}",
-    response_model=VendaRead,
-    summary="Obter Detalhes da Venda",
-    description=(
-        "Retorna os detalhes completos de uma venda específica, incluindo itens, pagamentos e informações do cliente."
-    )
-)
-def obter_detalhes_venda(
-    user_token: dict = Depends(check_permission(required_permission=module_permission)),
-    *,
-    db: Session = Depends(get_db),
-    venda_id: int = Path(..., description="ID da venda"),
-):
-    return venda_service.get_sale_by_id(db, venda_id)
 
 @router.get(
     "/status/",
@@ -351,5 +342,68 @@ def resumo_status_vendas(
 ):
     funcionario_id = None if is_visao_gerencial(user_token) else user_token.get("funcionario_id")
     return venda_service.get_sales_status(db, funcionario_id=funcionario_id)
+
+
+# ===========================================================================
+# NOTA FISCAL (GET + PUT /{venda_id}/fiscal)
+# ===========================================================================
+
+@router.get(
+    "/{venda_id}/fiscal",
+    response_model=VendaNotaFiscalRead,
+    status_code=status.HTTP_200_OK,
+    summary="Dados Fiscais da Venda",
+    description="Retorna a configuração de nota fiscal de uma venda. 404 se ainda não preenchidos.",
+)
+def get_nota_fiscal_venda(
+    user_token: dict = Depends(check_permission(required_permission=module_permission)),
+    _fiscal: dict = Depends(requer_modulo_fiscal),
+    venda_id: int = Path(..., ge=1),
+    db: Session = Depends(get_db),
+):
+    resultado = venda_nota_fiscal_service.get_dados_fiscais(db, venda_id)
+    if resultado is None:
+        raise HTTPException(status_code=404, detail="Nota fiscal ainda não configurada para esta venda")
+    return resultado
+
+
+@router.put(
+    "/{venda_id}/fiscal",
+    response_model=VendaNotaFiscalRead,
+    status_code=status.HTTP_200_OK,
+    summary="Salvar Dados Fiscais da Venda",
+    description="Cria ou atualiza (upsert) a configuração de nota fiscal de uma venda.",
+)
+def upsert_nota_fiscal_venda(
+    user_token: dict = Depends(check_permission(required_permission=module_permission)),
+    _fiscal: dict = Depends(requer_modulo_fiscal),
+    *,
+    venda_id: int = Path(..., ge=1),
+    dados: VendaNotaFiscalUpdate,
+    db: Session = Depends(get_db),
+):
+    return _handle_db_transaction(
+        db,
+        venda_nota_fiscal_service.upsert_dados_fiscais,
+        venda_id,
+        dados,
+    )
+
+
+@router.get(
+    "/{venda_id}",
+    response_model=VendaRead,
+    summary="Obter Detalhes da Venda",
+    description=(
+        "Retorna os detalhes completos de uma venda específica, incluindo itens, pagamentos e informações do cliente."
+    )
+)
+def obter_detalhes_venda(
+    user_token: dict = Depends(check_permission(required_permission=module_permission)),
+    *,
+    db: Session = Depends(get_db),
+    venda_id: int = Path(..., description="ID da venda"),
+):
+    return venda_service.get_sale_by_id(db, venda_id)
 
     

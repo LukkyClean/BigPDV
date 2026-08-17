@@ -16,6 +16,7 @@ from typing import List, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .log_produto import LogProduto
+    from .produto_fiscal import ProdutoFiscal
 class Produto(Base):
     """
     Representa a tabela base 'produtos', contendo os dados de
@@ -78,6 +79,16 @@ class Produto(Base):
         "LogProduto",
         back_populates="produto",
         doc="Historico de movimentacoes de estoque deste produto"
+    )
+
+    # Relação 1:1 opcional com dados fiscais (tabela satélite)
+    # Só existe para empresas com módulo fiscal ativo — ausência é o comportamento normal.
+    fiscal: Mapped[Optional["ProdutoFiscal"]] = relationship(
+        "ProdutoFiscal",
+        back_populates="produto",
+        cascade="all, delete-orphan",
+        uselist=False,
+        doc="Dados fiscais do produto (NCM, CFOP, CST etc.) — None para empresas sem módulo fiscal"
     )
 
     # Restrições (Constraints)

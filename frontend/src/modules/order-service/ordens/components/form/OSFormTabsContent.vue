@@ -1,23 +1,26 @@
 <script setup lang="ts">
 import { ref, computed, watch, type Component } from 'vue';
-import { ClipboardCheck, ClipboardList, Package } from 'lucide-vue-next';
+import { ClipboardCheck, ClipboardList, FileText, Package } from 'lucide-vue-next';
 
 import OSObjetoTab from './OSObjetoTab.vue';
 import OSVistoriaTab from './OSVistoriaTab.vue';
 import OSDiagnosticoTab from './OSDiagnosticoTab.vue';
 import OSServicesTab from './OSServicesTab.vue';
+import NotaFiscalSection from './NotaFiscalSection.vue';
 import type { ObjetoFormData } from '../../composables/modal/useOSFormAdapter';
 import { useOSFormView } from '../../context/useOSFormView.context';
 import { useObjetoLabels } from '@/modules/order-service/shared/segmento/useObjetoLabels';
 import { useCapacidades } from '@/modules/order-service/shared/segmento/useCapacidades';
+import { recursoDisponivel } from '@/shared/config/planos';
 
-type TabType = 'objeto' | 'vistoria' | 'diagnostico' | 'servicos';
+type TabType = 'objeto' | 'vistoria' | 'diagnostico' | 'servicos' | 'fiscal';
 
 const view = useOSFormView();
 
 // Rótulo e ícone da aba do objeto vêm do contrato (Veículo/Equipamento).
 const { labelSingular, objetoIcon } = useObjetoLabels();
 const { temVistoria } = useCapacidades();
+const nfeDisponivel = recursoDisponivel('nfe');
 
 const activeTab = ref<TabType>('objeto');
 
@@ -39,6 +42,9 @@ const allTabs = computed<{ id: TabType; label: string; icon: Component }[]>(() =
     { id: 'diagnostico', label: 'Diagnóstico', icon: ClipboardList },
     { id: 'servicos', label: 'Serviços e Peças', icon: Package },
   );
+  if (nfeDisponivel && !view.isCreateMode.value) {
+    tabs.push({ id: 'fiscal', label: 'Nota Fiscal', icon: FileText });
+  }
   return tabs;
 });
 
@@ -73,7 +79,7 @@ const objetoModel = computed<ObjetoFormData>({
     </div>
 
     <div class="min-h-125">
-      <fieldset v-if="activeTab !== 'diagnostico'" :disabled="view.isStructureLocked.value" class="contents">
+      <fieldset v-if="activeTab !== 'diagnostico' && activeTab !== 'fiscal'" :disabled="view.isStructureLocked.value" class="contents">
         <OSObjetoTab
           v-if="activeTab === 'objeto'"
           v-model="objetoModel"
@@ -126,6 +132,12 @@ const objetoModel = computed<ObjetoFormData>({
         @add-photo="view.handleAddPhoto"
         @remove-pending="view.handleRemovePending"
         @photo-change="view.handlePhotoChange"
+      />
+
+      <NotaFiscalSection
+        v-if="activeTab === 'fiscal' && view.osNumber.value"
+        :os-numero="view.osNumber.value"
+        :os-status="view.currentOSData.value?.status ?? ''"
       />
     </div>
   </div>

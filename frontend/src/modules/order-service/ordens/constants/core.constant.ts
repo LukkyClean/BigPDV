@@ -24,6 +24,8 @@ export const OS_FIELD_DEFINITION_STALE_TIME = 1000 * 60 * 30
 
 export const ORDER_SERVICE_REFETCH_INTERVAL = REFETCH_REALTIME
 
+export const OS_NOTA_FISCAL_QUERY_KEY = 'os-nota-fiscal';
+
 export const DEFAULT_OS_CREATE_VALUES = {
   prioridade: 'NORMAL' as const,
   defeito_relatado: '',

@@ -4,14 +4,16 @@
 # DESCRIÇÃO: Gerencia as ofertas de serviços (ex: Mão de obra, Consultoria).
 # ---------------------------------------------------------------------------
 
-from fastapi import APIRouter, Depends, status, Path, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Path, Query
 from sqlalchemy.orm import Session
 from typing import Sequence, Optional
 
-from app.core.depends import check_permission, _handle_db_transaction
+from app.core.depends import check_permission, requer_modulo_fiscal, _handle_db_transaction
 from app.db.session import get_db
 from app.schemas.servico import ServicoCreate, ServicoRead, ServicoFilterParams, ServicoQuery, ServicoUpdate, ServicoStats
+from app.schemas.servico_fiscal import ServicoFiscalRead, ServicoFiscalUpdate
 from app.services import servico as servico_service
+from app.services import servico_fiscal as servico_fiscal_service
 
 router = APIRouter()
 
@@ -140,6 +142,52 @@ def update_servico(
        servico_id,
        servico_to_update
    )
+
+# ===========================================================================
+# ROTAS FISCAIS (GET / PUT)
+# ===========================================================================
+
+@router.get(
+    "/{servico_id}/fiscal",
+    response_model=ServicoFiscalRead,
+    status_code=status.HTTP_200_OK,
+    summary="Dados Fiscais do Serviço",
+    description="Retorna os dados fiscais de um serviço. 404 se ainda não preenchidos.",
+)
+def get_dados_fiscais_servico(
+    user_token: dict = Depends(check_permission(required_permission="servico")),
+    _fiscal: dict = Depends(requer_modulo_fiscal),
+    servico_id: int = Path(..., ge=1),
+    db: Session = Depends(get_db),
+):
+    resultado = servico_fiscal_service.get_dados_fiscais(db, servico_id)
+    if resultado is None:
+        raise HTTPException(status_code=404, detail="Dados fiscais ainda não preenchidos para este serviço")
+    return resultado
+
+
+@router.put(
+    "/{servico_id}/fiscal",
+    response_model=ServicoFiscalRead,
+    status_code=status.HTTP_200_OK,
+    summary="Salvar Dados Fiscais do Serviço",
+    description="Cria ou atualiza (upsert) os dados fiscais de um serviço.",
+)
+def upsert_dados_fiscais_servico(
+    user_token: dict = Depends(check_permission(required_permission="servico")),
+    _fiscal: dict = Depends(requer_modulo_fiscal),
+    *,
+    servico_id: int = Path(..., ge=1),
+    dados: ServicoFiscalUpdate,
+    db: Session = Depends(get_db),
+):
+    return _handle_db_transaction(
+        db,
+        servico_fiscal_service.upsert_dados_fiscais,
+        servico_id,
+        dados,
+    )
+
 
 @router.put(
     "/toggle_ativo/{service_id}",

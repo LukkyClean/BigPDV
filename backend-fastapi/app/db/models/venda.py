@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from .venda_produto import ProdutoVenda
     from .venda_pagamento import PagamentoVenda
     from .log_produto import LogProduto
+    from .venda_nota_fiscal import VendaNotaFiscal
 
 
 class Venda(Base):
@@ -142,4 +143,10 @@ class Venda(Base):
         "LogProduto",
         back_populates="venda",
         doc="Logs de movimentacao de estoque desta venda"
+    )
+    nota_fiscal: Mapped[Optional["VendaNotaFiscal"]] = relationship(
+        "VendaNotaFiscal",
+        back_populates="venda",
+        cascade="all, delete-orphan",
+        uselist=False,
     )

@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.core.exceptions import setup_exception_handlers
 from app.core.tarefas import lifespan
-from app.core.config import BASE_DIR, data_dir
+from app.core.config import BACKEND_DIR, data_dir
 from app.core.migracoes_dir import migrar_estrutura_diretorios
 
 migrar_estrutura_diretorios()

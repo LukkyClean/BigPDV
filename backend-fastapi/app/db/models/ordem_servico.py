@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from .ordem_servico_item import OrdemServicoItem
     from .ordem_servico_pagamento import OrdemServicoPagamento
     from .ordem_servico_foto import OrdemServicoFoto
+    from .ordem_servico_nota_fiscal import OrdemServicoNotaFiscal
 
 
 class OrdemServico(Base):
@@ -118,6 +119,13 @@ class OrdemServico(Base):
         back_populates="ordem_servico",
         cascade="all, delete-orphan",
         doc="Fotos da OS"
+    )
+    nota_fiscal: Mapped[Optional["OrdemServicoNotaFiscal"]] = relationship(
+        "OrdemServicoNotaFiscal",
+        back_populates="ordem_servico",
+        cascade="all, delete-orphan",
+        uselist=False,
+        doc="Configuração de nota fiscal da OS (1:1 opcional)"
     )
 
     @property

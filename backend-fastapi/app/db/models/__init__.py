@@ -35,6 +35,10 @@ from app.db.models.venda import Venda  # noqa: F401
 from app.db.models.venda_produto import ProdutoVenda  # noqa: F401
 from app.db.models.venda_pagamento import PagamentoVenda  # noqa: F401
 from app.db.models.log_produto import LogProduto  # noqa: F401
+from app.db.models.produto_fiscal import ProdutoFiscal  # noqa: F401
+from app.db.models.servico_fiscal import ServicoFiscal  # noqa: F401
+from app.db.models.venda_nota_fiscal import VendaNotaFiscal  # noqa: F401
+from app.db.models.ordem_servico_nota_fiscal import OrdemServicoNotaFiscal  # noqa: F401
 from app.db.models.movimentacao_estoque import MovimentacaoEstoque  # noqa: F401
 from app.db.models.orcamento import Orcamento  # noqa: F401
 from app.db.models.orcamento_produto import OrcamentoProduto  # noqa: F401

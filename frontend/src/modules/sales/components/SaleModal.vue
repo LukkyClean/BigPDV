@@ -35,6 +35,10 @@ import { useConfiguracoesStore } from '@/shared/stores/configuracoes.store';
 import PrintFormatSelectModal from '@/shared/components/print/PrintFormatSelectModal.vue';
 import SalePrintTemplate from './print/SalePrintTemplate.vue';
 import SalePrintCupom from './print/SalePrintCupom.vue';
+import NotaFiscalSection from './SaleModal/NotaFiscalSection.vue';
+import { recursoDisponivel } from '@/shared/config/planos';
+
+const nfeDisponivel = recursoDisponivel('nfe');
 
 const { saleModalIsOpen, closeSaleModal, sale, selectedSaleId, isEditMode, isViewMode } = useSaleModal();
 const addProductModal = useAddProductModal();
@@ -272,6 +276,11 @@ const saleDisplay = computed(() => {
         <CustomerCard :customer="sale?.cliente" :readonly="isViewMode" @change-cliente="handleChangeCliente" />
         <div class="flex-1 min-h-0 overflow-y-auto no-scrollbar">
           <SaleCard :sale="sale" :readonly="isViewMode" :form="saleForm" :is-saving="isSaleFormSaving" :on-save="saveSaleForm" />
+          <NotaFiscalSection
+            v-if="nfeDisponivel && sale?.id"
+            :venda-id="sale.id"
+            :sale-status="sale.status"
+          />
         </div>
 
         <div class="shrink-0 pt-4 flex flex-col gap-2">
