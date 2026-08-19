@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { Pencil, Eye, CheckCircle, XCircle, RotateCcw, Printer } from 'lucide-vue-next';
+import { Pencil, Eye, CheckCircle, XCircle, RotateCcw, Printer, FileText } from 'lucide-vue-next';
 
 import BaseTableContainer from '@/shared/components/commons/BaseTableContainer/BaseTableContainer.vue';
 import BaseSearchInput from '@/shared/components/ui/BaseSearchInput/BaseSearchInput.vue';
 import BaseFilter from '@/shared/components/ui/BaseFilter/BaseFilter.vue';
+import PendenciasFiscaisModal from '@/shared/components/commons/PendenciasFiscaisModal.vue';
 import { formatCurrency } from '@/shared/utils/finance';
+import { recursoDisponivel } from '@/shared/config/planos';
+import { useEmitirFiscal } from '@/shared/composables/useEmitirFiscal';
 
 import { useSaleTable } from '../composables/flows/useSaleTable';
 import { useSaleModal } from '../composables/flows/useSaleModal';
@@ -13,6 +16,9 @@ import { SALE_FILTERS, STATUS_COLORS, SALE_FILTER_CONFIG } from '../constants';
 
 const { searchTerm, activeFilter, goToPage, sales, isLoading } = useSaleTable();
 const { openSaleViewModal, openSaleEditModal } = useSaleModal();
+
+const nfeDisponivel = recursoDisponivel('nfe');
+const { pendencias, pendenciasModalOpen, isVerificando, emitirVenda } = useEmitirFiscal();
 
 const emit = defineEmits<{
   (e: 'cancel', saleId: number): void;
@@ -167,6 +173,16 @@ const emit = defineEmits<{
                   >
                     <Printer class="h-4 w-4" />
                   </button>
+                  <button
+                    v-if="nfeDisponivel"
+                    type="button"
+                    class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-emerald-50 hover:text-emerald-600"
+                    title="Emitir Nota Fiscal"
+                    :disabled="isVerificando"
+                    @click.stop="emitirVenda(sale.id)"
+                  >
+                    <FileText class="h-4 w-4" />
+                  </button>
                 </template>
 
                 <!-- CANCELADA actions -->
@@ -195,4 +211,11 @@ const emit = defineEmits<{
       </table>
     </div>
   </BaseTableContainer>
+
+  <PendenciasFiscaisModal
+    :is-open="pendenciasModalOpen"
+    :pendencias="pendencias"
+    titulo="Pendências Fiscais — Venda"
+    @close="pendenciasModalOpen = false"
+  />
 </template>

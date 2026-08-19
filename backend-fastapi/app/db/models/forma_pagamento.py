@@ -1,6 +1,6 @@
 from sqlalchemy import Boolean, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from typing import TYPE_CHECKING, List
+from typing import Optional, TYPE_CHECKING, List
 
 from app.db.base import Base
 
@@ -17,6 +17,10 @@ class FormaPagamento(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True, doc="ID unico da forma de pagamento (PK)")
     nome: Mapped[str] = mapped_column(String(50), unique=True, nullable=False, doc="Nome da forma de pagamento")
     ativo: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, doc="Status ativo/inativo")
+    codigo_sefaz: Mapped[Optional[str]] = mapped_column(
+        String(2), nullable=True,
+        doc="Código SEFAZ da forma de pagamento (01-99). Obrigatório para emissão fiscal."
+    )
 
     pagamentos: Mapped[List["OrdemServicoPagamento"]] = relationship(
         "OrdemServicoPagamento",

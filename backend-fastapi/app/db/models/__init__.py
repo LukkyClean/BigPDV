@@ -43,3 +43,4 @@ from app.db.models.movimentacao_estoque import MovimentacaoEstoque  # noqa: F401
 from app.db.models.orcamento import Orcamento  # noqa: F401
 from app.db.models.orcamento_produto import OrcamentoProduto  # noqa: F401
 from app.db.models.contador_venda import ContadorVenda  # noqa: F401
+from app.db.models.documento_fiscal import DocumentoFiscal  # noqa: F401

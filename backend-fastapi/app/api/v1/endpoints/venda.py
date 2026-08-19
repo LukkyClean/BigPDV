@@ -21,7 +21,9 @@ from sqlalchemy.orm import Session
 
 from app.core.depends import check_permission, get_db, _handle_db_transaction, is_visao_gerencial, requer_modulo_fiscal
 from app.schemas.venda_nota_fiscal import VendaNotaFiscalRead, VendaNotaFiscalUpdate
+from app.schemas.verificacao_fiscal import ResultadoVerificacaoFiscal
 from app.services import venda_nota_fiscal as venda_nota_fiscal_service
+from app.services import verificacao_fiscal as verificacao_fiscal_service
 from app.schemas.vendas import (
     ProdutosAlterSummary,
     FinalizarVendaPayload,
@@ -387,6 +389,61 @@ def upsert_nota_fiscal_venda(
         venda_nota_fiscal_service.upsert_dados_fiscais,
         venda_id,
         dados,
+    )
+
+
+# ===========================================================================
+# VERIFICAÇÃO E EMISSÃO FISCAL
+# ===========================================================================
+
+@router.get(
+    "/{venda_id}/verificar-fiscal",
+    response_model=ResultadoVerificacaoFiscal,
+    summary="Verificar Completude Fiscal da Venda",
+    description="Retorna lista de pendências fiscais que impedem a emissão de NF-e.",
+)
+def verificar_fiscal_venda(
+    user_token: dict = Depends(check_permission(required_permission=module_permission)),
+    _fiscal: dict = Depends(requer_modulo_fiscal),
+    venda_id: int = Path(..., ge=1),
+    db: Session = Depends(get_db),
+):
+    empresa_id = user_token["empresa_id"]
+    return verificacao_fiscal_service.verificar_completude_venda(db, venda_id, empresa_id)
+
+
+@router.post(
+    "/{venda_id}/emitir-fiscal",
+    response_model=ResultadoVerificacaoFiscal,
+    summary="Emitir Nota Fiscal da Venda",
+    description=(
+        "Executa o gate de verificação fiscal. Se completo, retorna placeholder "
+        "(integração com SEFAZ ainda não disponível)."
+    ),
+)
+def emitir_fiscal_venda(
+    user_token: dict = Depends(check_permission(required_permission=module_permission)),
+    _fiscal: dict = Depends(requer_modulo_fiscal),
+    venda_id: int = Path(..., ge=1),
+    db: Session = Depends(get_db),
+):
+    empresa_id = user_token["empresa_id"]
+    resultado = verificacao_fiscal_service.verificar_completude_venda(db, venda_id, empresa_id)
+    if not resultado.completo:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "codigo": "PENDENCIAS_FISCAIS",
+                "mensagem": "Existem pendências que impedem a emissão.",
+                "pendencias": [p.model_dump() for p in resultado.pendencias],
+            },
+        )
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail={
+            "codigo": "API_NAO_DISPONIVEL",
+            "mensagem": "Verificação fiscal aprovada. A integração com a SEFAZ ainda não está disponível.",
+        },
     )
 
 

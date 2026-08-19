@@ -1,4 +1,5 @@
 import api from '@/api/axios';
+import type { ResultadoVerificacaoFiscal } from '@/shared/types/fiscal.types';
 
 import { parseSchema } from './parseSchema.util';
 
@@ -125,6 +126,17 @@ export const saleService = {
   async upsertVendaNotaFiscal(venda_id: number, dados: VendaNotaFiscalUpdate): Promise<VendaNotaFiscalRead> {
     const { data } = await api.put<VendaNotaFiscalRead>(`${SALE_ENDPOINT}/${venda_id}/fiscal`, dados);
     return parseSchema(VendaNotaFiscalReadSchema, data, 'saleService.upsertVendaNotaFiscal.response');
+  },
+
+  async verificarFiscal(venda_id: number): Promise<ResultadoVerificacaoFiscal> {
+    const { data } = await api.get<ResultadoVerificacaoFiscal>(
+      `${SALE_ENDPOINT}/${venda_id}/verificar-fiscal`,
+    );
+    return data;
+  },
+
+  async emitirFiscal(venda_id: number): Promise<void> {
+    await api.post(`${SALE_ENDPOINT}/${venda_id}/emitir-fiscal`);
   },
 };
 

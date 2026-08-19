@@ -24,7 +24,10 @@ const { hasPermission } = useCheckPermission();
 const filteredSidebar = computed(() => {
   return SIDEBAR_SECTIONS.map((section) => ({
     ...section,
-    options: section.options.filter((opt) => hasPermission(opt.requiredPermission)),
+    options: section.options.filter((opt) => {
+      if (opt.featureFlag && !opt.featureFlag()) return false;
+      return hasPermission(opt.requiredPermission);
+    }),
   })).filter((section) => section.options.length > 0);
 });
 

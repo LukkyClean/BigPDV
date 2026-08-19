@@ -79,9 +79,9 @@ const homeRoutes: RouteRecordRaw[] = [
         name: 'fiscal',
         component: () => import('@/modules/fiscal/views/FiscalView.vue'),
         meta: {
-          title: 'Emissão de Notas Fiscais',
-          subtitle: 'Configuração fiscal e emissão de documentos.',
-          tabId: 'enterprise',
+          title: 'Centro Fiscal',
+          subtitle: 'Documentos fiscais, pendências e emissão.',
+          tabId: 'fiscal',
           requiresAuth: true,
         },
       },

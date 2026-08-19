@@ -20,11 +20,14 @@ import { useForm } from 'vee-validate';
 import { toTypedSchema } from '@vee-validate/zod';
 import { z } from 'zod';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query';
-import { FileText, Info } from 'lucide-vue-next';
+import { FileText, Info, Send } from 'lucide-vue-next';
 import LucideIcon from '@/shared/components/icons/LucideIcon.vue';
 import BaseInput from '@/shared/components/ui/BaseInput/BaseInput.vue';
 import BaseSelect from '@/shared/components/ui/BaseSelect/BaseSelect.vue';
+import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
+import PendenciasFiscaisModal from '@/shared/components/commons/PendenciasFiscaisModal.vue';
 import { useToast } from '@/shared/composables/useToast';
+import { useEmitirFiscal } from '@/shared/composables/useEmitirFiscal';
 import { getOsNotaFiscal, upsertOsNotaFiscal } from '../../services/orderServiceFiscal.service';
 import type { OsNotaFiscalUpdate } from '../../types/notaFiscal.type';
 import { getErrorMessage } from '@/shared/utils/error.utils';
@@ -161,6 +164,26 @@ async function saveFiscal() {
 // Registra a função de save no contexto do pai para ser chamada no onUpdateSuccess
 registerOSFiscalSave(saveFiscal);
 
+// =============================================
+// Emissão Fiscal
+// =============================================
+
+const { pendencias, pendenciasModalOpen, isVerificando, emitirOS } = useEmitirFiscal();
+
+const podeEmitirNfe = computed(() => {
+  if (props.osStatus !== 'FINALIZADA') return false;
+  const statusNfe = notaFiscal.value?.status_nfe ?? 'PENDENTE';
+  const emitir = notaFiscal.value?.emitir_nfe ?? true;
+  return emitir && (statusNfe === 'PENDENTE' || !notaFiscal.value);
+});
+
+const podeEmitirNfse = computed(() => {
+  if (props.osStatus !== 'FINALIZADA') return false;
+  const statusNfse = notaFiscal.value?.status_nfse ?? 'PENDENTE';
+  const emitir = notaFiscal.value?.emitir_nfse ?? true;
+  return emitir && (statusNfse === 'PENDENTE' || !notaFiscal.value);
+});
+
 </script>
 
 <template>
@@ -194,17 +217,19 @@ registerOSFiscalSave(saveFiscal);
           />
 
           <BaseSelect
-            v-model="finalidade_emissao"
+            :model-value="finalidade_emissao ?? undefined"
             label="Finalidade de Emissão"
             :options="FINALIDADE_OPTIONS"
             placeholder="Selecione..."
+            @update:model-value="finalidade_emissao = $event as number"
           />
 
           <BaseSelect
-            v-model="indicador_presenca"
+            :model-value="indicador_presenca ?? undefined"
             label="Indicador de Presença"
             :options="INDICADOR_OPTIONS"
             placeholder="Selecione..."
+            @update:model-value="indicador_presenca = $event as number"
           />
         </div>
 
@@ -281,6 +306,18 @@ registerOSFiscalSave(saveFiscal);
           <p v-if="notaFiscal?.mensagem_nfe" class="text-xs text-zinc-500 italic">
             {{ notaFiscal.mensagem_nfe }}
           </p>
+
+          <BaseButton
+            v-if="podeEmitirNfe"
+            variant="primary"
+            size="sm"
+            class="mt-1 w-full"
+            :is-loading="isVerificando"
+            @click="emitirOS(props.osNumero, 'nfe')"
+          >
+            <Send :size="14" class="mr-1.5" />
+            Emitir NFe
+          </BaseButton>
         </div>
 
         <!-- NFSe -->
@@ -316,8 +353,27 @@ registerOSFiscalSave(saveFiscal);
           <p v-if="notaFiscal?.mensagem_nfse" class="text-xs text-zinc-500 italic">
             {{ notaFiscal.mensagem_nfse }}
           </p>
+
+          <BaseButton
+            v-if="podeEmitirNfse"
+            variant="primary"
+            size="sm"
+            class="mt-1 w-full"
+            :is-loading="isVerificando"
+            @click="emitirOS(props.osNumero, 'nfse')"
+          >
+            <Send :size="14" class="mr-1.5" />
+            Emitir NFSe
+          </BaseButton>
         </div>
       </div>
     </template>
   </div>
+
+  <PendenciasFiscaisModal
+    :is-open="pendenciasModalOpen"
+    :pendencias="pendencias"
+    titulo="Pendências Fiscais — OS"
+    @close="pendenciasModalOpen = false"
+  />
 </template>

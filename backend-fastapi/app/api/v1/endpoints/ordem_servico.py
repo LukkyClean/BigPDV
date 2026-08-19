@@ -30,6 +30,8 @@ from fastapi import APIRouter, Depends, HTTPException, status, Path, Query, Uplo
 from sqlalchemy.orm import Session
 
 from app.core.depends import check_permission, get_current_active_user, _handle_db_transaction, is_visao_gerencial, requer_modulo_fiscal
+from app.schemas.verificacao_fiscal import ResultadoVerificacaoFiscal
+from app.services import verificacao_fiscal as verificacao_fiscal_service
 from app.db.session import get_db
 from app.schemas.ordem_servico import (
     OrdemServicoCreate,
@@ -558,4 +560,65 @@ def upsert_nota_fiscal_os(
         os_nota_fiscal_service.upsert_dados_fiscais,
         os_number,
         dados,
+    )
+
+
+# ===========================================================================
+# VERIFICAÇÃO E EMISSÃO FISCAL
+# ===========================================================================
+
+@router.get(
+    "/{os_number}/verificar-fiscal",
+    response_model=ResultadoVerificacaoFiscal,
+    summary="Verificar Completude Fiscal da OS",
+    description="Retorna lista de pendências fiscais que impedem a emissão de NF-e/NFSe.",
+)
+def verificar_fiscal_os(
+    user_token: dict = Depends(check_permission(required_permission=module_permission)),
+    _fiscal: dict = Depends(requer_modulo_fiscal),
+    os_number: str = Path(..., description="Número da OS"),
+    tipo_documento: str = Query("ambos", description="nfe, nfse ou ambos"),
+    db: Session = Depends(get_db),
+):
+    empresa_id = user_token["empresa_id"]
+    return verificacao_fiscal_service.verificar_completude_os(
+        db, os_number, empresa_id, tipo_documento
+    )
+
+
+@router.post(
+    "/{os_number}/emitir-fiscal",
+    response_model=ResultadoVerificacaoFiscal,
+    summary="Emitir Nota Fiscal da OS",
+    description=(
+        "Executa o gate de verificação fiscal. Se completo, retorna placeholder "
+        "(integração com SEFAZ ainda não disponível)."
+    ),
+)
+def emitir_fiscal_os(
+    user_token: dict = Depends(check_permission(required_permission=module_permission)),
+    _fiscal: dict = Depends(requer_modulo_fiscal),
+    os_number: str = Path(..., description="Número da OS"),
+    tipo_documento: str = Query("ambos", description="nfe, nfse ou ambos"),
+    db: Session = Depends(get_db),
+):
+    empresa_id = user_token["empresa_id"]
+    resultado = verificacao_fiscal_service.verificar_completude_os(
+        db, os_number, empresa_id, tipo_documento
+    )
+    if not resultado.completo:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "codigo": "PENDENCIAS_FISCAIS",
+                "mensagem": "Existem pendências que impedem a emissão.",
+                "pendencias": [p.model_dump() for p in resultado.pendencias],
+            },
+        )
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail={
+            "codigo": "API_NAO_DISPONIVEL",
+            "mensagem": "Verificação fiscal aprovada. A integração com a SEFAZ ainda não está disponível.",
+        },
     )

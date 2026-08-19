@@ -14,10 +14,13 @@ import { toTypedSchema } from '@vee-validate/zod';
 import { z } from 'zod';
 import { useDebounceFn } from '@vueuse/core';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query';
-import { FileText } from 'lucide-vue-next';
+import { FileText, Send } from 'lucide-vue-next';
 import BaseInput from '@/shared/components/ui/BaseInput/BaseInput.vue';
 import BaseSelect from '@/shared/components/ui/BaseSelect/BaseSelect.vue';
+import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
+import PendenciasFiscaisModal from '@/shared/components/commons/PendenciasFiscaisModal.vue';
 import { useToast } from '@/shared/composables/useToast';
+import { useEmitirFiscal } from '@/shared/composables/useEmitirFiscal';
 import { saleService } from '../../api.service';
 import type { VendaNotaFiscalUpdate } from '../../schemas/sale.schema';
 import { getErrorMessage } from '@/shared/utils/error.utils';
@@ -172,6 +175,17 @@ const statusBadge = computed(() => {
   const s = notaFiscal.value?.status_nota ?? 'PENDENTE';
   return STATUS_BADGE[s] ?? STATUS_BADGE.PENDENTE;
 });
+
+// =============================================
+// Emissão Fiscal
+// =============================================
+
+const { pendencias, pendenciasModalOpen, isVerificando, emitirVenda } = useEmitirFiscal();
+
+const podeEmitir = computed(() => {
+  const statusNota = notaFiscal.value?.status_nota ?? 'PENDENTE';
+  return props.saleStatus === 'FINALIZADA' && (statusNota === 'PENDENTE' || !notaFiscal.value);
+});
 </script>
 
 <template>
@@ -200,19 +214,21 @@ const statusBadge = computed(() => {
         />
 
         <BaseSelect
-          v-model="finalidade_emissao"
+          :model-value="finalidade_emissao ?? undefined"
           label="Finalidade de Emissão"
           :options="FINALIDADE_OPTIONS"
           placeholder="Selecione..."
           :disabled="disabled"
+          @update:model-value="finalidade_emissao = $event as number"
         />
 
         <BaseSelect
-          v-model="indicador_presenca"
+          :model-value="indicador_presenca ?? undefined"
           label="Indicador de Presença"
           :options="INDICADOR_OPTIONS"
           placeholder="Selecione..."
           :disabled="disabled"
+          @update:model-value="indicador_presenca = $event as number"
         />
 
         <label class="flex items-center gap-2 cursor-pointer select-none">
@@ -271,7 +287,27 @@ const statusBadge = computed(() => {
             {{ notaFiscal.mensagem_sefaz }}
           </p>
         </template>
+
+        <!-- Botão Emitir NF-e -->
+        <BaseButton
+          v-if="podeEmitir"
+          variant="primary"
+          size="sm"
+          class="mt-2 w-full"
+          :is-loading="isVerificando"
+          @click="emitirVenda(props.vendaId)"
+        >
+          <Send :size="14" class="mr-1.5" />
+          Emitir NF-e
+        </BaseButton>
       </div>
     </template>
   </div>
+
+  <PendenciasFiscaisModal
+    :is-open="pendenciasModalOpen"
+    :pendencias="pendencias"
+    titulo="Pendências Fiscais — Venda"
+    @close="pendenciasModalOpen = false"
+  />
 </template>

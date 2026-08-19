@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue';
-import { PackageSearch, ArchiveX, ShoppingCart, Plus, Minus, Check, PackagePlus } from 'lucide-vue-next';
+import { PackageSearch, ArchiveX, ShoppingCart, Plus, Minus, Check, PackagePlus, AlertTriangle } from 'lucide-vue-next';
 import BaseModal from '@/shared/components/commons/BaseModal/BaseModal.vue';
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
 import BaseSearchInput from '@/shared/components/ui/BaseSearchInput/BaseSearchInput.vue';
@@ -11,6 +11,7 @@ import { useItemModal } from '../../composables/flows/useItemModal';
 import { formatCurrency } from '@/shared/utils/finance';
 import { getImageUrl } from '@/shared/utils/print.utils';
 import type { ProductSaleRead } from '../../schemas/productSale.schema';
+import { recursoDisponivel } from '@/shared/config/planos';
 
 const props = defineProps<{
   isOpen: boolean;
@@ -104,6 +105,7 @@ function confirmarVendaNegativa() {
 // o produto não existe e não há nada a fazer além de fechar. O mesmo atalho já
 // existia na busca inline (ProductSearch), só faltava aqui.
 const { openCreateItemModal } = useItemModal();
+const nfeDisponivel = recursoDisponivel('nfe');
 
 function handleAddAvulso() {
   // Leva o termo digitado como descrição inicial — quem buscou "cabo hdmi" e
@@ -165,6 +167,10 @@ function handleAddAvulso() {
             <PackagePlus :size="16" />
             Adicionar como produto avulso
           </BaseButton>
+          <p v-if="nfeDisponivel" class="flex items-center gap-1.5 text-[11px] text-amber-600 mt-1">
+            <AlertTriangle :size="12" class="shrink-0" />
+            Itens avulsos impedem a emissão de NF-e.
+          </p>
         </div>
 
         <!-- Linhas de produto -->
@@ -331,14 +337,20 @@ function handleAddAvulso() {
           Sempre visível: às vezes já se sabe de saída que o item não está no
           catálogo, e obrigar a buscar antes só para descobrir isso é atrito.
         -->
-        <button
-          type="button"
-          class="flex items-center gap-1.5 text-xs font-semibold text-brand-primary hover:underline cursor-pointer"
-          @click="handleAddAvulso"
-        >
-          <PackagePlus :size="14" />
-          Produto avulso
-        </button>
+        <div class="flex flex-col gap-0.5">
+          <button
+            type="button"
+            class="flex items-center gap-1.5 text-xs font-semibold text-brand-primary hover:underline cursor-pointer"
+            @click="handleAddAvulso"
+          >
+            <PackagePlus :size="14" />
+            Produto avulso
+          </button>
+          <p v-if="nfeDisponivel" class="flex items-center gap-1 text-[10px] text-amber-600 pl-5">
+            <AlertTriangle :size="10" class="shrink-0" />
+            Impede NF-e
+          </p>
+        </div>
 
         <div class="flex justify-end gap-3"><BaseButton variant="secondary" class="px-5" @click="emit('close')">Fechar</BaseButton>
         <BaseButton

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { X, Info, Tag, Lock } from 'lucide-vue-next';
+import { X, Info, Tag, Lock, AlertTriangle } from 'lucide-vue-next';
 
 import BaseModal from '@/shared/components/commons/BaseModal/BaseModal.vue';
 import BaseInput from '@/shared/components/ui/BaseInput/BaseInput.vue';
@@ -13,6 +13,7 @@ import { useItemModal } from '../../composables/flows/useItemModal';
 import { useItemSaleForm } from '../../composables/form/useItemSaleForm';
 
 import { formatCurrency } from '@/shared/utils/finance';
+import { recursoDisponivel } from '@/shared/config/planos';
 import { computed } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useConfiguracoesStore } from '@/shared/stores/configuracoes.store';
@@ -62,6 +63,7 @@ const {
 // Custo interno só se aplica ao avulso: produto cadastrado tem o custo vindo do
 // livro de estoque, congelado na baixa.
 const isAvulso = computed(() => isCreateMode.value || selectedItem.value?.tipo_produto === 'AVULSO');
+const nfeDisponivel = recursoDisponivel('nfe');
 
 const sobraItem = computed(() => {
   if (custo.value <= 0) return null;
@@ -138,6 +140,19 @@ function handleCloseModal() {
                   ? 'Esses produtos não estão cadastrados no estoque e são ideais para itens únicos ou personalizados.'
                   : ' Lembre-se de que essas alterações não afetarão outros produtos ou vendas.'
               }}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="isAvulso && nfeDisponivel" class="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+        <div class="flex items-start gap-2.5">
+          <AlertTriangle :size="16" class="text-amber-500 mt-0.5 shrink-0" />
+          <div>
+            <p class="text-sm font-semibold text-amber-700">Emissão fiscal indisponível</p>
+            <p class="text-xs text-amber-600 mt-0.5">
+              Itens avulsos impedem a emissão de nota fiscal. Para emitir NF-e nesta venda,
+              cadastre o produto no catálogo e adicione-o pela busca.
             </p>
           </div>
         </div>

@@ -10,6 +10,9 @@ logging.basicConfig(
     level=_LOG_LEVEL,
     format="%(levelname)-8s %(name)s — %(message)s",
 )
+# Silencia logs verbosos de bibliotecas externas (httpcore, httpx, etc.)
+for _lib in ("httpcore", "httpx", "hpack", "urllib3"):
+    logging.getLogger(_lib).setLevel(logging.WARNING)
 
 from fastapi import FastAPI # type: ignore
 from app.api.v1 import api

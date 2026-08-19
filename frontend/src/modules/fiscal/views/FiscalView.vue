@@ -1,24 +1,19 @@
 <script setup lang="ts">
-/**
- * @component FiscalView
- * @description Tela separada de "Emissão de Notas Fiscais".
- *
- * A v1 é NÃO-fiscal (plano Start): aqui mostramos um estado BLOQUEADO com CTA de
- * upgrade, sem expor a configuração fiscal. O formulário fiscal de verdade (séries,
- * CSC, certificado) já existe no código e entra aqui quando o módulo fiscal for
- * construído e `recursoDisponivel('nfe')` passar a ser true.
- */
 import { ref } from 'vue';
-import { useRouter } from 'vue-router';
-import { FileText, Lock, ArrowLeft, Sparkles, Check } from 'lucide-vue-next';
+import { Lock, Sparkles, Check } from 'lucide-vue-next';
 
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
 import { recursoDisponivel, PLANO_ATUAL } from '@/shared/config/planos';
 
-const router = useRouter();
+import FiscalStats from '../components/FiscalStats.vue';
+import FiscalDocumentosTable from '../components/FiscalDocumentosTable.vue';
+import FiscalPendenciasPanel from '../components/FiscalPendenciasPanel.vue';
+import { useFiscalResumoQuery } from '../composables/useFiscalResumoQuery';
 
 const nfeDisponivel = recursoDisponivel('nfe');
 const upgradeSolicitado = ref(false);
+
+const { data: resumo, isLoading: isResumoLoading } = useFiscalResumoQuery();
 
 const beneficios = [
   'Emissão de NF-e, NFC-e e NFS-e',
@@ -28,28 +23,12 @@ const beneficios = [
 ];
 
 function solicitarUpgrade() {
-  // Por agora apenas sinaliza o interesse. Quando houver billing/planos reais,
-  // este ponto abre o fluxo de upgrade.
   upgradeSolicitado.value = true;
 }
 </script>
 
 <template>
   <div class="h-full flex flex-col p-6 overflow-y-auto">
-    <!-- Header -->
-    <div class="mb-6">
-      <button
-        type="button"
-        class="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 transition-colors mb-3"
-        @click="router.push('/empresa')"
-      >
-        <ArrowLeft :size="16" />
-        Voltar para Dados da Empresa
-      </button>
-      <h1 class="text-2xl font-bold text-gray-800">Emissão de Notas Fiscais</h1>
-      <p class="text-sm text-gray-500 mt-1">Configuração fiscal e emissão de documentos.</p>
-    </div>
-
     <!-- Estado bloqueado (plano Start) -->
     <div v-if="!nfeDisponivel" class="flex-1 flex items-start justify-center">
       <div class="w-full max-w-xl bg-white rounded-2xl shadow-sm border border-gray-100 p-8 text-center">
@@ -90,12 +69,17 @@ function solicitarUpgrade() {
       </div>
     </div>
 
-    <!-- Placeholder para quando o módulo fiscal existir (nfeDisponivel = true).
-         Fica aqui apenas como âncora do próximo release. -->
-    <div v-else class="flex-1 flex items-center justify-center text-gray-400">
-      <div class="text-center">
-        <FileText :size="40" class="mx-auto mb-3" />
-        <p class="text-sm">Módulo fiscal em construção.</p>
+    <!-- Centro Fiscal -->
+    <div v-else class="flex flex-col gap-6 flex-1 min-h-0">
+      <FiscalStats :resumo="resumo" :is-loading="isResumoLoading" />
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 min-h-0">
+        <div class="lg:col-span-2">
+          <FiscalDocumentosTable />
+        </div>
+        <div class="lg:col-span-1">
+          <FiscalPendenciasPanel />
+        </div>
       </div>
     </div>
   </div>

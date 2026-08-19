@@ -1,0 +1,68 @@
+# ---------------------------------------------------------------------------
+# ARQUIVO: app/db/models/documento_fiscal.py
+# DESCRIÇÃO: Tabela unificada de documentos fiscais emitidos.
+#
+# Registra cada emissão fiscal (NFe, NFCe, NFSe) independente da origem
+# (Venda ou Ordem de Serviço). A referência à origem é polimórfica
+# (origem_tipo + origem_id/origem_numero_os), sem FK rígida.
+#
+# Esta tabela é usada pelo Centro Fiscal para exibir todos os documentos
+# emitidos, seus status e permitir ações como reemissão e download.
+# ---------------------------------------------------------------------------
+
+from datetime import datetime
+from typing import Optional
+
+from sqlalchemy import DateTime, Integer, String, Text
+from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.sql import func
+
+from app.db.base import Base
+
+
+class DocumentoFiscal(Base):
+    __tablename__ = "documento_fiscal"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+
+    # --- Tipo e origem polimórfica (sem FK) ---
+    # NFE, NFCE, NFSE
+    tipo_documento: Mapped[str] = mapped_column(String(5), nullable=False)
+    # VENDA, ORDEM_SERVICO
+    origem_tipo: Mapped[str] = mapped_column(String(15), nullable=False)
+    # ID da venda (quando origem_tipo = VENDA)
+    origem_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    # Número da OS (quando origem_tipo = ORDEM_SERVICO)
+    origem_numero_os: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, index=True)
+
+    # --- Status ---
+    # PENDENTE, PROCESSANDO, AUTORIZADA, REJEITADA, CANCELADA, DENEGADA
+    status: Mapped[str] = mapped_column(String(15), nullable=False, default="PENDENTE", index=True)
+
+    # --- Dados do documento emitido ---
+    chave_acesso: Mapped[Optional[str]] = mapped_column(String(44), nullable=True)
+    numero_documento: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    serie: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    protocolo_autorizacao: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    data_autorizacao: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    # --- Arquivos ---
+    url_pdf: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    url_xml: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+
+    # --- SEFAZ feedback ---
+    mensagem_sefaz: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    codigo_status_sefaz: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    motivo_rejeicao: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # --- Valor total (centavos) ---
+    valor_total: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    # --- Timestamps ---
+    data_emissao: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    data_criacao: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=func.now()
+    )
+    data_atualizacao: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=func.now(), onupdate=func.now()
+    )

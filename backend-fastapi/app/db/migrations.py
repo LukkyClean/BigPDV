@@ -5,6 +5,7 @@ Aplica migrações pendentes automaticamente na inicialização do app.
 O Alembic é a única autoridade sobre o schema do banco de dados.
 """
 import logging
+import logging.config
 import os
 import sys
 
@@ -19,6 +20,38 @@ from app.core.config import settings
 from app.db.session import engine
 
 logger = logging.getLogger(__name__)
+
+
+def _salvar_logging_config():
+    """Salva o estado dos loggers antes do Alembic sobrescrevê-los.
+
+    O fileConfig() do alembic/env.py usa disable_existing_loggers=True (padrão),
+    o que desabilita TODOS os loggers existentes que não estão no alembic.ini
+    (incluindo uvicorn, uvicorn.error, uvicorn.access e os loggers da app).
+    """
+    root = logging.getLogger()
+    manager = root.manager
+    # Salva o estado de todos os loggers existentes
+    loggers_estado = {}
+    for name, lg in manager.loggerDict.items():
+        if isinstance(lg, logging.Logger):
+            loggers_estado[name] = lg.disabled
+    return {
+        "level": root.level,
+        "handlers": list(root.handlers),
+        "loggers_disabled": loggers_estado,
+    }
+
+
+def _restaurar_logging_config(estado):
+    """Restaura os loggers ao estado salvo (desfaz o fileConfig do Alembic)."""
+    root = logging.getLogger()
+    root.setLevel(estado["level"])
+    root.handlers = estado["handlers"]
+    # Re-habilita loggers que foram desabilitados pelo fileConfig
+    for name, was_disabled in estado["loggers_disabled"].items():
+        lg = logging.getLogger(name)
+        lg.disabled = was_disabled
 
 
 def _criar_alembic_config() -> Config:
@@ -138,6 +171,7 @@ def aplicar_migracoes():
     """
     alembic_cfg = _criar_alembic_config()
     baseline = _obter_revisao_baseline(alembic_cfg)
+    _estado_logging = _salvar_logging_config()
 
     if not _banco_tem_tabela_alembic_version():
         insp = inspect(engine)
@@ -206,3 +240,8 @@ def aplicar_migracoes():
             logger.info("Banco atualizado: %s -> %s", revisao_atual, revisao_nova)
         else:
             logger.info("Banco já está na revisão mais recente: %s", revisao_nova)
+
+    # O fileConfig() do alembic/env.py sobrescreve o root logger (level=WARNING,
+    # handler próprio), silenciando logs INFO/DEBUG da aplicação. Restauramos o
+    # estado original para que o basicConfig do main.py continue valendo.
+    _restaurar_logging_config(_estado_logging)
