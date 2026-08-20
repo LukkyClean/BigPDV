@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue';
+import { computed, ref } from 'vue';
 import { ArchiveX, Keyboard } from 'lucide-vue-next';
 
 import ShortcutsModal from './ShortcutsModal.vue';
@@ -9,9 +9,9 @@ import AvisoEstoqueNegativoModal from './AvisoEstoqueNegativoModal.vue';
 
 import { useProductSearch } from '../../composables/flows/useProductSearch';
 import { useItemModal } from '../../composables/flows/useItemModal';
+import { useAddProductModal } from '../../composables/flows/useAddProductModal';
 import { SALE_SHORTCUTS, ORCAMENTO_SHORTCUTS } from '../../constants';
-import { productService } from '../../api.service';
-import { encontrarPorCodigoExato, pareceCodigoDeBarras } from '../../leitorCodigoBarras.util';
+import { pareceCodigoDeBarras } from '../../leitorCodigoBarras.util';
 
 import type { ProductSaleRead } from '../../schemas/productSale.schema';
 
@@ -29,50 +29,48 @@ const {
   isSearching,
   products,
   isLoading,
-  canAddItem,
   highlightedIndex,
-  selectedProduct,
   handleInputChange,
-  handleKeydown: composableKeydown,
-  selectProduct,
-  addItemToSale,
+  handleKeydown: navegarNaLista,
   resetSelection,
+  aplicarBuscaAgora,
+  tentarAdicionarProduto,
+  avisarResultado,
+  avisoEstoqueAberto,
+  avisoEstoqueDados,
+  confirmarAvisoEstoque,
+  cancelarAvisoEstoque,
 } = useProductSearch(props.isOrcamento, currentItemsRef, searchContainerRef);
 
 const { openCreateItemModal } = useItemModal();
 
 const shortcutsModalIsOpen = ref(false);
 
-type PendingAutoAdd = { saleId: number | null; nome: string; estoqueAtual: number; qtdDesejada: number };
-const avisoEstoqueOpen = ref(false);
-const pendingAutoAdd = ref<PendingAutoAdd | null>(null);
-
 function handleAddAvulso() {
+  const termo = searchTerm.value.trim();
   resetSelection();
-  openCreateItemModal();
+  openCreateItemModal(termo);
 }
 
-function tryAutoAdd(saleId: number | null, produtoId: number, nome: string, estoque: number) {
-  const existingQty = currentItemsRef.value?.find(i => i.produto_id === produtoId)?.quantidade ?? 0;
-  const novaQtd = existingQty + 1;
-  if (novaQtd > estoque) {
-    pendingAutoAdd.value = { saleId, nome, estoqueAtual: estoque, qtdDesejada: novaQtd };
-    avisoEstoqueOpen.value = true;
-    return;
-  }
-  addItemToSale(saleId, true);
+/** Clique na lista: a mesma porta do teclado e do leitor. */
+async function handleAutoAdd(product: { id: number }) {
+  const produto = products.value.find((p) => p.id === product.id);
+  if (!produto) return;
+  avisarResultado(await tentarAdicionarProduto({ saleId: props.saleId, produto }));
 }
 
-function confirmarAutoAdd() {
-  if (!pendingAutoAdd.value) return;
-  addItemToSale(pendingAutoAdd.value.saleId, true);
-  avisoEstoqueOpen.value = false;
-  pendingAutoAdd.value = null;
-}
+/**
+ * A ponte para a tela de quantidade.
+ *
+ * Esta busca sempre soma 1 — é o ritmo do balcão. Quando o caso é "3 unidades
+ * com desconto", o lugar é a modal Adicionar Produto, que abre já buscando o
+ * produto que a pessoa tinha na frente.
+ */
+const addProductModal = useAddProductModal();
 
-function handleAutoAdd(product: { nome: string; id: number; estoque: number }) {
-  selectProduct(product.nome, product.id);
-  tryAutoAdd(props.saleId, product.id, product.nome, product.estoque);
+function handleSelectForQuantity(product: { nome: string }) {
+  resetSelection();
+  addProductModal.openAddProductModal(product.nome);
 }
 
 /**
@@ -80,65 +78,56 @@ function handleAutoAdd(product: { nome: string; id: number; estoque: number }) {
  *
  * O leitor digita o código todo em milissegundos e manda Enter na sequência —
  * antes da busca debounced (300 ms) sair. Por isso este caminho consulta o
- * serviço DIRETO, sem esperar o debounce, e só age quando há certeza: um único
- * produto com aquele código exato.
+ * serviço DIRETO, sem esperar o debounce.
  *
- * Devolve `true` quando bipou e resolveu; `false` devolve o Enter para o fluxo
- * normal de quem está digitando.
+ * O que mudou: quando ele NÃO resolve, o Enter deixou de morrer. Antes o fluxo
+ * caía numa lista que ainda não existia (o debounce nem tinha disparado) e o
+ * operador ficava sem resposta nenhuma. Agora a busca é publicada na hora
+ * (`aplicarBuscaAgora`) e o primeiro resultado já nasce destacado — então o
+ * Enter seguinte escolhe, sem seta e sem mouse.
  */
 const bipando = ref(false);
 
-async function tentarBipar(): Promise<boolean> {
-  const codigo = searchTerm.value.trim();
-  if (!pareceCodigoDeBarras(codigo) || bipando.value) return false;
-
-  bipando.value = true;
-  try {
-    const encontrados = await productService.searchProducts(codigo);
-    const produto = encontrarPorCodigoExato(codigo, encontrados);
-    if (!produto) return false; // sem certeza: cai na lista, a pessoa escolhe
-
-    // Passa pelo mesmo `tryAutoAdd` do Enter comum, então o aviso de estoque
-    // insuficiente continua aparecendo — bipar não atropela a confirmação.
-    handleAutoAdd(produto);
-    return true;
-  } catch {
-    return false; // falhou a consulta: o fluxo normal assume
-  } finally {
-    bipando.value = false;
-  }
-}
-
-// Enter no teclado: seleciona e já adiciona com qtde 1 (sem campo de quantidade)
 async function handleKeydown(e: KeyboardEvent) {
-  // O ramo do leitor vem ANTES e só morde quando o texto tem cara de código de
-  // barras. Quem digita nome ou código curto nunca chega aqui: o caminho de
-  // sempre (debounce, lista, seta) segue intocado.
   if (e.key === 'Enter' && pareceCodigoDeBarras(searchTerm.value)) {
     e.preventDefault();
-    if (await tentarBipar()) return;
+    if (bipando.value) return;
+
+    bipando.value = true;
+    let resultado;
+    try {
+      resultado = await tentarAdicionarProduto({
+        saleId: props.saleId,
+        termo: searchTerm.value.trim(),
+      });
+    } finally {
+      bipando.value = false;
+    }
+
+    avisarResultado(resultado);
+
+    // Sem certeza sobre o código: a lista assume, e assume AGORA.
+    if (resultado.tipo === 'not_found' || resultado.tipo === 'ambiguous') {
+      aplicarBuscaAgora();
+    }
+    return;
   }
 
-  const wasSearching = isSearching.value;
-  composableKeydown(e);
-  if (e.key === 'Enter' && wasSearching) {
-    nextTick(() => {
-      if (canAddItem.value && selectedProduct.value) {
-        tryAutoAdd(props.saleId, selectedProduct.value.id, selectedProduct.value.nome, selectedProduct.value.estoque);
-      }
-    });
+  const escolhido = navegarNaLista(e);
+  if (escolhido) {
+    avisarResultado(await tentarAdicionarProduto({ saleId: props.saleId, produto: escolhido }));
   }
 }
 </script>
 
 <template>
   <AvisoEstoqueNegativoModal
-    :is-open="avisoEstoqueOpen"
-    :nome-produto="pendingAutoAdd?.nome ?? ''"
-    :estoque-atual="pendingAutoAdd?.estoqueAtual ?? 0"
-    :quantidade-desejada="pendingAutoAdd?.qtdDesejada ?? 1"
-    @confirmar="confirmarAutoAdd"
-    @cancelar="avisoEstoqueOpen = false; pendingAutoAdd = null"
+    :is-open="avisoEstoqueAberto"
+    :nome-produto="avisoEstoqueDados?.nome ?? ''"
+    :estoque-atual="avisoEstoqueDados?.estoqueAtual ?? 0"
+    :quantidade-desejada="avisoEstoqueDados?.quantidadeDesejada ?? 1"
+    @confirmar="confirmarAvisoEstoque"
+    @cancelar="cancelarAvisoEstoque"
   />
   <div class="flex items-center gap-2 w-full">
     <!-- Campo de busca + dropdown -->
@@ -184,7 +173,7 @@ async function handleKeydown(e: KeyboardEvent) {
               :highlighted="highlightedIndex === index"
               :data-product-index="index"
               @click="handleAutoAdd(product)"
-              @select-for-quantity="selectProduct(product.nome, product.id)"
+              @select-for-quantity="handleSelectForQuantity(product)"
             />
           </div>
         </div>

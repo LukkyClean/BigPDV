@@ -69,7 +69,11 @@ export const useConfiguracoesStore = defineStore('configuracoes', () => {
   const utilizarPrecoAtacado = computed(() => configProdutos.value?.utilizar_preco_atacado ?? true)
 
   // ── Produtos: controle de estoque ──
-  const permitirVendaEstoqueZerado = computed(() => configProdutos.value?.permitir_venda_estoque_zerado ?? false)
+  // O padrão acompanha o do banco (`configuracao_produtos.permitir_venda_estoque_zerado`,
+  // default=True). Assumir `false` aqui fazia a tela ser mais restritiva que o
+  // servidor enquanto a configuração da empresa ainda não existisse — e recusar
+  // uma venda que o backend teria aceitado.
+  const permitirVendaEstoqueZerado = computed(() => configProdutos.value?.permitir_venda_estoque_zerado ?? true)
   const quantidadeMinimaPadrao = computed(() => configProdutos.value?.quantidade_minima_padrao ?? 5)
   const unidadeMedidaPadrao = computed(() => configProdutos.value?.unidade_medida_padrao ?? 'UN')
 

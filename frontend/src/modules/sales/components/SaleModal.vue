@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, nextTick, ref, toRef, watch } from 'vue';
 import { X, Printer, ShoppingCart, PackagePlus, Trash2 } from 'lucide-vue-next';
 import BaseModal from '@/shared/components/commons/BaseModal/BaseModal.vue';
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
@@ -31,6 +31,7 @@ import { useAddProductModal } from '../composables/flows/useAddProductModal';
 import type { SaleRead } from '../schemas/sale.schema';
 import { storeToRefs } from 'pinia';
 import { useConfiguracoesStore } from '@/shared/stores/configuracoes.store';
+import { useBalcaoStore } from '@/shared/stores/balcao.store';
 
 import PrintFormatSelectModal from '@/shared/components/print/PrintFormatSelectModal.vue';
 import SalePrintTemplate from './print/SalePrintTemplate.vue';
@@ -44,14 +45,15 @@ const {
   saveNow: saveSaleForm,
   gerenteDesconto,
 } = useSaleDetailsForm(sale);
-const { openFinishModal, closeFinishModal, finishModalIsOpen } = useFinishSaleModal();
+const { openFinishModal, closeFinishModal, finishModalIsOpen, showPaymentDetails } = useFinishSaleModal();
 const { itemModalIsOpen, openCreateItemModal, closeItemModal } = useItemModal();
 const { openConfirmModal, closeConfirmModal: closeConfirm, confirmModalPending } = useConfirmSaleAction();
 const deleteMutation = useDeleteSaleMutation();
 const updateSaleMutation = useUpdateSaleMutation();
 const cancelSaleModalIsOpen = ref(false);
-const { openCustomerModalForChange } = useCustomerSearchModal();
-const { valorMinimoVenda } = storeToRefs(useConfiguracoesStore());
+const { openCustomerModalForChange, iniciarVendaSemCliente } = useCustomerSearchModal();
+const { valorMinimoVenda, exigirClienteIdentificado } = storeToRefs(useConfiguracoesStore());
+const { modoBalcao } = storeToRefs(useBalcaoStore());
 
 const {
   saleForPrint,
@@ -65,17 +67,59 @@ const {
   resolvePaymentMethodName,
 } = useSalePrintFlow();
 
+/**
+ * Põe o cursor na busca de produto — e confere que ele ficou lá.
+ *
+ * A venda abre dentro de um `<Transition>` e a busca só existe em modo edição,
+ * então houve mais de um jeito de o `nextTick` chegar antes do elemento estar
+ * focável. Quando isso acontecia, a venda abria sem cursor em lugar nenhum e o
+ * operador era obrigado a clicar na barra com o mouse — no primeiro passo do
+ * fluxo que deveria ser todo de teclado.
+ *
+ * A segunda tentativa no quadro seguinte é barata e cobre a corrida.
+ */
+function focarBuscaDeProduto() {
+  const tentar = () => {
+    const input = document.querySelector<HTMLInputElement>('[data-search-products] input');
+    if (!input) return false;
+    input.focus();
+    return document.activeElement === input;
+  };
+
+  nextTick(() => {
+    if (tentar()) return;
+    requestAnimationFrame(() => void tentar());
+  });
+}
+
 watch(saleModalIsOpen, (isOpen) => {
-  if (isOpen) {
-    nextTick(() => {
-      const searchInput = document.querySelector<HTMLInputElement>('[data-search-products] input');
-      searchInput?.focus();
-    });
-  }
+  if (isOpen) focarBuscaDeProduto();
 }, { immediate: true });
 
+/**
+ * O que acontece depois que a venda fecha.
+ *
+ * Fora do Modo Balcão: volta para a lista, como sempre.
+ *
+ * No Modo Balcão a próxima venda já abre — no balcão as vendas são encadeadas e
+ * mandar o operador clicar em "Nova venda" a cada cliente é atrito puro.
+ *
+ * A ORDEM IMPORTA: fecha primeiro, abre depois. Se a criação da próxima falhar
+ * (caixa fechado no meio do turno, por exemplo), o operador cai na lista com o
+ * aviso do servidor, em vez de ficar preso numa tela mostrando a venda que ele
+ * acabou de finalizar.
+ *
+ * Emenda só depois da impressão, porque é o `afterPrint` que roda quando o
+ * cupom saiu — trocar a venda da tela antes disso mexeria no que está sendo
+ * impresso.
+ */
 function handleFinalized(finishedSale: SaleRead) {
-  imprimirAposFinalizar(finishedSale, () => closeSaleModal());
+  imprimirAposFinalizar(finishedSale, () => {
+    closeSaleModal();
+    if (modoBalcao.value && !exigirClienteIdentificado.value) {
+      iniciarVendaSemCliente();
+    }
+  });
 }
 
 function handleChangeCliente() {
@@ -129,10 +173,14 @@ useSaleShortcuts({
   saleModalIsOpen,
   isEditMode,
   finishModalIsOpen,
+  paymentDetailsIsOpen: showPaymentDetails,
   itemModalIsOpen,
+  addProductModalIsOpen: toRef(addProductModal, 'isAddProductModalOpen'),
   onCreateSale: () => {},
   onOpenFinishModal: openFinishModal,
   onOpenItemModal: openCreateItemModal,
+  onOpenAddProductModal: () => addProductModal.openAddProductModal(),
+  onCloseAddProductModal: addProductModal.closeAddProductModal,
   onFocusPaymentGrid: () => {
     nextTick(() => {
       const btn = document.querySelector<HTMLButtonElement>('[data-payment-grid] button');
@@ -142,13 +190,9 @@ useSaleShortcuts({
   onCancelSale: handleCancel,
   onCloseSaleModal: closeSaleModal,
   onCloseFinishModal: closeFinishModal,
+  onClosePaymentDetails: () => { showPaymentDetails.value = false; },
   onCloseItemModal: closeItemModal,
-  onFocusSearch: () => {
-    nextTick(() => {
-      const searchInput = document.querySelector<HTMLInputElement>('[data-search-products] input');
-      searchInput?.focus();
-    });
-  },
+  onFocusSearch: focarBuscaDeProduto,
   onFocusSaleInputs: (field) => {
     nextTick(() => {
       document.querySelector<HTMLInputElement>(`[data-sale-${field}] input`)?.focus();
@@ -247,10 +291,12 @@ const saleDisplay = computed(() => {
           <button
             type="button"
             class="flex items-center gap-2 h-9 px-4 rounded-lg bg-brand-primary/10 text-brand-primary border border-brand-primary/20 text-sm font-semibold hover:bg-brand-primary/20 hover:border-brand-primary/30 transition-all shrink-0 cursor-pointer"
-            @click="addProductModal.openAddProductModal"
+            title="Quantidade e desconto (F3)"
+            @click="addProductModal.openAddProductModal()"
           >
             <PackagePlus :size="16" />
             Adicionar Produto
+            <kbd class="ml-0.5 inline-flex items-center rounded border border-brand-primary/30 bg-white/60 px-1 text-[10px] font-semibold">F3</kbd>
           </button>
         </div>
         <SaleItemsTable :sale="sale" :readonly="isViewMode" class="flex-1 min-h-0" />
@@ -302,6 +348,7 @@ const saleDisplay = computed(() => {
       :is-open="addProductModal.isAddProductModalOpen"
       :sale-id="selectedSaleId"
       :current-items="sale?.produtos"
+      :termo-inicial="addProductModal.termoInicial"
       @close="addProductModal.closeAddProductModal"
     />
     <CancelSaleModal

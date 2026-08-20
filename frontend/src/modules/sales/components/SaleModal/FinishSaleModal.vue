@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, nextTick } from 'vue';
+import { ref, computed, nextTick, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import {
   X,
@@ -30,6 +30,7 @@ import BaseSelect from '@/shared/components/ui/BaseSelect/BaseSelect.vue';
 import BaseCheckbox from '@/shared/components/ui/BaseCheckbox/BaseCheckbox.vue';
 
 import { useConfiguracoesStore } from '@/shared/stores/configuracoes.store';
+import { useBalcaoStore } from '@/shared/stores/balcao.store';
 import { useFinishSaleModal } from '../../composables/flows/useFinishSaleModal';
 import { useFinishSaleMutation } from '../../composables/mutates/useFinishSaleMutation';
 import { usePaymentMethodsQuery } from '../../composables/queries/usePaymentMethodsQuery';
@@ -55,6 +56,7 @@ const saleTotal = computed(() => props.sale?.total ?? 0);
 const {
   payments,
   finishModalIsOpen,
+  showPaymentDetails,
   closeFinishModal,
   addPayment,
   removePayment,
@@ -80,9 +82,11 @@ const {
 const finishMutation = useFinishSaleMutation();
 const { formasPagamento } = usePaymentMethodsQuery();
 const { permitirParcelamento, parcelasMaximas } = storeToRefs(useConfiguracoesStore());
+const { modoBalcao } = storeToRefs(useBalcaoStore());
 
 // Estado local do sub-modal de detalhes do pagamento
-const showPaymentDetails = ref(false);
+// `showPaymentDetails` vem do composable (era `ref` local): a hierarquia do
+// Escape precisa ve-lo para nao fechar a venda inteira por cima dele.
 const currentPaymentMethod = ref<PaymentFormReadDataType | null>(null);
 const paymentValueReais = ref(0);
 const moneyInputRef = ref();
@@ -115,7 +119,29 @@ const displayTotal = computed(() => formatCurrency(totalComAcrescimo.value));
 const displayTotalPago = computed(() => formatCurrency(totalPago.value));
 const displayTroco = computed(() => formatCurrency(troco.value));
 
-const canFinishWithConfirmation = computed(() => canFinish.value && confirmacao.value);
+/**
+ * Venda a prazo: parcelada, ou boleto com data de vencimento.
+ *
+ * É a linha que separa "recebi agora, o dinheiro está na gaveta" de "combinei
+ * de receber depois". A primeira o operador confere olhando; a segunda vira
+ * compromisso e merece a conferência explícita.
+ */
+const temPagamentoAPrazo = computed(() =>
+  payments.value.some((p) => p.parcelado || !!p.vencimento),
+);
+
+/**
+ * O checkbox de confirmação some no Modo Balcão — mas só na venda à vista.
+ *
+ * Ele custa um clique por venda, e numa adega isso é o dia inteiro conferindo
+ * o que já está na mão. Em pagamento a prazo ele CONTINUA: ali a conferência
+ * protege de verdade, porque o combinado é o que vai ser cobrado depois.
+ */
+const exigeConfirmacao = computed(() => !modoBalcao.value || temPagamentoAPrazo.value);
+
+const canFinishWithConfirmation = computed(
+  () => canFinish.value && (!exigeConfirmacao.value || confirmacao.value),
+);
 
 const paymentBaseCentavos = computed(() => Math.round(paymentValueReais.value * 100));
 /** Juros do pagamento em edição. Só existe para cartão. */
@@ -188,6 +214,44 @@ function clearPayments() {
   }
 }
 
+/**
+ * As setas andam pelo grid de formas de pagamento.
+ *
+ * O Tab só anda para FRENTE, e no Modo Balcão o foco nasce no Dinheiro — que é
+ * o 4º dos 6 botões. Na prática o operador alcançava só as formas seguintes
+ * (Pix, Transferência); as três de cima ficavam ATRÁS do foco e exigiam
+ * Shift+Tab ou mouse. Num grid de botões a seta é o que a mão espera, e ela não
+ * tira nada de quem usa o Tab.
+ *
+ * Não dá a volta de propósito: chegar na borda e reaparecer do outro lado faz o
+ * operador perder de vista onde está, e aqui cada botão é uma forma de dinheiro
+ * diferente.
+ */
+function navegarFormasPagamento(e: KeyboardEvent) {
+  // 3 é o `grid-cols-3` do container logo abaixo — mudou lá, muda aqui.
+  const COLUNAS = 3;
+  const passos: Record<string, number> = {
+    ArrowRight: 1,
+    ArrowLeft: -1,
+    ArrowDown: COLUNAS,
+    ArrowUp: -COLUNAS,
+  };
+  const passo = passos[e.key];
+  if (passo === undefined) return;
+
+  const botoes = Array.from(
+    document.querySelectorAll<HTMLButtonElement>('[data-payment-grid] button'),
+  ).filter((b) => !b.disabled);
+  const atual = botoes.indexOf(document.activeElement as HTMLButtonElement);
+  if (atual === -1) return;
+
+  const alvo = botoes[atual + passo];
+  if (!alvo) return;
+
+  e.preventDefault(); // senão a seta rola a coluna atrás do grid
+  alvo.focus();
+}
+
 // Ações de pagamento
 function handleAddPaymentClick(method: PaymentFormReadDataType) {
   currentPaymentMethod.value = method;
@@ -208,7 +272,55 @@ function handleAddPaymentClick(method: PaymentFormReadDataType) {
   });
 }
 
-function confirmAddPayment() {
+/**
+ * O último Enter da venda.
+ *
+ * Confirmado o pagamento, o foco ficava no vazio: `confirmAddPayment` zera o
+ * `currentPaymentMethod`, e é exatamente isso que impede o watcher de devolver
+ * o foco à forma de pagamento — senão o Enter reabriria a tela do valor. Sem
+ * dono, a tecla não tinha onde bater, e o operador terminava a venda no mouse:
+ * no ÚLTIMO passo de um fluxo que já era todo de teclado.
+ *
+ * ⚠️ `aguardarSoltarTecla` NÃO é preciosismo — é o que separa os dois Enters.
+ * O `MoneyInput` emite `enter` no **keydown**, então focar o botão aqui e agora
+ * o entrega à MESMA tecla: o Chromium dispara o clique do botão como ação
+ * padrão daquele keydown, já com o foco novo. O resultado era um Enter só
+ * confirmando o pagamento E finalizando a venda — o troco aparecia e sumia
+ * junto com o recibo, sem o operador conferir nada. Esperar o `keyup` faz o
+ * segundo Enter ser um segundo aperto de verdade.
+ *
+ * Só no Modo Balcão e só com a venda paga. Fora dele o botão espera o checkbox
+ * de confirmação, e roubar o foco mudaria o comportamento das lojas que já
+ * rodam. A prazo o checkbox continua, então o botão está desabilitado e o foco
+ * não vai para ele — é a mesma regra do `exigeConfirmacao`, não uma segunda.
+ */
+function focarFinalizarVenda(aguardarSoltarTecla = false) {
+  if (!modoBalcao.value || restante.value > 0) return;
+
+  // Duas tentativas, como na busca de produto: o sub-modal sai dentro de um
+  // <Transition> e o foco pode ser desfeito enquanto ele ainda desmonta.
+  const tentar = () => {
+    const btn = document.querySelector<HTMLButtonElement>('[data-finalizar-venda]');
+    if (!btn || btn.disabled) return false;
+    btn.focus();
+    return document.activeElement === btn;
+  };
+
+  const focar = () => {
+    nextTick(() => {
+      if (tentar()) return;
+      requestAnimationFrame(() => void tentar());
+    });
+  };
+
+  if (!aguardarSoltarTecla) {
+    focar();
+    return;
+  }
+  document.addEventListener('keyup', focar, { once: true });
+}
+
+function confirmAddPayment(viaTeclado = false) {
   const method = currentPaymentMethod.value;
   if (!method || paymentValueReais.value <= 0) return;
 
@@ -244,11 +356,70 @@ function confirmAddPayment() {
 
   showPaymentDetails.value = false;
   currentPaymentMethod.value = null;
+  focarFinalizarVenda(viaTeclado);
 }
 
 function handleRemovePayment(index: number) {
   removePayment(index);
 }
+
+/**
+ * Modo Balcão: o foco nasce no botão "Dinheiro".
+ *
+ * O sub-modal de valor já resolve o resto sozinho — abre com o restante
+ * preenchido e SELECIONADO, e o Enter confirma. O que faltava era só chegar
+ * nele sem o mouse: sem isto, o operador larga o teclado só para clicar na
+ * forma de pagamento que ele usa em toda venda.
+ *
+ * O F6 já existia (`useSaleShortcuts`), mas foca o PRIMEIRO botão do grid, que
+ * hoje é Boleto. Aqui a mira é a espécie.
+ */
+watch(finishModalIsOpen, (aberto) => {
+  if (!aberto || !modoBalcao.value) return;
+  nextTick(() => {
+    document.querySelector<HTMLButtonElement>('[data-forma-dinheiro]')?.focus();
+  });
+});
+
+/**
+ * Quem abriu o sub-modal de pagamento, para receber o foco de volta.
+ *
+ * Fechar uma tela nao pode custar o foco: sem isto o Esc devolvia a Finalizar
+ * Venda com o foco no vazio, e a unica saida era o mouse -- justamente o que o
+ * caminho de teclado existe para evitar.
+ *
+ * SO O CANCELAMENTO devolve o foco. Confirmar um pagamento zera
+ * `currentPaymentMethod`; cancelar (Esc, botao Cancelar, X) nao -- e e essa
+ * diferenca que distingue os dois aqui. Devolver o foco tambem na confirmacao
+ * quebraria o "Enter, Enter" do Modo Balcao: o segundo Enter cairia na forma de
+ * pagamento e reabriria esta mesma tela em vez de finalizar a venda.
+ */
+let origemDoFoco: HTMLElement | null = null;
+
+watch(showPaymentDetails, (aberto, estavaAberto) => {
+  if (aberto) {
+    origemDoFoco = document.activeElement as HTMLElement | null;
+    return;
+  }
+  if (!estavaAberto) return;
+
+  const alvo = origemDoFoco;
+  origemDoFoco = null;
+  if (!alvo || currentPaymentMethod.value === null) return;
+
+  // Duas tentativas, como na busca de produto: o sub-modal sai dentro de um
+  // <Transition>, e um focus() disparado enquanto ele ainda esta desmontando
+  // pode ser desfeito pelo proprio navegador.
+  nextTick(() => {
+    if (!alvo.isConnected) return;
+    alvo.focus();
+    if (document.activeElement !== alvo) {
+      requestAnimationFrame(() => {
+        if (alvo.isConnected) alvo.focus();
+      });
+    }
+  });
+});
 
 function handleCloseFinishModal() {
   confirmacao.value = false;
@@ -297,11 +468,12 @@ function handleFinish() {
           <!-- Formas de pagamento (compact 3-col) -->
           <div class="shrink-0">
             <p class="text-[10px] font-semibold text-zinc-400 uppercase tracking-wide mb-1.5">Selecionar Forma de Pagamento</p>
-            <div data-payment-grid class="grid grid-cols-3 gap-1.5">
+            <div data-payment-grid class="grid grid-cols-3 gap-1.5" @keydown="navegarFormasPagamento">
               <button
                 v-for="method in activePaymentMethods"
                 :key="method.id"
                 type="button"
+                :data-forma-dinheiro="getMethodTipo(method) === 'DINHEIRO' ? '' : undefined"
                 :disabled="restante <= 0"
                 class="flex flex-col items-center justify-center p-1.5 rounded-lg border-2 transition-all gap-0.5 disabled:opacity-40 disabled:cursor-not-allowed"
                 :class="getValorPorMetodo(method.id) > 0
@@ -472,7 +644,21 @@ function handleFinish() {
                 <span class="text-lg">{{ formatCurrency(restante) }}</span>
               </div>
 
-              <div v-if="troco > 0" class="flex justify-between items-center font-bold text-amber-500">
+              <!-- Troco em fonte de balcão: no Modo Balcão ele é o número mais
+                   importante da tela — o operador confere com a mão na gaveta,
+                   muitas vezes de pé e de longe. E aparece MESMO ZERADO: "Troco
+                   R$ 0,00" é a confirmação de que o valor bateu, não ruído. -->
+              <div
+                v-if="modoBalcao && restante === 0 && payments.length > 0"
+                class="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-center"
+              >
+                <p class="text-[10px] font-bold text-amber-700 uppercase tracking-widest">Troco</p>
+                <p class="text-4xl font-extrabold text-amber-600 tabular-nums leading-tight">
+                  {{ displayTroco }}
+                </p>
+              </div>
+
+              <div v-else-if="troco > 0" class="flex justify-between items-center font-bold text-amber-500">
                 <span class="text-sm">Troco</span>
                 <span class="text-lg">{{ displayTroco }}</span>
               </div>
@@ -485,6 +671,7 @@ function handleFinish() {
       <!-- Confirmação + botões (dentro do body) -->
       <div class="flex items-center gap-4 pt-3 border-t border-zinc-200 shrink-0">
         <BaseCheckbox
+          v-if="exigeConfirmacao"
           v-model="confirmacao"
           :label="`Confirmo o recebimento de ${displayTotalPago}`"
         />
@@ -492,6 +679,7 @@ function handleFinish() {
           <BaseButton variant="secondary" class="px-5" @click="handleCloseFinishModal">Cancelar</BaseButton>
           <BaseButton
             variant="primary"
+            data-finalizar-venda
             :is-loading="finishMutation.isPending.value"
             :disabled="!canFinishWithConfirmation"
             class="px-6 shadow-lg shadow-brand-primary/20"
@@ -529,7 +717,7 @@ function handleFinish() {
         ref="moneyInputRef"
         v-model="paymentValueReais"
         label="Inserir Valor"
-        @enter="confirmAddPayment"
+        @enter="confirmAddPayment(true)"
       />
 
       <!-- Parcelamento (cartão de crédito / boleto) -->
@@ -636,7 +824,7 @@ function handleFinish() {
           class="flex-1"
           type="button"
           :disabled="paymentValueReais <= 0"
-          @click="confirmAddPayment"
+          @click="confirmAddPayment()"
         >
           Confirmar
         </BaseButton>

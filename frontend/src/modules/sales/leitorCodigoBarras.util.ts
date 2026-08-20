@@ -28,28 +28,38 @@ export function pareceCodigoDeBarras(termo: string): boolean {
   return limpo.length >= MIN_DIGITOS && /^\d+$/.test(limpo);
 }
 
+/** O que a busca por código exato encontrou. */
+export type ResolucaoCodigo =
+  | { tipo: 'unico'; produto: ProductSaleListItem[number] }
+  | { tipo: 'nenhum' }
+  | { tipo: 'ambiguo'; quantos: number };
+
 /**
- * O produto a ser bipado, ou `null` quando não há certeza.
+ * Resolve um código digitado ou bipado em um produto — ou diz por que não deu.
  *
  * Exige DUAS coisas ao mesmo tempo: um único candidato com aquele código exato,
  * e correspondência literal em `codigo_barras` ou `sku`. "Veio um resultado só"
  * não basta — a busca é ampla (nome, marca, categoria) e uma coincidência
  * somaria o produto errado sem ninguém perceber.
  *
- * Na dúvida devolve `null`, e a tela cai no fluxo normal: a lista aparece e a
- * pessoa escolhe. Errar para a lista custa um clique; errar para o carrinho
- * custa dinheiro no fechamento.
+ * Na dúvida NÃO escolhe: errar para a lista custa um clique, errar para o
+ * carrinho custa dinheiro no fechamento. Mas a dúvida agora tem nome — `nenhum`
+ * e `ambiguo` são coisas diferentes e merecem mensagens diferentes. Enquanto os
+ * dois voltavam como o mesmo `null`, a tela não tinha o que dizer e não dizia
+ * nada.
  */
-export function encontrarPorCodigoExato(
+export function resolverPorCodigoExato(
   termo: string,
   produtos: ProductSaleListItem,
-): ProductSaleListItem[number] | null {
+): ResolucaoCodigo {
   const alvo = (termo ?? '').trim();
-  if (!alvo) return null;
+  if (!alvo) return { tipo: 'nenhum' };
 
   const exatos = produtos.filter(
     (p) => p.codigo_barras?.trim() === alvo || p.sku?.trim() === alvo,
   );
 
-  return exatos.length === 1 ? exatos[0] : null;
+  if (exatos.length === 1) return { tipo: 'unico', produto: exatos[0] };
+  if (exatos.length === 0) return { tipo: 'nenhum' };
+  return { tipo: 'ambiguo', quantos: exatos.length };
 }
