@@ -226,11 +226,15 @@ Cada item do XML traz `cEAN` — o código de barras do produto. Quando o fornec
 preenche direito, o de-para é **automático**; quando vem `SEM GTIN` (comum), cai
 no de-para manual da fase 3, que memoriza.
 
-> **Recomendação de produto:** deixar o **import de arquivo XML no plano não
-> fiscal**. Ele não emite nada, não exige certificado, e é o maior ganho de tempo
-> do sistema inteiro. Cobrar por ele empurra o lojista de volta para o Excel. O
-> que é fiscal de verdade é a **busca automática na SEFAZ**, que exige o
-> certificado — essa sim, recurso pago.
+> **DECIDIDO pelo dono (20/08/2026): o import de XML é RECURSO PAGO.** A regra da
+> casa é uma só — **o que envolve nota fiscal está no plano fiscal**, sem exceção
+> por conveniência técnica.
+>
+> Fica registrado que a recomendação técnica era outra (o import não emite nada e
+> não exige certificado), e que a decisão comercial prevalece. A consequência
+> prática, que **não** é um problema: o caminho não fiscal continua **completo**
+> sem o XML — a entrada se faz bipando a chave do DANFE e os itens. O XML acelera
+> quem paga; ele não é a única forma de dar entrada.
 
 ---
 
@@ -266,7 +270,7 @@ descobrir depois: refazer o fluxo de finalização com o PDV já na rua.
 | 1 | seletor de produto único, bipável | 2 d | baixo | — |
 | 2 | entrada como documento + chave do DANFE | 3–4 d | médio | 1 |
 | 3 | memória do fornecedor (de-para) | 1 d | baixo | 2 |
-| 4 | import de XML | 3 d | médio | 3 |
+| 4 | import de XML **(recurso pago)** | 3 d | médio | 0 + 3 |
 | 5 | campos fiscais do produto + gancho da emissão | 2 d | médio | 0 |
 
 As fases 0 e 1 são independentes e podem trocar de ordem. **A 2 é a que o cliente
@@ -288,7 +292,17 @@ perto.
 
 ## 11. Decisões em aberto
 
-1. **Import de XML: fiscal ou não fiscal?** Recomendação acima: não fiscal.
+1. ~~**Import de XML: fiscal ou não fiscal?**~~ **RESOLVIDO em 20/08/2026:
+   recurso PAGO.** Regra da casa: o que envolve nota fiscal está no plano fiscal.
+   Consequência no cronograma: a **fase 4 passa a depender da fase 0**, e o não
+   fiscal se fecha na fase 3.
+
+   **A pergunta que sobra desta, e é estreita:** *bipar a chave do DANFE* entra
+   junto no pago? Ela é o único ponto de fronteira — ler 44 dígitos de um papel
+   não emite nada, não consulta a SEFAZ e não usa certificado; é só identificar
+   o documento que o fornecedor mandou junto com a mercadoria. Se ela também for
+   paga, a entrada do plano não fiscal vira 100% digitada à mão (fornecedor,
+   número e data no teclado), e a adega perde o ganho principal da fase 2.
 2. **O dono da adega tem ou pretende ter e-CNPJ (A1)?** É a resposta que decide se
    a fase 4 vale como está ou se vira busca automática.
 3. **Quem mexe na API StartBig** para o token carregar `recursos`? Sem isso, o
