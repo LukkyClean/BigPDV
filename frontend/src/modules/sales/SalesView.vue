@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import { Plus, AlertTriangle } from 'lucide-vue-next';
+import { Plus, AlertTriangle, Zap } from 'lucide-vue-next';
+import { storeToRefs } from 'pinia';
 import GerenteAprovacaoModal from '@/shared/components/commons/GerenteAprovacaoModal/GerenteAprovacaoModal.vue';
 import { useGerenteAprovacao } from '@/shared/composables/useGerenteAprovacao';
 import { useToast } from '@/shared/composables/useToast';
@@ -17,7 +18,6 @@ import SalesStatus from './components/SalesStatus.vue';
 import SaleTable from './components/SaleTable.vue';
 import CaixaBar from './caixa/components/CaixaBar.vue';
 import { useSessaoCaixaQuery } from './caixa/composables/queries/useSessaoCaixaQuery';
-import SaleModal from './components/SaleModal.vue';
 import SalePrintTemplate from './components/print/SalePrintTemplate.vue';
 import SalePrintCupom from './components/print/SalePrintCupom.vue';
 
@@ -38,6 +38,8 @@ import { useCreateOrcamentoMutation } from './composables/mutates/useCreateOrcam
 import { useDeleteOrcamentoMutation } from './composables/mutates/useDeleteOrcamentoMutation';
 import { useConverterOrcamentoMutation } from './composables/mutates/useConverterOrcamentoMutation';
 import { useAuthStore } from '@/shared/stores/auth.store';
+import { useBalcaoStore } from '@/shared/stores/balcao.store';
+import { useConfiguracoesStore } from '@/shared/stores/configuracoes.store';
 import { SALES_TAB_OPTIONS } from './constants';
 
 const activeTab = ref<'vendas' | 'orcamentos'>('vendas');
@@ -54,7 +56,30 @@ const pageDescription = computed(() =>
 
 const authStore = useAuthStore();
 
-const { openCustomerModal, openCustomerModalForConversion } = useCustomerSearchModal();
+const { openCustomerModal, openCustomerModalForConversion, iniciarVendaSemCliente } = useCustomerSearchModal();
+
+// Modo Balcao: chave desta MAQUINA (localStorage), desligada por padrao.
+const balcaoStore = useBalcaoStore();
+const { modoBalcao } = storeToRefs(balcaoStore);
+const { exigirClienteIdentificado } = storeToRefs(useConfiguracoesStore());
+
+/**
+ * O comeco da venda.
+ *
+ * Fora do Modo Balcao e com ele ligado numa loja que exige cliente, o caminho e
+ * o de sempre: o modal de cliente primeiro. So a adega (balcao ligado E sem
+ * exigencia de cliente) pula direto para o carrinho.
+ *
+ * A segunda condicao nao e detalhe: sem ela a venda nasceria sem cliente para
+ * ser recusada la na finalizacao por `venda.py`, com o carrinho ja montado.
+ */
+function handleNovaVenda() {
+  if (modoBalcao.value && !exigirClienteIdentificado.value) {
+    iniciarVendaSemCliente();
+    return;
+  }
+  openCustomerModal();
+}
 
 // Trava do caixa na porta de entrada.
 //
@@ -103,7 +128,7 @@ whenever(F2, () => {
   if (activeTab.value === 'vendas') {
     // O atalho tem que respeitar a mesma trava do botao, senao F2 fura a regra.
     if (vendaBloqueada.value) return;
-    openCustomerModal();
+    handleNovaVenda();
   } else {
     handleNewOrcamento();
   }
@@ -259,6 +284,28 @@ function handleOpenSaleFromOrcamento(saleId: number) {
 
       <div class="flex gap-5">
         <BaseTab2 :options="SALES_TAB_OPTIONS" v-model="activeTab" />
+
+        <!-- Modo Balcão: acelera o fluxo desta máquina. Fica ao lado de "Nova
+             venda" porque é ali que ele muda o comportamento. Desligado, o
+             módulo inteiro se comporta como sempre. -->
+        <button
+          v-if="activeTab === 'vendas'"
+          type="button"
+          :class="[
+            'flex items-center gap-1.5 px-3 rounded-lg border text-sm font-semibold transition-all cursor-pointer',
+            modoBalcao
+              ? 'border-brand-primary bg-brand-primary/10 text-brand-primary'
+              : 'border-zinc-200 bg-white text-zinc-400 hover:text-zinc-600 hover:border-zinc-300',
+          ]"
+          :title="modoBalcao
+            ? 'Modo Balcão ligado — a venda começa no produto e emenda a próxima. Clique para desligar.'
+            : 'Modo Balcão desligado — clique para vender no ritmo de balcão.'"
+          @click="balcaoStore.alternar()"
+        >
+          <Zap :size="16" />
+          Balcão
+        </button>
+
         <BaseButton
           v-if="activeTab === 'vendas'"
           variant="primary"
@@ -267,7 +314,7 @@ function handleOpenSaleFromOrcamento(saleId: number) {
           class="flex gap-1"
           :disabled="vendaBloqueada"
           :title="vendaBloqueada ? 'Abra o caixa para começar a vender' : ''"
-          @click="openCustomerModal"
+          @click="handleNovaVenda"
         >
           <Plus :size="20" />
           Nova venda
@@ -358,7 +405,11 @@ function handleOpenSaleFromOrcamento(saleId: number) {
     </BaseModal>
 
     <!-- Sale Modal -->
-    <SaleModal />
+    <!-- O <SaleModal /> NAO se monta aqui: ele ja vive no MainLayout, que e pai
+         desta rota. Montar nos dois punha DUAS instancias na tela ao mesmo tempo,
+         e como o estado da venda e global (refs de modulo), o mesmo Esc era
+         tratado duas vezes: a primeira fechava a modal de cima, a segunda via a
+         flag ja em false e fechava o PDV inteiro. Achado em 20/08/2026. -->
 
     <GerenteAprovacaoModal
       :is-open="gerenteReopen.isOpen.value"

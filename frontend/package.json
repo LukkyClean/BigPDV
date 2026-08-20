@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently \"vite\"",
-    "build": "npm run check:tokens && npm run check:print-bw && npm run check:paleta && npm run check:pix && vite build",
+    "build": "npm run check:tokens && npm run check:print-bw && npm run check:paleta && npm run check:pix && npm run check:balcao && vite build",
     "preview": "vite preview",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
@@ -17,7 +17,8 @@
     "check:tokens": "node ../scripts/check-tokens.mjs",
     "check:print-bw": "node ../scripts/check-print-bw.mjs",
     "check:paleta": "node ../scripts/check-paleta.mjs",
-    "check:pix": "node ../scripts/check-pix.mjs"
+    "check:pix": "node ../scripts/check-pix.mjs",
+    "check:balcao": "node ../scripts/check-balcao.mjs"
   },
   "dependencies": {
     "@tailwindcss/postcss": "^4.1.18",
