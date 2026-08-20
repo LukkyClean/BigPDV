@@ -1,126 +1,173 @@
-# PDV — onde paramos (15/08/2026)
+# PDV — onde paramos (20/08/2026)
 
-Ponto de retomada. Branch `feat/pdv`, árvore limpa, tudo commitado.
+Ponto de retomada. Branch `feat/pdv`, último commit `df6de7f`.
 
----
-
-## O que está PRONTO
-
-Fases 0 a 5 do plano, mais três coisas pedidas depois. Suíte saiu de **410 → 445
-testes**, `vue-tsc` em zero o tempo todo.
-
-| # | fase | commit |
-|---|---|---|
-| 0 | baseline congelado | `af49009` |
-| 0.5 | fuso: o dia do relatório é o da loja | `182ca3f` |
-| 1 | schema (caixa + livro do dinheiro) | `894388c` |
-| 2 | backend do caixa atrás da chave | `1650ea0` |
-| 3 | caixa dentro do PDV | `e54054c` |
-| 4 | leitor de código de barras | `50ffb9a` |
-| 5 | segmento `pdv` e o sumiço da OS | `84db7e8` |
-| + | sangria em Segurança; venda não começa sem caixa | `bbf40a3` |
-| + | Relatórios › Caixa (quem fechou faltando/sobrando) | `3efd255` |
-| + | correção: relatório não pode dizer "Bateu certo" sem dado | `1b83ca3` |
-
-**Verificado no app de verdade**, não só em teste: menu sem "Serviços" numa loja
-`pdv`, barra do caixa, trava recusando a finalização, e a diferença de −R$ 10
-aparecendo com o nome de quem fechou.
+> ✅ **A ÁRVORE ESTÁ LIMPA.** As fases 1, 2 e 3 foram dirigidas no app em
+> 20/08/2026 e saíram em **três commits separados**: `637c264` (Modo Balcão),
+> `cfa5799` (teclado e leitor) e `df6de7f` (terminais). A dívida do dia 17 está
+> paga e o `git bisect` volta a servir.
 
 ---
 
-## POR ONDE COMEÇAR AMANHÃ
+## 1. O que o teste no app revelou (20/08)
 
-Três frentes, em ordem de recomendação.
+O roteiro não passou de primeira, e o que ele achou pagou a manhã:
 
-### 1. Tela de Terminais *(pequena, fecha o cenário "servidor + 2 caixas")*
+- **`<SaleModal />` estava montado DUAS vezes** — uma no `MainLayout` e outra no
+  `SalesView`. Como o estado da venda é global (refs de módulo), o mesmo `Esc`
+  era tratado duas vezes: a primeira fechava a modal de cima, a segunda via a
+  flag já em `false` e fechava o PDV inteiro. Era o bug do `F3 → Esc →
+  Ctrl+Enter`.
+- **O `Esc` não enxergava o sub-modal de pagamento** e fechava a Finalizar Venda
+  por cima dele, levando junto os pagamentos já lançados.
+- **Não havia tecla para finalizar a venda.** O "segundo Enter" estava escrito no
+  plano e nunca tinha sido ligado no botão. Agora existe — e espera a tecla
+  anterior ser SOLTA, senão o mesmo Enter que confirma o pagamento clica em
+  Finalizar e o troco some junto com o modal.
+- **O Tab só anda para frente** e o foco nasce no meio do grid de pagamento: as
+  três formas de cima eram inalcançáveis pelo teclado. Agora as setas andam pelo
+  grid.
+- **A lista de atalhos mentia em três linhas** (`Ctrl+Enter` não finaliza, `F2`
+  é da lista de vendas, `F6` só age com o pagamento aberto). Corrigida contra o
+  código, e ganhou o que faltava: `Enter`, setas e o grid de pagamento.
 
-As colunas `nome` e `papel` existem em `terminais_conectados` desde a fase 1,
-mas **não há tela para preenchê-las**. Duas consequências:
+Lição que vale registrar: **as duas correções mais caras do dia — modal
+duplicada e hierarquia do Esc — não seriam achadas por teste automatizado
+nenhum.** Foram achadas dirigindo a janela.
 
-- a coluna **Terminal** do relatório de caixa aparece vazia
-- sem `papel = RETAGUARDA`, **o PC do dono é tratado como caixa** — com
-  "Exigir caixa aberto" ligado, a máquina dele vai pedir abertura de turno
+## 1.1 O que ainda NÃO foi provado no app
 
-Com um PC só não incomoda. Com o segundo, incomoda no primeiro dia.
-
-A máquina já se cadastra sozinha no login (por HWID) — falta só nomear e marcar
-o papel.
-
-### 2. Fase 6 — instalar na adega
-
-`npm run build:sidecar` → instalador → instalar → ligar as chaves lá.
-
-**O sidecar está desatualizado** desde a fase 0.5, quando o backend mudou.
-
-> **Não mande as fases 4 e 5 no mesmo instalador** para as três lojas que já
-> rodam. Se algo quebrar, você precisa saber se foi o leitor ou o sumiço da OS.
-> Para a **adega** tanto faz — é instalação nova, recebe tudo junto.
-
-### 3. Permissões de verdade *(projeto próprio, o maior dos três)*
-
-Ver a seção abaixo. É o que destrava o cargo "Supervisor".
+- **Fase 3 inteira** (Terminais): nome que sobrevive ao logout, papel
+  Retaguarda, coluna Terminal no relatório.
+- **O leitor de verdade**: itens 6 e 7 do roteiro (código inexistente e código
+  repetido em 2 produtos).
+- A venda de 3 garrafas cronometrada, contando saídas voluntárias do teclado.
 
 ---
 
-## O problema das permissões, explicado
+## 2. O que foi feito em 17/08
 
-Você cria um cargo e marca **só "Visualizar"** em Vendas, esperando que a pessoa
-olhe mas não apague. **Ela apaga.**
+### Fase 1 — Modo Balcão *(fechada, falta só a prova)*
+- `scripts/check-balcao.mjs`: guard de build que trava a chave dentro de 4
+  arquivos autorizados e impede inverter o padrão desligado. **Testado que ele
+  falha quando deve** (arquivo intruso e padrão invertido).
+- ⚠️ O guard protege **arquitetura, não comportamento**. "Tem guard" não é "tem
+  teste do Modo Balcão" — o ON/OFF continua sendo verificação manual.
 
-O sistema não pergunta *"pode EXCLUIR em Vendas?"*. Pergunta *"tem ALGUMA
-permissão em Vendas?"* — e "Visualizar" já responde que sim:
+### Fase 2 — O caminho de teclado *(codada, 6 commits lógicos num blob só)*
+- **`tentarAdicionarProduto`**: porta única para leitor, clique, teclado e a
+  modal. É **assíncrona** e espera a decisão do modal de estoque antes de
+  resolver. Devolve `added | not_found | ambiguous | blocked | cancelled | error`
+  em vez de `false` com cinco significados.
+- **Cinco silêncios** consertados, incluindo o `catch { return false }` que
+  transformava queda de rede em "não aconteceu nada".
+- **Destaque determinístico**: `highlightedIndex` nasce em 0 e o watch volta para
+  0. Herda de graça o ranking de código exato que o backend já calcula.
+- **Flush do debounce** quando o leitor não morde — a lista aparece na hora, não
+  300 ms depois.
+- **Estoque zerado passou a ler `permitir_venda_estoque_zerado`**, no mesmo
+  limiar do backend. Não é mudança de regra: a tela ignorava a configuração da
+  loja e errava nos dois sentidos.
+- **F3** abre a tela de quantidade; ela ganhou o teclado que nunca teve.
+- Removidos `quantityInputRef` e `addItemToSale` (mortos).
 
-```python
-# app/api/v1/endpoints/venda.py
-module_permission = ["venda", "view_sales", "manage_sales", "delete_sales"]
+### Fase 3 — Terminais persistentes *(codada + 12 testes)*
+- Tabela `terminais` (durável) separada de `terminais_conectados` (presença).
+  Migration `a1b2c3d4e5f6`, que copia o que já foi digitado na tabela antiga.
+- **457 pytest** (eram 445). O teste mais importante: terminal não configurado
+  nunca perde a trava de caixa.
+- Tela em Configurações › Computadores da Loja.
+- O relatório passou a ler o nome do **cadastro**, não da presença — era por isso
+  que a coluna Terminal ficava vazia nos turnos antigos.
 
-# app/core/depends.py
-if any(permissoes.get(p) is True for p in perms):
-    return usuario_token          # basta UMA
+### Correções de bugs que apareceram no caminho
+- **A barra do caixa mostrava R$ 0,00 com a gaveta cheia.** O backend mandava
+  "oculto" como o número `0`. Agora manda `null` e a tela diz que está oculto.
+  O teste que existia **afirmava o bug** (`== 0`) e foi corrigido.
+- **Foco não chegava na busca de produto.** Endurecido: tenta, confere se o foco
+  ficou (`document.activeElement`), e tenta de novo no quadro seguinte.
+- **O login quebrava (500)** com o cadastro de terminal: `try/except` sem
+  rollback envenena a sessão do SQLAlchemy e quem quebra é o commit, depois.
+  Agora é `begin_nested()`.
+
+---
+
+## 3. O QUE FALTA
+
+### 3.1 Provar as fases 1–3 no app *(bloqueia tudo)*
+Seção 1. É o próximo passo, não há alternativa.
+
+### 3.2 Fase 4 — Instalar na adega *(meio dia)*
 ```
+build do código → build do SIDECAR → instalador → versão identificável
+→ instalação → reinício do backend → smoke test
+```
+- ⚠️ **O sidecar está desatualizado desde a fase 0.5.** Instalador gerado sem
+  `npm run build:sidecar` leva o backend velho, e o sintoma chega como "segmento
+  pdv recusado" ou "relatório mostrando zeros".
+- **Build ID no `/api/health`** — item obrigatório, ainda **não feito**. Hoje o
+  endpoint devolve `{"status":"ok"}` e o backend não sabe qual build é. O lugar
+  de resolver é o `build-sidecar.mjs`, que carimba SHA + timestamp num arquivo
+  que entra no bundle. Melhor retorno por linha do plano inteiro.
+- ⚠️ Não mandar as fases 4 e 5 do plano do caixa no mesmo instalador para as três
+  lojas que já rodam.
 
-É uma porta com três chaves na parede — olhar, editar, excluir — cuja fechadura
-só confere se você tem *alguma* chave. Qualquer uma abre tudo.
+### 3.3 Fase 5 — Permissões *(projeto próprio, o maior)*
+Nada começado. `view`/`manage`/`delete` não valem: a fechadura só confere se você
+tem *alguma* chave. Precisa de migração de compatibilidade **antes** da semântica
+nova (sai num instalador só — `aplicar_migracoes()` roda no startup). Falta
+também redefinir senha de funcionário. **Limite explícito: não refatorar o
+sistema de permissões inteiro.**
 
-Vale para produtos também: `POST /produtos/` exige `"produto"`, a mesma chave do
-GET.
-
-**Isso é pior que não ter a granularidade:** a tela dá a sensação de ter limitado
-alguém que continua podendo tudo.
-
-### O que falta para o cargo "Supervisor" existir
-
-1. **Fazer as três colunas valerem** — escrita exige `manage_*`, exclusão exige
-   `delete_*`.
-2. **Redefinir senha de funcionário** — hoje só existe `PATCH /usuarios/me/senha`
-   (cada um troca a própria). Ninguém redefine a de outro, nem o master. Se o
-   operador esquecer a senha, não há caminho no sistema.
-
-### O RISCO de mexer nisso
-
-Apertar a permissão pode **trancar gente nas três lojas que já rodam**. Se lá
-existe um cargo com só "Visualizar" marcado e a pessoa trabalha normalmente hoje,
-no dia da atualização ela para de conseguir trabalhar.
-
-Precisa de migração de compatibilidade: quem já tem `view_*` ganha `manage_*`,
-para ninguém acordar sem acesso. A regra nova vale para cargos criados dali em
-diante.
+### 3.4 Faxina pendente
+- As colunas `nome` e `papel` de `terminais_conectados` ficaram **mortas** depois
+  da fase 3. Não removidas de propósito (evitar rebuild de sidecar só para isso).
+  Saem numa migration própria quando a fase 3 estiver rodando na loja.
+- **`npm run lint` está quebrado** no repositório: ESLint 9 procura
+  `eslint.config.js` e só existe o formato antigo. É anterior a hoje, mas o
+  `CLAUDE.md` manda rodar esse comando.
 
 ---
 
-## Coisas que a gente descobriu e não pode esquecer
+## 4. DECISÕES EM ABERTO (nenhuma bloqueia o teste)
 
-- **Master é quem tem CARGO CHAMADO "Master"** — `is_master = (cargo.nome.lower()
-  == "master")`. Não é checkbox nem conta única.
-- **Visão gerencial vem do NOME do cargo**: contém "gerente" ou "administrador" →
-  vê os dados de todos. Um cargo "Gerente de Caixa" daria visão total sem querer.
-- **Relatórios não filtra por funcionário.** Quem tiver a permissão vê o
-  faturamento da empresa, o ranking e a **comissão de todos**. A proteção é não
-  marcar a permissão. A única parte protegida sozinha é a seção de Caixa, que
-  exige visão gerencial.
-- **Cada funcionário precisa do PRÓPRIO login.** Compartilhar credencial faz o
-  relatório de caixa dizer o mesmo nome em todas as linhas — e aí não há como
-  saber quem fechou faltando.
-- **Reinicie o backend depois de atualizar.** Duas vezes hoje o sintoma foi
-  código novo com processo antigo: o segmento `pdv` recusado no cadastro, e o
-  relatório de caixa mostrando zeros.
+**(a) As duas telas de produto continuam existindo?**
+A busca inline (rápida, bipável, sempre +1) e a modal Adicionar Produto
+(quantidade e desconto). Deixei as duas funcionando e obedecendo à mesma regra,
+justamente para não decidir por você. Se a resposta for "só a inline", dá para
+apagar a modal depois sem desfazer nada.
+
+**(b) Se o F3 continuar abrindo a busca do navegador**, duas saídas:
+- desligar os aceleradores de busca do WebView2 na configuração do Tauri
+  (resolve na raiz, vale para o `Ctrl+F` também);
+- trocar a tecla — F7, F8 e F9 estão livres e sem ação nativa no Chromium.
+
+**(c) Fechamento cego**: ligado, a barra nunca mostra o dinheiro (é o que faz a
+conferência ser conferência). Desligado, a barra vira o reflexo real da gaveta.
+Numa loja onde você é o próprio caixa, o cego só atrapalha.
+
+---
+
+## 5. Divergências do backend que ficaram registradas, não corrigidas
+
+- **Orçamento não lê `permitir_venda_estoque_zerado`.** `services/venda.py`
+  consulta a chave; `services/orcamento.py` (`:106` e `:151`) recusa sempre. A
+  tela espelha cada um separadamente — aplicar a mesma regra nos dois faria o
+  orçamento prometer o que o servidor nega. Unificar mexe em regra de venda das
+  três lojas e não entra aqui.
+- **Categoria na sangria** (fornecedor, retirada do dono, despesa fixa) fica para
+  o **módulo financeiro**. Decidido em 17/08: uma categoria agora cobriria só o
+  que passa pela gaveta e criaria uma taxonomia que o financeiro refaria.
+
+---
+
+## 6. Coisas que não podem ser esquecidas
+
+- **Reinicie o backend depois de mexer em Python.** Já custou duas rodadas de
+  diagnóstico ("código novo com processo antigo").
+- **Master é quem tem CARGO CHAMADO "Master"**; visão gerencial vem do NOME do
+  cargo conter "gerente" ou "administrador".
+- **Cada funcionário precisa do PRÓPRIO login**, senão o relatório de caixa diz o
+  mesmo nome em todas as linhas.
+- **Relatórios não filtra por funcionário**: quem tem a permissão vê a comissão de
+  todos.
