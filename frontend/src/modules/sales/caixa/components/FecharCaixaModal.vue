@@ -33,6 +33,9 @@ watch(
   },
 );
 
+// Só é lido no ramo NÃO cego — ali o backend sempre manda o número. O `?? 0`
+// existe para o intervalo em que a sessão ainda não carregou, não para o modo
+// cego (que nem renderiza este bloco).
 const esperado = computed(() => props.sessao?.saldo_esperado_dinheiro ?? 0);
 
 // A diferença só aparece DEPOIS de fechar. Mostrá-la enquanto o operador digita
@@ -76,7 +79,7 @@ async function confirmar() {
         <div class="rounded-lg bg-zinc-50 p-3">
           <p class="text-xs uppercase tracking-wide text-zinc-500">Esperado</p>
           <p class="text-lg font-semibold tabular-nums">
-            {{ formatarCentavos(resultado.saldo_esperado_dinheiro) }}
+            {{ formatarCentavos(resultado.saldo_esperado_dinheiro ?? 0) }}
           </p>
         </div>
         <div class="rounded-lg bg-zinc-50 p-3">

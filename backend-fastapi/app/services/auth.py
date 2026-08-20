@@ -12,6 +12,7 @@ from app.schemas.auth import UsuarioLogin
 from app.core.security import verify_password, create_access_token
 from app.services import usuario as usuario_service
 from app.services import licenca as licenca_service
+from app.services import terminal as terminal_service
 from app.db.crud import token as token_crud
 from app.db.crud import usuario as usuario_crud
 from app.db.models.token import TokenBlocklist
@@ -53,6 +54,27 @@ def login(db: Session, login_usuario: UsuarioLogin) -> Dict[str, Any]:
 
     # 3. Conectar terminal à licença (valida limite na API StartBig)
     licenca_service.conectar_terminal(db, login_usuario.hwid)
+
+    # 3.1 Cadastro DURÁVEL da máquina.
+    #
+    # A linha acima marca PRESENÇA e some no logout; esta cria o registro que
+    # sobrevive, para o nome e o papel do terminal não evaporarem todo dia.
+    #
+    # DENTRO DE UM SAVEPOINT, e isso não é detalhe. Nada aqui vale mais do que o
+    # login funcionar — quem chega para trabalhar às 8h não pode ficar de fora
+    # porque o cadastro de uma máquina não gravou. Mas um `try/except` simples
+    # não bastaria: capturar o erro sem desfazer deixa a sessão do SQLAlchemy
+    # envenenada, e quem quebra é o COMMIT do login, alguns passos depois. O
+    # savepoint desfaz só esta parte e o login segue.
+    #
+    # Sem o cadastro, a máquina se comporta como caixa — que é o lado seguro.
+    empresa_id = getattr(usuario_in_db, "empresa_id", None)
+    if empresa_id:
+        try:
+            with db.begin_nested():
+                terminal_service.garantir_terminal(db, empresa_id, login_usuario.hwid)
+        except Exception:  # noqa: BLE001 — cadastro de máquina não derruba login
+            pass
 
     # 4. Criação do Payload (Claims)
     token_data = {

@@ -40,3 +40,5 @@ from app.db.models.movimentacao_financeira import MovimentacaoFinanceira  # noqa
 from app.db.models.orcamento import Orcamento  # noqa: F401
 from app.db.models.orcamento_produto import OrcamentoProduto  # noqa: F401
 from app.db.models.contador_venda import ContadorVenda  # noqa: F401
+from app.db.models.terminal_conectado import TerminalConectado  # noqa: F401
+from app.db.models.terminal import Terminal  # noqa: F401

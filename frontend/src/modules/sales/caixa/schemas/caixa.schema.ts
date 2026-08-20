@@ -40,7 +40,9 @@ export const SessaoCaixaResumoSchema = z.object({
   total_suprimentos: z.number(),
   total_sangrias: z.number(),
 
-  saldo_esperado_dinheiro: z.number(),
+  // null = oculto pelo fechamento cego. Não é zero, e a tela não pode tratar
+  // os dois como a mesma coisa.
+  saldo_esperado_dinheiro: z.number().nullable(),
   saldo_contado: z.number().nullable().optional(),
   diferenca: z.number().nullable().optional(),
 

@@ -493,6 +493,12 @@ def test_fechamento_cego_esconde_o_esperado_antes_da_contagem(client, db_session
 
     No fechamento o numero volta: esconder depois so impediria o operador de
     assinar o que ele mesmo conferiu.
+
+    ESCONDIDO E `None`, NAO `0`. Enquanto era zero, a barra do PDV anunciava
+    "Em dinheiro na gaveta: R$ 0,00" o dia inteiro numa loja com fechamento cego
+    ligado -- com a gaveta cheia e as vendas todas lancadas. Quem esta no balcao
+    nao le "esta oculto", le "o sistema nao esta somando minhas vendas".
+    Esconder e legitimo; mentir um valor nao e.
     """
     header = _auth(client)
     _funcionario(client, header)
@@ -501,7 +507,7 @@ def test_fechamento_cego_esconde_o_esperado_antes_da_contagem(client, db_session
     client.post("/api/v1/caixa/abrir", json={"saldo_inicial": 10000}, headers=header)
 
     atual = client.get("/api/v1/caixa/atual", headers=header).json()
-    assert atual["saldo_esperado_dinheiro"] == 0  # escondido
+    assert atual["saldo_esperado_dinheiro"] is None  # escondido, e nao "zero"
 
     fechado = client.post("/api/v1/caixa/fechar", json={"saldo_contado": 9900}, headers=header).json()
     assert fechado["saldo_esperado_dinheiro"] == 10000  # revelado

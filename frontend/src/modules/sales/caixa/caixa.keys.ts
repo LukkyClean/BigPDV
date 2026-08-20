@@ -12,3 +12,18 @@ export const caixaKeys = {
   atual: () => [...caixaKeys.all, 'atual'] as const,
   sessao: (sessaoId: number) => [...caixaKeys.all, 'sessao', sessaoId] as const,
 };
+
+/**
+ * Chaves do cadastro de terminais.
+ *
+ * Prefixo próprio: terminal não é turno. Renomear uma máquina não pode
+ * invalidar a sessão de caixa aberta, nem o contrário — são coisas com tempos de
+ * vida diferentes, e foi misturá-las que criou o bug que esta fase conserta.
+ */
+export const TERMINAIS_KEY = 'terminais' as const;
+
+export const terminaisKeys = {
+  all: [TERMINAIS_KEY] as const,
+  lista: () => [...terminaisKeys.all, 'lista'] as const,
+  este: () => [...terminaisKeys.all, 'este'] as const,
+};

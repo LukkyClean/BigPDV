@@ -129,7 +129,15 @@ class SessaoCaixaResumo(BaseModel):
     # A conta da gaveta:
     #   saldo_inicial + entradas em DINHEIRO + suprimentos - sangrias
     # Cartão e PIX não entram aqui de propósito: eles não estão na gaveta.
-    saldo_esperado_dinheiro: int
+    #
+    # `None` significa OCULTO, não vazio. No fechamento cego o operador não pode
+    # ver este número antes de contar — mas mandar `0` no lugar fazia a barra do
+    # PDV anunciar "Em dinheiro na gaveta: R$ 0,00" com a gaveta cheia, e o que
+    # chega para quem está no balcão é "o sistema não está somando minhas
+    # vendas". Esconder é legítimo; mentir um valor não é.
+    saldo_esperado_dinheiro: Optional[int] = Field(
+        None, description="Dinheiro esperado na gaveta. None = oculto pelo fechamento cego"
+    )
 
     # Só preenchidos depois do fechamento. Antes dele, no modo cego, nem o
     # esperado é devolvido ao operador (ver `fechamento_cego`).

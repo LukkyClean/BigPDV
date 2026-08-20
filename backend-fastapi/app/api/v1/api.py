@@ -19,6 +19,7 @@ from app.api.v1.endpoints import usuario
 from app.api.v1.endpoints import ordem_servico
 from app.api.v1.endpoints import forma_pagamento
 from app.api.v1.endpoints import sessao_caixa
+from app.api.v1.endpoints import terminal
 from app.api.v1.endpoints import venda
 from app.api.v1.endpoints import orcamento
 from app.api.v1.endpoints import dashboard
@@ -82,6 +83,11 @@ router.include_router(venda.router, prefix="/vendas", tags=["Vendas"])
 # So responde quando a empresa liga `controlar_caixa`; sem isso o service
 # recusa toda operacao -- a rota existir nao muda nada para quem nao usa.
 router.include_router(sessao_caixa.router, prefix="/caixa", tags=["Caixa"])
+
+# Cadastro duravel das maquinas. Separado de /licenca (que cuida da PRESENCA
+# por HWID) porque sao dois tempos de vida: presenca some no logout, cadastro
+# fica.
+router.include_router(terminal.router, prefix="/terminais", tags=["Terminais"])
 
 # Inclui o roteador de orcamentos sob o prefixo /orcamentos
 router.include_router(orcamento.router, prefix="/orcamentos", tags=["Orcamentos"])

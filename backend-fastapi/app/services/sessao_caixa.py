@@ -350,17 +350,18 @@ def listar_historico(
 
     # Nome do terminal resolvido de uma vez: uma consulta por linha viraria N+1
     # numa lista que o dono abre todo dia.
-    from app.db.models.terminal_conectado import TerminalConectado
+    #
+    # Lido do CADASTRO (`terminais`), não da tabela de presença: o relatório
+    # olha para trás, e a máquina que fechou o turno de ontem pode estar
+    # desligada agora. Enquanto o nome vinha da presença, a coluna Terminal
+    # ficava vazia justamente nos turnos antigos — que são os que o dono abre o
+    # relatório para ver.
+    from app.db.crud import terminal as terminal_crud
 
     hwids = {s.terminal_hwid for s in sessoes if s.terminal_hwid}
-    nomes_terminal: Dict[str, Optional[str]] = {}
-    if hwids:
-        for terminal in (
-            db.query(TerminalConectado)
-            .filter(TerminalConectado.hwid.in_(hwids))
-            .all()
-        ):
-            nomes_terminal[terminal.hwid] = terminal.nome
+    nomes_terminal: Dict[str, Optional[str]] = terminal_crud.nomes_por_hwid(
+        db, sorted(hwids)
+    )
 
     itens: List[SessaoCaixaHistoricoItem] = []
     for sessao in sessoes:
@@ -438,15 +439,13 @@ def montar_resumo(
         for m in caixa_crud.listar_movimentos_da_sessao(db, sessao.id)
     ]
 
+    # Do cadastro durável, não da presença: o resumo de um turno FECHADO é lido
+    # depois, com a máquina possivelmente desligada.
     terminal_nome = None
     if sessao.terminal_hwid:
-        from app.db.models.terminal_conectado import TerminalConectado
+        from app.db.crud import terminal as terminal_crud
 
-        terminal = (
-            db.query(TerminalConectado)
-            .filter(TerminalConectado.hwid == sessao.terminal_hwid)
-            .first()
-        )
+        terminal = terminal_crud.get_por_hwid(db, sessao.terminal_hwid)
         terminal_nome = getattr(terminal, "nome", None)
 
     return SessaoCaixaResumo(
@@ -463,8 +462,9 @@ def montar_resumo(
         total_suprimentos=int(suprimentos),
         total_sangrias=int(sangrias),
         # No modo cego o operador não vê o esperado ANTES de contar — é o que
-        # torna a conferência uma conferência de verdade.
-        saldo_esperado_dinheiro=0 if ocultar_esperado else esperado,
+        # torna a conferência uma conferência de verdade. `None` diz "oculto";
+        # devolver `0` dizia "a gaveta está vazia", que é outra coisa e é falso.
+        saldo_esperado_dinheiro=None if ocultar_esperado else esperado,
         saldo_contado=contado,
         diferenca=diferenca,
         por_forma=por_forma,

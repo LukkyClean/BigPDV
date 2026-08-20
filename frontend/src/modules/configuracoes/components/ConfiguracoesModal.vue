@@ -9,6 +9,7 @@ import {
   ClipboardList,
   Users,
   Plug,
+  MonitorCog,
   Printer,
   Monitor,
   HardDrive,
@@ -47,6 +48,7 @@ import OrdensDeServico from './sections/ordens-de-servico/components/OrdensDeSer
 import { useOrdemServico } from '@/shared/composables/useOrdemServico'
 import ClientesCadastro from './sections/clientes-cadastro/components/ClientesCadastro.vue'
 import IntegracoesAPIs from './sections/integracoes-apis/components/IntegracoesAPIs.vue'
+import Terminais from './sections/terminais/components/Terminais.vue'
 import ImpressaoPeriferico from './sections/impressao/components/ImpressaoPeriferico.vue'
 import FormatosExibicao from './sections/formatos-exibicao/components/FormatosExibicao.vue'
 import BackupDados from './sections/backup-dados/components/BackupDados.vue'
@@ -240,6 +242,7 @@ const secoes: SecaoConfiguracao[] = [
   { id: 'ordens-de-servico', label: 'Ordens de Serviço',     icone: ClipboardList },
   { id: 'clientes-cadastro', label: 'Clientes e Cadastro',   icone: Users },
   { id: 'integracoes-apis',  label: 'Integrações e APIs',    icone: Plug },
+  { id: 'terminais',         label: 'Computadores da Loja',  icone: MonitorCog },
   { id: 'impressao',         label: 'Impressão e Periféricos', icone: Printer },
   { id: 'formatos-exibicao', label: 'Formatos e Exibição',   icone: Monitor },
   { id: 'backup-dados',      label: 'Backup dos Dados',      icone: HardDrive },
@@ -253,6 +256,7 @@ const componenteMap: Record<SecaoId, Component> = {
   'ordens-de-servico': OrdensDeServico,
   'clientes-cadastro': ClientesCadastro,
   'integracoes-apis':  IntegracoesAPIs,
+  'terminais':         Terminais,
   'impressao':         ImpressaoPeriferico,
   'formatos-exibicao': FormatosExibicao,
   'backup-dados':      BackupDados,
@@ -266,8 +270,16 @@ const componenteMap: Record<SecaoId, Component> = {
  * que nao existe ali -- e das piores de esquecer, porque o dono entra em
  * Configuracoes e encontra prazos e numeracao de OS.
  */
+const { controlarCaixa } = storeToRefs(configuracoesStore)
+
 const secoesVisiveis = computed(() =>
-  secoes.filter((s) => s.id !== 'ordens-de-servico' || usaOrdemServico.value),
+  secoes.filter((s) => {
+    if (s.id === 'ordens-de-servico') return usaOrdemServico.value
+    // Nomear maquina e marcar retaguarda so faz sentido onde ha turno de caixa.
+    // Loja que nao usa caixa nao ganha uma aba nova que nao explica nada.
+    if (s.id === 'terminais') return controlarCaixa.value
+    return true
+  }),
 )
 
 const componenteAtivo = computed(() => componenteMap[secaoAtiva.value])

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { ArrowDownCircle, ArrowUpCircle, Lock, Wallet } from 'lucide-vue-next';
+import { ArrowDownCircle, ArrowUpCircle, EyeOff, Lock, Wallet } from 'lucide-vue-next';
 
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
 
@@ -8,6 +8,7 @@ import AbrirCaixaModal from './AbrirCaixaModal.vue';
 import FecharCaixaModal from './FecharCaixaModal.vue';
 import MovimentoCaixaModal from './MovimentoCaixaModal.vue';
 import { useSessaoCaixaQuery } from '../composables/queries/useSessaoCaixaQuery';
+import { useEsteTerminalQuery } from '../composables/queries/useTerminaisQuery';
 import { formatarCentavos } from '../caixa.utils';
 
 /**
@@ -34,7 +35,15 @@ const fecharAberto = ref(false);
 const movimentoAberto = ref(false);
 const tipoMovimento = ref<'sangria' | 'suprimento'>('sangria');
 
-const esperado = computed(() => sessao.value?.saldo_esperado_dinheiro ?? 0);
+/**
+ * O dinheiro esperado na gaveta — ou `null` quando o fechamento cego o esconde.
+ *
+ * A distinção é o ponto. Enquanto isto era `?? 0`, uma loja com fechamento cego
+ * ligado via a barra anunciar "Em dinheiro na gaveta: R$ 0,00" o dia inteiro,
+ * com a gaveta cheia e as vendas todas registradas. O operador não conclui
+ * "está oculto": conclui que o sistema não está somando as vendas dele.
+ */
+const esperado = computed(() => sessao.value?.saldo_esperado_dinheiro ?? null);
 const operador = computed(() => sessao.value?.funcionario_nome ?? '');
 const terminal = computed(() => sessao.value?.terminal_nome ?? '');
 
@@ -42,10 +51,25 @@ function abrirMovimento(tipo: 'sangria' | 'suprimento') {
   tipoMovimento.value = tipo;
   movimentoAberto.value = true;
 }
+
+/**
+ * A máquina da retaguarda não é um caixa, e não deve ser convidada a virar um.
+ *
+ * O computador do escritório existe para consultar relatório. Enquanto ele
+ * recebia o convite "Caixa fechado — abrir caixa", o caminho fácil era o dono
+ * abrir um turno ali só para tirar o aviso da frente — e aí passava a existir
+ * uma sessão que nunca é fechada direito, com saldo que ninguém conta.
+ *
+ * `e_retaguarda` só é verdadeiro com o papel RETAGUARDA explícito: máquina
+ * desconhecida, HWID indisponível ou consulta que falhou resultam em `false`, e
+ * o convite continua aparecendo. Errar para "convida demais" custa um aviso na
+ * tela; errar para o outro lado esconde o caixa de um caixa de verdade.
+ */
+const { eRetaguarda } = useEsteTerminalQuery();
 </script>
 
 <template>
-  <div v-if="caixaHabilitado && !isLoading">
+  <div v-if="caixaHabilitado && !isLoading && !(eRetaguarda && !caixaAberto)">
     <!-- Caixa fechado: só o convite para abrir -->
     <div
       v-if="!caixaAberto"
@@ -82,9 +106,13 @@ function abrirMovimento(tipo: 'sangria' | 'suprimento') {
             <span v-if="operador" class="font-normal text-zinc-500">· {{ operador }}</span>
             <span v-if="terminal" class="font-normal text-zinc-500">· {{ terminal }}</span>
           </p>
-          <p class="text-sm text-zinc-600">
+          <p v-if="esperado !== null" class="text-sm text-zinc-600">
             Em dinheiro na gaveta:
             <strong class="tabular-nums">{{ formatarCentavos(esperado) }}</strong>
+          </p>
+          <p v-else class="flex items-center gap-1.5 text-sm text-zinc-500">
+            <EyeOff class="h-4 w-4 shrink-0" />
+            Conferência cega — o valor aparece no fechamento
           </p>
         </div>
       </div>
