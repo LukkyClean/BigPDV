@@ -24,7 +24,7 @@ import type {
   FuncionarioRead,
   State,
 } from '../types/employees.types';
-import { useCreateEmployeeMutation, useUpdateEmployeeMutation } from './useEmployeesQuery';
+import { useCreateEmployeeMutation, useUpdateEmployeeMutation, useConcederAcessoMutation } from './useEmployeesQuery';
 import { useEmployeeModal } from './useEmployeeModal';
 import { useToast } from '@/shared/composables/useToast';
 import { unmaskDocument, unmaskPhone, unmaskCep } from '@/shared/utils/unmask.utils';
@@ -116,6 +116,7 @@ const DEFAULT_FORM_VALUES: EmployeeFormData = {
   carteira_trabalho: '',
 
   // Usuario
+  sem_acesso: false,
   usuario_nome: '',
   usuario_email: '',
   usuario_senha: '',
@@ -166,6 +167,7 @@ export interface EmployeeFormContext {
   carteira_trabalho: Ref<string>;
 
   // Usuario fields
+  sem_acesso: Ref<boolean>;
   usuario_nome: Ref<string>;
   usuario_email: Ref<string>;
   usuario_senha: Ref<string>;
@@ -197,6 +199,8 @@ export interface EmployeeFormContext {
   values: EmployeeFormData;
   apiError: Ref<string | null>;
   isPending: ComputedRef<boolean>;
+  /** Funcionário que existe só como ficha — cadastrado sem acesso ao sistema. */
+  funcionarioSemAcesso: ComputedRef<boolean>;
 
   // Actions
   onSubmit: (e?: Event) => void;
@@ -212,6 +216,17 @@ export const EMPLOYEE_FORM_KEY: InjectionKey<EmployeeFormContext> = Symbol('empl
 
 export function useEmployeeFormProvider() {
   const { selectedEmployee, isCreateMode, closeModal } = useEmployeeModal();
+
+  /**
+   * Funcionário que existe só como ficha — cadastrado sem acesso ao sistema.
+   *
+   * É o que faz a seção "Dados de Acesso" reaparecer na edição: sem ela, dar
+   * login depois exigiria apagar a ficha e refazer, e com ela iriam embora as
+   * vendas e a comissão que apontam para o `funcionario_id`.
+   */
+  const funcionarioSemAcesso = computed(
+    () => !isCreateMode.value && !!selectedEmployee.value && !selectedEmployee.value.usuario,
+  );
   const toast = useToast();
 
   // Initialize form
@@ -223,6 +238,7 @@ export function useEmployeeFormProvider() {
 
   const createMutation = useCreateEmployeeMutation(setErrors);
   const updateMutation = useUpdateEmployeeMutation(setErrors);
+  const concederAcessoMutation = useConcederAcessoMutation(setErrors);
 
 
   // Define all fields
@@ -244,6 +260,7 @@ export function useEmployeeFormProvider() {
   const [pai] = defineField('pai');
   const [carteira_trabalho] = defineField('carteira_trabalho');
 
+  const [sem_acesso] = defineField('sem_acesso');
   const [usuario_nome] = defineField('usuario_nome');
   const [usuario_email] = defineField('usuario_email');
   const [usuario_senha] = defineField('usuario_senha');
@@ -299,6 +316,7 @@ export function useEmployeeFormProvider() {
       mae: employee.mae || '',
       pai: employee.pai || '',
       carteira_trabalho: employee.carteira_trabalho || '',
+      sem_acesso: false,
       usuario_nome: '',
       usuario_email: '',
       usuario_senha: '',
@@ -380,11 +398,16 @@ function enderecoTemConteudo(e: { cep?: string; logradouro?: string; numero?: st
       comissao_servico_percentual: formData.comissao_servico_percentual ?? undefined,
       meta_mensal: formData.meta_mensal ?? undefined,
       comissao_modo: formData.comissao_modo ?? undefined,
-      usuario: {
-        nome: formData.usuario_nome,
-        email: formData.usuario_email,
-        senha: formData.usuario_senha,
-      },
+      // Sem acesso: o bloco NAO vai no payload. O backend trata a ausencia como
+      // "funcionario so de ficha" — mandar o objeto vazio criaria um login
+      // quebrado em vez de nenhum login.
+      usuario: formData.sem_acesso
+        ? undefined
+        : {
+            nome: formData.usuario_nome,
+            email: formData.usuario_email,
+            senha: formData.usuario_senha,
+          },
       endereco:
         formData.enderecos.some(enderecoTemConteudo)
           ? formData.enderecos.filter(enderecoTemConteudo).map((e) => ({
@@ -406,7 +429,8 @@ function enderecoTemConteudo(e: { cep?: string; logradouro?: string; numero?: st
       apiError.value = null;
 
       if (isCreateMode.value) {
-        // Validate user fields in create mode
+        // Validate user fields in create mode — só quando há acesso a criar.
+        if (!formData.sem_acesso) {
         if (!formData.usuario_nome || formData.usuario_nome.length < 3) {
           apiError.value = 'Nome de usuario deve ter no minimo 3 caracteres';
           return;
@@ -418,6 +442,7 @@ function enderecoTemConteudo(e: { cep?: string; logradouro?: string; numero?: st
         if (!formData.usuario_senha || formData.usuario_senha.length < 8) {
           apiError.value = 'Senha deve ter no minimo 8 caracteres';
           return;
+        }
         }
 
         const request = transformToCreateRequest(formData);
@@ -488,12 +513,40 @@ function enderecoTemConteudo(e: { cep?: string; logradouro?: string; numero?: st
               : undefined,
         };
 
+        const funcionarioId = selectedEmployee.value.id;
+        // Ficha sem login + campos de acesso preenchidos: o Salvar tambem cria o
+        // acesso. Duas chamadas porque sao dois assuntos no backend — cadastro e
+        // credencial —, e a credencial so nasce depois do cadastro estar salvo.
+        const vaiCriarAcesso =
+          funcionarioSemAcesso.value &&
+          !!formData.usuario_nome &&
+          !!formData.usuario_email &&
+          !!formData.usuario_senha;
+
+        const encerrar = () => {
+          closeModal();
+          resetForm({ values: { ...DEFAULT_FORM_VALUES } });
+        };
+
         updateMutation.mutate(
-          { id: selectedEmployee.value.id, data: updateData },
+          { id: funcionarioId, data: updateData },
           {
             onSuccess: () => {
-              closeModal();
-              resetForm({ values: { ...DEFAULT_FORM_VALUES } });
+              if (!vaiCriarAcesso) {
+                encerrar();
+                return;
+              }
+              concederAcessoMutation.mutate(
+                {
+                  id: funcionarioId,
+                  usuario: {
+                    nome: formData.usuario_nome,
+                    email: formData.usuario_email,
+                    senha: formData.usuario_senha,
+                  },
+                },
+                { onSuccess: encerrar },
+              );
             },
           },
         );
@@ -539,6 +592,7 @@ function enderecoTemConteudo(e: { cep?: string; logradouro?: string; numero?: st
     mae,
     pai,
     carteira_trabalho,
+    sem_acesso,
     usuario_nome,
     usuario_email,
     usuario_senha,
@@ -560,6 +614,7 @@ function enderecoTemConteudo(e: { cep?: string; logradouro?: string; numero?: st
     values,
     apiError,
     isPending,
+    funcionarioSemAcesso,
     onSubmit,
     resetForm: () => resetForm({ values: { ...DEFAULT_FORM_VALUES } }),
   };

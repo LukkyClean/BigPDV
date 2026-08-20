@@ -36,6 +36,7 @@ const {
   isPending,
   submitCount,
   apiError,
+  funcionarioSemAcesso,
 } = useEmployeeFormProvider();
 
 // =============================================
@@ -155,7 +156,7 @@ watch(isOpen, (open) => {
                 <DadosFuncionarioSection
                   :submit-count="submitCount"
                   :disabled="isViewMode"
-                  :show-user-fields="isCreateMode"
+                  :show-user-fields="isCreateMode || funcionarioSemAcesso"
                 />
 
                 <!-- Endereco -->

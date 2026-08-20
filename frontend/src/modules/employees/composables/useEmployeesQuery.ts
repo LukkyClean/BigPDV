@@ -3,6 +3,7 @@
  * @description Manages employee listing with search and caching
  */
 
+import type { UsuarioCreate } from '../types/employees.types';
 import { computed, type Ref } from 'vue';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query';
 import {
@@ -10,6 +11,7 @@ import {
   createFuncionario,
   updateFuncionario,
   toggleFuncionarioAtivo,
+  concederAcessoFuncionario,
 } from '../services/employee.service';
 import type {
   FuncionarioCreate,
@@ -72,6 +74,34 @@ export function useCreateEmployeeMutation(setErrors: any) {
 /**
  * Mutation for updating employee
  */
+export function useConcederAcessoMutation(setErrors: any) {
+  const queryClient = useQueryClient();
+  const toast = useToast();
+
+  return useMutation<
+    FuncionarioRead,
+    AxiosError<ApiError>,
+    { id: number; usuario: UsuarioCreate }
+  >({
+    mutationFn: ({ id, usuario }) => concederAcessoFuncionario(id, usuario),
+    onSuccess: () => {
+      toast.success('Acesso criado', 'O funcionário já pode entrar no sistema.');
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEY] });
+    },
+    onError: (error) => {
+      if (isConflictError(error)) {
+        const conflitos = getConflictErrors(error);
+        if (conflitos) {
+          setErrors(conflitos);
+          toast.error('Erro ao criar acesso', 'Dados já registrados');
+          return;
+        }
+      }
+      toast.error(getErrorMessage(error, 'Erro ao criar acesso') as string);
+    },
+  });
+}
+
 export function useUpdateEmployeeMutation(setErrors: any) {
   const queryClient = useQueryClient();
   const toast = useToast();

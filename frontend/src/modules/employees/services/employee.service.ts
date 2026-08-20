@@ -9,6 +9,7 @@ import type {
   FuncionarioCreate,
   FuncionarioRead,
   FuncionarioUpdate,
+  UsuarioCreate,
 } from '../types/employees.types';
 
 const BASE_URL = 'funcionarios' as const;
@@ -54,6 +55,24 @@ export async function updateFuncionario(
  */
 export async function toggleFuncionarioAtivo(id: number): Promise<FuncionarioRead> {
   const { data } = await api.put<FuncionarioRead>(`${BASE_URL}/toggle_ativo/${id}`);
+  return data;
+}
+
+/**
+ * Cria o login de um funcionario que foi cadastrado SEM acesso ao sistema.
+ *
+ * O backend recusa (409) se ele ja tiver usuario — trocar credencial de quem
+ * esta trabalhando e outro assunto, e esta porta sobrescreveria a senha sem
+ * ninguem pedir.
+ */
+export async function concederAcessoFuncionario(
+  funcionarioId: number,
+  usuario: UsuarioCreate
+): Promise<FuncionarioRead> {
+  const { data } = await api.post<FuncionarioRead>(
+    `${BASE_URL}/${funcionarioId}/acesso`,
+    usuario
+  );
   return data;
 }
 

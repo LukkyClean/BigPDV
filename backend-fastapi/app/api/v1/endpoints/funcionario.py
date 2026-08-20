@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, status, Query, Path
 from sqlalchemy.orm import Session
 from typing import Sequence, Optional
 
+from app.schemas.usuario import UsuarioCreate
 from app.schemas.funcionario import FuncionarioCreate, FuncionarioRead, FuncionarioUpdate
 from app.core.depends import check_permission, _handle_db_transaction
 from app.db.session import get_db
@@ -92,6 +93,30 @@ def update_funcionario_by_funcionario_id(
         funcionario_service.update_funcionario_by_id, 
         funcionario_id, 
         funcionario_to_update
+    )
+
+@router.post(
+    "/{funcionario_id}/acesso",
+    response_model=FuncionarioRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Conceder Acesso ao Sistema",
+    description=(
+        "Cria o login de um funcionario cadastrado SEM acesso. "
+        "Recusa (409) se ele ja tiver usuario — trocar credencial e outro assunto."
+    ),
+)
+def conceder_acesso_funcionario(
+    user_token: dict = Depends(check_permission(required_permission="funcionario")),
+    funcionario_id: int = Path(..., description="ID do funcionário", ge=1),
+    *,
+    usuario_to_add: UsuarioCreate,
+    db: Session = Depends(get_db)
+):
+    return _handle_db_transaction(
+        db,
+        funcionario_service.conceder_acesso,
+        funcionario_id,
+        usuario_to_add
     )
 
 @router.put(
