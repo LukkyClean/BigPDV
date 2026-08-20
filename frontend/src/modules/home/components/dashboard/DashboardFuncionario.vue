@@ -38,6 +38,17 @@ const vendasQuery        = useMinhasUltimasVendasQuery();
 const filaQuery          = useMinhaFilaQuery();
 const atrasadasQuery     = useMinhasOSAtrasadasQuery();
 const retiradaQuery      = useOSAguardandoRetiradaQuery();
+
+/**
+ * As Ultimas Vendas aparecem em dois lugares do template (com e sem OS). Os
+ * props ficam aqui para os dois nunca divergirem.
+ */
+const ultimasVendasProps = computed(() => ({
+  vendas: minhasVendas.value,
+  isLoading: vendasQuery.isLoading.value,
+  isError: vendasQuery.isError.value,
+  showTime: true,
+}));
 const atividadeQuery     = useMinhaAtividadeHojeQuery();
 
 const periods: { id: PeriodFilter; label: string }[] = [
@@ -206,22 +217,24 @@ const atividade      = computed(() => atividadeQuery.data.value?.items ?? []);
       </div>
     </div>
 
-    <!-- Linha 1: Minha Fila (3/5) + Últimas Vendas (2/5) -->
-    <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+    <!--
+      Linha 1: Minha Fila (3/5) + Últimas Vendas (2/5).
+
+      SEM ORDEM DE SERVICO esta linha inteira desaparece e as Ultimas Vendas
+      descem para a linha de baixo, ao lado da Atividade de Hoje. Manter a linha
+      com o lado esquerdo vazio deixava a tela do operador — que numa adega e a
+      mais usada do dia — com um buraco de 3/5 de largura logo no topo.
+    -->
+    <div v-if="usaOrdemServico" class="grid grid-cols-1 lg:grid-cols-5 gap-6">
       <div class="lg:col-span-3">
-        <MinhaFilaTable v-if="usaOrdemServico"
+        <MinhaFilaTable
           :items="minhaFila"
           :is-loading="filaQuery.isLoading.value"
           :is-error="filaQuery.isError.value"
         />
       </div>
       <div class="lg:col-span-2">
-        <RecentTransactions
-          :vendas="minhasVendas"
-          :is-loading="vendasQuery.isLoading.value"
-          :is-error="vendasQuery.isError.value"
-          :show-time="true"
-        />
+        <RecentTransactions v-bind="ultimasVendasProps" />
       </div>
     </div>
 
@@ -233,6 +246,7 @@ const atividade      = computed(() => atividadeQuery.data.value?.items ?? []);
           :is-loading="retiradaQuery.isLoading.value"
           :is-error="retiradaQuery.isError.value"
         />
+        <RecentTransactions v-else v-bind="ultimasVendasProps" />
       </div>
       <div class="lg:col-span-3">
         <AtividadeHoje

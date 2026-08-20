@@ -2,6 +2,11 @@
 import { Trophy } from 'lucide-vue-next';
 import { formatCurrency } from '@/shared/utils/finance';
 import type { RankingFuncionarioItemData } from '../../schemas/dashboard.schema';
+import { useOrdemServico } from '@/shared/composables/useOrdemServico';
+
+// Ranking numa loja sem OS: duas colunas de zero em toda linha. O padrao do
+// `usaOrdemServico` e TRUE, entao para quem tem OS o ranking nao muda.
+const { usaOrdemServico } = useOrdemServico();
 
 interface Props {
   items: RankingFuncionarioItemData[];
@@ -40,8 +45,8 @@ const medalha: Record<number, string> = {
             <th class="px-4 md:px-5 py-3">#</th>
             <th class="px-4 md:px-5 py-3">Funcionário</th>
             <th class="px-4 md:px-5 py-3 text-right">Vendas</th>
-            <th class="px-4 md:px-5 py-3 text-right">Serviços</th>
-            <th class="px-4 md:px-5 py-3 text-right">OS Fechadas</th>
+            <th v-if="usaOrdemServico" class="px-4 md:px-5 py-3 text-right">Serviços</th>
+            <th v-if="usaOrdemServico" class="px-4 md:px-5 py-3 text-right">OS Fechadas</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-zinc-100">
@@ -55,10 +60,10 @@ const medalha: Record<number, string> = {
             <td class="px-4 md:px-5 py-3 text-sm font-semibold text-zinc-700 text-right whitespace-nowrap">
               {{ formatCurrency(item.total_vendas_valor) }}
             </td>
-            <td class="px-4 md:px-5 py-3 text-sm font-semibold text-zinc-700 text-right whitespace-nowrap">
+            <td v-if="usaOrdemServico" class="px-4 md:px-5 py-3 text-sm font-semibold text-zinc-700 text-right whitespace-nowrap">
               {{ formatCurrency(item.total_os_valor) }}
             </td>
-            <td class="px-4 md:px-5 py-3 text-sm text-zinc-500 text-right">
+            <td v-if="usaOrdemServico" class="px-4 md:px-5 py-3 text-sm text-zinc-500 text-right">
               {{ item.qtd_os_fechadas }}
             </td>
           </tr>

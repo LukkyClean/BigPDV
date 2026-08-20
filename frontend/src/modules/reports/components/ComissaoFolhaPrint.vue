@@ -9,7 +9,15 @@ import { computed } from 'vue';
 import { useCompanyPrintInfo } from '@/shared/utils/print.utils';
 import PrintFooter from '@/shared/components/print/a4/PrintFooter.vue';
 import { formatCurrency } from '@/shared/utils/finance';
+import { useOrdemServico } from '@/shared/composables/useOrdemServico';
 import type { ComissaoItem } from '../schemas/comissao.schema';
+
+const { usaOrdemServico } = useOrdemServico();
+
+// Colunas variaveis mudam o colspan do rodape — se ele ficar fixo, o "Total a
+// pagar" desalinha e a folha impressa sai torta.
+const colunasAntesDoTotal = computed(() => (usaOrdemServico.value ? 5 : 3));
+const colunasDaTabela = computed(() => (usaOrdemServico.value ? 6 : 4));
 
 const props = defineProps<{
   itens: ComissaoItem[];
@@ -72,8 +80,8 @@ function pct(bp: number | null): string {
             <th class="border border-neutral-300 px-2 py-1.5 text-left font-bold uppercase text-[10px]">Funcionário</th>
             <th class="border border-neutral-300 px-2 py-1.5 text-right font-bold uppercase text-[10px]">Vendas</th>
             <th class="border border-neutral-300 px-2 py-1.5 text-right font-bold uppercase text-[10px]">% V</th>
-            <th class="border border-neutral-300 px-2 py-1.5 text-right font-bold uppercase text-[10px]">Serviços</th>
-            <th class="border border-neutral-300 px-2 py-1.5 text-right font-bold uppercase text-[10px]">% S</th>
+            <th v-if="usaOrdemServico" class="border border-neutral-300 px-2 py-1.5 text-right font-bold uppercase text-[10px]">Serviços</th>
+            <th v-if="usaOrdemServico" class="border border-neutral-300 px-2 py-1.5 text-right font-bold uppercase text-[10px]">% S</th>
             <th class="border border-neutral-300 px-2 py-1.5 text-right font-bold uppercase text-[10px]">Comissão</th>
           </tr>
         </thead>
@@ -84,24 +92,25 @@ function pct(bp: number | null): string {
             </td>
             <td class="border border-neutral-300 px-2 py-1 text-right tabular-nums">{{ formatCurrency(i.faturamento_vendas) }}</td>
             <td class="border border-neutral-300 px-2 py-1 text-right tabular-nums text-neutral-600">{{ pct(i.percentual_venda) }}</td>
-            <td class="border border-neutral-300 px-2 py-1 text-right tabular-nums">{{ formatCurrency(i.faturamento_os) }}</td>
-            <td class="border border-neutral-300 px-2 py-1 text-right tabular-nums text-neutral-600">{{ pct(i.percentual_servico) }}</td>
+            <td v-if="usaOrdemServico" class="border border-neutral-300 px-2 py-1 text-right tabular-nums">{{ formatCurrency(i.faturamento_os) }}</td>
+            <td v-if="usaOrdemServico" class="border border-neutral-300 px-2 py-1 text-right tabular-nums text-neutral-600">{{ pct(i.percentual_servico) }}</td>
             <td class="border border-neutral-300 px-2 py-1 text-right font-bold tabular-nums">{{ formatCurrency(i.comissao_total) }}</td>
           </tr>
           <tr v-if="itens.length === 0">
-            <td colspan="6" class="border border-neutral-300 px-2 py-3 text-center text-neutral-600">Nenhuma comissão no período.</td>
+            <td :colspan="colunasDaTabela" class="border border-neutral-300 px-2 py-3 text-center text-neutral-600">Nenhuma comissão no período.</td>
           </tr>
         </tbody>
         <tfoot>
           <tr class="bg-neutral-100">
-            <td colspan="5" class="border border-neutral-300 px-2 py-2 text-right font-black uppercase text-neutral-900">Total a pagar</td>
+            <td :colspan="colunasAntesDoTotal" class="border border-neutral-300 px-2 py-2 text-right font-black uppercase text-neutral-900">Total a pagar</td>
             <td class="border border-neutral-300 px-2 py-2 text-right font-black tabular-nums text-neutral-900">{{ formatCurrency(totalPagar) }}</td>
           </tr>
         </tfoot>
       </table>
 
       <p class="text-[10px] text-neutral-600 mb-1">
-        Base líquida (vendas + OS finalizadas) no período. Percentuais aplicados conforme configuração do cargo/funcionário.
+        Base líquida ({{ usaOrdemServico ? 'vendas + OS finalizadas' : 'vendas finalizadas' }}) no período.
+        Percentuais aplicados conforme configuração do cargo/funcionário.
       </p>
       <p v-if="temRetida" class="text-[10px] text-neutral-600 mb-8">
         * Comissão retida — meta do período não atingida (regra "só ao bater a meta").
