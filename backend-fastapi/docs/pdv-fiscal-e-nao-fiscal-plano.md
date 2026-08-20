@@ -9,6 +9,38 @@
 
 ---
 
+## 0. Onde este plano se encaixa (e por que A/B em vez de 1-5)
+
+**Existe outra lista de fases, e ela não acabou.** O `pdv-profissional-plano.md`
+tem as fases 1 a 5 do balcão profissional:
+
+| Fase | O que era | Estado em 20/08/2026 |
+|---|---|---|
+| 1 | Modo Balcão | ✅ commitada e provada no app (`637c264`) |
+| 2 | caminho de teclado e leitor | ✅ commitada e provada no app (`cfa5799`) |
+| 3 | terminais persistentes | ✅ commitada (`df6de7f`) — **falta provar no app** |
+| 4 | **instalar na adega** — `build:sidecar`, instalador, build ID no `/api/health` | ⛔ **aberta** |
+| 5 | permissões | ⛔ aberta |
+
+Por isso a numeração **aqui é A1–A3 e B1–B3**: "fase 4" já tem dono, e duas listas
+com o mesmo número é o tipo de confusão que faz alguém entregar a coisa errada.
+
+> **Recomendação de ordem: a fase 4 daquele plano vem ANTES da trilha A daqui.**
+>
+> Três motivos, e o terceiro é o que pesa:
+> 1. O que foi commitado hoje **não vale nada até rodar na loja** — código provado
+>    no `npm run dev` não é código provado no app instalado.
+> 2. O **build ID no `/api/health`** ainda não existe. Sem ele, todo diagnóstico
+>    daqui para a frente começa por "que versão está rodando aí?" — e a resposta
+>    hoje é um chute.
+> 3. O **sidecar está atrasado desde a fase 0.5**. Quanto mais tempo passa, maior
+>    o salto de uma vez só — e é exatamente esse tipo de salto que quebra loja.
+>
+> Entrada de mercadoria é para uma loja que **já está usando o sistema**. Hoje a
+> adega não está.
+
+---
+
 ## 1. A regra que organiza tudo
 
 Três palavras que o sistema já usa e que **não são sinônimos**. Confundi-las é o
@@ -44,13 +76,13 @@ configuração manda* — com um andar a mais em cima.
 | `movimentacoes_estoque` | livro-razão único, com `origem` + FKs opcionais da causa |
 | Movimentação de Estoque (tela) | ajuste manual, produto por `<select>` — não bipa |
 
-**O achado que define a fase 0:** hoje o "plano" é uma linha de TypeScript. Ele
+**O achado que define a fase B1:** hoje o "plano" é uma linha de TypeScript. Ele
 esconde a interface e não tranca nada. Para um recurso que é vendido, esconder
 não é trancar.
 
 ---
 
-## 3. Fase 0 — o direito de usar
+## 3. Fase B1 — o direito de usar
 
 **Custo:** 1 a 2 dias. **Risco:** baixo. **Bloqueia todo o resto.**
 
@@ -99,12 +131,12 @@ continua idêntica; muda só a fonte, de constante para o que veio em
 ### 3.5 Dependência externa (e o que fazer se ela demorar)
 
 Alguém precisa mexer na API StartBig para o token carregar `recursos`. **Isso não
-bloqueia nada aqui**: com o padrão seguro, as fases 1 a 3 rodam inteiras sem o
-servidor mudar uma linha. Só a fase 5 depende de verdade.
+bloqueia nada aqui**: com o padrão seguro, a **trilha A inteira** roda sem o
+servidor mudar uma linha. Só a fase B3 depende de verdade.
 
 ---
 
-## 4. Fase 1 — o seletor de produto único
+## 4. Fase A1 — o seletor de produto único
 
 **Custo:** 2 dias. **Risco:** baixo (se a ordem for respeitada).
 
@@ -138,7 +170,7 @@ O `ProductSearch` da venda **sabe demais**: ele chama `tentarAdicionarProduto(sa
 
 ---
 
-## 5. Fase 2 — entrada de mercadoria (não fiscal)
+## 5. Fase A2 — entrada de mercadoria (não fiscal)
 
 **Custo:** 3 a 4 dias. **Risco:** médio — encosta em custo médio.
 
@@ -187,7 +219,7 @@ da SEFAZ.
 
 ### 5.3 Os itens, bipando
 
-`SeletorDeProduto` (fase 1) + quantidade + custo unitário — que é o número que
+`SeletorDeProduto` (fase A1) + quantidade + custo unitário — que é o número que
 alimenta o custo médio e, por tabela, o CMV e o relatório de lucro.
 
 **Produto sem EAN cadastrado:** a primeira bipada oferece gravar aquele código no
@@ -196,7 +228,7 @@ um mutirão de cadastro antes de o leitor servir para alguma coisa.
 
 ---
 
-## 6. Fase 3 — a memória do fornecedor
+## 6. Fase A3 — a memória do fornecedor
 
 **Custo:** 1 dia. **Risco:** baixo.
 
@@ -210,7 +242,7 @@ sozinho. Vale para a entrada bipada e é **pré-requisito** da entrada por XML.
 
 ---
 
-## 7. Fase 4 — entrada por XML
+## 7. Fase B2 — entrada por XML
 
 **Custo:** 3 dias. **Risco:** médio.
 
@@ -224,7 +256,7 @@ Duas coisas que costumam ser confundidas, e a diferença decide o preço:
 
 Cada item do XML traz `cEAN` — o código de barras do produto. Quando o fornecedor
 preenche direito, o de-para é **automático**; quando vem `SEM GTIN` (comum), cai
-no de-para manual da fase 3, que memoriza.
+no de-para manual da fase A3, que memoriza.
 
 > **DECIDIDO pelo dono (20/08/2026): o import de XML é RECURSO PAGO.** A regra da
 > casa é uma só — **o que envolve nota fiscal está no plano fiscal**, sem exceção
@@ -238,7 +270,7 @@ no de-para manual da fase 3, que memoriza.
 
 ---
 
-## 8. Fase 5 — a venda fiscal (fronteira)
+## 8. Fase B3 — a venda fiscal (fronteira)
 
 **Não é nossa.** A emissão vive em `origin/feat/fiscal-module`, com outro
 programador. O que é nosso é **não fechar a porta**.
@@ -264,18 +296,38 @@ descobrir depois: refazer o fluxo de finalização com o PDV já na rua.
 
 ## 9. Ordem, custo e risco
 
+**Decisão do dono (20/08/2026): terminar o não fiscal inteiro, e só depois
+ajustar para o fiscal.** Não é uma fila só — são duas trilhas, e a segunda não
+começa antes de a primeira estar rodando na adega.
+
+**Trilha A — não fiscal (é o produto, e entrega sozinha):**
+
 | Fase | O que entrega | Custo | Risco | Depende de |
 |---|---|---|---|---|
-| 0 | recursos na licença, ponta a ponta | 1–2 d | baixo | — |
-| 1 | seletor de produto único, bipável | 2 d | baixo | — |
-| 2 | entrada como documento + chave do DANFE | 3–4 d | médio | 1 |
-| 3 | memória do fornecedor (de-para) | 1 d | baixo | 2 |
-| 4 | import de XML **(recurso pago)** | 3 d | médio | 0 + 3 |
-| 5 | campos fiscais do produto + gancho da emissão | 2 d | médio | 0 |
+| **A1** | seletor de produto único, bipável | 2 d | baixo | — |
+| **A2** | entrada como documento + chave do DANFE | 3–4 d | médio | A1 |
+| **A3** | memória do fornecedor (de-para) | 1 d | baixo | A2 |
 
-As fases 0 e 1 são independentes e podem trocar de ordem. **A 2 é a que o cliente
-sente.** A 5 só faz sentido quando o módulo fiscal do outro programador estiver
-perto.
+No fim da fase A3 a adega dá entrada numa nota inteira sem mouse, e o custo médio
+passa a vir do que foi pago de verdade. **É um produto completo — não é meia
+funcionalidade esperando o fiscal.**
+
+**Trilha B — fiscal (só quando a A estiver na rua):**
+
+| Fase | O que entrega | Custo | Risco | Depende de |
+|---|---|---|---|---|
+| **B1** | recursos na licença, ponta a ponta | 1–2 d | baixo | — |
+| **B2** | import de XML **(recurso pago)** | 3 d | médio | B1 + A3 |
+| **B3** | campos fiscais do produto + gancho da emissão | 2 d | médio | B1 |
+
+A fase B1 encabeça a trilha B, e não a A, porque **o não fiscal não precisa de
+trava nenhuma**: ele é o que todo cliente tem. A trava só existe para separar
+quem pagou — e ninguém pagou ainda.
+
+⚠️ **Uma coisa da trilha B vale desde agora, e é de graça:** a regra de ouro da
+seção 8 (*finalizar a venda não pode significar "imprimir"*). Respeitar isso
+enquanto se mexe na venda custa zero; descobrir depois custa refazer a
+finalização com o PDV na rua.
 
 ---
 
@@ -294,19 +346,28 @@ perto.
 
 1. ~~**Import de XML: fiscal ou não fiscal?**~~ **RESOLVIDO em 20/08/2026:
    recurso PAGO.** Regra da casa: o que envolve nota fiscal está no plano fiscal.
-   Consequência no cronograma: a **fase 4 passa a depender da fase 0**, e o não
-   fiscal se fecha na fase 3.
+   Consequência no cronograma: a **fase B2 passa a depender da fase B1**, e o
+   não fiscal se fecha na fase A3.
 
-   **A pergunta que sobra desta, e é estreita:** *bipar a chave do DANFE* entra
-   junto no pago? Ela é o único ponto de fronteira — ler 44 dígitos de um papel
-   não emite nada, não consulta a SEFAZ e não usa certificado; é só identificar
-   o documento que o fornecedor mandou junto com a mercadoria. Se ela também for
-   paga, a entrada do plano não fiscal vira 100% digitada à mão (fornecedor,
-   número e data no teclado), e a adega perde o ganho principal da fase 2.
-2. **O dono da adega tem ou pretende ter e-CNPJ (A1)?** É a resposta que decide se
-   a fase 4 vale como está ou se vira busca automática.
-3. **Quem mexe na API StartBig** para o token carregar `recursos`? Sem isso, o
-   fiscal nunca acende em cliente nenhum — mas nada trava até a fase 5.
+2. ~~**O dono da adega tem ou pretende ter e-CNPJ (A1)?**~~ **RESOLVIDO em
+   20/08/2026: segue a mesma regra — busca automática na SEFAZ é recurso pago,
+   e o certificado não entra agora.** Primeiro o não fiscal fica pronto; o
+   fiscal se ajusta depois.
+
+3. **PREMISSA ASSUMIDA (não é decisão fechada): bipar a chave do DANFE fica no
+   NÃO fiscal.** É o único ponto de fronteira que a regra "nota fiscal = pago"
+   não resolve sozinha, então fica escrito o raciocínio: ler 44 dígitos de um
+   papel **não emite nada, não consulta a SEFAZ e não usa certificado** — é só
+   identificar o documento que veio junto com a mercadoria, como quem digita o
+   número da nota no teclado, só que sem errar. Se ela fosse paga, a entrada do
+   plano não fiscal voltaria a ser 100% digitada à mão e a fase A2 perderia o
+   motivo de existir.
+
+   Isso é **uma linha de gate**: se a decisão for o contrário, muda em um lugar
+   e nada do resto se desfaz.
+4. **Quem mexe na API StartBig** para o token carregar `recursos`? Sem isso, o
+   fiscal nunca acende em cliente nenhum — mas agora isso **não bloqueia nada**:
+   é a primeira pergunta da trilha B, e a trilha A não depende dela.
 
 ---
 
@@ -319,4 +380,4 @@ perto.
   última a adotar, e só depois de as outras duas telas estarem rodando.
 - **A API de licença é externa.** O padrão seguro (`recursos` ausente = não fiscal)
   é o que impede que um atraso lá vire um app quebrado aqui.
-- **Fase 4 e fase 5 não viajam no mesmo instalador** das 3 lojas que já rodam.
+- **A trilha B inteira não viaja no mesmo instalador** das 3 lojas que já rodam.
