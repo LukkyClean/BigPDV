@@ -181,6 +181,27 @@ def test_faturamento_total_soma_vendas_e_os(client, db_session):
     assert total_serie == 50000
 
 
+def test_stats_devolve_a_contagem_de_vendas(client, db_session):
+    """O card de Vendas mostra QUANTAS, nao quanto — entao a contagem tem que vir.
+
+    A contagem ja era calculada para o ticket medio; o que faltava era devolve-la.
+    O risco real aqui nao e o numero errado, e o campo SUMIR da resposta num
+    refactor: a tela trata ausencia como "backend antigo" e volta a mostrar
+    valor, entao a regressao passaria despercebida, so mudando o card em silencio.
+    """
+    master_header = _auth_master(client)
+
+    r = client.get("/api/v1/dashboard/stats?periodo=mes", headers=master_header)
+    assert r.status_code == 200, r.text
+    stats = r.json()
+
+    assert "vendas_count" in stats, "o card de Vendas depende deste campo"
+    assert "vendas_count_variacao" in stats
+    # Empresa recem-criada: nenhuma venda finalizada no periodo.
+    assert stats["vendas_count"] == 0
+    assert stats["vendas_total"] == 0
+
+
 def test_ranking_ordena_por_vendas_mais_os_e_esconde_zerados(client, db_session):
     """Fase C: ranking soma OS (justo p/ tecnico) e esconde funcionario 100% zerado."""
     master_header = _auth_master(client)

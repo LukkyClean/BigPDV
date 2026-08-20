@@ -144,6 +144,8 @@ def get_dashboard_stats(db: Session, periodo: str, empresa_id: int) -> Dashboard
         faturamento_total_variacao=_calcular_variacao(fat_atual, fat_ant),
         vendas_total=atual.vendas_total,
         vendas_total_variacao=_calcular_variacao(atual.vendas_total, anterior.vendas_total),
+        vendas_count=atual.vendas_count,
+        vendas_count_variacao=_calcular_variacao(atual.vendas_count, anterior.vendas_count),
         os_total=atual.os_soma,
         os_total_variacao=_calcular_variacao(atual.os_soma, anterior.os_soma),
         # OS FINALIZADAS, não criadas. Este painel é de resultados: ao lado

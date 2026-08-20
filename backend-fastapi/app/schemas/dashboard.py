@@ -20,6 +20,13 @@ class DashboardStats(BaseModel):
     vendas_total: int = Field(0, description="Valor total de vendas finalizadas no periodo (centavos)")
     vendas_total_variacao: float = Field(0.0, description="Variacao percentual vs periodo anterior")
 
+    # A contagem ja era calculada para o ticket medio; so nao era devolvida. O
+    # card de Vendas mostra QUANTAS, porque o valor ja aparece inteiro no
+    # numero-heroi de faturamento logo abaixo — repetir o mesmo R$ duas vezes
+    # gasta um dos quatro cards do painel sem dizer nada de novo.
+    vendas_count: int = Field(0, description="Quantidade de vendas FINALIZADAS no periodo")
+    vendas_count_variacao: float = Field(0.0, description="Variacao percentual vs periodo anterior")
+
     os_total: int = Field(0, description="Faturamento de OS finalizadas no periodo (centavos)")
     os_total_variacao: float = Field(0.0, description="Variacao percentual vs periodo anterior")
 
