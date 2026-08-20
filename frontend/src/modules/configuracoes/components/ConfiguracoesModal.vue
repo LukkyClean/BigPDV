@@ -140,9 +140,45 @@ watch(() => props.isOpen, (aberto) => {
   if (aberto) {
     // Garante dados frescos mesmo se o carregamento do boot tiver falhado
     configuracoesStore.carregarConfiguracoes()
-    irPara(props.secaoInicial ?? 'regras-de-vendas')
+    void abrirSecaoInicial(props.secaoInicial ?? 'regras-de-vendas')
   }
 })
+
+/**
+ * A aba de ENTRADA passa pela mesma fechadura das outras.
+ *
+ * Aqui se chamava `irPara` direto — e `irPara` só troca a aba; quem confere o
+ * PIN e o `navegarParaSecao`. A fechadura estava na porta de dentro, nao na de
+ * entrada: a secao protegida que calhasse de ser a inicial (hoje "Regras de
+ * Vendas") abria de cara, com os dados na tela, e o PIN so era pedido quando o
+ * usuario clicava em OUTRA aba. Quem quisesse ver o que estava protegido nao
+ * precisava nem tentar burlar nada — bastava abrir Configuracoes.
+ *
+ * Vale tambem para quem chega por atalho (`secaoInicial`), que e o mesmo buraco
+ * por outra porta.
+ */
+async function abrirSecaoInicial(secaoId: SecaoId): Promise<void> {
+  if (!precisaPin(secaoId)) {
+    irPara(secaoId)
+    return
+  }
+
+  // Primeiro sair de cima do conteudo protegido, depois pedir o PIN: enquanto a
+  // senha nao vem, nada do que ela protege pode estar montado na tela.
+  const livre = secoesVisiveis.value.find((s) => !precisaPin(s.id))
+  if (livre) irPara(livre.id)
+
+  const pin = await gerenteConfig.pedirPin()
+  const autorizado = pin ? await verificarPinComRetry(pin) : false
+
+  if (autorizado) {
+    irPara(secaoId)
+    return
+  }
+
+  // Nenhuma aba livre para onde cair e sem autorizacao: nao ha o que mostrar.
+  if (!livre) emit('close')
+}
 
 const secoesFuncionais: SecaoId[] = ['seguranca', 'clientes-cadastro', 'produtos-estoque', 'ordens-de-servico', 'regras-de-vendas', 'impressao', 'formatos-exibicao', 'integracoes-apis', 'backup-dados']
 const secaoFuncional = computed(() => secoesFuncionais.includes(secaoAtiva.value))
