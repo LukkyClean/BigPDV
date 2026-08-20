@@ -325,8 +325,10 @@ const saleDisplay = computed(() => {
             <BaseButton
               variant="primary"
               size="lg"
+              data-ir-pagamento
               class="w-full text-base font-bold py-4 shadow-lg shadow-brand-primary/20"
               :disabled="!sale?.produtos?.length"
+              @keydown.tab.exact.prevent="focarBuscaDeProduto"
               @click="openFinishModal"
             >
               <div class="flex flex-col items-center">

@@ -5,6 +5,7 @@ import { useUpdateSaleMutation } from '../mutates/useUpdateSaleMutation';
 import { useToast } from '@/shared/composables/useToast';
 import { useGerenteAprovacao } from '@/shared/composables/useGerenteAprovacao';
 import type { SaleRead, SaleUpdate } from '../../schemas/sale.schema';
+import { focarBuscaDeProduto } from '../../focarBusca.util';
 
 export function useSaleDetailsForm(sale: MaybeRef<SaleRead | undefined>) {
   const updateSaleMutation = useUpdateSaleMutation();
@@ -71,10 +72,15 @@ export function useSaleDetailsForm(sale: MaybeRef<SaleRead | undefined>) {
       if (detail === 'REQUER_APROVACAO_GERENTE') {
         const pin = await gerenteDesconto.pedirPin();
         if (pin) await saveNow(pin);
+        // Aprovado ou cancelado, a interrupção acabou: o cursor volta para a
+        // venda. Sem isto o foco fica no vazio deixado pelo modal e a bipada
+        // seguinte não chega em lugar nenhum.
+        focarBuscaDeProduto();
       } else if (detail === 'PIN_GERENTE_INVALIDO') {
         toast.error('PIN inválido. Tente novamente.');
         const pin = await gerenteDesconto.pedirPin();
         if (pin) await saveNow(pin);
+        focarBuscaDeProduto();
       } else {
         const sale_ = unref(sale);
         if (sale_) hydrateForm(sale_, false);

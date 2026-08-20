@@ -47,6 +47,9 @@ export interface ShortcutItem {
 export const SALE_SHORTCUTS: ShortcutItem[] = [
     { keys: 'Enter', description: 'Adicionar o produto destacado' },
     { keys: '↑+↓', description: 'Escolher na lista de produtos' },
+    // O ciclo do Tab é uma regra só, com três paradas fixas — descrever cada
+    // parada numa linha faria parecer três atalhos diferentes.
+    { keys: 'Tab', description: 'Quantidade do item → Finalizar → busca' },
     { keys: 'Ctrl+F', description: 'Voltar para a busca de produto' },
     // O nome e o do BOTAO e o do titulo da modal ("Adicionar Produto"); o que
     // vem entre parenteses e o motivo de ela existir, ja que a busca rapida da

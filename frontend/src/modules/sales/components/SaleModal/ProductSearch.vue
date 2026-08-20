@@ -89,28 +89,63 @@ function handleSelectForQuantity(product: { nome: string }) {
 const bipando = ref(false);
 
 async function handleKeydown(e: KeyboardEvent) {
-  if (e.key === 'Enter' && pareceCodigoDeBarras(searchTerm.value)) {
-    e.preventDefault();
-    if (bipando.value) return;
-
-    bipando.value = true;
-    let resultado;
-    try {
-      resultado = await tentarAdicionarProduto({
-        saleId: props.saleId,
-        termo: searchTerm.value.trim(),
-      });
-    } finally {
-      bipando.value = false;
-    }
-
-    avisarResultado(resultado);
-
-    // Sem certeza sobre o código: a lista assume, e assume AGORA.
-    if (resultado.tipo === 'not_found' || resultado.tipo === 'ambiguous') {
-      aplicarBuscaAgora();
+  // Tab vai para a quantidade do ÚLTIMO item — o que acabou de ser bipado.
+  //
+  // "Bipei, agora são 3" é o passo seguinte mais comum do balcão, e ele só
+  // existia no mouse: o Tab andava para os botões da barra e a quantidade era
+  // um texto, sem onde pousar. Com o carrinho vazio não há o que ajustar, então
+  // o Tab segue o caminho normal.
+  if (e.key === 'Tab' && !e.shiftKey) {
+    const qtd = document.querySelector<HTMLInputElement>('[data-qtd-ultimo]');
+    if (qtd) {
+      e.preventDefault();
+      qtd.focus();
     }
     return;
+  }
+
+  if (e.key === 'Enter') {
+    const termo = searchTerm.value.trim();
+    const pareceBipada = pareceCodigoDeBarras(searchTerm.value);
+
+    // Com a lista na tela e um item destacado, o Enter é ESCOLHA, não busca.
+    // Ir ao servidor aqui atrasaria o que já está resolvido na frente do
+    // operador — e é esse caminho que a seta + Enter usa.
+    const temEscolhaNaTela = (products.value?.length ?? 0) > 0 && highlightedIndex.value >= 0;
+
+    // Resolver por código EXATO é seguro para qualquer texto: `impressora` não
+    // bate literalmente com nenhum `codigo_barras` nem `sku`. Antes esta porta
+    // só abria para código só-de-dígitos, e um código alfanumérico bipado caía
+    // no caminho de quem digita: o Enter do leitor chegava antes da busca sair e
+    // morria, obrigando um segundo Enter. Mesmo gesto, dois comportamentos, e
+    // nada na tela explicando — o operador conclui que "o leitor às vezes falha".
+    if (termo && (pareceBipada || !temEscolhaNaTela)) {
+      e.preventDefault();
+      if (bipando.value) return;
+
+      bipando.value = true;
+      let resultado;
+      try {
+        resultado = await tentarAdicionarProduto({ saleId: props.saleId, termo });
+      } finally {
+        bipando.value = false;
+      }
+
+      // O toast de "não achei" continua sendo só do ramo numérico, onde a
+      // intenção de bipar é inequívoca. Quem digitou um pedaço do nome e apertou
+      // Enter cedo demais não errou nada — ali a LISTA é a resposta, e um aviso
+      // de erro por cima dela seria mentira. Falha de rede e recusa de estoque
+      // falam sempre, nos dois ramos.
+      const silenciar =
+        !pareceBipada && (resultado.tipo === 'not_found' || resultado.tipo === 'ambiguous');
+      if (!silenciar) avisarResultado(resultado);
+
+      // Sem certeza sobre o código: a lista assume, e assume AGORA.
+      if (resultado.tipo === 'not_found' || resultado.tipo === 'ambiguous') {
+        aplicarBuscaAgora();
+      }
+      return;
+    }
   }
 
   const escolhido = navegarNaLista(e);

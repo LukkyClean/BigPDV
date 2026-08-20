@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, nextTick, onUnmounted, ref } from 'vue';
 import { Trash2, Minus, Plus, PackagePlus } from 'lucide-vue-next';
 
 import { formatCurrency } from '@/shared/utils/finance';
@@ -15,6 +15,7 @@ import {
 } from '../../composables/mutates/useItemOrcamentoMutation';
 
 import { useItemModal } from '../../composables/flows/useItemModal';
+import { focarBuscaDeProduto } from '../../focarBusca.util';
 
 import type { SaleRead } from '../../schemas/sale.schema';
 import type { OrcamentoRead } from '../../schemas/orcamento.schema';
@@ -32,13 +33,13 @@ const { openEditItemModal } = useItemModal();
 
 const avisoEstoqueOpen = ref(false);
 const pendingItem = ref<SaleOrOrcamento['produtos'][number] | null>(null);
+const pendingQuantidade = ref<number | null>(null);
 
 const updateSaleMut = useUpdateItemSaleMutation();
 const deleteSaleMut = useDeleteItemSaleMutation();
 const updateOrcMut = useUpdateItemOrcamentoMutation();
 const deleteOrcMut = useDeleteItemOrcamentoMutation();
 
-const isUpdating = computed(() => props.isOrcamento ? updateOrcMut.isPending.value : updateSaleMut.isPending.value);
 const isDeleting = computed(() => props.isOrcamento ? deleteOrcMut.isPending.value : deleteSaleMut.isPending.value);
 
 const items = computed(() => props.sale?.produtos ?? []);
@@ -51,11 +52,16 @@ function getProductDescription(item: SaleOrOrcamento['produtos'][number]) {
   return item.produto_id ? `SKU: #${item.sku}` : 'Produto cadastrado';
 }
 
-function mutateUpdate(entityId: number, productId: number, payload: { quantidade: number }) {
+function mutateUpdate(
+  entityId: number,
+  productId: number,
+  payload: { quantidade: number },
+  opcoes?: { onSettled?: () => void },
+) {
   if (props.isOrcamento) {
-    updateOrcMut.mutate({ orcamentoId: entityId, productId, payload });
+    updateOrcMut.mutate({ orcamentoId: entityId, productId, payload }, opcoes);
   } else {
-    updateSaleMut.mutate({ saleId: entityId, productId, payload });
+    updateSaleMut.mutate({ saleId: entityId, productId, payload }, opcoes);
   }
 }
 
@@ -67,36 +73,185 @@ function mutateDelete(entityId: number, productId: number) {
   }
 }
 
-function decreaseQuantity(item: SaleOrOrcamento['produtos'][number]) {
+/**
+ * A quantidade que a TELA mostra — a local, se houver, senão a do servidor.
+ *
+ * Antes cada clique no `+` era uma requisição, e enquanto ela estava no ar os
+ * botões ficavam desabilitados (`isUpdating`) — para a tabela inteira. Clicar
+ * rápido, que é o que se faz para chegar em 10, jogava os cliques seguintes no
+ * vazio, sem nada na tela dizendo por quê. O operador conclui que "não pegou".
+ *
+ * Agora o número muda na hora e a gravação sai UMA vez, depois que a mão para.
+ */
+const quantidadesLocais = ref<Record<number, number>>({});
+const gravacoesAgendadas = new Map<number, ReturnType<typeof setTimeout>>();
+
+/** Espera curta o bastante para não parecer travado, longa o bastante para juntar cliques. */
+const ESPERA_GRAVACAO = 350;
+
+function quantidadeVisivel(item: SaleOrOrcamento['produtos'][number]) {
+  return quantidadesLocais.value[item.id] ?? item.quantidade;
+}
+
+function agendarGravacao(item: SaleOrOrcamento['produtos'][number]) {
+  const anterior = gravacoesAgendadas.get(item.id);
+  if (anterior) clearTimeout(anterior);
+  gravacoesAgendadas.set(item.id, setTimeout(() => gravarQuantidade(item), ESPERA_GRAVACAO));
+}
+
+function gravarQuantidade(item: SaleOrOrcamento['produtos'][number]) {
+  gravacoesAgendadas.delete(item.id);
+  if (!props.sale?.id) return;
+
+  const nova = quantidadesLocais.value[item.id];
+  if (nova === undefined) return;
+  if (nova === item.quantidade) {
+    delete quantidadesLocais.value[item.id];
+    return;
+  }
+
+  // O valor local sai de cena quando a resposta chega — na boa, o cache já traz
+  // o número novo; no erro, a tela volta sozinha para a verdade do servidor em
+  // vez de continuar exibindo um número que não existe.
+  mutateUpdate(props.sale.id, item.id, { quantidade: nova }, {
+    onSettled: () => {
+      delete quantidadesLocais.value[item.id];
+    },
+  });
+}
+
+function gravarAgora(item: SaleOrOrcamento['produtos'][number]) {
+  const agendada = gravacoesAgendadas.get(item.id);
+  if (agendada) clearTimeout(agendada);
+  gravarQuantidade(item);
+}
+
+onUnmounted(() => {
+  gravacoesAgendadas.forEach((t) => clearTimeout(t));
+  gravacoesAgendadas.clear();
+});
+
+/**
+ * A porta única da quantidade — `+`, `−` e o número digitado passam por aqui.
+ *
+ * A regra de estoque morava dentro do `+`. Quem digitasse a quantidade pelo
+ * teclado furaria, sem querer, uma trava que o mouse obedece.
+ */
+function aplicarQuantidade(
+  item: SaleOrOrcamento['produtos'][number],
+  nova: number,
+  opcoes: { ignorarEstoque?: boolean } = {},
+) {
   if (props.readonly) return;
   if (!props.sale?.id) return;
-  if (item.quantidade <= 1) return;
+  if (nova < 1) return;
 
-  mutateUpdate(props.sale.id, item.id, { quantidade: item.quantidade - 1 });
+  const atual = quantidadeVisivel(item);
+  const estoque = item.estoque_disponivel;
+
+  // Só o AUMENTO consulta o estoque. Reduzir nunca pode ser barrado — senão um
+  // item que já está acima do disponível não conseguiria nem VOLTAR.
+  if (!opcoes.ignorarEstoque && nova > atual && estoque !== null && estoque !== undefined && nova > estoque) {
+    pendingItem.value = item;
+    pendingQuantidade.value = nova;
+    avisoEstoqueOpen.value = true;
+    return;
+  }
+
+  quantidadesLocais.value[item.id] = nova;
+  agendarGravacao(item);
+}
+
+function decreaseQuantity(item: SaleOrOrcamento['produtos'][number]) {
+  const atual = quantidadeVisivel(item);
+  if (atual <= 1) return;
+  aplicarQuantidade(item, atual - 1);
 }
 
 function increaseQuantity(item: SaleOrOrcamento['produtos'][number]) {
-  if (props.readonly) return;
-  if (!props.sale?.id) return;
-
-  const estoque = item.estoque_disponivel;
-  if (estoque !== null && estoque !== undefined) {
-    const novaQtd = item.quantidade + 1;
-    if (novaQtd > estoque) {
-      pendingItem.value = item;
-      avisoEstoqueOpen.value = true;
-      return;
-    }
-  }
-
-  mutateUpdate(props.sale.id, item.id, { quantidade: item.quantidade + 1 });
+  aplicarQuantidade(item, quantidadeVisivel(item) + 1);
 }
 
 function confirmarIncremento() {
-  if (!pendingItem.value || !props.sale?.id) return;
-  mutateUpdate(props.sale.id, pendingItem.value.id, { quantidade: pendingItem.value.quantidade + 1 });
+  const item = pendingItem.value;
+  const desejada = pendingQuantidade.value;
+  fecharAviso();
+  if (!item || desejada === null) return;
+  // A quantidade desejada vem do que foi PEDIDO — digitar 12 não pode virar +1.
+  aplicarQuantidade(item, desejada, { ignorarEstoque: true });
+}
+
+function fecharAviso() {
   avisoEstoqueOpen.value = false;
   pendingItem.value = null;
+  pendingQuantidade.value = null;
+}
+
+/**
+ * Digitar a quantidade direto na linha.
+ *
+ * O número era um `<span>`: de 1 para 12 eram onze cliques no `+`, e não havia
+ * onde o teclado pousar.
+ *
+ * ⚠️ O Enter devolve o foco à busca de propósito, e isso é segurança, não
+ * conforto: com o cursor parado na quantidade, a próxima bipada digitaria o
+ * código de barras inteiro dentro do campo de quantidade.
+ */
+const editandoId = ref<number | null>(null);
+const valorEditado = ref('');
+
+function iniciarEdicao(item: SaleOrOrcamento['produtos'][number]) {
+  if (props.readonly) return;
+  editandoId.value = item.id;
+  valorEditado.value = String(quantidadeVisivel(item));
+}
+
+function cancelarEdicao() {
+  editandoId.value = null;
+  valorEditado.value = '';
+}
+
+/**
+ * Fecha o ciclo do teclado na venda: busca → quantidade → Finalizar → busca.
+ *
+ * Sem isto o Tab saía da quantidade para a ordem do HTML — os botões da linha
+ * de baixo, depois desconto, entrega — e o operador perdia de vista onde estava
+ * no meio de um atendimento. Três paradas, sempre as mesmas, sempre na mesma
+ * ordem: é isso que deixa o caminho decorável.
+ */
+function focarIrParaPagamento() {
+  nextTick(() => {
+    const btn = document.querySelector<HTMLButtonElement>('[data-ir-pagamento]');
+    // Carrinho vazio deixa o botão desabilitado; aí o Tab segue o caminho normal.
+    if (btn && !btn.disabled) btn.focus();
+  });
+}
+
+type DestinoDoFoco = 'busca' | 'pagamento' | null;
+
+function confirmarEdicao(item: SaleOrOrcamento['produtos'][number], destino: DestinoDoFoco = null) {
+  // O Enter já confirmou e limpou o estado; o blur que vem atrás não repete.
+  if (editandoId.value !== item.id) return;
+
+  const bruto = valorEditado.value.trim().replace(',', '.');
+  cancelarEdicao();
+
+  const nova = Number(bruto);
+  // Valor vazio ou sem sentido não apaga o item nem zera a linha: fica como estava.
+  if (bruto && !Number.isNaN(nova) && nova > 0 && nova !== quantidadeVisivel(item)) {
+    aplicarQuantidade(item, nova);
+    // Enter e Tab são "acabei": gravam na hora, sem esperar os 350 ms. Sair com
+    // o mouse (blur) espera, porque ali ninguém disse que terminou.
+    if (destino) gravarAgora(item);
+  }
+
+  if (destino === 'busca') focarBuscaDeProduto();
+  if (destino === 'pagamento') focarIrParaPagamento();
+}
+
+function abandonarEdicao() {
+  cancelarEdicao();
+  focarBuscaDeProduto();
 }
 
 function removeItem(item: SaleOrOrcamento['produtos'][number]) {
@@ -112,9 +267,9 @@ function removeItem(item: SaleOrOrcamento['produtos'][number]) {
     :is-open="avisoEstoqueOpen"
     :nome-produto="pendingItem?.nome ?? ''"
     :estoque-atual="pendingItem?.estoque_disponivel ?? 0"
-    :quantidade-desejada="pendingItem ? pendingItem.quantidade + 1 : 1"
+    :quantidade-desejada="pendingQuantidade ?? 1"
     @confirmar="confirmarIncremento"
-    @cancelar="avisoEstoqueOpen = false; pendingItem = null"
+    @cancelar="fecharAviso"
   />
   <section class="w-full h-full overflow-hidden rounded-xl border border-zinc-200 bg-white hover:border-brand-primary/30 transition-colors flex flex-col">
     <div class="flex-1 min-h-0 overflow-y-auto no-scrollbar">
@@ -148,7 +303,7 @@ function removeItem(item: SaleOrOrcamento['produtos'][number]) {
           </tr>
 
           <tr
-            v-for="item in items"
+            v-for="(item, index) in items"
             :key="item.id"
             class="h-23 border-b border-zinc-100 last:border-b-0 hover:bg-zinc-50/70 hover:cursor-pointer"
             @click="openEditItemModal(item)"
@@ -199,20 +354,35 @@ function removeItem(item: SaleOrOrcamento['produtos'][number]) {
               >
                 <button
                   type="button"
-                  :disabled="readonly || item.quantidade <= 1 || isUpdating"
+                  :disabled="readonly || quantidadeVisivel(item) <= 1"
                   class="flex h-7 w-7 items-center justify-center rounded-md text-zinc-500 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
                   @click.stop="decreaseQuantity(item)"
                 >
                   <Minus class="h-4 w-4" />
                 </button>
 
-                <span class="min-w-6 text-center text-sm font-semibold text-zinc-800 select-none z-99">
-                  {{ item.quantidade }}
+                <input
+                  v-if="!readonly"
+                  type="text"
+                  inputmode="numeric"
+                  :value="editandoId === item.id ? valorEditado : quantidadeVisivel(item)"
+                  :data-qtd-ultimo="index === items.length - 1 ? '' : undefined"
+                  class="min-w-6 w-12 text-center text-sm font-semibold text-zinc-800 bg-transparent outline-none z-99"
+                  @click.stop
+                  @focus="iniciarEdicao(item); ($event.target as HTMLInputElement).select()"
+                  @input="valorEditado = ($event.target as HTMLInputElement).value"
+                  @keydown.enter.prevent="confirmarEdicao(item, 'busca')"
+                  @keydown.tab.exact.prevent="confirmarEdicao(item, 'pagamento')"
+                  @keydown.esc.prevent="abandonarEdicao()"
+                  @blur="confirmarEdicao(item)"
+                />
+                <span v-else class="min-w-6 text-center text-sm font-semibold text-zinc-800 select-none z-99">
+                  {{ quantidadeVisivel(item) }}
                 </span>
 
                 <button
                   type="button"
-                  :disabled="readonly || isUpdating"
+                  :disabled="readonly"
                   class="flex h-7 w-7 items-center justify-center rounded-md text-zinc-500 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
                   @click.stop="increaseQuantity(item)"
                 >
