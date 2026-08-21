@@ -149,6 +149,11 @@ class EmpresaFiscalSettings(Base):
         nullable=True,
         doc="Thumbprint do certificado Windows (identificador único)"
     )
+    certificado_senha: Mapped[Optional[str]] = mapped_column(
+        String(200),
+        nullable=True,
+        doc="Senha do certificado digital A1 (Criptografada com Fernet)"
+    )
 
     # --- Metadados ---
     data_criacao: Mapped[datetime] = mapped_column(

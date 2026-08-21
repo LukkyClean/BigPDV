@@ -8,6 +8,7 @@ import platform
 import secrets
 from pydantic_settings import BaseSettings
 from pydantic import ConfigDict
+from cryptography.fernet import Fernet
 
 APP_NAME = "StartBigERP"
 DB_NAME = "start_big.db"
@@ -34,6 +35,20 @@ os.makedirs(data_dir, exist_ok=True)
 database_path = os.path.join(data_dir, DB_NAME)
 sql_url = f"sqlite:///{database_path}"
 
+secure_dir = os.path.join(data_dir, "secure")
+os.makedirs(secure_dir, exist_ok=True)
+
+def _load_or_create_encryption_key(path: str) -> bytes:
+    if os.path.exists(path):
+        with open(path, "rb") as f:
+            return f.read().strip()
+        
+    key = Fernet.generate_key()
+    
+    with open(path, "wb") as f:
+        f.write(key)
+    
+    return key
 
 def _load_or_create_secret_key(path: str) -> str:
     if os.path.exists(path):
@@ -45,6 +60,7 @@ def _load_or_create_secret_key(path: str) -> str:
     return key
 
 _secret_key_value = _load_or_create_secret_key(os.path.join(data_dir, "secret.key"))
+_fernet_key_value = _load_or_create_encryption_key(os.path.join(secure_dir, "fernet.key"))
 
 class Settings(BaseSettings):
     """
@@ -60,6 +76,9 @@ class Settings(BaseSettings):
     SECRET_KEY: str = _secret_key_value
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 180
+    
+    # Configurações de criptografia
+    FERNET_KEY: bytes = _fernet_key_value
 
 # Instância única (Singleton)
 settings = Settings()

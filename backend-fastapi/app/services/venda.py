@@ -389,12 +389,3 @@ def get_sales(db: Session, filters: VendaSearchFilters, page: int, limit: int = 
 
 def get_sales_status(db: Session, funcionario_id: int | None = None) -> Sequence[VendaStatusSummary]:
     return venda_crud.get_sales_status(db, funcionario_id=funcionario_id)
-    
-
-    
-        
-        
-    
-    
-
-    

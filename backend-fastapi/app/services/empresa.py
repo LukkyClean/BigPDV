@@ -27,7 +27,8 @@ from app.db.crud import empresa as empresa_crud
 from app.db.models.funcionario import Funcionario as FuncionarioModel
 from app.db.crud import funcionario as funcionario_crud
 from app.core.imagem import salvar_imagem
-from app.core.config import BASE_DIR
+from app.core.config import data_dir, secure_dir
+from app.core.security import encrypt_data
 
 # ---------------------------------------------------------------------------
 # CONSTANTES E EXCEÇÕES
@@ -45,10 +46,8 @@ NOT_FOUND_EXCE = HTTPException(
 )
 
 # Diretório seguro para certificados (fora de static para não expor publicamente)
-CERT_UPLOAD_DIR = "secure_storage/certificates"
-
-secure_path = os.path.join(BASE_DIR, CERT_UPLOAD_DIR)
-os.makedirs(secure_path, exist_ok=True)
+CERT_UPLOAD_DIR = os.path.join(secure_dir, "certificados")
+os.makedirs(CERT_UPLOAD_DIR, exist_ok=True)
 
 # ---------------------------------------------------------------------------
 # FUNÇÕES DE SERVIÇO
@@ -268,9 +267,6 @@ def upload_certificado_a1(
     """
     Upload e validação de certificado A1 (PKCS#12).
 
-    IMPORTANTE: A senha NÃO é persistida no banco de dados.
-    Ela é usada apenas para validar o certificado e extrair metadados.
-
     Args:
         db: Sessão do banco de dados.
         empresa_id: ID da empresa.
@@ -320,7 +316,7 @@ def upload_certificado_a1(
     cert_validade = certificate.not_valid_after_utc
 
     # 4. Verificar se não está expirado
-    if cert_validade < datetime.utcnow():
+    if cert_validade < datetime.now(datetime.timezone.utc):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Certificado expirado em {cert_validade.strftime('%d/%m/%Y')}"
@@ -341,6 +337,7 @@ def upload_certificado_a1(
     settings.certificado_validade = cert_validade
     settings.certificado_subject = cert_subject
     settings.certificado_thumbprint = None  # Limpar Windows se estava usando
+    settings.certificado_senha = encrypt_data(senha)
 
     db.flush()
     db.refresh(empresa_in_db)
