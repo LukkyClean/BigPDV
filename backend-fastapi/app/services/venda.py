@@ -67,6 +67,17 @@ def enviar_ao_caixa(db: Session, sale_id: int) -> Venda:
     """
     sale_in_db = get_sale_by_id(db, sale_id=sale_id)
 
+    # A fila e opcional. A tela ja esconde o botao quando a chave esta desligada,
+    # mas quem garante que nao entra venda na fila de uma loja que nao usa fila e
+    # esta checagem -- o frontend pode estar mais novo que a configuracao, e foi
+    # exatamente assim que a chave do PIN pareceu quebrada num teste na loja.
+    empresa_id = sale_in_db.funcionario.empresa_id
+    config = config_vendas_crud.get_configuracao_vendas(db, empresa_id=empresa_id)
+    if not (config and config.usar_fila_do_caixa):
+        raise BadRequestException(
+            detail="A fila do caixa não está ligada em Configurações > Regras de Vendas"
+        )
+
     if sale_in_db.status != VendaStatus.ATIVA:
         raise BadRequestException(detail="Só uma venda em aberto pode ir para o caixa")
 
@@ -86,6 +97,10 @@ def devolver_para_montagem(db: Session, sale_id: int) -> Venda:
     Qualquer operador pode: o atendente que se arrependeu e o caixa que viu
     problema. Como a coluna e so sinal de lista, nao ha nada a desfazer alem
     dela -- nenhum dinheiro foi movido para entrar na fila.
+
+    NAO checa `usar_fila_do_caixa`, ao contrario do enviar. Se o dono desligar a
+    chave com vendas ainda na fila, elas precisam poder sair -- recusar aqui as
+    deixaria carimbadas para sempre, sem tela nenhuma para desfazer.
     """
     sale_in_db = get_sale_by_id(db, sale_id=sale_id)
 

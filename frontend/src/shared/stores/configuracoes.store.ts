@@ -106,6 +106,10 @@ export const useConfiguracoesStore = defineStore('configuracoes', () => {
   // caixa e o dono a quis no bloco do caixa. O segredo conferido continua
   // sendo o `pin_gerente` de Segurança — a chave é que mudou de casa.
   const requerPinAbrirCaixa = computed(() => configVendas.value?.requer_pin_abrir_caixa ?? false)
+  // A fila do caixa e separada de `controlarCaixa`: controlar a gaveta e uma
+  // pergunta, ter gente diferente montando e recebendo e outra. Loja de um PC
+  // so responde nao a segunda.
+  const usarFilaDoCaixa = computed(() => configVendas.value?.usar_fila_do_caixa ?? false)
 
   // ── Segurança: PINs ──
   const requerPinDescontoVenda = computed(() => configSeguranca.value?.requer_pin_desconto_venda ?? false)
@@ -175,6 +179,7 @@ export const useConfiguracoesStore = defineStore('configuracoes', () => {
     exigirCaixaAberto,
     fechamentoCego,
     requerPinAbrirCaixa,
+    usarFilaDoCaixa,
 
     requerPinDescontoVenda,
     requerPinAlterarPreco,

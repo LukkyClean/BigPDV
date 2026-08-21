@@ -74,6 +74,18 @@ class ConfiguracaoVendas(Base):
     requer_pin_abrir_caixa: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="0", nullable=False
     )
+    # A fila do caixa: o atendente monta a venda e entrega, outra pessoa recebe.
+    #
+    # Separada de `controlar_caixa` porque so faz sentido onde ha MAIS DE UMA
+    # PESSOA. Numa loja de um PC so, quem monta e quem recebe sao a mesma
+    # pessoa, e o botao "Enviar para o caixa" seria um comando que nunca serve --
+    # ruido permanente na tela mais usada do sistema.
+    #
+    # Padrao False, como todas as outras: loja que atualiza e nao mexe em nada
+    # nao ve o botao, nem o selo na lista, nem o filtro.
+    usar_fila_do_caixa: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="0", nullable=False
+    )
 
     data_atualizacao: Mapped[datetime] = mapped_column(
         DateTime,

@@ -22,6 +22,7 @@ class ConfiguracaoVendasRead(BaseModel):
     exigir_caixa_aberto: bool
     fechamento_cego: bool
     requer_pin_abrir_caixa: bool
+    usar_fila_do_caixa: bool
 
     data_atualizacao: datetime
 
@@ -40,3 +41,4 @@ class ConfiguracaoVendasUpdate(BaseModel):
     exigir_caixa_aberto: Optional[bool] = None
     fechamento_cego: Optional[bool] = None
     requer_pin_abrir_caixa: Optional[bool] = None
+    usar_fila_do_caixa: Optional[bool] = None

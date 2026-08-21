@@ -784,7 +784,7 @@ def test_enviar_ao_caixa_carimba_e_devolver_limpa(client, db_session):
     header = _auth(client)
     funcionario_id = _funcionario(client, header)
     produto_id = _produto(client, header)
-    _config_caixa(db_session, controlar_caixa=True)
+    _config_caixa(db_session, controlar_caixa=True, usar_fila_do_caixa=True)
 
     venda_id, _ = _venda_com_item(client, header, funcionario_id, produto_id)
 
@@ -809,7 +809,7 @@ def test_reenviar_nao_move_o_lugar_na_fila(client, db_session):
     header = _auth(client)
     funcionario_id = _funcionario(client, header)
     produto_id = _produto(client, header)
-    _config_caixa(db_session, controlar_caixa=True)
+    _config_caixa(db_session, controlar_caixa=True, usar_fila_do_caixa=True)
 
     venda_id, _ = _venda_com_item(client, header, funcionario_id, produto_id)
 
@@ -826,7 +826,7 @@ def test_venda_sem_item_nao_entra_na_fila(client, db_session):
     """Carrinho vazio na fila e ruido: o caixa abre e nao ha o que cobrar."""
     header = _auth(client)
     funcionario_id = _funcionario(client, header)
-    _config_caixa(db_session, controlar_caixa=True)
+    _config_caixa(db_session, controlar_caixa=True, usar_fila_do_caixa=True)
 
     cv = client.post("/api/v1/vendas/", json={"funcionario_id": funcionario_id}, headers=header)
     assert cv.status_code == 201, cv.text
@@ -846,7 +846,7 @@ def test_acrescentar_item_depois_de_enviar_TIRA_da_fila(client, db_session):
     header = _auth(client)
     funcionario_id = _funcionario(client, header)
     produto_id = _produto(client, header)
-    _config_caixa(db_session, controlar_caixa=True)
+    _config_caixa(db_session, controlar_caixa=True, usar_fila_do_caixa=True)
 
     venda_id, _ = _venda_com_item(client, header, funcionario_id, produto_id)
     assert client.post(f"/api/v1/vendas/{venda_id}/enviar-ao-caixa", headers=header).status_code == 200
@@ -871,7 +871,7 @@ def test_o_caixa_ve_a_venda_que_o_ATENDENTE_entregou(client, db_session):
     header = _auth(client)
     atendente_id = _funcionario(client, header)
     produto_id = _produto(client, header)
-    _config_caixa(db_session, controlar_caixa=True)
+    _config_caixa(db_session, controlar_caixa=True, usar_fila_do_caixa=True)
 
     cargo_id = _cargo_vendas(client, header, nome="Balconista Fila")
     lk = client.put(f"/api/v1/funcionarios/{atendente_id}/cargo?cargo_id={cargo_id}", headers=header)
@@ -901,7 +901,7 @@ def test_finalizar_da_fila_mantem_o_carimbo_e_o_dinheiro_vai_para_quem_recebe(cl
     vendedor_id = _funcionario(client, header)
     fp_id = _forma(client, header)
     produto_id = _produto(client, header)
-    _config_caixa(db_session, controlar_caixa=True)
+    _config_caixa(db_session, controlar_caixa=True, usar_fila_do_caixa=True)
     if not db_session.query(ContadorVenda).first():
         db_session.add(ContadorVenda(id=1, proximo_numero=1))
         db_session.commit()
@@ -937,7 +937,7 @@ def test_a_contagem_da_fila_e_subconjunto_das_ativas(client, db_session):
     header = _auth(client)
     funcionario_id = _funcionario(client, header)
     produto_id = _produto(client, header)
-    _config_caixa(db_session, controlar_caixa=True)
+    _config_caixa(db_session, controlar_caixa=True, usar_fila_do_caixa=True)
 
     a_id, _ = _venda_com_item(client, header, funcionario_id, produto_id)
     _venda_com_item(client, header, funcionario_id, produto_id)
@@ -972,3 +972,54 @@ def test_com_caixa_desligado_a_fila_nao_existe_e_nada_muda(client, db_session):
 
     r = client.get("/api/v1/vendas/status/", headers=header)
     assert r.json()["vendas_na_fila"] == 0
+
+
+def test_com_a_fila_desligada_a_venda_nao_entra_nela(client, db_session):
+    """A fila e opcional -- e a loja de um PC so nao a tem.
+
+    `controlar_caixa` responde "esta loja controla a gaveta"; `usar_fila_do_caixa`
+    responde "quem monta e quem recebe sao pessoas diferentes". Sao perguntas
+    diferentes, e a segunda pode ser NAO numa loja que responde SIM a primeira.
+
+    A tela ja esconde o botao, mas quem garante que nao entra venda na fila de
+    uma loja que nao usa fila e a checagem do backend -- o frontend pode estar
+    mais novo que a configuracao, e foi assim que a chave do PIN pareceu
+    quebrada num teste na loja.
+    """
+    header = _auth(client)
+    funcionario_id = _funcionario(client, header)
+    produto_id = _produto(client, header)
+    # Caixa ligado, fila DESLIGADA -- a combinacao da loja de um PC so.
+    _config_caixa(db_session, controlar_caixa=True, usar_fila_do_caixa=False)
+
+    venda_id, _ = _venda_com_item(client, header, funcionario_id, produto_id)
+
+    r = client.post(f"/api/v1/vendas/{venda_id}/enviar-ao-caixa", headers=header)
+    assert r.status_code == 400, r.text
+    assert "fila do caixa" in r.json()["detail"].lower()
+
+    detalhe = client.get(f"/api/v1/vendas/{venda_id}", headers=header)
+    assert detalhe.json()["enviada_ao_caixa_em"] is None
+
+
+def test_desligar_a_fila_nao_aprisiona_quem_ja_estava_nela(client, db_session):
+    """Devolver continua funcionando com a chave desligada.
+
+    Se o dono desligar a fila com vendas dentro, elas precisam poder sair --
+    recusar tambem o devolver as deixaria carimbadas para sempre, sem tela
+    nenhuma para desfazer.
+    """
+    header = _auth(client)
+    funcionario_id = _funcionario(client, header)
+    produto_id = _produto(client, header)
+    _config_caixa(db_session, controlar_caixa=True, usar_fila_do_caixa=True)
+
+    venda_id, _ = _venda_com_item(client, header, funcionario_id, produto_id)
+    assert client.post(f"/api/v1/vendas/{venda_id}/enviar-ao-caixa", headers=header).status_code == 200
+
+    # O dono desliga a chave DEPOIS, com a venda ja na fila.
+    _config_caixa(db_session, usar_fila_do_caixa=False)
+
+    dev = client.post(f"/api/v1/vendas/{venda_id}/devolver-para-montagem", headers=header)
+    assert dev.status_code == 200, dev.text
+    assert dev.json()["enviada_ao_caixa_em"] is None

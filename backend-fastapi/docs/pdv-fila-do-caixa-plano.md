@@ -4,6 +4,10 @@
 >
 > - **Fase 1 — implementada** em 21/08/2026.
 > - **Fase 2 — implementada** em 21/08/2026.
+> - **A fila é opcional** (`configuracoes_vendas.usar_fila_do_caixa`), desligada
+>   por padrão. Decisão do dono, depois da Fase 2: `controlar_caixa` responde
+>   "esta loja controla a gaveta?" e a fila responde "quem monta e quem recebe
+>   são pessoas diferentes?" — numa loja de um PC só a segunda resposta é não.
 
 ## O problema
 

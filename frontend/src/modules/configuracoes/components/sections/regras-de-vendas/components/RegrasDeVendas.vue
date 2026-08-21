@@ -16,6 +16,7 @@ const {
   exigirCaixaAberto,
   fechamentoCego,
   requerPinAbrirCaixa,
+  usarFilaDoCaixa,
 } = storeToRefs(configStore)
 
 function valoresDoStore() {
@@ -31,6 +32,7 @@ function valoresDoStore() {
       exigir_caixa_aberto: exigirCaixaAberto.value,
       fechamento_cego: fechamentoCego.value,
       requer_pin_abrir_caixa: requerPinAbrirCaixa.value,
+      usar_fila_do_caixa: usarFilaDoCaixa.value,
     },
     estoque: {
       permitir_venda_estoque_zerado: permitirVendaEstoqueZerado.value,
@@ -73,6 +75,7 @@ defineExpose({
         exigir_caixa_aberto: form.vendas.exigir_caixa_aberto,
         fechamento_cego: form.vendas.fechamento_cego,
         requer_pin_abrir_caixa: form.vendas.requer_pin_abrir_caixa,
+        usar_fila_do_caixa: form.vendas.usar_fila_do_caixa,
       },
       estoque: {
         permitir_venda_estoque_zerado: form.estoque.permitir_venda_estoque_zerado,
@@ -188,6 +191,25 @@ defineExpose({
           @click="form.vendas.controlar_caixa && (form.vendas.requer_pin_abrir_caixa = !form.vendas.requer_pin_abrir_caixa)"
         >
           <span :class="['absolute left-0 top-0.5 w-3.5 h-3.5 bg-white rounded-full shadow transition-transform duration-200', form.vendas.requer_pin_abrir_caixa ? 'translate-x-5' : 'translate-x-0.5']" />
+        </button>
+      </div>
+
+      <!-- Separada de "Usar controle de caixa" porque sao perguntas
+           diferentes: uma e "esta loja controla a gaveta", a outra e "quem monta
+           a venda e quem recebe sao pessoas diferentes". Numa loja de um PC so a
+           segunda resposta e nao, e o botao seria um comando que nunca serve. -->
+      <div class="flex items-center justify-between py-3 border-b border-zinc-100">
+        <div>
+          <p class="text-sm font-medium text-zinc-800">Fila do caixa</p>
+          <p class="text-xs text-zinc-500 mt-0.5">O atendente monta a venda e entrega; o caixa recebe</p>
+        </div>
+        <button
+          type="button"
+          :disabled="!form.vendas.controlar_caixa"
+          :class="['relative w-9 h-4.5 rounded-full transition-colors duration-200 shrink-0', !form.vendas.controlar_caixa ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer', form.vendas.usar_fila_do_caixa ? 'bg-brand-primary' : 'bg-zinc-200']"
+          @click="form.vendas.controlar_caixa && (form.vendas.usar_fila_do_caixa = !form.vendas.usar_fila_do_caixa)"
+        >
+          <span :class="['absolute left-0 top-0.5 w-3.5 h-3.5 bg-white rounded-full shadow transition-transform duration-200', form.vendas.usar_fila_do_caixa ? 'translate-x-5' : 'translate-x-0.5']" />
         </button>
       </div>
 

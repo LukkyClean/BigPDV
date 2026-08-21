@@ -57,9 +57,9 @@ const deleteMutation = useDeleteSaleMutation();
 const updateSaleMutation = useUpdateSaleMutation();
 const cancelSaleModalIsOpen = ref(false);
 const { openCustomerModalForChange, iniciarVendaSemCliente } = useCustomerSearchModal();
-const { valorMinimoVenda, exigirClienteIdentificado, controlarCaixa } = storeToRefs(useConfiguracoesStore());
+const { valorMinimoVenda, exigirClienteIdentificado, usarFilaDoCaixa } = storeToRefs(useConfiguracoesStore());
 const { modoBalcao } = storeToRefs(useBalcaoStore());
-const { caixaAberto, exigeCaixaAberto } = useSessaoCaixaQuery();
+const { caixaAberto, caixaHabilitado, exigeCaixaAberto } = useSessaoCaixaQuery();
 
 /**
  * A entrega da venda ao caixa.
@@ -83,7 +83,7 @@ const devolverParaMontagemMutation = useDevolverParaMontagemMutation();
  * conhece. Aqui isto serve só para decidir qual botão é o principal.
  */
 const podeFinalizar = computed(
-  () => !(controlarCaixa.value && exigeCaixaAberto.value && !caixaAberto.value),
+  () => !(caixaHabilitado.value && exigeCaixaAberto.value && !caixaAberto.value),
 );
 
 /**
@@ -96,7 +96,7 @@ const podeFinalizar = computed(
  * finalizar (o backend recusa) e não tinha como entregar.
  */
 const mostraFilaDoCaixa = computed(
-  () => controlarCaixa.value && (!modoBalcao.value || !podeFinalizar.value),
+  () => usarFilaDoCaixa.value && (!modoBalcao.value || !podeFinalizar.value),
 );
 const naFilaDoCaixa = computed(() => !!sale.value?.enviada_ao_caixa_em);
 const filaPendente = computed(
@@ -427,8 +427,11 @@ const saleDisplay = computed(() => {
             <p v-if="mostraFilaDoCaixa && naFilaDoCaixa" class="text-[11px] text-center text-emerald-700">
               Na fila do caixa — alterar um item devolve a venda para montagem.
             </p>
-            <p v-else-if="!podeFinalizar" class="text-[11px] text-center text-zinc-500">
+            <p v-else-if="!podeFinalizar && mostraFilaDoCaixa" class="text-[11px] text-center text-zinc-500">
               Sem caixa aberto, esta venda é finalizada por quem estiver no caixa.
+            </p>
+            <p v-else-if="!podeFinalizar" class="text-[11px] text-center text-zinc-500">
+              Abra o caixa para finalizar esta venda.
             </p>
           </template>
           <template v-else>

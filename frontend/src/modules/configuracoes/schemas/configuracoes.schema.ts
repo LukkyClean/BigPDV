@@ -78,6 +78,7 @@ export const ConfiguracaoVendasSchema = z.object({
   exigir_caixa_aberto: z.boolean().catch(false),
   fechamento_cego: z.boolean().catch(false),
   requer_pin_abrir_caixa: z.boolean().catch(false),
+  usar_fila_do_caixa: z.boolean().catch(false),
 
   data_atualizacao: z.string(),
 })

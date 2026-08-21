@@ -18,11 +18,11 @@ import { useConfiguracoesStore } from '@/shared/stores/configuracoes.store';
 const { searchTerm, activeFilter, goToPage, sales, isLoading } = useSaleTable();
 const { openSaleViewModal, openSaleEditModal } = useSaleModal();
 
-// Loja sem controle de caixa não tem fila — oferecer o filtro seria um
-// botão que nunca traz nada.
-const { controlarCaixa } = storeToRefs(useConfiguracoesStore());
+// Loja que não ligou a fila não tem o que filtrar nem o que sinalizar —
+// oferecer seria um botão que nunca traz nada e um selo que nunca aparece.
+const { usarFilaDoCaixa } = storeToRefs(useConfiguracoesStore());
 const filtrosDisponiveis = computed(() =>
-  controlarCaixa.value ? SALE_FILTER_CONFIG_COM_CAIXA : SALE_FILTER_CONFIG,
+  usarFilaDoCaixa.value ? SALE_FILTER_CONFIG_COM_CAIXA : SALE_FILTER_CONFIG,
 );
 
 const emit = defineEmits<{
@@ -116,7 +116,7 @@ const emit = defineEmits<{
                 escolher qual pegar primeiro.
               -->
               <span
-                v-if="sale.enviada_ao_caixa_em"
+                v-if="usarFilaDoCaixa && sale.enviada_ao_caixa_em"
                 class="ml-1.5 inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] md:text-[11px] font-bold whitespace-nowrap bg-emerald-50 text-emerald-700"
                 :title="`Entregue ao caixa ${esperandoDesde(sale.enviada_ao_caixa_em)}`"
               >
