@@ -38,7 +38,14 @@ export function useAbrirCaixaMutation() {
       success('Caixa aberto');
     },
     onError: (e: any) => {
-      error(e?.response?.data?.detail ?? 'Não foi possível abrir o caixa');
+      const detail = e?.response?.data?.detail;
+      // As sentinelas não são mensagem: são o contrato que faz o
+      // `AbrirCaixaModal` abrir o modal de PIN. Mostrá-las aqui jogaria
+      // "REQUER_APROVACAO_GERENTE" na cara do operador um instante antes de o
+      // modal aparecer. Quem trata cada uma delas é o modal — inclusive o toast
+      // de PIN inválido, que lá tem texto de gente.
+      if (detail === 'REQUER_APROVACAO_GERENTE' || detail === 'PIN_GERENTE_INVALIDO') return;
+      error(detail ?? 'Não foi possível abrir o caixa');
     },
   });
 }

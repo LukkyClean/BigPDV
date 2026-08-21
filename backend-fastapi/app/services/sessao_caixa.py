@@ -124,6 +124,65 @@ def _validar_autorizacao_sangria(
         raise BadRequestException(detail="PIN_GERENTE_INVALIDO")
 
 
+def _validar_autorizacao_abertura(
+    db: Session,
+    empresa_id: int,
+    usuario_token: Dict[str, Any],
+    codigo_gerente: Optional[str],
+) -> None:
+    """Abrir o caixa travado: ou quem opera é gerente, ou um supervisor libera.
+
+    Abrir o turno é declarar o troco inicial — e o troco inicial é a base contra
+    a qual o fechamento vai acusar falta ou sobra. Quem declara a base sozinho
+    escolhe, na prática, o resultado da conferência do próprio turno.
+
+    A CHAVE MORA EM `configuracoes_vendas`, ao lado das outras regras do caixa,
+    e não em `configuracoes_seguranca` junto das irmãs de PIN. Foi decisão do
+    dono, e está registrada no modelo e na migration `a5b6c7d8e9f0`. Mas o
+    SEGREDO continua sendo um só: o `pin_gerente` lido logo abaixo é o mesmo que
+    protege sangria, cancelamento, reabertura e desconto.
+
+    Fechar o caixa NÃO passa por aqui: quem abriu precisa conseguir fechar, e
+    exigir um gerente no fim do expediente deixaria a gaveta aberta até o dia
+    seguinte — pior para a conferência do que o problema que resolveria.
+    """
+    config = config_vendas_crud.get_configuracao_vendas(db, empresa_id=empresa_id)
+    if not (config and config.requer_pin_abrir_caixa):
+        return
+    # A partir daqui a loja EXIGE autorização para abrir o caixa.
+
+    # SÓ O MASTER DISPENSA — e aqui a regra DIVERGE da sangria de propósito.
+    #
+    # `_validar_autorizacao_sangria` também libera quem tem `manage_sales` ou
+    # `all`. Copiar aquela lista para cá tornava esta chave decoração: o cargo
+    # que opera o PDV PRECISA de `manage_sales` para vender, então o balconista
+    # — exatamente quem a trava existe para pegar — passava direto. Foi o que
+    # aconteceu no primeiro teste na loja, com um cargo chamado "Caixa".
+    #
+    # `all` também fica de fora: é um bypass amplo de permissão, e uma trava de
+    # supervisão que qualquer permissão ampla desliga não trava nada.
+    if usuario_token.get("is_master") is True:
+        return
+
+    config_seg = config_seg_crud.get_configuracao_seguranca(db, empresa_id=empresa_id)
+    pin = getattr(config_seg, "pin_gerente", None) if config_seg else None
+    if not pin:
+        # Exigir autorização sem PIN configurado travaria a abertura para
+        # sempre — e sem caixa aberto a loja não vende. A mensagem precisa dizer
+        # exatamente onde resolver.
+        raise BadRequestException(
+            detail="A abertura de caixa exige autorização, mas nenhum PIN de "
+                   "gerente está configurado em Configurações > Segurança"
+        )
+    # Sentinelas, e não frases: é o contrato que o frontend já usa para abrir o
+    # modal de PIN em sangria, cancelamento, reabertura e desconto
+    # (shared/composables/useGerenteAprovacao).
+    if not codigo_gerente:
+        raise BadRequestException(detail="REQUER_APROVACAO_GERENTE")
+    if not verify_password(codigo_gerente, pin):
+        raise BadRequestException(detail="PIN_GERENTE_INVALIDO")
+
+
 # ===========================================================================
 # ABRIR
 # ===========================================================================
@@ -135,6 +194,10 @@ def abrir_caixa(
 ) -> SessaoCaixaResumo:
     empresa_id = usuario_token["empresa_id"]
     _exigir_caixa_ligado(db, empresa_id)
+    # ANTES de qualquer checagem de ocupacao: recusar por falta de PIN e recusar
+    # por terminal ocupado sao respostas diferentes, e a primeira nao pode
+    # depender da segunda para acontecer.
+    _validar_autorizacao_abertura(db, empresa_id, usuario_token, dados.codigo_gerente)
     funcionario_id = _funcionario_do_token(usuario_token)
 
     # Um operador, um caixa. É o que permite a finalização da venda descobrir o

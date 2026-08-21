@@ -100,6 +100,9 @@ function confirmar() {
   <GerenteAprovacaoModal
     :is-open="gerente.isOpen.value"
     :is-loading="gerente.isLoading.value"
+    motivo="Sangria do caixa"
+    descricao="Esta loja exige autorização para retirar dinheiro da gaveta. Um supervisor
+               precisa informar o PIN do gerente para liberar esta sangria."
     @confirmar="gerente.confirmar"
     @cancelar="gerente.cancelar"
   />

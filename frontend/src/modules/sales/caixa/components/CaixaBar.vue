@@ -2,7 +2,15 @@
 import { computed, ref } from 'vue';
 import { ArrowDownCircle, ArrowUpCircle, EyeOff, Lock, Wallet } from 'lucide-vue-next';
 
+import { storeToRefs } from 'pinia';
+
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
+import GerenteAprovacaoModal from '@/shared/components/commons/GerenteAprovacaoModal/GerenteAprovacaoModal.vue';
+import { useGerenteAprovacao } from '@/shared/composables/useGerenteAprovacao';
+import { useToast } from '@/shared/composables/useToast';
+import { useAuthStore } from '@/shared/stores/auth.store';
+import { useConfiguracoesStore } from '@/shared/stores/configuracoes.store';
+import { verificarPinSeguranca } from '@/modules/configuracoes/services/configuracoes.service';
 
 import AbrirCaixaModal from './AbrirCaixaModal.vue';
 import FecharCaixaModal from './FecharCaixaModal.vue';
@@ -32,6 +40,87 @@ const {
 
 const abrirAberto = ref(false);
 const fecharAberto = ref(false);
+const pinAutorizado = ref<string | null>(null);
+
+const gerente = useGerenteAprovacao();
+const toast = useToast();
+const { requerPinAbrirCaixa, temPinConfigurado } = storeToRefs(useConfiguracoesStore());
+const { userData } = storeToRefs(useAuthStore());
+
+/**
+ * A autorização é pedida ANTES da tela do troco, e não depois de digitá-lo.
+ *
+ * A ordem importa no balcão: quem libera é o supervisor, quem conta a gaveta é
+ * o operador. Pedir o PIN só na confirmação faria o operador digitar o troco,
+ * ser recusado e só então chamar alguém — com a fila esperando e o valor já na
+ * tela. Aqui o supervisor libera, vai embora, e o operador termina sozinho.
+ *
+ * Só o master dispensa, exatamente como o backend (`_validar_autorizacao_abertura`).
+ * Este `computed` é conveniência de tela: quem realmente recusa é o servidor, e
+ * o `AbrirCaixaModal` mantém o tratamento das sentinelas para o caso de o PIN
+ * mudar entre um passo e outro.
+ */
+const isMaster = computed(() => userData.value?.is_master === true);
+const precisaAutorizacao = computed(() => requerPinAbrirCaixa.value && !isMaster.value);
+
+/** Valida o PIN na hora; PIN errado pergunta de novo em vez de desistir. */
+async function autorizarComRetry(pin: string): Promise<string | null> {
+  try {
+    gerente.isLoading.value = true;
+    await verificarPinSeguranca(pin);
+    return pin;
+  } catch (error: any) {
+    if (error?.response?.data?.detail === 'PIN_GERENTE_INVALIDO') {
+      toast.error('PIN do gerente inválido. Tente novamente.');
+      const novoPin = await gerente.pedirPin();
+      if (novoPin) return autorizarComRetry(novoPin);
+    } else {
+      toast.error('Não foi possível verificar o PIN do gerente.');
+    }
+    return null;
+  } finally {
+    gerente.isLoading.value = false;
+  }
+}
+
+async function pedirAberturaDeCaixa() {
+  pinAutorizado.value = null;
+
+  if (!precisaAutorizacao.value) {
+    abrirAberto.value = true;
+    return;
+  }
+
+  // Trava ligada e nenhum PIN cadastrado: pedir a senha aqui daria "PIN
+  // inválido" para sempre, porque é isso que o `verificar-pin` responde quando
+  // não há PIN. O backend tem a mensagem certa para esse caso, mas ela só
+  // apareceria depois do troco digitado — e sem caixa aberto a loja não vende.
+  // Dizer aqui onde resolver é o único desfecho que não deixa ninguém preso.
+  if (!temPinConfigurado.value) {
+    toast.error(
+      'Nenhum PIN de gerente cadastrado',
+      'Cadastre em Configurações > Segurança para liberar a abertura do caixa.',
+    );
+    return;
+  }
+
+  const pin = await gerente.pedirPin();
+  if (!pin) return;
+
+  const autorizado = await autorizarComRetry(pin);
+  if (!autorizado) return;
+
+  // O PIN viaja junto na abertura: o backend confere de novo, e é ele quem
+  // manda. Guardar aqui só evita pedir a mesma senha duas vezes seguidas.
+  pinAutorizado.value = autorizado;
+  abrirAberto.value = true;
+}
+
+function fecharAberturaDeCaixa() {
+  abrirAberto.value = false;
+  // O PIN não sobrevive ao modal: a próxima abertura pede autorização de novo.
+  pinAutorizado.value = null;
+}
 const movimentoAberto = ref(false);
 const tipoMovimento = ref<'sangria' | 'suprimento'>('sangria');
 
@@ -86,7 +175,7 @@ const { eRetaguarda } = useEsteTerminalQuery();
           </p>
         </div>
       </div>
-      <BaseButton variant="primary" size="md" @click="abrirAberto = true">
+      <BaseButton variant="primary" size="md" @click="pedirAberturaDeCaixa">
         Abrir caixa
       </BaseButton>
     </div>
@@ -134,7 +223,21 @@ const { eRetaguarda } = useEsteTerminalQuery();
       </div>
     </div>
 
-    <AbrirCaixaModal :is-open="abrirAberto" @close="abrirAberto = false" />
+    <GerenteAprovacaoModal
+      :is-open="gerente.isOpen.value"
+      :is-loading="gerente.isLoading.value"
+      motivo="Abertura de caixa"
+      descricao="Esta loja exige autorização para abrir o caixa. Um supervisor precisa
+                 informar o PIN do gerente para liberar o início do turno."
+      @confirmar="gerente.confirmar"
+      @cancelar="gerente.cancelar"
+    />
+
+    <AbrirCaixaModal
+      :is-open="abrirAberto"
+      :codigo-gerente="pinAutorizado"
+      @close="fecharAberturaDeCaixa"
+    />
     <MovimentoCaixaModal
       :is-open="movimentoAberto"
       :tipo="tipoMovimento"

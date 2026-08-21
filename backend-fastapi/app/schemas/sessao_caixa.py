@@ -32,6 +32,13 @@ class SessaoCaixaAbrir(BaseModel):
         max_length=255,
         description="HWID do terminal. Omitir só faz sentido em loja de um PC só",
     )
+    # Preenchido quando a loja exige autorização para abrir o caixa e quem opera
+    # não é gerente: o supervisor digita o PIN ali na hora e libera aquela
+    # abertura, sem trocar o operador do turno. Mesmo campo e mesmo contrato da
+    # sangria — o `pin_gerente` de `configuracoes_seguranca` é um só.
+    codigo_gerente: Optional[str] = Field(
+        None, description="PIN do gerente, quando a abertura exigir autorização"
+    )
 
 
 # ===========================================================================

@@ -4,10 +4,27 @@ import { Eye, EyeOff, ShieldAlert } from 'lucide-vue-next'
 import BaseModal from '@/shared/components/commons/BaseModal/BaseModal.vue'
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue'
 
-const props = defineProps<{
+/**
+ * Modal de PIN do gerente, compartilhado por todas as aprovações.
+ *
+ * O SUBTÍTULO E O TEXTO SÃO CONFIGURÁVEIS, com o desconto como padrão.
+ *
+ * Eles nasceram chumbados em "Desconto acima do limite configurado" porque o
+ * desconto era o único caso. Hoje sangria, cancelamento, reabertura e abertura
+ * de caixa usam este mesmo modal — e o operador do caixa lia "o desconto
+ * informado excede o limite permitido" ao abrir o turno, sem desconto nenhum na
+ * tela. O padrão mantém as telas antigas exatamente como estão; quem tem outro
+ * motivo passa o seu.
+ */
+const props = withDefaults(defineProps<{
   isOpen: boolean
   isLoading?: boolean
-}>()
+  motivo?: string
+  descricao?: string
+}>(), {
+  motivo: 'Desconto acima do limite configurado',
+  descricao: 'O desconto informado excede o limite permitido. Insira o PIN do gerente para autorizar.',
+})
 
 const emit = defineEmits<{
   (e: 'confirmar', pin: string): void
@@ -78,16 +95,14 @@ function handleKeydown(e: KeyboardEvent) {
           </div>
           <div>
             <h2 class="text-sm font-bold text-zinc-800">Aprovação do Gerente</h2>
-            <p class="text-xs text-zinc-500">Desconto acima do limite configurado</p>
+            <p class="text-xs text-zinc-500">{{ motivo }}</p>
           </div>
         </div>
       </div>
     </template>
 
     <div class="px-6 py-5">
-      <p class="text-sm text-zinc-600 mb-4">
-        O desconto informado excede o limite permitido. Insira o PIN do gerente para autorizar.
-      </p>
+      <p class="text-sm text-zinc-600 mb-4">{{ descricao }}</p>
       <label class="text-xs font-medium text-zinc-700 block mb-1.5">PIN do gerente</label>
       <div class="relative">
         <input

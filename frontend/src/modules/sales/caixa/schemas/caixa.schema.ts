@@ -53,6 +53,10 @@ export const SessaoCaixaResumoSchema = z.object({
 export const AbrirCaixaSchema = z.object({
   saldo_inicial: z.number().int().min(0),
   terminal_hwid: z.string().nullable().optional(),
+  // Só viaja quando a loja exige autorização para abrir e quem opera não é
+  // gerente. Mesmo contrato da sangria: o backend devolve as sentinelas
+  // REQUER_APROVACAO_GERENTE / PIN_GERENTE_INVALIDO e o modal de PIN é o mesmo.
+  codigo_gerente: z.string().nullable().optional(),
 });
 
 export const MovimentoCaixaCreateSchema = z.object({

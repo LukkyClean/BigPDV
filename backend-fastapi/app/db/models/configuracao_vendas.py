@@ -58,6 +58,22 @@ class ConfiguracaoVendas(Base):
     fechamento_cego: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="0", nullable=False
     )
+    # Abertura do caixa exige PIN do gerente. Mora AQUI, e nao em
+    # `configuracoes_seguranca` junto das irmas de PIN: e uma regra do caixa, e
+    # o lojista a procura no bloco do caixa, ao lado de "exigir caixa aberto
+    # para vender". A sangria ficou do outro lado (c4d5e6f7a8b9) e a linha de
+    # rodape daquele bloco aponta para la -- decisao do dono, registrada aqui
+    # para ninguem "arrumar" isso achando que foi descuido.
+    #
+    # O SEGREDO CONTINUA SENDO UM SO: a validacao le o `pin_gerente` de
+    # `configuracoes_seguranca`. Um segundo PIN seria mais uma coisa para
+    # esquecer.
+    #
+    # Padrao False, como todas as outras: loja que atualiza e nao mexe em nada
+    # continua abrindo o caixa como abria.
+    requer_pin_abrir_caixa: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="0", nullable=False
+    )
 
     data_atualizacao: Mapped[datetime] = mapped_column(
         DateTime,

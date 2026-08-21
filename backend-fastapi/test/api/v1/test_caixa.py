@@ -13,6 +13,8 @@ from datetime import date, timedelta
 import pytest
 from starlette import status
 
+from app.core.security import hash_password
+from app.db.models.configuracao_seguranca import ConfiguracaoSeguranca
 from app.db.models.configuracao_vendas import ConfiguracaoVendas
 from app.db.models.contador_venda import ContadorVenda
 from app.db.models.movimentacao_financeira import MovimentacaoFinanceira
@@ -522,3 +524,190 @@ def test_fechar_sem_caixa_aberto_e_recusado(client, db_session):
     r = client.post("/api/v1/caixa/fechar", json={"saldo_contado": 1000}, headers=header)
     assert r.status_code == status.HTTP_400_BAD_REQUEST
     assert "nenhum caixa aberto" in r.json()["detail"].lower()
+
+
+# ===========================================================================
+# 8. PIN DO GERENTE PARA ABRIR O CAIXA
+#
+# O teste que mais importa aqui e o ULTIMO: com a trava desligada -- que e o
+# padrao e o estado das tres lojas em producao -- o operador abre o caixa
+# exatamente como abria. Se ele falhar, a chave nova deixou de ser opcional.
+# ===========================================================================
+
+def _cargo_vendas(client, header, nome="Balconista", permissoes=None):
+    """Cargo de quem opera o PDV.
+
+    O padrao inclui `manage_sales` DE PROPOSITO: e o cargo real de uma loja --
+    quem opera o caixa precisa dele para vender. Foi justamente essa permissao
+    que, na primeira ida a loja, fazia o balconista pular a trava.
+    """
+    r = client.post("/api/v1/cargos/", json={
+        "nome": nome,
+        "permissoes": permissoes if permissoes is not None else {"view_sales": True, "manage_sales": True},
+    }, headers=header)
+    assert r.status_code in (200, 201), r.text
+    return r.json()["id"]
+
+
+def _operador(client, header, permissoes=None):
+    """Funcionario com cargo de vendas e token proprio — nao e master."""
+    func_id = _funcionario(client, header)
+    cargo_id = _cargo_vendas(client, header, permissoes=permissoes)
+    lk = client.put(f"/api/v1/funcionarios/{func_id}/cargo?cargo_id={cargo_id}", headers=header)
+    assert lk.status_code == 200, lk.text
+    # Login DEPOIS de vincular o cargo: as permissoes viajam no token.
+    r = client.post("/api/v1/auth/login", data={
+        "username": "opcaixa@empresa.com", "password": "SenhaForte123!",
+        "hwid": "test-terminal-hwid",
+    })
+    assert r.status_code == 200, r.text
+    return {"Authorization": f"Bearer {r.json()['access_token']}"}
+
+
+def _pin_gerente(db_session, pin="4321"):
+    """Grava o PIN de gerente hasheado — o MESMO que protege sangria e desconto."""
+    cfg = db_session.query(ConfiguracaoSeguranca).first()
+    if not cfg:
+        cfg = ConfiguracaoSeguranca(empresa_id=1)
+        db_session.add(cfg)
+    cfg.pin_gerente = hash_password(pin)
+    db_session.commit()
+    return pin
+
+
+def test_abrir_caixa_com_a_trava_ligada_pede_pin_do_gerente(client, db_session):
+    """Sem PIN recusa com sentinela, PIN errado recusa, PIN certo abre.
+
+    As sentinelas nao sao frase solta: e o contrato que o frontend ja usa para
+    abrir o modal de aprovacao em sangria, cancelamento e desconto.
+    """
+    header = _auth(client)
+    _forma(client, header)
+    _config_caixa(db_session, controlar_caixa=True, requer_pin_abrir_caixa=True)
+    pin = _pin_gerente(db_session)
+    h_op = _operador(client, header)
+
+    sem_pin = client.post("/api/v1/caixa/abrir", json={"saldo_inicial": 10000}, headers=h_op)
+    assert sem_pin.status_code == 400, sem_pin.text
+    assert sem_pin.json()["detail"] == "REQUER_APROVACAO_GERENTE"
+
+    errado = client.post("/api/v1/caixa/abrir",
+                         json={"saldo_inicial": 10000, "codigo_gerente": "0000"}, headers=h_op)
+    assert errado.status_code == 400, errado.text
+    assert errado.json()["detail"] == "PIN_GERENTE_INVALIDO"
+
+    # Nenhuma das duas recusas pode ter deixado turno para tras.
+    assert db_session.query(SessaoCaixa).count() == 0
+
+    certo = client.post("/api/v1/caixa/abrir",
+                        json={"saldo_inicial": 10000, "codigo_gerente": pin}, headers=h_op)
+    assert certo.status_code == 201, certo.text
+    assert db_session.query(SessaoCaixa).count() == 1
+
+
+def test_master_abre_o_caixa_sem_pin_mesmo_com_a_trava_ligada(client, db_session):
+    """Quem e dono nao pede licenca a si mesmo — mesma regra da sangria."""
+    header = _auth(client)
+    _funcionario(client, header)
+    _forma(client, header)
+    _config_caixa(db_session, controlar_caixa=True, requer_pin_abrir_caixa=True)
+    _pin_gerente(db_session)
+
+    r = client.post("/api/v1/caixa/abrir", json={"saldo_inicial": 10000}, headers=header)
+    assert r.status_code == 201, r.text
+
+
+def test_trava_ligada_sem_pin_cadastrado_diz_onde_resolver(client, db_session):
+    """Ligar a trava e esquecer o PIN travaria a abertura para sempre.
+
+    E sem caixa aberto a loja nao vende — entao a recusa aqui NAO pode ser a
+    sentinela: o modal de PIN abriria e nenhum numero digitado funcionaria. Tem
+    que ser a frase que diz onde arrumar.
+    """
+    header = _auth(client)
+    _forma(client, header)
+    _config_caixa(db_session, controlar_caixa=True, requer_pin_abrir_caixa=True)
+    h_op = _operador(client, header)
+
+    r = client.post("/api/v1/caixa/abrir", json={"saldo_inicial": 10000}, headers=h_op)
+    assert r.status_code == 400, r.text
+    detail = r.json()["detail"]
+    assert detail != "REQUER_APROVACAO_GERENTE"
+    assert "Segurança" in detail
+
+
+def test_fechar_o_caixa_nao_pede_pin(client, db_session):
+    """A assimetria e proposital, como a do suprimento.
+
+    Quem abriu precisa conseguir fechar: exigir um gerente no fim do expediente
+    deixaria a gaveta aberta ate o dia seguinte — pior para a conferencia do que
+    o problema que resolveria.
+    """
+    header = _auth(client)
+    _forma(client, header)
+    _config_caixa(db_session, controlar_caixa=True, requer_pin_abrir_caixa=True)
+    pin = _pin_gerente(db_session)
+    h_op = _operador(client, header)
+
+    abriu = client.post("/api/v1/caixa/abrir",
+                        json={"saldo_inicial": 10000, "codigo_gerente": pin}, headers=h_op)
+    assert abriu.status_code == 201, abriu.text
+
+    fechou = client.post("/api/v1/caixa/fechar", json={"saldo_contado": 10000}, headers=h_op)
+    assert fechou.status_code == 200, fechou.text
+
+
+def test_com_a_trava_desligada_o_operador_abre_como_sempre(client, db_session):
+    """A inercia: a chave nova nasce desligada e nada muda para quem nao a liga.
+
+    E o mesmo compromisso do primeiro teste deste arquivo, agora para a trava de
+    abertura. Se este falhar, a chave deixou de ser opcional e nao pode ir para
+    a loja.
+    """
+    header = _auth(client)
+    _forma(client, header)
+    _config_caixa(db_session, controlar_caixa=True)
+    h_op = _operador(client, header)
+
+    r = client.post("/api/v1/caixa/abrir", json={"saldo_inicial": 10000}, headers=h_op)
+    assert r.status_code == 201, r.text
+
+
+def test_manage_sales_NAO_dispensa_o_pin_para_abrir_o_caixa(client, db_session):
+    """A regra aqui DIVERGE da sangria, e e isso que faz a chave valer alguma coisa.
+
+    `_validar_autorizacao_sangria` libera quem tem `manage_sales`. Repetir aquela
+    lista aqui tornava a trava decoracao: o cargo que opera o PDV precisa de
+    `manage_sales` para vender, entao o balconista -- exatamente quem ela existe
+    para pegar -- passava direto. Aconteceu na primeira ida a loja, com um cargo
+    chamado "Caixa".
+
+    Este teste e o que impede alguem de "uniformizar" as duas listas depois.
+    """
+    header = _auth(client)
+    _forma(client, header)
+    _config_caixa(db_session, controlar_caixa=True, requer_pin_abrir_caixa=True)
+    pin = _pin_gerente(db_session)
+    # O cargo real da loja: vende, gerencia venda, e mesmo assim precisa do PIN.
+    h_op = _operador(client, header, permissoes={"view_sales": True, "manage_sales": True})
+
+    r = client.post("/api/v1/caixa/abrir", json={"saldo_inicial": 10000}, headers=h_op)
+    assert r.status_code == 400, r.text
+    assert r.json()["detail"] == "REQUER_APROVACAO_GERENTE"
+
+    ok = client.post("/api/v1/caixa/abrir",
+                     json={"saldo_inicial": 10000, "codigo_gerente": pin}, headers=h_op)
+    assert ok.status_code == 201, ok.text
+
+
+def test_permissao_all_tambem_nao_dispensa_o_pin(client, db_session):
+    """`all` e bypass amplo de permissao; trava de supervisao que ele desliga nao trava nada."""
+    header = _auth(client)
+    _forma(client, header)
+    _config_caixa(db_session, controlar_caixa=True, requer_pin_abrir_caixa=True)
+    _pin_gerente(db_session)
+    h_op = _operador(client, header, permissoes={"all": True})
+
+    r = client.post("/api/v1/caixa/abrir", json={"saldo_inicial": 10000}, headers=h_op)
+    assert r.status_code == 400, r.text
+    assert r.json()["detail"] == "REQUER_APROVACAO_GERENTE"
