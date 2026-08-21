@@ -4,6 +4,7 @@ import { X, Printer, ShoppingCart, PackagePlus, Trash2 } from 'lucide-vue-next';
 import BaseModal from '@/shared/components/commons/BaseModal/BaseModal.vue';
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
 import { useSessaoCaixaQuery } from '../caixa/composables/queries/useSessaoCaixaQuery';
+import { useEsteTerminalQuery } from '../caixa/composables/queries/useTerminaisQuery';
 import {
   useEnviarAoCaixaMutation,
   useDevolverParaMontagemMutation,
@@ -60,6 +61,7 @@ const { openCustomerModalForChange, iniciarVendaSemCliente } = useCustomerSearch
 const { valorMinimoVenda, exigirClienteIdentificado, usarFilaDoCaixa } = storeToRefs(useConfiguracoesStore());
 const { modoBalcao } = storeToRefs(useBalcaoStore());
 const { caixaAberto, caixaHabilitado, exigeCaixaAberto } = useSessaoCaixaQuery();
+const { eRetaguarda } = useEsteTerminalQuery();
 
 /**
  * A entrega da venda ao caixa.
@@ -98,6 +100,20 @@ const podeFinalizar = computed(
 const mostraFilaDoCaixa = computed(
   () => usarFilaDoCaixa.value && (!modoBalcao.value || !podeFinalizar.value),
 );
+
+/**
+ * "Finalizar Venda" só cede o destaque quando há outro botão para recebê-lo.
+ *
+ * A intenção do rebaixamento é hierarquia — apontar "entregar ao caixa" numa
+ * máquina que não recebe. Sem a fila ligada não existe segundo botão, e o que
+ * sobrava era um único comando cinza, com cara de desabilitado, no lugar mais
+ * importante da tela. Rebaixar sem promover ninguém não é hierarquia: é só
+ * apagar a ação principal.
+ *
+ * A recusa continua sendo dita — pelo rodapé logo abaixo e pelo backend. O que
+ * o botão não faz mais é PARECER inerte quando é a única saída.
+ */
+const finalizarEhPrincipal = computed(() => podeFinalizar.value || !mostraFilaDoCaixa.value);
 const naFilaDoCaixa = computed(() => !!sale.value?.enviada_ao_caixa_em);
 const filaPendente = computed(
   () => enviarAoCaixaMutation.isPending.value || devolverParaMontagemMutation.isPending.value,
@@ -398,18 +414,18 @@ const saleDisplay = computed(() => {
             </BaseButton>
 
             <BaseButton
-              :variant="podeFinalizar ? 'primary' : 'secondary'"
-              :size="podeFinalizar ? 'lg' : 'md'"
+              :variant="finalizarEhPrincipal ? 'primary' : 'secondary'"
+              :size="finalizarEhPrincipal ? 'lg' : 'md'"
               data-ir-pagamento
               class="w-full"
-              :class="podeFinalizar ? 'text-base font-bold py-4 shadow-lg shadow-brand-primary/20' : ''"
+              :class="finalizarEhPrincipal ? 'text-base font-bold py-4 shadow-lg shadow-brand-primary/20' : ''"
               :disabled="!sale?.produtos?.length"
               @keydown.tab.exact.prevent="focarBuscaDeProduto"
               @click="openFinishModal"
             >
               <div class="flex flex-col items-center">
                 <span>Finalizar Venda</span>
-                <span v-if="podeFinalizar" class="text-[9px] opacity-70 font-normal">Ctrl+Enter</span>
+                <span v-if="finalizarEhPrincipal" class="text-[9px] opacity-70 font-normal">Ctrl+Enter</span>
               </div>
             </BaseButton>
 
@@ -429,6 +445,13 @@ const saleDisplay = computed(() => {
             </p>
             <p v-else-if="!podeFinalizar && mostraFilaDoCaixa" class="text-[11px] text-center text-zinc-500">
               Sem caixa aberto, esta venda é finalizada por quem estiver no caixa.
+            </p>
+            <!-- "Abra o caixa" é conselho impossível numa retaguarda, que não
+                 tem botão para abrir. Foi a frase que mandou o operador bater
+                 na parede uma vez. -->
+            <p v-else-if="!podeFinalizar && eRetaguarda" class="text-[11px] text-center text-amber-700">
+              Esta máquina é retaguarda e não finaliza vendas. Ligue a Fila do caixa,
+              ou mude o papel dela para PDV em Configurações.
             </p>
             <p v-else-if="!podeFinalizar" class="text-[11px] text-center text-zinc-500">
               Abra o caixa para finalizar esta venda.

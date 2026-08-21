@@ -45,7 +45,7 @@ const pinAutorizado = ref<string | null>(null);
 
 const gerente = useGerenteAprovacao();
 const toast = useToast();
-const { requerPinAbrirCaixa, temPinConfigurado } = storeToRefs(useConfiguracoesStore());
+const { requerPinAbrirCaixa, temPinConfigurado, usarFilaDoCaixa } = storeToRefs(useConfiguracoesStore());
 const { userData } = storeToRefs(useAuthStore());
 
 /**
@@ -163,17 +163,36 @@ const { eRetaguarda } = useEsteTerminalQuery();
     Retaguarda sem turno: uma linha, sem botão.
     O convite "Abrir caixa" continua escondido aqui — a máquina do escritório não
     é um caixa, e convidá-la criava a sessão fantasma que nunca fecha direito.
-    Mas ficar em branco também não serve desde que a venda passou a nascer sem
-    turno: o operador montaria o carrinho e levaria "Abra o caixa antes de
-    finalizar vendas", conselho impossível de seguir numa máquina que não abre
-    caixa. A linha diz para onde a venda vai, e não oferece atalho nenhum.
+    Mas ficar em branco não serve desde que a venda passou a nascer sem turno: o
+    operador montaria o carrinho e levaria "Abra o caixa antes de finalizar
+    vendas", conselho impossível de seguir numa máquina que não abre caixa.
+
+    SÃO DOIS RECADOS DIFERENTES, e confundi-los foi o que criou um beco.
+    Com a fila ligada, a venda tem para onde ir e a linha só informa isso. Sem a
+    fila, esta máquina monta vendas que NÃO CONSEGUE FINALIZAR — e aí a linha
+    precisa dizer o problema e os dois jeitos de sair dele, senão o operador
+    descobre no checkout, com o cliente esperando, e sem saída nenhuma.
   -->
   <div
     v-if="caixaHabilitado && !isLoading && eRetaguarda && !caixaAberto && exigeCaixaAberto"
-    class="flex items-center gap-2.5 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm text-zinc-500"
+    :class="[
+      'flex items-start gap-2.5 rounded-xl border px-4 py-2.5 text-sm',
+      usarFilaDoCaixa
+        ? 'border-zinc-200 bg-zinc-50 text-zinc-500'
+        : 'border-amber-200 bg-amber-50 text-amber-800',
+    ]"
   >
-    <Lock class="h-4 w-4 shrink-0" />
-    Esta máquina é retaguarda — as vendas montadas aqui são finalizadas no caixa.
+    <Lock class="h-4 w-4 shrink-0 mt-0.5" />
+    <span v-if="usarFilaDoCaixa">
+      Esta máquina é retaguarda — as vendas montadas aqui são finalizadas no caixa.
+    </span>
+    <span v-else>
+      Esta máquina é retaguarda e não abre caixa, mas a loja exige caixa aberto para
+      finalizar — então vendas montadas aqui não podem ser concluídas.
+      Ligue a <strong class="font-semibold">Fila do caixa</strong> em Configurações →
+      Regras de Vendas, ou mude o papel desta máquina para
+      <strong class="font-semibold">PDV</strong> em Configurações → Terminais.
+    </span>
   </div>
 
   <div v-if="caixaHabilitado && !isLoading && !(eRetaguarda && !caixaAberto)">
