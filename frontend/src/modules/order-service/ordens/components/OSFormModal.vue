@@ -125,6 +125,10 @@ const isFinalizada = computed(() => currentOSData.value?.status === 'FINALIZADA'
 const isCancelada = computed(() => currentOSData.value?.status === 'CANCELADA');
 const { funcionariosOptions, statusOptions, prioridadeOptions } = useOSSelectOptions({
   currentStatus: computed(() => currentOSData.value?.status),
+  // Este modal é montado sem condição no MainLayout. Sem amarrar a busca de
+  // funcionários à abertura, ela roda em toda tela do sistema — e leva 403 em
+  // loop para quem não tem `view_employees`.
+  ativo: computed(() => props.isOpen),
 });
 const reopenMutation = useReopenOrderServiceMutation();
 const gerenteReopen = useGerenteAprovacao();
