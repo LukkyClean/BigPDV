@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from sqlalchemy.orm import Session
 from typing import Sequence
 
@@ -24,7 +26,7 @@ from app.helpers.set_pagination import _set_pagination
 from app.core.security import verify_password
 from app.helpers.exceptions import BadRequestException, InternalServerException, NotFoundException
 
-def _recalc_total_sale(db: Session, sale_in_db: Venda) -> Venda:
+def _recalc_total_sale(db: Session, sale_in_db: Venda, *, sai_da_fila: bool = True) -> Venda:
 
     if sale_in_db.total_bruto < sale_in_db.descontos:
         raise BadRequestException(detail="O desconto não pode ser maior que o total da venda")
@@ -34,6 +36,63 @@ def _recalc_total_sale(db: Session, sale_in_db: Venda) -> Venda:
     sale_in_db.subtotal = sale_in_db.total_bruto
     sale_in_db.total = total_sale
 
+    # MUDOU O VALOR DO CARRINHO, A VENDA SAI DA FILA DO CAIXA.
+    #
+    # Se o atendente acrescentar um item depois de entregar, o caixa fica
+    # olhando um total que mudou embaixo dele. Custa um reenvio ao atendente e
+    # evita cobrar valor errado.
+    #
+    # A regra mora AQUI porque este e o ponto de estrangulamento: acrescentar,
+    # alterar e remover item, e aplicar desconto, todos passam por esta funcao.
+    # Repeti-la nos quatro chamadores seria quatro chances de esquecer uma.
+    #
+    # `finish_sale` passa `sai_da_fila=False`, e e a unica excecao: la quem esta
+    # mexendo e o proprio caixa, a venda esta saindo da fila pela porta certa, e
+    # apagar o carimbo perderia o registro de que ela chegou a esperar.
+    if sai_da_fila:
+        sale_in_db.enviada_ao_caixa_em = None
+
+    return venda_crud.update_sale(db, sale_in_db)
+
+
+def enviar_ao_caixa(db: Session, sale_id: int) -> Venda:
+    """O atendente entrega a venda ao caixa.
+
+    Nao muda o status: a venda continua ATIVA. O que muda e o carimbo que a
+    lista usa para separar "pronta, esperando o caixa" de "ainda sendo montada".
+
+    IDEMPOTENTE de proposito. Reenviar mantem o carimbo original -- senao um
+    clique repetido mandaria o atendente para o fim da fila sem que ninguem
+    tivesse feito nada de errado.
+    """
+    sale_in_db = get_sale_by_id(db, sale_id=sale_id)
+
+    if sale_in_db.status != VendaStatus.ATIVA:
+        raise BadRequestException(detail="Só uma venda em aberto pode ir para o caixa")
+
+    # Carrinho vazio na fila e ruido: o caixa abre e nao ha o que cobrar.
+    if not sale_in_db.itens:
+        raise BadRequestException(detail="Adicione ao menos um item antes de enviar ao caixa")
+
+    if sale_in_db.enviada_ao_caixa_em is None:
+        sale_in_db.enviada_ao_caixa_em = datetime.utcnow()
+
+    return venda_crud.update_sale(db, sale_in_db)
+
+
+def devolver_para_montagem(db: Session, sale_id: int) -> Venda:
+    """Tira a venda da fila do caixa, sem mexer em mais nada.
+
+    Qualquer operador pode: o atendente que se arrependeu e o caixa que viu
+    problema. Como a coluna e so sinal de lista, nao ha nada a desfazer alem
+    dela -- nenhum dinheiro foi movido para entrar na fila.
+    """
+    sale_in_db = get_sale_by_id(db, sale_id=sale_id)
+
+    if sale_in_db.status != VendaStatus.ATIVA:
+        raise BadRequestException(detail="Só uma venda em aberto pode voltar para montagem")
+
+    sale_in_db.enviada_ao_caixa_em = None
     return venda_crud.update_sale(db, sale_in_db)
 
 def _aplly_discount(sale_in_db: Venda, discount: int) -> Venda:
@@ -318,7 +377,9 @@ def finish_sale(
     # O valor de cada pagamento já vem com o juros embutido; o acréscimo entra no
     # total para que o excedente não seja tratado como troco.
     sale_in_db.acrescimo = acrescimo or 0
-    sale_in_db = _recalc_total_sale(db, sale_in_db)
+    # `sai_da_fila=False`: quem esta mexendo aqui e o proprio caixa, e a venda
+    # esta saindo da fila pela porta certa. Ver `_recalc_total_sale`.
+    sale_in_db = _recalc_total_sale(db, sale_in_db, sai_da_fila=False)
 
     total_payments = sum(payment.valor for payment in valid_payments_to_db)
     total_sale = sale_in_db.total or 0
@@ -337,7 +398,7 @@ def finish_sale(
         percentual = (sale_in_db.descontos * 100) // sale_in_db.total_bruto
         if percentual > config_vendas.desconto_maximo_percent:
             sale_in_db = _aplly_discount(sale_in_db=sale_in_db, discount=0)
-            sale_in_db = _recalc_total_sale(db, sale_in_db)
+            sale_in_db = _recalc_total_sale(db, sale_in_db, sai_da_fila=False)
 
     # Atribui número sequencial oficial
     contador = db.query(ContadorVenda).filter(ContadorVenda.id == 1).with_for_update().first()

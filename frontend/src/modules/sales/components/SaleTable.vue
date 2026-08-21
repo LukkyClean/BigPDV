@@ -1,18 +1,29 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import { Pencil, Eye, CheckCircle, XCircle, RotateCcw, Printer } from 'lucide-vue-next';
 
 import BaseTableContainer from '@/shared/components/commons/BaseTableContainer/BaseTableContainer.vue';
 import BaseSearchInput from '@/shared/components/ui/BaseSearchInput/BaseSearchInput.vue';
 import BaseFilter from '@/shared/components/ui/BaseFilter/BaseFilter.vue';
 import { formatCurrency } from '@/shared/utils/finance';
+import { tempoDecorrido as esperandoDesde } from '@/shared/utils/date.utils';
 
 import { useSaleTable } from '../composables/flows/useSaleTable';
 import { useSaleModal } from '../composables/flows/useSaleModal';
 
-import { SALE_FILTERS, STATUS_COLORS, SALE_FILTER_CONFIG } from '../constants';
+import { SALE_FILTERS, STATUS_COLORS, SALE_FILTER_CONFIG, SALE_FILTER_CONFIG_COM_CAIXA } from '../constants';
+import { storeToRefs } from 'pinia';
+import { useConfiguracoesStore } from '@/shared/stores/configuracoes.store';
 
 const { searchTerm, activeFilter, goToPage, sales, isLoading } = useSaleTable();
 const { openSaleViewModal, openSaleEditModal } = useSaleModal();
+
+// Loja sem controle de caixa não tem fila — oferecer o filtro seria um
+// botão que nunca traz nada.
+const { controlarCaixa } = storeToRefs(useConfiguracoesStore());
+const filtrosDisponiveis = computed(() =>
+  controlarCaixa.value ? SALE_FILTER_CONFIG_COM_CAIXA : SALE_FILTER_CONFIG,
+);
 
 const emit = defineEmits<{
   (e: 'cancel', saleId: number): void;
@@ -37,7 +48,7 @@ const emit = defineEmits<{
   >
     <template #toolbar>
       <BaseSearchInput v-model="searchTerm" placeholder="Buscar por número, cliente..." class="min-w-64 flex-1" />
-      <BaseFilter v-model="activeFilter" :filter-config="SALE_FILTER_CONFIG" button-label="Filtros" />
+      <BaseFilter v-model="activeFilter" :filter-config="filtrosDisponiveis" button-label="Filtros" />
     </template>
 
     <div class="overflow-x-auto">
@@ -97,6 +108,19 @@ const emit = defineEmits<{
                 ]"
               >
                 {{ SALE_FILTERS[sale.status]?.label }}
+              </span>
+              <!--
+                Selo da fila, ao lado do status e não no lugar dele: a venda
+                continua ATIVA, e trocar o rótulo faria parecer um quarto status
+                que não existe no banco. O tempo de espera é o que faz o caixa
+                escolher qual pegar primeiro.
+              -->
+              <span
+                v-if="sale.enviada_ao_caixa_em"
+                class="ml-1.5 inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] md:text-[11px] font-bold whitespace-nowrap bg-emerald-50 text-emerald-700"
+                :title="`Entregue ao caixa ${esperandoDesde(sale.enviada_ao_caixa_em)}`"
+              >
+                No caixa · {{ esperandoDesde(sale.enviada_ao_caixa_em) }}
               </span>
             </td>
 

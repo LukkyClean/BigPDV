@@ -98,10 +98,22 @@ def get_sales_by_search(
     if status:
         query = query.where(Venda.status == status)
 
+    # A fila do caixa. `None` nao filtra nada -- e o comportamento de sempre,
+    # e e o que a lista faz quando a loja nao usa caixa.
+    na_fila = filters.get("na_fila")
+    if na_fila is True:
+        query = query.where(Venda.enviada_ao_caixa_em.isnot(None))
+    elif na_fila is False:
+        query = query.where(Venda.enviada_ao_caixa_em.is_(None))
+
     count_stmt = select(func.count()).select_from(query.subquery())
     total = db.scalar(count_stmt) or 0   
 
+    # Quem esta na fila sobe, e entre eles quem esperou mais vem primeiro. Fora
+    # da fila, a ordem de sempre. Sem isto a venda entregue ao caixa afundaria na
+    # lista assim que outra pessoa mexesse em qualquer carrinho.
     stmt = query.order_by(
+        nullslast(Venda.enviada_ao_caixa_em.asc()),
         Venda.atualizado_em.desc(),
         nullslast(Venda.numero_venda.desc()),
     ).offset(skip).limit(limit)
@@ -133,6 +145,16 @@ def get_sales_status(db: Session, funcionario_id: int | None = None) -> VendaSta
                 .filter(Venda.status == VendaStatus.CANCELADA)
                 .label("cancelada"),
 
+            # Subconjunto das ATIVAS, nao uma quarta categoria: uma venda na
+            # fila continua contando como ativa. Somar as quatro daria mais que
+            # o total, e o card de ATIVAS mudaria de significado.
+            func.count(Venda.id)
+                .filter(
+                    Venda.status == VendaStatus.ATIVA,
+                    Venda.enviada_ao_caixa_em.isnot(None),
+                )
+                .label("na_fila"),
+
             func.avg(payments_subq.c.total_pago)
                 .filter(Venda.status == VendaStatus.FINALIZADA)
                 .label("ticket_medio"),
@@ -154,6 +176,7 @@ def get_sales_status(db: Session, funcionario_id: int | None = None) -> VendaSta
 
     return VendaStatusSummary(
         vendas_ativas=result.rascunho or 0,
+        vendas_na_fila=result.na_fila or 0,
         vendas_finalizadas=result.finalizada or 0,
         vendas_canceladas=result.cancelada or 0,
         ticket_medio=int(round(ticket_medio)),

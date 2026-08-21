@@ -759,3 +759,216 @@ def test_permissao_all_tambem_nao_dispensa_o_pin(client, db_session):
     r = client.post("/api/v1/caixa/abrir", json={"saldo_inicial": 10000}, headers=h_op)
     assert r.status_code == 400, r.text
     assert r.json()["detail"] == "REQUER_APROVACAO_GERENTE"
+
+
+# ===========================================================================
+# 9. A FILA DO CAIXA -- o atendente monta, o caixa recebe
+#
+# O teste que decide se esta fase pode ir para a loja e o ULTIMO: com
+# `controlar_caixa` desligado, a coluna fica NULL e a lista se comporta como
+# sempre se comportou.
+# ===========================================================================
+
+def _venda_com_item(client, header, funcionario_id, produto_id, quantidade=1):
+    cv = client.post("/api/v1/vendas/", json={"funcionario_id": funcionario_id}, headers=header)
+    assert cv.status_code == 201, cv.text
+    venda_id = cv.json()["id"]
+    add = client.post(f"/api/v1/vendas/{venda_id}/itens", json={
+        "tipo_produto": "CADASTRADO", "produto_id": produto_id, "quantidade": quantidade,
+    }, headers=header)
+    assert add.status_code == 201, add.text
+    return venda_id, add.json()["financeiro_atualizado"]["total"]
+
+
+def test_enviar_ao_caixa_carimba_e_devolver_limpa(client, db_session):
+    header = _auth(client)
+    funcionario_id = _funcionario(client, header)
+    produto_id = _produto(client, header)
+    _config_caixa(db_session, controlar_caixa=True)
+
+    venda_id, _ = _venda_com_item(client, header, funcionario_id, produto_id)
+
+    # Nasce fora da fila.
+    detalhe = client.get(f"/api/v1/vendas/{venda_id}", headers=header)
+    assert detalhe.json()["enviada_ao_caixa_em"] is None
+
+    env = client.post(f"/api/v1/vendas/{venda_id}/enviar-ao-caixa", headers=header)
+    assert env.status_code == 200, env.text
+    assert env.json()["enviada_ao_caixa_em"] is not None
+    # O status NAO muda -- e a decisao de arquitetura da fase inteira.
+    assert env.json()["status"] == "ATIVA"
+
+    dev = client.post(f"/api/v1/vendas/{venda_id}/devolver-para-montagem", headers=header)
+    assert dev.status_code == 200, dev.text
+    assert dev.json()["enviada_ao_caixa_em"] is None
+    assert dev.json()["status"] == "ATIVA"
+
+
+def test_reenviar_nao_move_o_lugar_na_fila(client, db_session):
+    """Idempotente: um clique repetido nao manda o atendente para o fim da fila."""
+    header = _auth(client)
+    funcionario_id = _funcionario(client, header)
+    produto_id = _produto(client, header)
+    _config_caixa(db_session, controlar_caixa=True)
+
+    venda_id, _ = _venda_com_item(client, header, funcionario_id, produto_id)
+
+    primeiro = client.post(f"/api/v1/vendas/{venda_id}/enviar-ao-caixa", headers=header)
+    assert primeiro.status_code == 200, primeiro.text
+    carimbo = primeiro.json()["enviada_ao_caixa_em"]
+
+    segundo = client.post(f"/api/v1/vendas/{venda_id}/enviar-ao-caixa", headers=header)
+    assert segundo.status_code == 200, segundo.text
+    assert segundo.json()["enviada_ao_caixa_em"] == carimbo
+
+
+def test_venda_sem_item_nao_entra_na_fila(client, db_session):
+    """Carrinho vazio na fila e ruido: o caixa abre e nao ha o que cobrar."""
+    header = _auth(client)
+    funcionario_id = _funcionario(client, header)
+    _config_caixa(db_session, controlar_caixa=True)
+
+    cv = client.post("/api/v1/vendas/", json={"funcionario_id": funcionario_id}, headers=header)
+    assert cv.status_code == 201, cv.text
+
+    r = client.post(f"/api/v1/vendas/{cv.json()['id']}/enviar-ao-caixa", headers=header)
+    assert r.status_code == 400, r.text
+    assert "item" in r.json()["detail"].lower()
+
+
+def test_acrescentar_item_depois_de_enviar_TIRA_da_fila(client, db_session):
+    """O caixa nao pode ficar olhando um total que mudou embaixo dele.
+
+    A regra mora em `_recalc_total_sale`, por onde passam acrescentar, alterar e
+    remover item e aplicar desconto. Este teste cobre o caminho mais provavel;
+    se alguem mudar o ponto de estrangulamento, ele cai.
+    """
+    header = _auth(client)
+    funcionario_id = _funcionario(client, header)
+    produto_id = _produto(client, header)
+    _config_caixa(db_session, controlar_caixa=True)
+
+    venda_id, _ = _venda_com_item(client, header, funcionario_id, produto_id)
+    assert client.post(f"/api/v1/vendas/{venda_id}/enviar-ao-caixa", headers=header).status_code == 200
+
+    add = client.post(f"/api/v1/vendas/{venda_id}/itens", json={
+        "tipo_produto": "CADASTRADO", "produto_id": produto_id, "quantidade": 1,
+    }, headers=header)
+    assert add.status_code == 201, add.text
+
+    detalhe = client.get(f"/api/v1/vendas/{venda_id}", headers=header)
+    assert detalhe.json()["enviada_ao_caixa_em"] is None, "editar tem que tirar da fila"
+
+
+def test_o_caixa_ve_a_venda_que_o_ATENDENTE_entregou(client, db_session):
+    """Sem isto a funcionalidade inteira nao existe.
+
+    A lista recorta por funcionario para quem nao tem visao gerencial -- entao a
+    venda do atendente simplesmente nao apareceria para o caixa, que e um
+    funcionario comum. Entregar a venda E o ato de compartilha-la, e `na_fila`
+    e a unica coisa que fura esse recorte.
+    """
+    header = _auth(client)
+    atendente_id = _funcionario(client, header)
+    produto_id = _produto(client, header)
+    _config_caixa(db_session, controlar_caixa=True)
+
+    cargo_id = _cargo_vendas(client, header, nome="Balconista Fila")
+    lk = client.put(f"/api/v1/funcionarios/{atendente_id}/cargo?cargo_id={cargo_id}", headers=header)
+    assert lk.status_code == 200, lk.text
+    login = client.post("/api/v1/auth/login", data={
+        "username": "opcaixa@empresa.com", "password": "SenhaForte123!",
+        "hwid": "test-terminal-hwid",
+    })
+    assert login.status_code == 200, login.text
+    h_op = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    # As duas vendas sao criadas pelo MASTER, em nome do atendente.
+    venda_id, _ = _venda_com_item(client, header, atendente_id, produto_id)
+    outra_id, _ = _venda_com_item(client, header, atendente_id, produto_id)
+    assert client.post(f"/api/v1/vendas/{venda_id}/enviar-ao-caixa", headers=header).status_code == 200
+
+    # Com `na_fila`, a venda entregue aparece para o operador.
+    fila = client.get("/api/v1/vendas/?na_fila=true", headers=h_op)
+    assert fila.status_code == 200, fila.text
+    ids = [v["id"] for v in fila.json()["vendas"]]
+    assert venda_id in ids, ids
+    assert outra_id not in ids, "so a entregue entra na fila"
+
+
+def test_finalizar_da_fila_mantem_o_carimbo_e_o_dinheiro_vai_para_quem_recebe(client, db_session):
+    header = _auth(client)
+    vendedor_id = _funcionario(client, header)
+    fp_id = _forma(client, header)
+    produto_id = _produto(client, header)
+    _config_caixa(db_session, controlar_caixa=True)
+    if not db_session.query(ContadorVenda).first():
+        db_session.add(ContadorVenda(id=1, proximo_numero=1))
+        db_session.commit()
+
+    client.post("/api/v1/caixa/abrir", json={"saldo_inicial": 10000}, headers=header)
+    sessao = db_session.query(SessaoCaixa).first()
+    assert sessao.funcionario_id != vendedor_id
+
+    venda_id, total = _venda_com_item(client, header, vendedor_id, produto_id)
+    assert client.post(f"/api/v1/vendas/{venda_id}/enviar-ao-caixa", headers=header).status_code == 200
+
+    fin = client.post(f"/api/v1/vendas/{venda_id}/finalizar", json={
+        "pagamentos": [{"forma_pagamento_id": fp_id, "valor": total,
+                        "parcelado": False, "qtd_parcelas": None}],
+    }, headers=header)
+    assert fin.status_code == 200, fin.text
+
+    # O carimbo SOBREVIVE a finalizacao: `finish_sale` passa `sai_da_fila=False`,
+    # senao o registro de que a venda esperou se perderia.
+    assert fin.json()["enviada_ao_caixa_em"] is not None
+
+    movimento = (
+        db_session.query(MovimentacaoFinanceira)
+        .filter(MovimentacaoFinanceira.origem == "VENDA")
+        .first()
+    )
+    assert movimento is not None
+    assert movimento.sessao_caixa_id == sessao.id
+
+
+def test_a_contagem_da_fila_e_subconjunto_das_ativas(client, db_session):
+    """Somar as categorias nao pode dar mais que o total -- fila nao e categoria nova."""
+    header = _auth(client)
+    funcionario_id = _funcionario(client, header)
+    produto_id = _produto(client, header)
+    _config_caixa(db_session, controlar_caixa=True)
+
+    a_id, _ = _venda_com_item(client, header, funcionario_id, produto_id)
+    _venda_com_item(client, header, funcionario_id, produto_id)
+    assert client.post(f"/api/v1/vendas/{a_id}/enviar-ao-caixa", headers=header).status_code == 200
+
+    r = client.get("/api/v1/vendas/status/", headers=header)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["vendas_ativas"] == 2
+    assert body["vendas_na_fila"] == 1
+
+
+def test_com_caixa_desligado_a_fila_nao_existe_e_nada_muda(client, db_session):
+    """A prova da inercia da Fase 2.
+
+    Loja sem controle de caixa nao tem fila. A coluna fica NULL, a lista devolve
+    o que sempre devolveu, e a contagem nova responde zero. Se este cair, a fase
+    nao pode ir para a loja.
+    """
+    header = _auth(client)
+    funcionario_id = _funcionario(client, header)
+    produto_id = _produto(client, header)
+    # Sem _config_caixa: `controlar_caixa` fica no padrao (desligado).
+
+    venda_id, _ = _venda_com_item(client, header, funcionario_id, produto_id)
+
+    lista = client.get("/api/v1/vendas/", headers=header)
+    assert lista.status_code == 200, lista.text
+    alvo = next(v for v in lista.json()["vendas"] if v["id"] == venda_id)
+    assert alvo["enviada_ao_caixa_em"] is None
+    assert alvo["status"] == "ATIVA"
+
+    r = client.get("/api/v1/vendas/status/", headers=header)
+    assert r.json()["vendas_na_fila"] == 0

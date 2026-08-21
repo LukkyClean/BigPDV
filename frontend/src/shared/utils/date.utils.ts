@@ -84,3 +84,30 @@ export function formatDataPura(valor: Entrada, vazio = '-'): string {
   if (!valor) return vazio;
   return parseDataPura(valor).toLocaleDateString('pt-BR');
 }
+
+
+/**
+ * Há quanto tempo um instante passou, em texto curto: "agora", "12 min", "2 h".
+ *
+ * Usa `parseTimestampBackend` porque a entrada é timestamp de EVENTO — gravado
+ * em UTC pelo backend. Comparar a string crua com o relógio local daria três
+ * horas de diferença, que é o bug de fuso que este arquivo existe para evitar.
+ *
+ * Arredonda para baixo e para em horas de propósito: quem lê está decidindo
+ * qual venda pegar primeiro, não auditando. "3 h" já diz tudo o que precisa.
+ */
+export function tempoDecorrido(valor: Entrada, vazio = ''): string {
+  if (!valor) return vazio;
+
+  const minutos = Math.floor((Date.now() - parseTimestampBackend(valor).getTime()) / 60000);
+
+  // Relógios de terminais diferentes não batem no segundo. Um valor negativo
+  // não é erro — é a máquina do caixa alguns segundos atrás da do atendente.
+  if (minutos < 1) return 'agora';
+  if (minutos < 60) return `${minutos} min`;
+
+  const horas = Math.floor(minutos / 60);
+  if (horas < 24) return `${horas} h`;
+
+  return `${Math.floor(horas / 24)} d`;
+}

@@ -108,6 +108,26 @@ class Venda(Base):
     
     # --- Datas ---
     criado_em: Mapped[datetime] = mapped_column(DateTime, default=func.now(), nullable=False, doc="Data de criacao do rascunho")
+    # A FILA DO CAIXA. NULL = em montagem; preenchida = o atendente entregou.
+    #
+    # E uma COLUNA e nao um valor novo em `VendaStatus` de proposito. O modulo
+    # compara status por igualdade em varios lugares -- a listagem e o
+    # `get_sales_status`, que alimenta os cards ATIVAS/FINALIZADAS/CANCELADAS.
+    # Um `AGUARDANDO_PAGAMENTO` obrigaria a revisar toda comparacao, e uma
+    # esquecida faz a venda sumir de uma contagem SEM ERRO NENHUM -- com tres
+    # lojas em producao nessas telas. Aqui o status continua ATIVA nos dois
+    # casos e nada que filtra status muda.
+    #
+    # E SINAL DE LISTA, NAO REGRA DE NEGOCIO: `finish_sale` ignora esta coluna
+    # por completo. O caixa pode finalizar venda que nunca entrou na fila, e
+    # pode editar uma que entrou. Nenhuma regra de dinheiro depende dela.
+    #
+    # Timestamp e nao booleano: custa o mesmo e da a ordem da fila de graca --
+    # quem esperou mais aparece primeiro.
+    enviada_ao_caixa_em: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True,
+        doc="Quando o atendente mandou a venda para a fila do caixa. NULL = em montagem",
+    )
     atualizado_em: Mapped[datetime] = mapped_column(DateTime, default=func.now(), onupdate=func.now(), nullable=False, doc="Ultima alteracao no carrinho")
 
     # --- Relacionamentos ---

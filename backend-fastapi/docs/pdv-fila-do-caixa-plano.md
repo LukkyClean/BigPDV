@@ -3,7 +3,7 @@
 > Escrito em 21/08/2026, na branch `feat/pdv`.
 >
 > - **Fase 1 — implementada** em 21/08/2026.
-> - **Fase 2 — planejada**, não implementada.
+> - **Fase 2 — implementada** em 21/08/2026.
 
 ## O problema
 
@@ -95,7 +95,17 @@ Com a Fase 1 a promessa passa a valer sem código específico de terminal.
 
 ---
 
-## Fase 2 — A fila do caixa — planejada
+## Fase 2 — A fila do caixa — FEITA
+
+> Duas coisas apareceram na implementação e não estavam no plano:
+>
+> - **A lista recorta por funcionário.** Quem não tem visão gerencial só vê as
+>   próprias vendas — então a venda do atendente não apareceria para o caixa, que
+>   é um funcionário comum. `na_fila=true` passou a ser a única coisa que fura
+>   esse recorte: entregar a venda **é** o ato de compartilhá-la.
+> - **`parseSchema` exigia entrada igual à saída**, o que impedia qualquer campo
+>   do módulo de usar `.default()`. Foi separado em `ZodType<Saida, _, Entrada>`
+>   — mudança só de tipo, mais permissiva, sem efeito em runtime.
 
 ### Decisão de arquitetura: coluna, não status novo
 

@@ -3,6 +3,10 @@ import { computed, nextTick, ref, toRef, watch } from 'vue';
 import { X, Printer, ShoppingCart, PackagePlus, Trash2 } from 'lucide-vue-next';
 import BaseModal from '@/shared/components/commons/BaseModal/BaseModal.vue';
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
+import {
+  useEnviarAoCaixaMutation,
+  useDevolverParaMontagemMutation,
+} from '../composables/mutates/useFilaCaixaMutations';
 
 import ProductSearch from './SaleModal/ProductSearch.vue';
 import CustomerCard from './SaleModal/CustomerCard.vue';
@@ -52,8 +56,34 @@ const deleteMutation = useDeleteSaleMutation();
 const updateSaleMutation = useUpdateSaleMutation();
 const cancelSaleModalIsOpen = ref(false);
 const { openCustomerModalForChange, iniciarVendaSemCliente } = useCustomerSearchModal();
-const { valorMinimoVenda, exigirClienteIdentificado } = storeToRefs(useConfiguracoesStore());
+const { valorMinimoVenda, exigirClienteIdentificado, controlarCaixa } = storeToRefs(useConfiguracoesStore());
 const { modoBalcao } = storeToRefs(useBalcaoStore());
+
+/**
+ * A entrega da venda ao caixa.
+ *
+ * Só aparece com `controlar_caixa` ligado — loja sem caixa não tem fila, e o
+ * botão seria ruído. E some no Modo Balcão: ali é uma pessoa só, do começo ao
+ * fim, e entregar a venda a si mesmo não significa nada.
+ *
+ * O par (enviar / devolver) alterna no mesmo lugar: quem entregou por engano
+ * desfaz onde entregou, sem procurar o comando em outra tela.
+ */
+const enviarAoCaixaMutation = useEnviarAoCaixaMutation();
+const devolverParaMontagemMutation = useDevolverParaMontagemMutation();
+
+const mostraFilaDoCaixa = computed(() => controlarCaixa.value && !modoBalcao.value);
+const naFilaDoCaixa = computed(() => !!sale.value?.enviada_ao_caixa_em);
+const filaPendente = computed(
+  () => enviarAoCaixaMutation.isPending.value || devolverParaMontagemMutation.isPending.value,
+);
+
+function alternarFilaDoCaixa() {
+  const saleId = sale.value?.id;
+  if (!saleId) return;
+  if (naFilaDoCaixa.value) devolverParaMontagemMutation.mutate(saleId);
+  else enviarAoCaixaMutation.mutate(saleId);
+}
 
 const {
   saleForPrint,
@@ -336,6 +366,23 @@ const saleDisplay = computed(() => {
                 <span class="text-[9px] opacity-70 font-normal">Ctrl+Enter</span>
               </div>
             </BaseButton>
+
+            <!-- Secundário de propósito: finalizar continua sendo o caminho
+                 principal, inclusive para o próprio caixa. Entregar é a exceção
+                 de quem não vai receber o dinheiro. -->
+            <BaseButton
+              v-if="mostraFilaDoCaixa"
+              variant="secondary"
+              size="md"
+              class="w-full"
+              :disabled="!sale?.produtos?.length || filaPendente"
+              @click="alternarFilaDoCaixa"
+            >
+              {{ naFilaDoCaixa ? 'Tirar da fila do caixa' : 'Enviar para o caixa' }}
+            </BaseButton>
+            <p v-if="mostraFilaDoCaixa && naFilaDoCaixa" class="text-[11px] text-center text-emerald-700">
+              Na fila do caixa — alterar um item devolve a venda para montagem.
+            </p>
           </template>
           <template v-else>
             <BaseButton variant="secondary" size="md" class="w-full" @click="closeSaleModal()">

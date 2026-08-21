@@ -23,6 +23,19 @@ export const SALE_FILTER_CONFIG: Record<string, FilterOption> = {
     CANCELADA: { label: 'Cancelada', class: 'bg-red-50 text-red-700', color: 'bg-red-500' },
 };
 
+/**
+ * O mesmo, mais a fila do caixa. Usado só onde `controlar_caixa` está ligado.
+ *
+ * `NO_CAIXA` NÃO é um status: no banco a fila é uma coluna à parte e a venda
+ * continua `ATIVA`. Por isso ele mora aqui e não em `SALE_FILTERS`, que é o
+ * mapa consultado por `sale.status` para o selo de cada linha — pôr um valor
+ * inexistente lá criaria um quarto status fantasma.
+ */
+export const SALE_FILTER_CONFIG_COM_CAIXA: Record<string, FilterOption> = {
+    ...SALE_FILTER_CONFIG,
+    NO_CAIXA: { label: 'No caixa', class: 'bg-emerald-50 text-emerald-700', color: 'bg-emerald-500' },
+};
+
 export const ORCAMENTO_FILTER_CONFIG: Record<string, FilterOption> = {
     ATIVO: { label: 'Ativo', class: 'bg-blue-50 text-blue-700', color: 'bg-blue-500' },
     CONVERTIDO: { label: 'Convertido', class: 'bg-green-50 text-green-700', color: 'bg-green-500' },
