@@ -10,8 +10,10 @@ from sqlalchemy.orm import Session
 
 from app.core.enum import SituacaoEquipamento, MovimentacaoTipo
 from app.core.tempo import intervalo_utc
+from app.helpers.exceptions import NotFoundException
 from app.db.crud import dashboard as dashboard_crud
 from app.db.crud import relatorio as relatorio_crud
+from app.db.crud import funcionario as funcionario_crud
 from app.schemas.relatorio import (
     RelatorioFaturamento,
     FaturamentoDiaItem,
@@ -25,6 +27,8 @@ from app.schemas.relatorio import (
     EstoqueReposicaoItem,
     EstoqueParadoItem,
     RelatorioOSPerformance,
+    RelatorioExtratoFuncionario,
+    ExtratoServicoItem,
     OSReparoResumo,
     OSStatusItem,
     OSTecnicoItem,
@@ -441,6 +445,74 @@ def _duracao_horas(criacao: datetime, finalizacao: datetime) -> float:
     """
     segundos = (finalizacao - criacao).total_seconds()
     return max(segundos, 0) / 3600
+
+
+def get_extrato_funcionario(
+    db: Session, inicio: date, fim: date, empresa_id: int, funcionario_id: int
+) -> RelatorioExtratoFuncionario:
+    """O extrato de servicos de uma pessoa -- o papel que ela leva para conferir.
+
+    A CONTAGEM DE OS E POR OS DISTINTA, e isso nao e detalhe. O crud devolve uma
+    linha por ITEM, entao somar linhas diria "3 OS" onde ha uma OS com tres
+    servicos. O ranking, que e o primeiro lugar onde alguem confere este extrato,
+    conta OS -- e dois relatorios que discordam do mesmo numero destroem a
+    confianca nos dois.
+
+    Pela mesma razao o `valor_total` soma os ITENS de servico, e nao o
+    `valor_total` da OS: a OS carrega peca junto, e o extrato e sobre o trabalho.
+    O numero daqui e menor que o `faturamento_os` do ranking sempre que houver
+    peca -- e isso e correto, nao divergencia.
+    """
+    dt_inicio, dt_fim = intervalo_utc(inicio, fim)
+
+    funcionario = funcionario_crud.get_funcionario_by_id(db, funcionario_id)
+    if not funcionario or funcionario.empresa_id != empresa_id:
+        raise NotFoundException(detail="Funcionário não encontrado")
+
+    linhas = relatorio_crud.get_servicos_do_funcionario(
+        db, dt_inicio, dt_fim, empresa_id, funcionario_id
+    )
+
+    itens: list[ExtratoServicoItem] = []
+    os_distintas: set[int] = set()
+    total = 0
+
+    for linha in linhas:
+        os_distintas.add(linha.os_id)
+        total += linha.valor_total or 0
+
+        # "Fiat Uno · ABC-1234" -- o mesmo par que a OS mostra na tela. Cada
+        # pedaco pode faltar (objeto sem serie, OS sem objeto), entao monta com o
+        # que houver em vez de assumir os tres.
+        partes = [p for p in (linha.marca, linha.modelo) if p]
+        descricao = " ".join(partes) if partes else None
+        if descricao and linha.numero_serie:
+            descricao = f"{descricao} · {linha.numero_serie}"
+        elif not descricao and linha.numero_serie:
+            descricao = linha.numero_serie
+
+        itens.append(
+            ExtratoServicoItem(
+                numero_os=linha.numero_os,
+                data_finalizacao=linha.data_finalizacao.date(),
+                objeto=descricao,
+                cliente=linha.cliente_nome,
+                servico=linha.servico,
+                quantidade=linha.quantidade,
+                valor_total=linha.valor_total or 0,
+            )
+        )
+
+    return RelatorioExtratoFuncionario(
+        inicio=inicio,
+        fim=fim,
+        funcionario_id=funcionario_id,
+        funcionario_nome=funcionario.nome,
+        qtd_os=len(os_distintas),
+        qtd_servicos=len(itens),
+        valor_total=total,
+        itens=itens,
+    )
 
 
 def get_os_performance(db: Session, inicio: date, fim: date, empresa_id: int) -> RelatorioOSPerformance:

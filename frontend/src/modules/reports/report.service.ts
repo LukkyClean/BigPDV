@@ -11,6 +11,10 @@ import {
   RelatorioOSPerformanceSchema,
   type RelatorioOSPerformance,
 } from './schemas/osPerformance.schema';
+import {
+  RelatorioExtratoFuncionarioSchema,
+  type RelatorioExtratoFuncionario,
+} from './schemas/extratoFuncionario.schema';
 
 /**
  * Faturamento (vendas + OS finalizadas) no intervalo [inicio, fim].
@@ -46,4 +50,21 @@ export async function getOSPerformance(
 ): Promise<RelatorioOSPerformance> {
   const { data } = await api.get('/relatorios/os-performance', { params: { inicio, fim } });
   return safeParseResponse(RelatorioOSPerformanceSchema, data, 'getOSPerformance');
+}
+
+/**
+ * Os serviços que uma pessoa executou nas OS finalizadas do intervalo.
+ *
+ * É o papel que o dono imprime e entrega. Peça não entra — material é custo da
+ * loja, não produção do técnico.
+ */
+export async function getExtratoFuncionario(
+  funcionarioId: number,
+  inicio: string,
+  fim: string,
+): Promise<RelatorioExtratoFuncionario> {
+  const { data } = await api.get('/relatorios/extrato-funcionario', {
+    params: { funcionario_id: funcionarioId, inicio, fim },
+  });
+  return safeParseResponse(RelatorioExtratoFuncionarioSchema, data, 'getExtratoFuncionario');
 }

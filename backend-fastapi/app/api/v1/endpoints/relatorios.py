@@ -29,6 +29,7 @@ from app.schemas.relatorio import (
     RelatorioComissao,
     RelatorioEstoque,
     RelatorioOSPerformance,
+    RelatorioExtratoFuncionario,
 )
 from app.services import relatorio as relatorio_service
 
@@ -133,6 +134,30 @@ def obter_estoque(
     fim: date = Query(..., description="Data final do periodo (YYYY-MM-DD)"),
 ):
     return relatorio_service.get_estoque(db, inicio, fim, user_token["empresa_id"])
+
+
+@router.get(
+    "/extrato-funcionario",
+    response_model=RelatorioExtratoFuncionario,
+    summary="Extrato de servicos de um funcionario",
+    description=(
+        "Os servicos que uma pessoa executou nas OS FINALIZADAS do periodo, um por "
+        "linha, com a OS e o objeto em que foi feito. E o papel que o dono imprime e "
+        "entrega para ela conferir. Item reprovado fica de fora; peca nao entra -- "
+        "material e custo da loja, nao producao do tecnico."
+    ),
+)
+def obter_extrato_funcionario(
+    user_token: dict = Depends(get_current_master_user),
+    *,
+    db: Session = Depends(get_db),
+    funcionario_id: int = Query(..., ge=1, description="Funcionario do extrato"),
+    inicio: date = Query(..., description="Data inicial do periodo (YYYY-MM-DD)"),
+    fim: date = Query(..., description="Data final do periodo (YYYY-MM-DD)"),
+):
+    return relatorio_service.get_extrato_funcionario(
+        db, inicio, fim, user_token["empresa_id"], funcionario_id
+    )
 
 
 @router.get(

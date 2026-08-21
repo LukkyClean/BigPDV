@@ -194,6 +194,29 @@ class OSTecnicoItem(BaseModel):
     faturamento: int = Field(..., description="Σ valor_total das OS finalizadas (centavos)")
 
 
+class ExtratoServicoItem(BaseModel):
+    """Um servico executado, na OS em que foi executado."""
+    numero_os: str
+    data_finalizacao: date
+    objeto: Optional[str] = Field(None, description="Marca modelo · identificador, como a OS mostra")
+    cliente: Optional[str] = Field(None, description="Nome do cliente, ou nulo se a OS nao tiver")
+    servico: str
+    quantidade: float
+    valor_total: int = Field(..., description="Valor do item (centavos)")
+
+
+class RelatorioExtratoFuncionario(BaseModel):
+    """O que uma pessoa executou no periodo -- o papel que ela leva para conferir."""
+    inicio: date
+    fim: date
+    funcionario_id: int
+    funcionario_nome: str
+    qtd_os: int = Field(..., description="OS DISTINTAS, nao linhas: tres servicos numa OS contam 1")
+    qtd_servicos: int
+    valor_total: int = Field(..., description="Soma dos servicos (centavos)")
+    itens: list[ExtratoServicoItem] = Field(default_factory=list)
+
+
 class RelatorioOSPerformance(BaseModel):
     """Desempenho de OS no período: throughput, tempo, reparo e por técnico."""
     inicio: date
