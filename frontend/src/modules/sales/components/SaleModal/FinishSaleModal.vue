@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, nextTick, watch } from 'vue';
+import { ref, computed, nextTick, watch, onUnmounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import {
   X,
@@ -291,19 +291,35 @@ function handleAddPaymentClick(method: PaymentFormReadDataType) {
  *
  * Só no Modo Balcão e só com a venda paga. Fora dele o botão espera o checkbox
  * de confirmação, e roubar o foco mudaria o comportamento das lojas que já
- * rodam. A prazo o checkbox continua, então o botão está desabilitado e o foco
- * não vai para ele — é a mesma regra do `exigeConfirmacao`, não uma segunda.
+ * rodam.
+ *
+ * ⚠️ O ALVO DEPENDE DO CHECKBOX. Com `exigeConfirmacao` ligado (venda a prazo:
+ * cartão parcelado, boleto) o botão nasce `disabled`, e elemento desabilitado
+ * não recebe foco NEM é alcançado por Tab. A versão anterior mirava o botão
+ * sempre, falhava nas duas tentativas e desistia calada — o foco caía no
+ * `<body>`, e como o `BaseModal` não prende o Tab, a tecla seguinte começava a
+ * andar pela tela de venda ATRÁS do modal. O fluxo de teclado morria no último
+ * passo, justamente onde ele mais importa. O alvo agora é o passo que de fato
+ * vem a seguir: o checkbox enquanto ele não estiver marcado, o botão depois.
  */
-function focarFinalizarVenda(aguardarSoltarTecla = false) {
+function focarProximoPasso(aguardarSoltarTecla = false) {
   if (!modoBalcao.value || restante.value > 0) return;
+
+  // O `data-` cai na div raiz do BaseCheckbox (fallthrough do Vue), não no
+  // input — daí o ` input` no seletor. Assim o componente compartilhado, que
+  // outras telas usam, fica intocado.
+  const alvo = () =>
+    exigeConfirmacao.value && !confirmacao.value
+      ? document.querySelector<HTMLInputElement>('[data-confirmar-recebimento] input')
+      : document.querySelector<HTMLButtonElement>('[data-finalizar-venda]');
 
   // Duas tentativas, como na busca de produto: o sub-modal sai dentro de um
   // <Transition> e o foco pode ser desfeito enquanto ele ainda desmonta.
   const tentar = () => {
-    const btn = document.querySelector<HTMLButtonElement>('[data-finalizar-venda]');
-    if (!btn || btn.disabled) return false;
-    btn.focus();
-    return document.activeElement === btn;
+    const el = alvo();
+    if (!el || el.disabled) return false;
+    el.focus();
+    return document.activeElement === el;
   };
 
   const focar = () => {
@@ -356,12 +372,120 @@ function confirmAddPayment(viaTeclado = false) {
 
   showPaymentDetails.value = false;
   currentPaymentMethod.value = null;
-  focarFinalizarVenda(viaTeclado);
+  focarProximoPasso(viaTeclado);
 }
 
 function handleRemovePayment(index: number) {
   removePayment(index);
 }
+
+/**
+ * Enter também marca o recebimento.
+ *
+ * Checkbox em HTML só alterna com ESPAÇO — o Enter não faz nada, e isso é o
+ * navegador, não uma escolha nossa. Só que o resto da venda é todo Enter (o
+ * `MoneyInput` confirma no Enter, o botão finaliza no Enter), e um único passo
+ * exigindo outra tecla no meio do fluxo é o bastante para a mão do operador
+ * parar e procurar o mouse.
+ *
+ * `marcadoViaEnter` existe para o watcher abaixo saber que precisa esperar a
+ * tecla subir. Sem isso o MESMO Enter marcaria o checkbox e finalizaria a
+ * venda: é o Enter duplo que o `aguardarSoltarTecla` já descreve.
+ */
+const marcadoViaEnter = ref(false);
+
+function marcarRecebimentoComEnter(e: KeyboardEvent) {
+  if (confirmacao.value) return;
+  e.preventDefault();
+  marcadoViaEnter.value = true;
+  confirmacao.value = true;
+}
+
+/**
+ * Marcou o recebimento, o foco vai para o botão.
+ *
+ * Sem isto o Tab ainda passaria por "Cancelar" antes de chegar em "Finalizar",
+ * e quem acabou de conferir o valor tem um só próximo passo — não dois.
+ *
+ * No Espaço não espera o `keyup`: o Chromium dispara o clique do checkbox no
+ * keyup, então quando este watcher roda a tecla JÁ subiu. E esperar deixaria o
+ * foco preso quando o checkbox fosse marcado no mouse, que não gera keyup
+ * nenhum. No Enter é o contrário — ali a tecla ainda está descendo.
+ */
+watch(confirmacao, (marcado) => {
+  if (!marcado) return;
+  const aguardar = marcadoViaEnter.value;
+  marcadoViaEnter.value = false;
+  focarProximoPasso(aguardar);
+});
+
+/**
+ * Zerar devolve o foco às formas de pagamento.
+ *
+ * O botão "Zerar" tem `:disabled="payments.length === 0"` — ele se desabilita
+ * no mesmo clique que esvazia a lista. Quem apertou pelo teclado ficava com o
+ * foco num elemento morto, que cai no `<body>`: o mesmo foco órfão do
+ * `focarProximoPasso`, em outro canto da tela.
+ *
+ * O destino é o "Dinheiro", a mesma posição de descanso de quando o modal
+ * abre — e que só agora volta a aceitar foco, porque o grid fica `disabled`
+ * enquanto o restante é zero.
+ */
+function zerarPagamentos() {
+  clearPayments();
+  if (!modoBalcao.value) return;
+  nextTick(() => {
+    document.querySelector<HTMLButtonElement>('[data-forma-dinheiro]')?.focus();
+  });
+}
+
+/**
+ * O Tab não sai do modal.
+ *
+ * O `BaseModal` não prende o foco. Chegando ao último elemento, o Tab seguinte
+ * ia parar na tela de venda ATRÁS do modal — invisível, sob o backdrop, e sem
+ * caminho de volta a não ser o mouse. Aqui ele dá a volta e recomeça.
+ *
+ * A ordem é a do DOM, de propósito: formas → Zerar → lixeiras → checkbox →
+ * Cancelar → Finalizar. Uma ordem inventada brigaria com a leitura da tela e
+ * com o leitor de tela, e é mais uma coisa para desencontrar quando alguém
+ * mexer no layout.
+ *
+ * Elemento `disabled` fica de fora porque o navegador já o pula — é assim que
+ * o grid de formas some do ciclo com a venda paga e o Finalizar some enquanto
+ * o checkbox não foi marcado.
+ *
+ * Só no Modo Balcão, como todo o resto do teclado neste arquivo: prender o Tab
+ * é correto em qualquer modal, mas promover isso ao `BaseModal` muda 37 telas
+ * de uma vez e merece ser decidido à parte.
+ */
+function prenderTab(e: KeyboardEvent) {
+  if (e.key !== 'Tab' || showPaymentDetails.value) return;
+
+  const focaveis = Array.from(
+    document.querySelectorAll<HTMLElement>(
+      '[data-finalizar-modal] button, [data-finalizar-modal] input, [data-finalizar-modal] select, [data-finalizar-modal] textarea',
+    ),
+  ).filter((el) => !(el as HTMLButtonElement).disabled && el.offsetParent !== null);
+
+  if (focaveis.length === 0) return;
+
+  const atual = focaveis.indexOf(document.activeElement as HTMLElement);
+  const passo = e.shiftKey ? -1 : 1;
+  // `atual === -1` é o foco perdido no <body>: recomeça em vez de ignorar.
+  const proximo =
+    atual === -1 ? focaveis[0] : focaveis[(atual + passo + focaveis.length) % focaveis.length];
+
+  e.preventDefault();
+  proximo.focus();
+}
+
+watch(finishModalIsOpen, (aberto) => {
+  if (aberto && modoBalcao.value) document.addEventListener('keydown', prenderTab);
+  else document.removeEventListener('keydown', prenderTab);
+});
+
+onUnmounted(() => document.removeEventListener('keydown', prenderTab));
 
 /**
  * Modo Balcão: o foco nasce no botão "Dinheiro".
@@ -445,7 +569,7 @@ function handleFinish() {
 <template>
   <BaseModal :is-open="finishModalIsOpen" title="Finalizar Venda" size="3xl" overflow="hidden">
     <template #header>
-      <div class="flex items-center justify-between px-6 py-4 border-b border-zinc-200">
+      <div data-finalizar-modal class="flex items-center justify-between px-6 py-4 border-b border-zinc-200">
         <h2 class="text-xl font-bold text-zinc-800">Finalizar Venda</h2>
         <button
           type="button"
@@ -457,7 +581,7 @@ function handleFinish() {
       </div>
     </template>
 
-    <div class="flex flex-col gap-4 h-[calc(90vh-140px)]">
+    <div data-finalizar-modal class="flex flex-col gap-4 h-[calc(90vh-140px)]">
 
       <!-- Linha principal: esq (formas + pagamentos) + dir (resumo) -->
       <div class="grid grid-cols-2 gap-4 flex-1 min-h-0">
@@ -506,7 +630,7 @@ function handleFinish() {
                   :disabled="payments.length === 0"
                   class="flex items-center gap-1 text-[10px] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                   :class="payments.length > 0 ? 'text-red-400 hover:text-red-600 cursor-pointer' : 'text-zinc-400'"
-                  @click="clearPayments"
+                  @click="zerarPagamentos"
                 >
                   <RotateCcw :size="11" />
                   Zerar
@@ -673,6 +797,8 @@ function handleFinish() {
         <BaseCheckbox
           v-if="exigeConfirmacao"
           v-model="confirmacao"
+          data-confirmar-recebimento
+          @keydown.enter="marcarRecebimentoComEnter"
           :label="`Confirmo o recebimento de ${displayTotalPago}`"
         />
         <div class="flex gap-3 ml-auto">
