@@ -142,6 +142,24 @@ function handleKeydown(event: KeyboardEvent) {
       event.preventDefault();
       closeDropdown();
       break;
+
+    // Sair no Tab fecha a lista.
+    //
+    // Sem isto o dropdown ficava aberto depois que o foco já tinha ido embora:
+    // o `@focus` do campo SEGUINTE abria o dele, e os dois apareciam
+    // sobrepostos. O texto digitado também ficava preso no campo, porque quem
+    // zera o `searchQuery` é o `closeDropdown` — e ninguém o chamava. Só o
+    // Escape desfazia, o que é muito pedir de quem navega por teclado.
+    //
+    // ⚠️ NÃO trate isso no `blur`: o blur dispara ANTES do click, então fechar
+    // ali derrubaria a lista antes de a opção clicada registrar, e quem usa
+    // mouse pararia de conseguir escolher. Amarrar na tecla evita a corrida.
+    //
+    // E aqui NÃO tem `preventDefault`, ao contrário dos outros casos: o Tab
+    // precisa seguir e levar o foco ao próximo campo, como o navegador faria.
+    case 'Tab':
+      closeDropdown();
+      break;
   }
 }
 
