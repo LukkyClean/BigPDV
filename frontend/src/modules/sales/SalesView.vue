@@ -18,6 +18,8 @@ import SalesStatus from './components/SalesStatus.vue';
 import SaleTable from './components/SaleTable.vue';
 import CaixaBar from './caixa/components/CaixaBar.vue';
 import { useSessaoCaixaQuery } from './caixa/composables/queries/useSessaoCaixaQuery';
+import { useEsteTerminalQuery } from './caixa/composables/queries/useTerminaisQuery';
+import { useAberturaCaixa } from './caixa/composables/useAberturaCaixa';
 import SalePrintTemplate from './components/print/SalePrintTemplate.vue';
 import SalePrintCupom from './components/print/SalePrintCupom.vue';
 
@@ -87,18 +89,25 @@ function handleNovaVenda() {
     return;
   }
 
+  // A AÇÃO OFERECIDA É ABRIR O CAIXA, e não "montar mesmo assim".
+  //
+  // Montar sem turno, nesta configuração, só leva a trabalho perdido: o operador
+  // digita o carrinho inteiro para ser recusado no checkout. Oferecer esse
+  // caminho como botão era convidar para o prejuízo que o aviso existe para
+  // evitar. Quem quiser mesmo assim ainda pode -- volta, abre o caixa, ou usa a
+  // fila; o que sumiu foi o atalho para o beco.
   openConfirmModal({
     title: 'Caixa fechado',
     message:
-      'Você pode montar esta venda, mas não vai conseguir finalizá-la enquanto o caixa estiver fechado.',
-    highlightText: 'Abra o caixa antes de chamar o cliente.',
+      'Sem um turno aberto a venda não pode ser finalizada. Abra o caixa agora e comece o atendimento.',
+    highlightText: 'Leva só o troco inicial.',
     variant: 'primary',
     // Maiúscula como as irmãs deste modal ('DESCARTAR'): o rótulo é o botão
     // que age, e a caixa alta é o que o distingue do 'VOLTAR' ao lado.
-    label: 'MONTAR MESMO ASSIM',
+    label: 'ABRIR CAIXA',
     action: () => {
       closeConfirmModal();
-      comecarVenda();
+      solicitarAbertura();
     },
   });
 }
@@ -125,6 +134,8 @@ function handleNovaVenda() {
 // O aviso e a forma de ter os dois: a venda continua podendo nascer, e ninguem
 // perde tempo sem saber.
 const { caixaAberto, caixaHabilitado, exigeCaixaAberto } = useSessaoCaixaQuery();
+const { eRetaguarda } = useEsteTerminalQuery();
+const { solicitarAbertura } = useAberturaCaixa();
 
 /**
  * Avisar so faz sentido para quem VAI ficar sem saida.
@@ -139,7 +150,12 @@ const avisarCaixaFechado = computed(
     caixaHabilitado.value &&
     exigeCaixaAberto.value &&
     !caixaAberto.value &&
-    !usarFilaDoCaixa.value,
+    !usarFilaDoCaixa.value &&
+    // Numa RETAGUARDA a barra do caixa não renderiza o convite de abertura --
+    // aquele PC não é um caixa. Oferecer "ABRIR CAIXA" ali seria um botão que
+    // não faz nada. Lá o aviso âmbar da barra já explica a situação, e a venda
+    // segue podendo ser montada.
+    !eRetaguarda.value,
 );
 
 const { openSaleEditModal, saleModalIsOpen } = useSaleModal();

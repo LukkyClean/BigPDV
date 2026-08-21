@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { ArrowDownCircle, ArrowUpCircle, EyeOff, Lock, Wallet } from 'lucide-vue-next';
 
 import { storeToRefs } from 'pinia';
@@ -17,6 +17,7 @@ import FecharCaixaModal from './FecharCaixaModal.vue';
 import MovimentoCaixaModal from './MovimentoCaixaModal.vue';
 import { useSessaoCaixaQuery } from '../composables/queries/useSessaoCaixaQuery';
 import { useEsteTerminalQuery } from '../composables/queries/useTerminaisQuery';
+import { useAberturaCaixa } from '../composables/useAberturaCaixa';
 import { formatarCentavos } from '../caixa.utils';
 
 /**
@@ -156,6 +157,16 @@ function abrirMovimento(tipo: 'sangria' | 'suprimento') {
  * tela; errar para o outro lado esconde o caixa de um caixa de verdade.
  */
 const { eRetaguarda } = useEsteTerminalQuery();
+
+/**
+ * Pedido de abertura vindo de fora — hoje, do aviso de "caixa fechado" que a
+ * `SalesView` mostra ao começar uma venda.
+ *
+ * Chama a MESMA `pedirAberturaDeCaixa` do botão daqui, e não o modal direto: a
+ * checagem do PIN e o tratamento das sentinelas continuam num lugar só.
+ */
+const { pedidoDeAbertura } = useAberturaCaixa();
+watch(pedidoDeAbertura, () => void pedirAberturaDeCaixa());
 </script>
 
 <template>
