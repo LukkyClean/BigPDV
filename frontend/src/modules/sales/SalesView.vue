@@ -17,6 +17,7 @@ import PrintFormatSelectModal from '@/shared/components/print/PrintFormatSelectM
 import SalesStatus from './components/SalesStatus.vue';
 import SaleTable from './components/SaleTable.vue';
 import CaixaBar from './caixa/components/CaixaBar.vue';
+import { useSessaoCaixaQuery } from './caixa/composables/queries/useSessaoCaixaQuery';
 import SalePrintTemplate from './components/print/SalePrintTemplate.vue';
 import SalePrintCupom from './components/print/SalePrintCupom.vue';
 
@@ -60,7 +61,7 @@ const { openCustomerModal, openCustomerModalForConversion, iniciarVendaSemClient
 // Modo Balcao: chave desta MAQUINA (localStorage), desligada por padrao.
 const balcaoStore = useBalcaoStore();
 const { modoBalcao } = storeToRefs(balcaoStore);
-const { exigirClienteIdentificado } = storeToRefs(useConfiguracoesStore());
+const { exigirClienteIdentificado, usarFilaDoCaixa } = storeToRefs(useConfiguracoesStore());
 
 /**
  * O comeco da venda.
@@ -72,12 +73,34 @@ const { exigirClienteIdentificado } = storeToRefs(useConfiguracoesStore());
  * A segunda condicao nao e detalhe: sem ela a venda nasceria sem cliente para
  * ser recusada la na finalizacao por `venda.py`, com o carrinho ja montado.
  */
-function handleNovaVenda() {
+function comecarVenda() {
   if (modoBalcao.value && !exigirClienteIdentificado.value) {
     iniciarVendaSemCliente();
     return;
   }
   openCustomerModal();
+}
+
+function handleNovaVenda() {
+  if (!avisarCaixaFechado.value) {
+    comecarVenda();
+    return;
+  }
+
+  openConfirmModal({
+    title: 'Caixa fechado',
+    message:
+      'Você pode montar esta venda, mas não vai conseguir finalizá-la enquanto o caixa estiver fechado.',
+    highlightText: 'Abra o caixa antes de chamar o cliente.',
+    variant: 'primary',
+    // Maiúscula como as irmãs deste modal ('DESCARTAR'): o rótulo é o botão
+    // que age, e a caixa alta é o que o distingue do 'VOLTAR' ao lado.
+    label: 'MONTAR MESMO ASSIM',
+    action: () => {
+      closeConfirmModal();
+      comecarVenda();
+    },
+  });
 }
 
 // O CAIXA NAO BARRA MAIS A ENTRADA -- so o dinheiro.
@@ -92,8 +115,32 @@ function handleNovaVenda() {
 // Quem avisa agora e a `CaixaBar`, logo acima: "voce pode montar vendas, mas
 // nao finaliza-las". Aviso, e nao trava. A garantia continua no `finish_sale`.
 //
-// Com o `disabled` fora, esta tela nao precisa mais consultar o turno: quem
-// mostra o estado do caixa e a `<CaixaBar />`, que roda a propria query.
+// O turno volta a ser consultado aqui -- mas para AVISAR, nao para travar.
+//
+// Tirar a trava da criacao devolveu ao operador a liberdade de montar a venda
+// sem turno, e junto tirou o unico ganho que aquela trava tinha: saber ANTES de
+// montar o carrinho inteiro. Quem trabalha sozinho descobria a recusa no
+// checkout, com o cliente na frente e os produtos ja digitados.
+//
+// O aviso e a forma de ter os dois: a venda continua podendo nascer, e ninguem
+// perde tempo sem saber.
+const { caixaAberto, caixaHabilitado, exigeCaixaAberto } = useSessaoCaixaQuery();
+
+/**
+ * Avisar so faz sentido para quem VAI ficar sem saida.
+ *
+ * Com a fila ligada, montar sem turno e o fluxo NORMAL do atendente: ele monta e
+ * entrega ao caixa. Perguntar "tem certeza?" toda vez seria atrito no caminho
+ * principal do dia dele -- e o rodape do SaleModal ja explica para onde a venda
+ * vai. Sem a fila, montar leva a uma recusa no checkout: ai o aviso paga.
+ */
+const avisarCaixaFechado = computed(
+  () =>
+    caixaHabilitado.value &&
+    exigeCaixaAberto.value &&
+    !caixaAberto.value &&
+    !usarFilaDoCaixa.value,
+);
 
 const { openSaleEditModal, saleModalIsOpen } = useSaleModal();
 const { openFinishModal } = useFinishSaleModal();
