@@ -65,9 +65,10 @@ def criar_venda(
         db,
         venda_service.create_sale,
         payload,
-        # Quem esta abrindo a venda e quem esta NO CAIXA -- nem sempre o mesmo
-        # que `payload.funcionario_id`, que e o VENDEDOR (o da comissao).
-        user_token.get("funcionario_id"),
+        # Sem `operador_funcionario_id` aqui: abrir a venda deixou de consultar
+        # o turno de quem opera (ver `create_sale`). A distincao entre operador
+        # e vendedor continua importando -- mas so no momento do dinheiro, e la
+        # ela esta, em `finalizar_venda`.
     )
 
 

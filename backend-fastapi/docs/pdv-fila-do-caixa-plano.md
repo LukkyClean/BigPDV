@@ -1,6 +1,9 @@
 # PDV — Fila do caixa (atendente monta, caixa recebe)
 
-> Status: **planejado, não implementado**. Escrito em 21/08/2026, na branch `feat/pdv`.
+> Escrito em 21/08/2026, na branch `feat/pdv`.
+>
+> - **Fase 1 — implementada** em 21/08/2026.
+> - **Fase 2 — planejada**, não implementada.
 
 ## O problema
 
@@ -37,7 +40,7 @@ entrada e dar visibilidade à fila.
 
 ---
 
-## Fase 1 — A trava sai da criação
+## Fase 1 — A trava sai da criação — FEITA
 
 Pequena, independente, e entrega valor sozinha. Pode ir para a loja antes da
 Fase 2.
@@ -92,7 +95,7 @@ Com a Fase 1 a promessa passa a valer sem código específico de terminal.
 
 ---
 
-## Fase 2 — A fila do caixa
+## Fase 2 — A fila do caixa — planejada
 
 ### Decisão de arquitetura: coluna, não status novo
 

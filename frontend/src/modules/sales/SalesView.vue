@@ -17,7 +17,6 @@ import PrintFormatSelectModal from '@/shared/components/print/PrintFormatSelectM
 import SalesStatus from './components/SalesStatus.vue';
 import SaleTable from './components/SaleTable.vue';
 import CaixaBar from './caixa/components/CaixaBar.vue';
-import { useSessaoCaixaQuery } from './caixa/composables/queries/useSessaoCaixaQuery';
 import SalePrintTemplate from './components/print/SalePrintTemplate.vue';
 import SalePrintCupom from './components/print/SalePrintCupom.vue';
 
@@ -81,18 +80,21 @@ function handleNovaVenda() {
   openCustomerModal();
 }
 
-// Trava do caixa na porta de entrada.
+// O CAIXA NAO BARRA MAIS A ENTRADA -- so o dinheiro.
 //
-// A garantia de verdade esta no backend (create_sale e finish_sale); isto aqui e
-// para o operador nao montar o carrinho inteiro e descobrir no checkout que o
-// caixa esta fechado. O botao de abrir o caixa fica logo acima, na mesma tela.
+// Ate 21/08/2026 este bloco desabilitava "Nova venda" (e o F2) quando as duas
+// chaves estavam ligadas e nao havia turno aberto. A trava saiu da criacao da
+// venda no backend por decisao do dono: montar carrinho nao move dinheiro, e
+// exigir turno para comecar impedia o atendente de montar a venda que o CAIXA
+// vai receber -- alem de deixar a maquina RETAGUARDA sem saida, porque nela o
+// botao de abrir caixa nem aparece.
 //
-// `vendaBloqueada` so e verdadeira com as DUAS chaves ligadas e sem turno
-// aberto: loja que nao usa caixa nunca ve diferenca.
-const { caixaAberto, caixaHabilitado, exigeCaixaAberto } = useSessaoCaixaQuery();
-const vendaBloqueada = computed(
-  () => caixaHabilitado.value && exigeCaixaAberto.value && !caixaAberto.value,
-);
+// Quem avisa agora e a `CaixaBar`, logo acima: "voce pode montar vendas, mas
+// nao finaliza-las". Aviso, e nao trava. A garantia continua no `finish_sale`.
+//
+// Com o `disabled` fora, esta tela nao precisa mais consultar o turno: quem
+// mostra o estado do caixa e a `<CaixaBar />`, que roda a propria query.
+
 const { openSaleEditModal, saleModalIsOpen } = useSaleModal();
 const { openFinishModal } = useFinishSaleModal();
 const { openOrcamentoModal, closeOrcamentoModal, orcamentoModalIsOpen } = useOrcamentoModal();
@@ -126,8 +128,7 @@ whenever(F2, () => {
   if (saleModalIsOpen.value || orcamentoModalIsOpen.value) return;
 
   if (activeTab.value === 'vendas') {
-    // O atalho tem que respeitar a mesma trava do botao, senao F2 fura a regra.
-    if (vendaBloqueada.value) return;
+    // Sem trava aqui, pelo mesmo motivo do botao: quem barra e a finalizacao.
     handleNovaVenda();
   } else {
     handleNewOrcamento();
@@ -312,8 +313,6 @@ function handleOpenSaleFromOrcamento(saleId: number) {
           size="md"
           type="button"
           class="flex gap-1"
-          :disabled="vendaBloqueada"
-          :title="vendaBloqueada ? 'Abra o caixa para começar a vender' : ''"
           @click="handleNovaVenda"
         >
           <Plus :size="20" />

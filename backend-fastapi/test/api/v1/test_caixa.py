@@ -382,19 +382,67 @@ def test_pagamento_com_vencimento_futuro_nao_entra_na_gaveta(client, db_session)
     assert venda.status.value == "FINALIZADA"
 
 
-def test_exigir_caixa_aberto_bloqueia_a_venda_ja_na_criacao(client, db_session):
-    """A venda pertence a um turno: sem caixa aberto ela nem comeca.
+def test_sem_caixa_aberto_a_venda_NASCE_e_so_a_finalizacao_e_barrada(client, db_session):
+    """A trava do caixa mora na finalizacao, e SO nela.
 
-    Bloquear so na finalizacao fazia o operador montar o carrinho inteiro e
-    descobrir no checkout, com o cliente esperando.
+    Este teste substitui o `test_exigir_caixa_aberto_bloqueia_a_venda_ja_na_criacao`,
+    que travava o comportamento anterior. A regra mudou por decisao do dono em
+    21/08/2026: montar carrinho nao move dinheiro nenhum, e exigir turno na
+    criacao impedia o atendente de montar a venda para o CAIXA receber.
+
+    O que NAO mudou -- e e o que este teste guarda -- e que o dinheiro continua
+    barrado sem turno. Se a segunda metade daqui um dia passar a devolver 200, o
+    controle da gaveta acabou.
     """
     header = _auth(client)
     funcionario_id = _funcionario(client, header)
+    fp_id = _forma(client, header)
+    produto_id = _produto(client, header)
     _config_caixa(db_session, controlar_caixa=True, exigir_caixa_aberto=True)
 
-    r = client.post("/api/v1/vendas/", json={"funcionario_id": funcionario_id}, headers=header)
-    assert r.status_code == status.HTTP_400_BAD_REQUEST
-    assert "abra o caixa" in r.json()["detail"].lower()
+    # Nasce.
+    cv = client.post("/api/v1/vendas/", json={"funcionario_id": funcionario_id}, headers=header)
+    assert cv.status_code == 201, cv.text
+    venda_id = cv.json()["id"]
+
+    # E aceita item -- montar o carrinho inteiro tem que funcionar.
+    add = client.post(f"/api/v1/vendas/{venda_id}/itens", json={
+        "tipo_produto": "CADASTRADO", "produto_id": produto_id, "quantidade": 1,
+    }, headers=header)
+    assert add.status_code == 201, add.text
+    total = add.json()["financeiro_atualizado"]["total"]
+
+    # O dinheiro, nao.
+    fin = client.post(f"/api/v1/vendas/{venda_id}/finalizar", json={
+        "pagamentos": [{"forma_pagamento_id": fp_id, "valor": total,
+                        "parcelado": False, "qtd_parcelas": None}],
+    }, headers=header)
+    assert fin.status_code == status.HTTP_400_BAD_REQUEST, fin.text
+    assert "abra o caixa" in fin.json()["detail"].lower()
+
+
+def test_maquina_retaguarda_monta_venda_sem_turno(client, db_session):
+    """O beco da retaguarda, fechado sem uma linha de codigo de terminal.
+
+    A maquina marcada RETAGUARDA esconde a barra do caixa -- e ate 21/08/2026
+    continuava sendo cobrada por `exigir_caixa_aberto`. Ficava sem o botao de
+    abrir E sem poder vender: o operador nao tinha saida nenhuma.
+
+    Como a trava saiu da criacao, o papel do terminal nem precisa ser consultado
+    aqui. O teste existe para provar que a saida existe, venha ela de onde vier.
+    """
+    header = _auth(client)
+    funcionario_id = _funcionario(client, header)
+    produto_id = _produto(client, header)
+    _config_caixa(db_session, controlar_caixa=True, exigir_caixa_aberto=True)
+
+    cv = client.post("/api/v1/vendas/", json={"funcionario_id": funcionario_id}, headers=header)
+    assert cv.status_code == 201, cv.text
+
+    add = client.post(f"/api/v1/vendas/{cv.json()['id']}/itens", json={
+        "tipo_produto": "CADASTRADO", "produto_id": produto_id, "quantidade": 1,
+    }, headers=header)
+    assert add.status_code == 201, add.text
 
 
 def test_fechar_o_caixa_no_meio_ainda_bloqueia_a_finalizacao(client, db_session):

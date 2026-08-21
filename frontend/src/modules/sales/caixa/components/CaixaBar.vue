@@ -34,6 +34,7 @@ const {
   sessao,
   caixaAberto,
   caixaHabilitado,
+  exigeCaixaAberto,
   fechamentoCego,
   isLoading,
 } = useSessaoCaixaQuery();
@@ -158,6 +159,23 @@ const { eRetaguarda } = useEsteTerminalQuery();
 </script>
 
 <template>
+  <!--
+    Retaguarda sem turno: uma linha, sem botão.
+    O convite "Abrir caixa" continua escondido aqui — a máquina do escritório não
+    é um caixa, e convidá-la criava a sessão fantasma que nunca fecha direito.
+    Mas ficar em branco também não serve desde que a venda passou a nascer sem
+    turno: o operador montaria o carrinho e levaria "Abra o caixa antes de
+    finalizar vendas", conselho impossível de seguir numa máquina que não abre
+    caixa. A linha diz para onde a venda vai, e não oferece atalho nenhum.
+  -->
+  <div
+    v-if="caixaHabilitado && !isLoading && eRetaguarda && !caixaAberto && exigeCaixaAberto"
+    class="flex items-center gap-2.5 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm text-zinc-500"
+  >
+    <Lock class="h-4 w-4 shrink-0" />
+    Esta máquina é retaguarda — as vendas montadas aqui são finalizadas no caixa.
+  </div>
+
   <div v-if="caixaHabilitado && !isLoading && !(eRetaguarda && !caixaAberto)">
     <!-- Caixa fechado: só o convite para abrir -->
     <div
@@ -170,7 +188,20 @@ const { eRetaguarda } = useEsteTerminalQuery();
         </span>
         <div>
           <p class="font-semibold text-zinc-900">Caixa fechado</p>
-          <p class="text-sm text-zinc-500">
+          <!--
+            A frase muda com `exigir_caixa_aberto` porque a consequência muda.
+            Desde 21/08/2026 a venda NASCE sem turno aberto — só o dinheiro é
+            barrado. Dizer só "abra o caixa para começar o turno" deixaria quem
+            trabalha sozinho montar o carrinho inteiro e descobrir a trava no
+            checkout, com o cliente na frente. Era exatamente esse atrito que a
+            antiga trava na criação evitava, e é ele que esta linha substitui.
+          -->
+          <p v-if="exigeCaixaAberto" class="text-sm text-zinc-500">
+            Você pode montar vendas, mas
+            <strong class="font-semibold text-zinc-700">não finalizá-las</strong>
+            enquanto o caixa estiver fechado.
+          </p>
+          <p v-else class="text-sm text-zinc-500">
             Abra o caixa informando o troco inicial para começar o turno.
           </p>
         </div>
