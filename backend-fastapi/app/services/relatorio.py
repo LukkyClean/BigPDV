@@ -31,6 +31,85 @@ from app.schemas.relatorio import (
 )
 
 
+def _serie_por_dia(
+    inicio: date,
+    fim: date,
+    vendas_dia: dict[str, int],
+    os_dia: dict[str, int],
+) -> list[FaturamentoDiaItem]:
+    """Serie diaria continua: dia sem movimento entra como zero, senao o grafico pula buracos."""
+    por_dia: list[FaturamentoDiaItem] = []
+    dia = inicio
+    while dia <= fim:
+        chave = dia.isoformat()
+        tv = vendas_dia.get(chave, 0)
+        to = os_dia.get(chave, 0)
+        por_dia.append(
+            FaturamentoDiaItem(dia=dia, total_vendas=tv, total_os=to, total_geral=tv + to)
+        )
+        dia += timedelta(days=1)
+    return por_dia
+
+
+def get_faturamento_pessoal(
+    db: Session, inicio: date, fim: date, funcionario_id: int
+) -> RelatorioFaturamento:
+    """
+    O relatorio de faturamento restrito ao que ESTE funcionario fez.
+
+    Mesmo schema do relatorio da loja, de proposito: a tela e a impressao sao as
+    mesmas, muda so o recorte. Reusa as agregacoes pessoais do dashboard
+    (get_meu_resumo_stats, get_minhas_*_por_dia), entao o numero daqui bate com o
+    "Meu resumo" da Home — dois lugares que discordassem seriam pior que um so.
+
+    O QUE FICA DE FORA, E POR QUE. Juros de cartao, CMV, lucro bruto, margem e
+    formas de pagamento ficam no DEFAULT (zero/vazio). Nao e omissao por
+    preguica: sao contas da LOJA, nao do funcionario.
+
+      - juros e CMV sao custo do dono. Repassar um pedaco deles ao funcionario
+        que fez a venda daria um "lucro" que nao e o lucro de ninguem: o juros
+        de uma venda dele foi bancado pelo caixa da loja, e o custo da peca saiu
+        do estoque da loja.
+      - formas de pagamento respondem "como o dinheiro entrou na loja", que e
+        pergunta de conciliacao — do dono.
+
+    A tela ja esconde esses blocos quando os valores sao zero, mas quem garante
+    que o dado nao sai daqui e ESTE recorte, nao o `v-if`.
+    """
+    dt_inicio, dt_fim = intervalo_utc(inicio, fim)
+
+    stats = dashboard_crud.get_meu_resumo_stats(db, dt_inicio, dt_fim, funcionario_id)
+    faturamento_vendas = stats.minhas_vendas_valor
+    faturamento_os = stats.minhas_os_valor
+    faturamento_total = faturamento_vendas + faturamento_os
+    qtd_transacoes = stats.minhas_vendas_count + stats.minhas_os_concluidas
+    ticket_medio = int(faturamento_total / qtd_transacoes) if qtd_transacoes else 0
+
+    vendas_dia = {
+        str(r.dia): (r.total or 0)
+        for r in dashboard_crud.get_minhas_vendas_por_dia(db, dt_inicio, dt_fim, funcionario_id)
+    }
+    os_dia = {
+        str(r.dia): (r.total or 0)
+        for r in dashboard_crud.get_minhas_os_por_dia(db, dt_inicio, dt_fim, funcionario_id)
+    }
+
+    return RelatorioFaturamento(
+        inicio=inicio,
+        fim=fim,
+        faturamento_total=faturamento_total,
+        faturamento_vendas=faturamento_vendas,
+        faturamento_os=faturamento_os,
+        # Sem juros a descontar, o liquido E o total. Preencher explicitamente
+        # evita que a tela caia no fallback e mostre "R$ 0,00" de faturamento.
+        faturamento_liquido=faturamento_total,
+        ticket_medio=ticket_medio,
+        qtd_vendas=stats.minhas_vendas_count,
+        qtd_os=stats.minhas_os_concluidas,
+        por_dia=_serie_por_dia(inicio, fim, vendas_dia, os_dia),
+    )
+
+
 def get_faturamento(db: Session, inicio: date, fim: date, empresa_id: int) -> RelatorioFaturamento:
     """
     Faturamento (vendas + OS finalizadas) no intervalo [inicio, fim]:
@@ -99,16 +178,7 @@ def get_faturamento(db: Session, inicio: date, fim: date, empresa_id: int) -> Re
         for r in relatorio_crud.get_faturamento_os_por_dia(db, dt_inicio, dt_fim, empresa_id)
     }
 
-    por_dia: list[FaturamentoDiaItem] = []
-    dia = inicio
-    while dia <= fim:
-        chave = dia.isoformat()
-        tv = vendas_dia.get(chave, 0)
-        to = os_dia.get(chave, 0)
-        por_dia.append(
-            FaturamentoDiaItem(dia=dia, total_vendas=tv, total_os=to, total_geral=tv + to)
-        )
-        dia += timedelta(days=1)
+    por_dia = _serie_por_dia(inicio, fim, vendas_dia, os_dia)
 
     # Formas de pagamento — reusa o crud do dashboard e mescla vendas + OS.
     totais: dict[str, int] = {}

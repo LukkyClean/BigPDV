@@ -1,7 +1,20 @@
 # ---------------------------------------------------------------------------
 # ARQUIVO: endpoints/relatorios.py
-# DESCRICAO: Endpoints read-only do modulo de Relatorios. Dados sensiveis
-#            (faturamento) — protegidos por permissao no backend.
+# DESCRICAO: Endpoints read-only do modulo de Relatorios.
+#
+# SEPARACAO DE ACESSO (regra do dono) — a MESMA do endpoints/dashboard.py:
+#   - VISAO GERAL da loja (ranking, comissoes, estoque, os-performance) e
+#     EXCLUSIVA do Master -> Depends(get_current_master_user), 403 se nao for.
+#     Ranking e comissao expoem o desempenho e o pagamento dos COLEGAS; estoque
+#     e curva ABC expoem custo e imobilizado; desempenho de OS compara tecnicos.
+#     Nada disso e do funcionario — e do dono.
+#   - /faturamento continua aberto a quem tem a permissao do modulo, mas RECORTADO:
+#     master recebe a loja inteira, funcionario recebe so o que ele mesmo fez
+#     (get_faturamento_pessoal), sem juros, custo, lucro nem formas de pagamento.
+#
+# O gate e o `is_master`, nao o nome do cargo. Mesma decisao do HomeView e do
+# dashboard: cargo por nome ("gerente"/"administrador") e fragil e ja divergiu
+# do servidor uma vez.
 # ---------------------------------------------------------------------------
 
 from datetime import date
@@ -9,7 +22,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
-from app.core.depends import check_permission, get_db
+from app.core.depends import check_permission, get_current_master_user, get_db
 from app.schemas.relatorio import (
     RelatorioFaturamento,
     RelatorioRanking,
@@ -41,7 +54,27 @@ def obter_faturamento(
     inicio: date = Query(..., description="Data inicial do periodo (YYYY-MM-DD)"),
     fim: date = Query(..., description="Data final do periodo (YYYY-MM-DD)"),
 ):
-    return relatorio_service.get_faturamento(db, inicio, fim, user_token["empresa_id"])
+    """Master ve a loja; funcionario ve o que ele mesmo fez."""
+    if user_token.get("is_master") is True:
+        return relatorio_service.get_faturamento(db, inicio, fim, user_token["empresa_id"])
+
+    funcionario_id = user_token.get("funcionario_id")
+    if not funcionario_id:
+        # Usuario sem ficha de funcionario nao tem "o que ele fez" para somar. O
+        # relatorio vazio e a resposta certa — cair no relatorio da loja seria
+        # justamente o vazamento que este recorte existe para fechar.
+        return RelatorioFaturamento(
+            inicio=inicio,
+            fim=fim,
+            faturamento_total=0,
+            faturamento_vendas=0,
+            faturamento_os=0,
+            ticket_medio=0,
+            qtd_vendas=0,
+            qtd_os=0,
+        )
+
+    return relatorio_service.get_faturamento_pessoal(db, inicio, fim, funcionario_id)
 
 
 @router.get(
@@ -54,7 +87,7 @@ def obter_faturamento(
     ),
 )
 def obter_ranking_funcionarios(
-    user_token: dict = Depends(check_permission(required_permission=module_permission)),
+    user_token: dict = Depends(get_current_master_user),
     *,
     db: Session = Depends(get_db),
     inicio: date = Query(..., description="Data inicial do periodo (YYYY-MM-DD)"),
@@ -73,7 +106,7 @@ def obter_ranking_funcionarios(
     ),
 )
 def obter_comissoes(
-    user_token: dict = Depends(check_permission(required_permission=module_permission)),
+    user_token: dict = Depends(get_current_master_user),
     *,
     db: Session = Depends(get_db),
     inicio: date = Query(..., description="Data inicial do periodo (YYYY-MM-DD)"),
@@ -93,7 +126,7 @@ def obter_comissoes(
     ),
 )
 def obter_estoque(
-    user_token: dict = Depends(check_permission(required_permission=module_permission)),
+    user_token: dict = Depends(get_current_master_user),
     *,
     db: Session = Depends(get_db),
     inicio: date = Query(..., description="Data inicial do periodo (YYYY-MM-DD)"),
@@ -113,7 +146,7 @@ def obter_estoque(
     ),
 )
 def obter_os_performance(
-    user_token: dict = Depends(check_permission(required_permission=module_permission)),
+    user_token: dict = Depends(get_current_master_user),
     *,
     db: Session = Depends(get_db),
     inicio: date = Query(..., description="Data inicial do periodo (YYYY-MM-DD)"),

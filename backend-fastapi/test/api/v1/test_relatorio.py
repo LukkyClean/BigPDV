@@ -569,3 +569,126 @@ def test_os_performance_throughput_reparo_e_tecnico(client, db_session):
     status_map = {s["status"]: s["quantidade"] for s in body["por_status"]}
     assert status_map.get("FINALIZADA") == 2
     assert status_map.get("ABERTA") == 1
+
+
+# ---------------------------------------------------------------------------
+# Recorte por perfil: o funcionario ve o que ELE fez; a loja e do dono.
+# ---------------------------------------------------------------------------
+
+def _funcionario_com_acesso(client, header, *, nome, cpf, email, senha, cargo_id=None):
+    """Funcionario COM credencial de acesso — precisa logar para exercer o recorte."""
+    payload = {
+        "nome": nome, "cpf": cpf, "contato": "11999999999",
+        "usuario": {"nome": nome, "email": email, "senha": senha},
+        "endereco": [{"logradouro": "Rua X", "numero": "1", "cep": "12345-678",
+                      "bairro": "Centro", "cidade": "Lab City", "estado": "SP"}],
+    }
+    r = client.post("/api/v1/funcionarios/", json=payload, headers=header)
+    assert r.status_code in (200, 201), r.text
+    func_id = r.json()["id"]
+    if cargo_id is not None:
+        lk = client.put(f"/api/v1/funcionarios/{func_id}/cargo?cargo_id={cargo_id}", headers=header)
+        assert lk.status_code == 200, lk.text
+    return func_id
+
+
+def _login(client, email, senha):
+    r = client.post("/api/v1/auth/login", data={
+        "username": email, "password": senha, "hwid": "test-terminal-hwid",
+    })
+    assert r.status_code == 200, r.text
+    return {"Authorization": f"Bearer {r.json()['access_token']}"}
+
+
+def _cargo_com_relatorio(client, header, nome="Vendedor Relatorio"):
+    r = client.post("/api/v1/cargos/", json={
+        "nome": nome, "permissoes": {"relatorio": True},
+    }, headers=header)
+    assert r.status_code in (200, 201), r.text
+    return r.json()["id"]
+
+
+def test_faturamento_do_funcionario_traz_so_o_que_ele_fez(client, db_session):
+    """O funcionario ve o proprio faturamento; o do colega nao entra na conta.
+
+    E as contas da LOJA (juros, CMV, lucro, formas de pagamento) ficam zeradas:
+    quem garante isso e o recorte do backend, nao o `v-if` da tela.
+    """
+    _seed_contador_venda(db_session)
+    header = _auth(client)
+    fp_id = _forma_pagamento(client, header)
+    # entrada=4000 garante CMV > 0 na visao do dono — e o contraste que prova
+    # que o zero do funcionario e recorte, nao ausencia de dado.
+    produto_id = _produto(client, header, "P-ESCOPO", varejo=10000, entrada=4000, quantidade=100)
+
+    cargo_id = _cargo_com_relatorio(client, header)
+    eu = _funcionario_com_acesso(
+        client, header, nome="Vendedor Escopo", cpf="11122233355",
+        email="escopo@empresa.com", senha="SenhaForte123!", cargo_id=cargo_id,
+    )
+    colega = _funcionario_com_acesso(
+        client, header, nome="Colega Escopo", cpf="11122233366",
+        email="colega@empresa.com", senha="SenhaForte123!",
+    )
+
+    _venda_finalizada(client, header, eu, produto_id, 1, fp_id)      # R$ 100,00
+    _venda_finalizada(client, header, colega, produto_id, 3, fp_id)  # R$ 300,00
+
+    hoje = datetime.utcnow().date().isoformat()
+    rota = f"/api/v1/relatorios/faturamento?inicio={hoje}&fim={hoje}"
+
+    # O dono continua vendo a loja inteira — guarda contra regressao.
+    rm = client.get(rota, headers=header)
+    assert rm.status_code == 200, rm.text
+    dono = rm.json()
+    assert dono["faturamento_total"] == 40000
+    assert dono["qtd_vendas"] == 2
+    assert dono["cmv"] > 0, "o dono precisa enxergar custo, senao o teste nao contrasta"
+
+    # O funcionario ve so os R$ 100,00 dele.
+    h_func = _login(client, "escopo@empresa.com", "SenhaForte123!")
+    rf = client.get(rota, headers=h_func)
+    assert rf.status_code == 200, rf.text
+    meu = rf.json()
+    assert meu["faturamento_total"] == 10000
+    assert meu["faturamento_vendas"] == 10000
+    assert meu["qtd_vendas"] == 1
+    assert meu["ticket_medio"] == 10000
+
+    # Contas da loja nao vazam para a tela dele.
+    assert meu["cmv"] == 0
+    assert meu["lucro_bruto"] == 0
+    assert meu["margem_percentual"] == 0
+    assert meu["juros_repassado"] == 0
+    assert meu["juros_absorvido"] == 0
+    assert meu["formas_pagamento"] == []
+    # Sem juros a descontar, o liquido E o total — senao a tela mostraria R$ 0,00.
+    assert meu["faturamento_liquido"] == 10000
+
+    # A serie por dia tambem e a dele.
+    assert sum(d["total_geral"] for d in meu["por_dia"]) == 10000
+
+
+def test_relatorios_gerenciais_sao_exclusivos_do_master(client, db_session):
+    """Ranking, comissoes, estoque e desempenho de OS respondem 403 a quem nao e Master.
+
+    Sao os quatro que expoem colega, custo e imobilizado. A permissao do modulo
+    nao basta: o cargo abaixo TEM 'relatorio' e mesmo assim leva 403.
+    """
+    header = _auth(client)
+    cargo_id = _cargo_com_relatorio(client, header, nome="Vendedor Sem Visao Geral")
+    _funcionario_com_acesso(
+        client, header, nome="Vendedor Bloqueado", cpf="11122233377",
+        email="bloqueado@empresa.com", senha="SenhaForte123!", cargo_id=cargo_id,
+    )
+    h_func = _login(client, "bloqueado@empresa.com", "SenhaForte123!")
+
+    hoje = datetime.utcnow().date().isoformat()
+    for nome in ("ranking-funcionarios", "comissoes", "estoque", "os-performance"):
+        r = client.get(f"/api/v1/relatorios/{nome}?inicio={hoje}&fim={hoje}", headers=h_func)
+        assert r.status_code == status.HTTP_403_FORBIDDEN, (nome, r.status_code, r.text)
+
+    # E o dono continua entrando nos quatro.
+    for nome in ("ranking-funcionarios", "comissoes", "estoque", "os-performance"):
+        r = client.get(f"/api/v1/relatorios/{nome}?inicio={hoje}&fim={hoje}", headers=header)
+        assert r.status_code == 200, (nome, r.text)

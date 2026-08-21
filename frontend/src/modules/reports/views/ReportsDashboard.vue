@@ -18,6 +18,8 @@ import OSPerformanceSection from '../components/OSPerformanceSection.vue';
 import CaixaSection from '../components/CaixaSection.vue';
 import { useOrdemServico } from '@/shared/composables/useOrdemServico';
 import { useSessaoCaixaQuery } from '@/modules/sales/caixa/composables/queries/useSessaoCaixaQuery';
+import { useAuthStore } from '@/shared/stores/auth.store';
+import { storeToRefs } from 'pinia';
 
 const inicio = ref('');
 const fim = ref('');
@@ -29,6 +31,23 @@ function onPeriodo(r: { inicio: string; fim: string }) {
 const { data, isLoading, isError } = useFaturamentoQuery(inicio, fim);
 const { usaOrdemServico } = useOrdemServico();
 const { caixaHabilitado } = useSessaoCaixaQuery();
+
+/**
+ * O resultado DA LOJA e do dono; o funcionario ve o que ele mesmo fez.
+ *
+ * Ranking e comissao expoem os colegas, estoque expoe custo e imobilizado, e o
+ * desempenho de OS compara tecnicos — nada disso e do funcionario. Os blocos de
+ * juros e de lucro seguem a mesma regra: sao contas da loja.
+ *
+ * Isto aqui e SO a tela. Quem garante o recorte e o backend: os quatro
+ * relatorios gerenciais exigem Master (`get_current_master_user`, 403 se nao
+ * for) e o /faturamento devolve `get_faturamento_pessoal`. O `v-if` existe para
+ * a requisicao nem sair e o funcionario nao levar um 403 na cara — nao e a
+ * tranca.
+ */
+const authStore = useAuthStore();
+const { userData } = storeToRefs(authStore);
+const isMaster = computed(() => userData.value?.is_master === true);
 
 /** Só mostra o bloco de juros quando houve juros — repassado ou absorvido. */
 const jurosTotal = computed(
@@ -82,6 +101,14 @@ async function imprimirFinanceiro() {
         <Printer :size="14" /> Imprimir relatório
       </button>
     </div>
+
+    <!-- Sem isto a tela do funcionário parece quebrada: ele conhece o
+         relatório cheio do dono e veria metade dos blocos sumirem sem
+         explicação. Dizer o recorte é mais barato que responder à pergunta. -->
+    <p v-if="!isMaster" class="text-xs text-slate-500">
+      Estes são os <strong class="font-semibold">seus</strong> números — vendas e OS que você
+      fechou no período. O resultado da loja fica com o responsável.
+    </p>
 
     <!-- Relatório imprimível (A4) — só renderiza durante a impressão -->
     <FinanceiroPrint v-if="mostrarImpressao && data" :dados="data" />
@@ -137,7 +164,7 @@ async function imprimirFinanceiro() {
         saem do líquido.
       -->
       <div
-        v-if="jurosTotal > 0"
+        v-if="isMaster && jurosTotal > 0"
         class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm"
       >
         <h3 class="text-sm font-bold text-slate-700 mb-3 flex items-center gap-1.5">
@@ -186,7 +213,7 @@ async function imprimirFinanceiro() {
         saiu — não do preço de hoje no cadastro, senão um reajuste do fornecedor
         reescreveria o lucro do mês passado.
       -->
-      <div v-if="temCusto" class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+      <div v-if="isMaster && temCusto" class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
         <h3 class="text-sm font-bold text-slate-700 mb-3 flex items-center gap-1.5">
           <Wallet :size="14" class="text-slate-400" /> Lucro no período
         </h3>
@@ -240,13 +267,16 @@ async function imprimirFinanceiro() {
 
       <!-- Gráficos -->
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div class="lg:col-span-2 bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+        <div
+          class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm"
+          :class="isMaster ? 'lg:col-span-2' : 'lg:col-span-3'"
+        >
           <h3 class="text-sm font-bold text-slate-700 mb-3">Evolução do faturamento</h3>
           <div class="h-72">
             <FaturamentoChart v-if="data" :por-dia="data.por_dia" />
           </div>
         </div>
-        <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+        <div v-if="isMaster" class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
           <h3 class="text-sm font-bold text-slate-700 mb-3">Formas de pagamento</h3>
           <div class="h-72">
             <FormasPagamentoDonut
@@ -260,22 +290,27 @@ async function imprimirFinanceiro() {
         </div>
       </div>
 
-      <!-- Ranking por funcionário -->
-      <RankingSection :inicio="inicio" :fim="fim" />
+      <!-- Blocos gerenciais: só o dono. O v-if desmonta o componente e, com
+           ele, a query — assim a requisição nem sai e o funcionário não leva o
+           403 do backend na tela. -->
+      <template v-if="isMaster">
+        <!-- Ranking por funcionário -->
+        <RankingSection :inicio="inicio" :fim="fim" />
 
-      <!-- Comissão por funcionário -->
-      <ComissaoSection :inicio="inicio" :fim="fim" />
+        <!-- Comissão por funcionário -->
+        <ComissaoSection :inicio="inicio" :fim="fim" />
 
-      <!-- Caixa: quem abriu, quem fechou e com qual diferenca. So aparece
-           para quem usa controle de caixa. -->
-      <CaixaSection v-if="caixaHabilitado" :inicio="inicio" :fim="fim" />
+        <!-- Caixa: quem abriu, quem fechou e com qual diferenca. So aparece
+             para quem usa controle de caixa. -->
+        <CaixaSection v-if="caixaHabilitado" :inicio="inicio" :fim="fim" />
 
-      <!-- Estoque e Curva ABC -->
-      <EstoqueSection :inicio="inicio" :fim="fim" />
+        <!-- Estoque e Curva ABC -->
+        <EstoqueSection :inicio="inicio" :fim="fim" />
 
-      <!-- Desempenho de OS. O v-if desmonta o componente, e com ele a
-           useOSPerformanceQuery: numa loja de PDV a requisição nem sai. -->
-      <OSPerformanceSection v-if="usaOrdemServico" :inicio="inicio" :fim="fim" />
+        <!-- Desempenho de OS. O v-if desmonta o componente, e com ele a
+             useOSPerformanceQuery: numa loja de PDV a requisição nem sai. -->
+        <OSPerformanceSection v-if="usaOrdemServico" :inicio="inicio" :fim="fim" />
+      </template>
 
       <!-- Tabela -->
       <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
