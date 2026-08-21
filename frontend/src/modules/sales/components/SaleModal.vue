@@ -3,6 +3,7 @@ import { computed, nextTick, ref, toRef, watch } from 'vue';
 import { X, Printer, ShoppingCart, PackagePlus, Trash2 } from 'lucide-vue-next';
 import BaseModal from '@/shared/components/commons/BaseModal/BaseModal.vue';
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
+import { useSessaoCaixaQuery } from '../caixa/composables/queries/useSessaoCaixaQuery';
 import {
   useEnviarAoCaixaMutation,
   useDevolverParaMontagemMutation,
@@ -58,6 +59,7 @@ const cancelSaleModalIsOpen = ref(false);
 const { openCustomerModalForChange, iniciarVendaSemCliente } = useCustomerSearchModal();
 const { valorMinimoVenda, exigirClienteIdentificado, controlarCaixa } = storeToRefs(useConfiguracoesStore());
 const { modoBalcao } = storeToRefs(useBalcaoStore());
+const { caixaAberto, exigeCaixaAberto } = useSessaoCaixaQuery();
 
 /**
  * A entrega da venda ao caixa.
@@ -72,7 +74,30 @@ const { modoBalcao } = storeToRefs(useBalcaoStore());
 const enviarAoCaixaMutation = useEnviarAoCaixaMutation();
 const devolverParaMontagemMutation = useDevolverParaMontagemMutation();
 
-const mostraFilaDoCaixa = computed(() => controlarCaixa.value && !modoBalcao.value);
+/**
+ * Nesta máquina, agora, dá para receber o dinheiro?
+ *
+ * Espelha `exigir_caixa_aberto_para_vender`: só e sempre com as duas chaves
+ * ligadas e sem turno aberto. NÃO desabilita nada -- o backend continua sendo a
+ * autoridade, e ele aceita tambem o turno do VENDEDOR, que esta tela não
+ * conhece. Aqui isto serve só para decidir qual botão é o principal.
+ */
+const podeFinalizar = computed(
+  () => !(controlarCaixa.value && exigeCaixaAberto.value && !caixaAberto.value),
+);
+
+/**
+ * O botão de entregar some no Modo Balcão -- MAS SÓ SE DER PARA FINALIZAR.
+ *
+ * A primeira versão escondia sempre, com o argumento de que no balcão é uma
+ * pessoa só. O argumento vale, o "sempre" não: o Modo Balcão é uma preferência
+ * POR MÁQUINA, e nada impede que ele esteja ligado numa retaguarda. Quando isso
+ * acontecia e não havia turno, o operador ficava sem saída nenhuma -- não podia
+ * finalizar (o backend recusa) e não tinha como entregar.
+ */
+const mostraFilaDoCaixa = computed(
+  () => controlarCaixa.value && (!modoBalcao.value || !podeFinalizar.value),
+);
 const naFilaDoCaixa = computed(() => !!sale.value?.enviada_ao_caixa_em);
 const filaPendente = computed(
   () => enviarAoCaixaMutation.isPending.value || devolverParaMontagemMutation.isPending.value,
@@ -352,26 +377,44 @@ const saleDisplay = computed(() => {
 
         <div class="shrink-0 pt-4 flex flex-col gap-2">
           <template v-if="isEditMode">
+            <!--
+              QUEM E O BOTAO PRINCIPAL DEPENDE DE PODER RECEBER.
+              Onde da para receber, finalizar e o caminho normal e entregar e a
+              excecao. Onde nao da -- retaguarda, ou turno fechado -- a ordem se
+              inverte: deixar "Finalizar Venda" grande numa maquina que nao
+              finaliza e convidar o operador para uma recusa.
+              Nenhum dos dois e desabilitado: quem recusa e o backend, que aceita
+              tambem o turno do vendedor, e esta tela nao conhece esse caso.
+            -->
             <BaseButton
+              v-if="mostraFilaDoCaixa && !podeFinalizar"
               variant="primary"
               size="lg"
-              data-ir-pagamento
               class="w-full text-base font-bold py-4 shadow-lg shadow-brand-primary/20"
+              :disabled="!sale?.produtos?.length || filaPendente"
+              @click="alternarFilaDoCaixa"
+            >
+              {{ naFilaDoCaixa ? 'Tirar da fila do caixa' : 'Enviar para o caixa' }}
+            </BaseButton>
+
+            <BaseButton
+              :variant="podeFinalizar ? 'primary' : 'secondary'"
+              :size="podeFinalizar ? 'lg' : 'md'"
+              data-ir-pagamento
+              class="w-full"
+              :class="podeFinalizar ? 'text-base font-bold py-4 shadow-lg shadow-brand-primary/20' : ''"
               :disabled="!sale?.produtos?.length"
               @keydown.tab.exact.prevent="focarBuscaDeProduto"
               @click="openFinishModal"
             >
               <div class="flex flex-col items-center">
                 <span>Finalizar Venda</span>
-                <span class="text-[9px] opacity-70 font-normal">Ctrl+Enter</span>
+                <span v-if="podeFinalizar" class="text-[9px] opacity-70 font-normal">Ctrl+Enter</span>
               </div>
             </BaseButton>
 
-            <!-- Secundário de propósito: finalizar continua sendo o caminho
-                 principal, inclusive para o próprio caixa. Entregar é a exceção
-                 de quem não vai receber o dinheiro. -->
             <BaseButton
-              v-if="mostraFilaDoCaixa"
+              v-if="mostraFilaDoCaixa && podeFinalizar"
               variant="secondary"
               size="md"
               class="w-full"
@@ -380,8 +423,12 @@ const saleDisplay = computed(() => {
             >
               {{ naFilaDoCaixa ? 'Tirar da fila do caixa' : 'Enviar para o caixa' }}
             </BaseButton>
+
             <p v-if="mostraFilaDoCaixa && naFilaDoCaixa" class="text-[11px] text-center text-emerald-700">
               Na fila do caixa — alterar um item devolve a venda para montagem.
+            </p>
+            <p v-else-if="!podeFinalizar" class="text-[11px] text-center text-zinc-500">
+              Sem caixa aberto, esta venda é finalizada por quem estiver no caixa.
             </p>
           </template>
           <template v-else>
