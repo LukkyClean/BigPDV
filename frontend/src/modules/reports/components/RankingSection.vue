@@ -5,6 +5,7 @@ import type { ChartConfiguration } from 'chart.js/auto';
 
 import { formatCurrency } from '@/shared/utils/finance';
 import { useCoresTema } from '@/shared/theme/useCoresTema';
+import { useOrdemServico } from '@/shared/composables/useOrdemServico';
 import { useRankingQuery } from '../composables/useRankingQuery';
 import ChartCanvas from './ChartCanvas.vue';
 import ExtratoFuncionarioModal from './ExtratoFuncionarioModal.vue';
@@ -30,6 +31,15 @@ const itens = computed(() => data.value?.itens ?? []);
  * dispara, então o modal montado e fechado não busca nada.
  */
 const extratoDe = ref<number | null>(null);
+
+/**
+ * Loja de PDV puro não tem serviço — só produto.
+ *
+ * O extrato sairia sempre vazio ali, e botão que nunca traz nada é pior que
+ * botão nenhum: ele promete uma resposta e entrega uma tela em branco. O
+ * ranking em si continua, porque venda também rende posição nele.
+ */
+const { usaOrdemServico } = useOrdemServico();
 
 // Desenha o valor exato na ponta de cada barra (sempre visível, sem depender do hover).
 const valueLabelPlugin = {
@@ -106,7 +116,7 @@ const config = computed<ChartConfiguration>(() => ({
               <th class="py-2 px-3 font-semibold text-right">Vendas</th>
               <th class="py-2 px-3 font-semibold text-right">OS</th>
               <th class="py-2 px-3 font-semibold text-right">Total</th>
-              <th class="py-2 pl-3 font-semibold text-right"><span class="sr-only">Extrato</span></th>
+              <th v-if="usaOrdemServico" class="py-2 pl-3 font-semibold text-right"><span class="sr-only">Extrato</span></th>
             </tr>
           </thead>
           <tbody>
@@ -120,7 +130,7 @@ const config = computed<ChartConfiguration>(() => ({
               <td class="py-2 px-3 text-right text-slate-500 tabular-nums">{{ formatCurrency(i.faturamento_vendas) }}</td>
               <td class="py-2 px-3 text-right text-slate-500 tabular-nums">{{ formatCurrency(i.faturamento_os) }}</td>
               <td class="py-2 px-3 text-right font-semibold text-slate-800 tabular-nums">{{ formatCurrency(i.faturamento_total) }}</td>
-              <td class="py-2 pl-3 text-right">
+              <td v-if="usaOrdemServico" class="py-2 pl-3 text-right">
                 <!-- Discreto de propósito: ícone sem rótulo, na cor de apoio,
                      como as ações rápidas da tabela de vendas. A coluna existe
                      para quem procura, não para disputar atenção com os números. -->
@@ -144,6 +154,7 @@ const config = computed<ChartConfiguration>(() => ({
     </div>
 
     <ExtratoFuncionarioModal
+      v-if="usaOrdemServico"
       :is-open="extratoDe !== null"
       :funcionario-id="extratoDe"
       :inicio="props.inicio"
