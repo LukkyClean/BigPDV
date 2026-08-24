@@ -2,7 +2,9 @@ import { ref } from 'vue';
 import type { OrderServiceReadDataType } from '../schemas/orderServiceQuery.schema';
 import type { CustomerUnionReadSchemaDataType } from '../schemas/relationship/customer/customer.schema';
 import type { ObjetoHistorico } from '@/modules/customers/types/clientes.types';
+import type { ObjetoBuscaItemDataType } from '../schemas/relationship/objetoBusca.schema';
 import { getClientObjetos } from '@/modules/customers/services/customerGet.service';
+import { getCustomerByIdForOS } from '../services/relationship/osRelationshipGet.service';
 
 // =============================================
 // Shared State (singleton pattern)
@@ -20,6 +22,10 @@ const selectedOS = ref<OrderServiceReadDataType | null>(null);
 const objetosHistoricoFlow = ref<ObjetoHistorico[]>([]);
 const selectedObjeto = ref<ObjetoHistorico | null>(null);
 const autoUsarCredito = ref(false);
+// Objeto que veio junto da busca por placa / nº de série. Existir aqui é o que
+// faz o fluxo pular a pergunta "objeto já cadastrado?" — mas SEM pular o alerta
+// de crédito, que é dinheiro do cliente e precisa ser visto de qualquer jeito.
+const objetoPreSelecionado = ref<ObjetoHistorico | null>(null);
 
 // =============================================
 // Helper privado — continua o fluxo após a decisão de crédito
@@ -28,6 +34,16 @@ const autoUsarCredito = ref(false);
 async function _continuarFluxoCliente() {
   const cliente = selectedCliente.value;
   if (!cliente) return;
+
+  // Veio da busca pelo identificador: o bem já está escolhido. Perguntar
+  // "objeto já cadastrado?" aqui seria repetir o que o atendente acabou de
+  // responder ao digitar a placa.
+  if (objetoPreSelecionado.value) {
+    selectedObjeto.value = objetoPreSelecionado.value;
+    objetoPreSelecionado.value = null;
+    isFormModalOpen.value = true;
+    return;
+  }
 
   try {
     const history = await getClientObjetos(cliente.id);
@@ -53,6 +69,7 @@ export function useOSCreateFlow() {
     selectedCliente.value = null;
     selectedObjeto.value = null;
     autoUsarCredito.value = false;
+    objetoPreSelecionado.value = null;
     isClienteSearchOpen.value = true;
   }
 
@@ -76,6 +93,41 @@ export function useOSCreateFlow() {
     }
 
     await _continuarFluxoCliente();
+  }
+
+  /**
+   * O atendente achou o bem pela placa / nº de série / código da arte.
+   *
+   * Traz o cliente do servidor porque a linha do objeto só carrega o `id` e o
+   * nome — e o formulário (e o alerta de crédito) precisam do cadastro
+   * completo, com `saldo_credito`. É a mesma requisição barata que o aviso de
+   * duplicidade já fazia.
+   *
+   * Se a busca do cliente falhar, devolve o atendente à tela de busca em vez de
+   * abrir uma OS sem dono.
+   */
+  async function handleObjetoEncontrado(objeto: ObjetoBuscaItemDataType) {
+    let cliente: CustomerUnionReadSchemaDataType;
+    try {
+      cliente = await getCustomerByIdForOS(objeto.cliente_id);
+    } catch {
+      isClienteSearchOpen.value = true;
+      return;
+    }
+
+    // `tipo_equipamento` fica de fora de propósito: o valor guardado no objeto
+    // ("Equipamento", "Veículo") não é opção do select de segmento nenhum, e
+    // campo que não casa com o enum reprova no Zod em silêncio. O fluxo de
+    // "objeto já cadastrado?" também nunca preencheu esse campo.
+    objetoPreSelecionado.value = {
+      marca: objeto.marca ?? null,
+      modelo: objeto.modelo ?? null,
+      numero_serie: objeto.numero_serie ?? null,
+      cor: objeto.cor ?? null,
+      dados_adicionais: objeto.dados_adicionais ?? {},
+    } as ObjetoHistorico;
+
+    await handleClienteSelected(cliente);
   }
 
   async function handleCreditoUsado() {
@@ -119,6 +171,7 @@ export function useOSCreateFlow() {
     objetosHistoricoFlow.value = [];
     autoUsarCredito.value = false;
     autoOpenReopen.value = false;
+    objetoPreSelecionado.value = null;
   }
 
   return {
@@ -135,6 +188,7 @@ export function useOSCreateFlow() {
     openNovaOS,
     openExistingOS,
     handleClienteSelected,
+    handleObjetoEncontrado,
     handleCreditoUsado,
     handleCreditoIgnorado,
     handleObjetoSelectedFlow,

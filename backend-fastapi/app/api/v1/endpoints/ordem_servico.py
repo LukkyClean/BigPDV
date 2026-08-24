@@ -46,6 +46,7 @@ from app.schemas.ordem_servico import (
     OrdemServicoReabrir,
     OSFotoRead,
     OSIdentificadorCheck,
+    OSObjetoBuscaItem,
 )
 from app.services import ordem_servico as os_service
 from app.services import ordem_servico_foto as os_foto_service
@@ -129,6 +130,29 @@ def verificar_identificador_objeto(
     db: Session = Depends(get_db),
 ):
     return os_service.verificar_identificador_objeto(db, identificador, cliente_id)
+
+
+@router.get(
+    "/objeto/buscar",
+    response_model=list[OSObjetoBuscaItem],
+    summary="Buscar objeto pela placa / nº de série / código da arte",
+    description=(
+        "Procura objetos ativos cujo identificador case com o texto digitado, "
+        "**de qualquer cliente**, e devolve o dono junto. É o que permite achar "
+        "o cliente pela placa no balcão, quando quem chega tem o carro na mão e "
+        "não o CPF.\n\n"
+        "Aceita pedaço do identificador ('1D23' acha 'ABC1D23') — diferente da "
+        "verificação de duplicidade, que exige o identificador inteiro porque "
+        "decide dedup. Devolve lista vazia para texto curto demais ou genérico "
+        "('S/N', 'não sei')."
+    ),
+)
+def buscar_objetos_por_identificador(
+    termo: str = Query(..., min_length=1, max_length=100, description="Placa, nº de série ou código da arte (pode ser parcial)"),
+    user_token: dict = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    return os_service.buscar_objetos_por_identificador(db, termo)
 
 
 # ===========================================================================

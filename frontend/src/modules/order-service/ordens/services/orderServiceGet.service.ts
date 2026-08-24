@@ -15,6 +15,11 @@ import {
   type IdentificadorCheckDataType,
 } from '../schemas/relationship/identificadorCheck.schema';
 
+import {
+  ObjetoBuscaListSchema,
+  type ObjetoBuscaItemDataType,
+} from '../schemas/relationship/objetoBusca.schema';
+
 import { BASE_ORDER_SERVICE_URL } from '../constants/core.constant';
 import { safeParseResponse } from '@/shared/utils/parse.utils';
 
@@ -86,4 +91,27 @@ export async function verificarIdentificadorObjeto(
     { params },
   );
   return safeParseResponse(IdentificadorCheckSchema, data, 'verificarIdentificadorObjeto');
+}
+
+/**
+ * Objetos cujo identificador casa com o texto digitado, de qualquer cliente.
+ *
+ * É o que faz o seletor de cliente da OS achar quem chegou com o carro pela
+ * PLACA, e não só por nome/CPF. Aceita pedaço ("1D23" acha "ABC1D23") — quem
+ * está no balcão raramente lembra a placa inteira.
+ *
+ * Não confundir com `verificarIdentificadorObjeto`: aquela compara o
+ * identificador INTEIRO para decidir dedup e avisar duplicidade; esta é busca.
+ */
+export async function buscarObjetosPorIdentificador(
+  termo: string,
+): Promise<ObjetoBuscaItemDataType[]> {
+  const texto = termo.trim();
+  if (!texto) return [];
+
+  const { data } = await api.get<ObjetoBuscaItemDataType[]>(
+    `${BASE_ORDER_SERVICE_URL}/objeto/buscar`,
+    { params: { termo: texto } },
+  );
+  return safeParseResponse(ObjetoBuscaListSchema, data, 'buscarObjetosPorIdentificador');
 }

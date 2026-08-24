@@ -48,6 +48,7 @@ from app.services.segmentos import (
     get_segmento_atual,
 )
 from app.core import segmentos as reg
+from app.core.busca import compactar
 from app.services import movimentacao_estoque as mov_service
 
 from app.core.enum import (
@@ -791,6 +792,75 @@ def verificar_identificador_objeto(
         })
 
     return resultado
+
+
+# Teto da lista devolvida ao seletor da OS. Busca por identificador que devolve
+# vinte linhas ja errou o alvo -- quem digita placa quer UM bem.
+BUSCA_OBJETO_LIMITE = 20
+
+# Piso de caracteres para BUSCAR -- proposital que seja MENOR que o
+# `IDENTIFICADOR_MIN_CARACTERES` (4) do registry.
+#
+# Os dois pisos respondem perguntas diferentes. La: "este texto identifica um
+# bem?", e errar custa dedup errado, entao 4 e sensato. Aqui: "vale ir ao banco
+# procurar?", e errar custa uma consulta que nao acha nada. Com 4, digitar as
+# tres primeiras letras da placa ("ABC") nao devolvia o carro -- que e
+# exatamente como se comeca a digitar uma placa.
+BUSCA_OBJETO_MIN_CARACTERES = 3
+
+
+def buscar_objetos_por_identificador(
+    db: Session,
+    termo: str,
+    limite: int = BUSCA_OBJETO_LIMITE,
+) -> list[dict]:
+    """
+    Objetos cujo identificador casa com o texto digitado, com o nome do dono
+    junto -- o que permite ao seletor da OS achar o cliente pela placa, pelo
+    numero de serie ou pelo codigo da arte, e nao so por nome/CPF.
+
+    NAO usa `identificador_pesquisavel` para aprovar o termo, e isso e
+    deliberado: aquela funcao cobra o regex do segmento, que na oficina e a
+    placa INTEIRA (`^...$`). Quem lembra so o final da placa e digita "1D23"
+    seria recusado justamente no segmento que mais precisa desta busca. Ali o
+    regex esta certo -- decide o que vale como CHAVE de dedup; aqui seria
+    errado, porque busca boa aceita pedaco.
+
+    Ficam os dois filtros que a busca de fato precisa:
+      - minimo de caracteres (ver BUSCA_OBJETO_MIN_CARACTERES), para "ab" nao
+        varrer a loja inteira;
+      - identificador generico, para "S/N" nao devolver todo mundo que nao
+        tinha o numero em maos (ver IDENTIFICADORES_GENERICOS no registry).
+    """
+    compacto = compactar(termo)
+
+    if len(compacto) < BUSCA_OBJETO_MIN_CARACTERES:
+        return []
+    if compacto in reg.IDENTIFICADORES_GENERICOS:
+        return []
+
+    encontrados: list[dict] = []
+    for objeto in os_crud.buscar_objetos_por_identificador(db, termo, limite):
+        nome_cliente, _ = _cliente_contato(objeto.cliente)
+        encontrados.append({
+            "objeto_id": objeto.id,
+            "cliente_id": objeto.cliente_id,
+            # Sai em cinza embaixo do objeto na lista. E o que distingue duas
+            # linhas iguais quando o bem foi VENDIDO e existe no nome de dois
+            # clientes -- o mesmo caso que o aviso de duplicidade ja trata.
+            "cliente_nome": nome_cliente,
+            "tipo_equipamento": str(objeto.tipo_equipamento),
+            "marca": objeto.marca,
+            "modelo": objeto.modelo,
+            "numero_serie": objeto.numero_serie,
+            "cor": objeto.cor,
+            # Vao para o formulario junto com o resto: e o que faz a OS abrir
+            # com chassi/ano/IMEI ja preenchidos, sem passar pela tela de
+            # "objeto ja cadastrado?".
+            "dados_adicionais": objeto.dados_adicionais or {},
+        })
+
+    return encontrados
 
 
 # ===========================================================================

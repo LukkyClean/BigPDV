@@ -6,9 +6,12 @@ import {
   getCustomersBySearch,
 } from '../../../services/relationship/osRelationshipGet.service';
 
+import { buscarObjetosPorIdentificador } from '../../../services/orderServiceGet.service';
+
 import {
   OS_CUSTOMER_QUERY_KEY,
   OS_CUSTOMER_QUERY_STALE_TIME,
+  OS_OBJETO_BUSCA_QUERY_KEY,
   OS_EMPLOYEE_QUERY_KEY,
   OS_EMPLOYEE_QUERY_STALE_TIME,
   ORDER_SERVICE_REFETCH_INTERVAL,
@@ -29,6 +32,26 @@ export function useOsCustomersSearch(termo: Ref<string>) {
     queryKey: computed(() => [...OS_CUSTOMER_QUERY_KEY, termo.value.trim()]),
     queryFn: () => getCustomersBySearch(termo.value),
     enabled: computed(() => termo.value.trim().length > 0),
+    staleTime: OS_CUSTOMER_QUERY_STALE_TIME,
+  });
+}
+
+/**
+ * Objetos cujo identificador (placa / nº de série / código da arte) casa com o
+ * termo — a outra metade do mesmo seletor.
+ *
+ * Roda em paralelo com a busca de cliente, pelo mesmo termo: o atendente digita
+ * a única informação que tem na mão e o servidor decide o que aquilo é. Só um
+ * dos dois costuma responder, então a lista não fica ambígua.
+ *
+ * O piso de 3 caracteres é só para não disparar requisição a cada tecla — o
+ * servidor tem o seu próprio (4, o mesmo do registry) e é ele quem manda.
+ */
+export function useOsObjetosSearch(termo: Ref<string>) {
+  return useQuery({
+    queryKey: computed(() => [...OS_OBJETO_BUSCA_QUERY_KEY, termo.value.trim()]),
+    queryFn: () => buscarObjetosPorIdentificador(termo.value),
+    enabled: computed(() => termo.value.trim().length >= 3),
     staleTime: OS_CUSTOMER_QUERY_STALE_TIME,
   });
 }

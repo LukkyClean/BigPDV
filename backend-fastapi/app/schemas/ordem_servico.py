@@ -183,6 +183,36 @@ class OSIdentificadorCheck(BaseModel):
 
 
 # ===========================================================================
+# BUSCA DE OBJETO POR IDENTIFICADOR (seletor de cliente da OS)
+# ===========================================================================
+
+class OSObjetoBuscaItem(BaseModel):
+    """
+    Objeto encontrado pela placa / nº de série / código da arte, com o dono
+    junto — é a linha que o seletor de cliente da OS mostra quando o atendente
+    digita o identificador em vez do nome.
+
+    Carrega os campos do objeto (não só o id) porque quem clica nesta linha já
+    disse qual é o bem: a OS abre com ele preenchido, sem passar pela tela de
+    "objeto já cadastrado?".
+    """
+    objeto_id: int = Field(..., description="ID do objeto encontrado")
+    cliente_id: int = Field(..., description="ID do cliente dono do objeto")
+    cliente_nome: Optional[str] = Field(None, description="Nome de exibição do dono")
+    tipo_equipamento: Optional[str] = Field(None, description="Tipo do objeto (livre por segmento)")
+    marca: Optional[str] = Field(None, description="Marca registrada no objeto")
+    modelo: Optional[str] = Field(None, description="Modelo registrado no objeto")
+    numero_serie: Optional[str] = Field(None, description="Identificador como foi gravado")
+    cor: Optional[str] = Field(None, description="Cor registrada no objeto")
+    dados_adicionais: Optional[dict] = Field(
+        default_factory=dict,
+        description="Campos dinâmicos do segmento (chassi, ano, IMEI...)"
+    )
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ===========================================================================
 # EQUIPAMENTO DA OS
 # ===========================================================================
 

@@ -113,6 +113,7 @@ const {
   autoUsarCredito,
   openNovaOS,
   handleClienteSelected,
+  handleObjetoEncontrado,
   handleCreditoUsado,
   handleCreditoIgnorado,
   handleObjetoSelectedFlow,
@@ -223,6 +224,7 @@ whenever(Ctrl_K, () => {
       :is-open="isClienteSearchOpen"
       @close="closeClienteSearch"
       @select-cliente="handleClienteSelected"
+      @select-objeto="handleObjetoEncontrado"
     />
 
     <OSCreditoAlertModal
