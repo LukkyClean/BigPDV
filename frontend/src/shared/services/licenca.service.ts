@@ -12,6 +12,17 @@ export interface LicencaStatusResponse {
   dias_restantes?: number;
   /** Só presente quando a licença é um trial. Ausente = licença paga. */
   trial?: boolean;
+  /**
+   * O plano venceu, mas o gateway ainda está re-tentando o cartão.
+   *
+   * NÃO confundir com "vencida": aqui o sistema continua liberado, e o aviso
+   * é para o dono saber que a cobrança falhou — cartão trocado, limite, banco
+   * recusando. Só acontece em assinatura no cartão; no PIX, não pagar foi uma
+   * escolha e a licença trava na hora.
+   */
+  em_carencia?: boolean;
+  /** Dias que ainda faltam da carência. */
+  dias_restantes_carencia?: number | null;
 }
 
 export interface LicencaErroResponse {

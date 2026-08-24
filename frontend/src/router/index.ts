@@ -2,6 +2,7 @@ import { useLayoutStore } from '@/modules/mainLayout/store/layout.store';
 import { useAuthStore } from '@/shared/stores/auth.store';
 import { verificarLicenca } from '@/shared/services/licenca.service';
 import { useNetworkConfigStore } from '@/shared/stores/networkConfig.store';
+import { useLicencaStore } from '@/shared/stores/licenca.store';
 import { storeToRefs } from 'pinia';
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router';
 import { watch } from 'vue';
@@ -37,6 +38,9 @@ router.beforeEach(async (to) => {
       try {
         await verificarLicenca();
         ultimaVerificacaoLicenca = agora;
+        // Voltou a valer (renovou, ou entrou em carência): sai do estado de
+        // paywall sozinho, sem precisar reiniciar o sistema.
+        useLicencaStore().limpar();
       } catch (error) {
         if (axios.isAxiosError(error) && error.response) {
           const status = error.response.status;
@@ -46,10 +50,22 @@ router.beforeEach(async (to) => {
             const codigo = detail.codigo || 'ERRO_DESCONHECIDO';
             const mensagem = detail.mensagem || 'Erro na verificação da licença.';
 
-            return {
-              name: 'licenca.erro',
-              query: { codigo, mensagem },
-            };
+            // Vencida é o ÚNICO caso que se resolve pagando — e por isso o
+            // único que deixa entrar. A pessoa loga, o sistema fica inativo e
+            // só a cobrança funciona (ver ETAPA 2.5, abaixo).
+            //
+            // Os demais códigos seguem no caminho de sempre: clonagem, falta de
+            // internet e bloqueio administrativo não melhoram com pagamento, e
+            // mandar essas pessoas para a tela de cobrança é empurrá-las para o
+            // lugar errado.
+            if (codigo === 'LICENCA_EXPIRADA') {
+              useLicencaStore().marcarExpirada(mensagem);
+            } else {
+              return {
+                name: 'licenca.erro',
+                query: { codigo, mensagem },
+              };
+            }
           }
 
           // 404 = sem licença = sistema não inicializado → sign-in
@@ -99,6 +115,25 @@ router.beforeEach(async (to) => {
         query: { redirect: to.fullPath },
       };
     }
+  }
+
+  // -----------------------------------------------------------------------
+  // ETAPA 2.5: Licença vencida — sistema inativo, só a cobrança funciona
+  // -----------------------------------------------------------------------
+  // Roda DEPOIS da autenticação de propósito: quem ainda não logou tem que
+  // conseguir chegar na tela de login. Mandar para o paywall antes disso
+  // deixaria a pessoa numa tela de pagamento sem saber de quem é a licença.
+  //
+  // Uma rota só escapa: a própria tela de renovação. Sem essa exceção o guard
+  // se redireciona para si mesmo e o router entra em laço infinito.
+  const licencaStore = useLicencaStore();
+  if (
+    licencaStore.expirada
+    && isAuthenticated.value
+    && to.name !== 'licenca.renovar'
+    && to.name !== 'auth.user'
+  ) {
+    return { name: 'licenca.renovar' };
   }
 
   // -----------------------------------------------------------------------

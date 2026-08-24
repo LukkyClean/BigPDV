@@ -29,6 +29,7 @@ import { getComunicados } from '../services/comunicado.service';
 import { watch, onMounted, computed } from 'vue';
 import MinhaContaModal from '@/modules/minha-conta/components/MinhaContaModal.vue';
 import ConfiguracoesModal from '@/modules/configuracoes/components/ConfiguracoesModal.vue';
+import RenovarAssinaturaModal from '@/modules/license/components/RenovarAssinaturaModal.vue';
 import { useCustomerSearchModal } from '@/modules/sales/composables/flows/useCustomerSearchModal';
 import { useOSCreateFlow } from '@/modules/order-service/ordens/composables/useOSCreateFlow';
 import { useProductModal } from '@/modules/products/inventory/composables/useProductModal.ts';
@@ -43,7 +44,7 @@ const configuracoesStore = useConfiguracoesStore();
 const impressaoStore = useImpressaoStore();
 const notificacoesStore = useNotificacoesStore();
 const { temRevisoes } = useCapacidades();
-const { isMobile, isMobileOpen, isQuickOpen, isSettingsOpen, isMinhaContaOpen, isConfiguracoesOpen, secaoConfiguracoesAtiva } = storeToRefs(layoutStore);
+const { isMobile, isMobileOpen, isQuickOpen, isSettingsOpen, isMinhaContaOpen, isConfiguracoesOpen, isRenovarAssinaturaOpen, secaoConfiguracoesAtiva } = storeToRefs(layoutStore);
 
 const { data: osAbandonoData } = useQuery({
   queryKey: ['os-abandono'],
@@ -204,6 +205,11 @@ whenever(Ctrl_K, () => {
       :isOpen="isConfiguracoesOpen"
       :secao-inicial="(secaoConfiguracoesAtiva as any)"
       @close="layoutStore.closeConfiguracoes"
+    />
+
+    <RenovarAssinaturaModal
+      :is-open="isRenovarAssinaturaOpen"
+      @close="layoutStore.closeRenovarAssinatura"
     />
 
     <!-- Modais globais (disponíveis em todo o sistema) -->

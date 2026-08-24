@@ -73,6 +73,28 @@ class ConfiguracaoLicenca(Base):
         doc="Data da próxima validação obrigatória"
     )
 
+    # --- Carencia de pagamento (cartao) ---
+    #
+    # NAO confundir com `grace_period`, logo acima: aquele e validade OFFLINE
+    # (quanto tempo a loja roda sem falar com o servidor). Este e outro assunto
+    # -- a janela em que o gateway ainda esta re-tentando um cartao que falhou.
+    #
+    # Quem paga no cartao pode ficar inadimplente sem saber (limite, cartao
+    # trocado, banco recusando), e travar a loja no primeiro dia puniria
+    # justamente quem contratou para nao ter que lembrar de pagar. Quem paga no
+    # PIX nao entra aqui: nao pagar foi uma escolha.
+    #
+    # Nulos numa instalacao que ainda nao sincronizou depois da atualizacao --
+    # e nesse estado o comportamento tem que ser exatamente o de antes.
+    em_carencia: Mapped[bool | None] = mapped_column(
+        Boolean, nullable=True,
+        doc="True enquanto o gateway ainda re-tenta a cobranca (assinatura no cartao)"
+    )
+    data_limite_carencia: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True,
+        doc="Ate quando a carencia vale. Sem esta data a carencia NAO e honrada."
+    )
+
     # --- Controle de bloqueio remoto ---
     bloqueada: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False,
