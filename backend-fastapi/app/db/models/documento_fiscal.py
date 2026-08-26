@@ -11,13 +11,16 @@
 # ---------------------------------------------------------------------------
 
 from datetime import datetime
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
-from sqlalchemy import DateTime, Integer, String, Text
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from app.db.base import Base
+
+if TYPE_CHECKING:
+    from app.db.models.documento_fiscal import DocumentoFiscal as _Self
 
 
 class DocumentoFiscal(Base):
@@ -57,6 +60,30 @@ class DocumentoFiscal(Base):
 
     # --- Valor total (centavos) ---
     valor_total: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    # --- Emissão via API ---
+    ref_api: Mapped[Optional[str]] = mapped_column(
+        String(50), unique=True, index=True, nullable=True,
+        doc="Referência única enviada à API de emissão"
+    )
+    ambiente_emissao: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True,
+        doc="Ambiente em que foi emitido: 1=Produção, 2=Homologação"
+    )
+
+    # --- Cadeia de tentativas (linked list) ---
+    tentativa_anterior_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("documento_fiscal.id"), nullable=True, index=True,
+        doc="ID da tentativa anterior (reemissão cria nova linha)"
+    )
+
+    tentativa_anterior: Mapped[Optional["DocumentoFiscal"]] = relationship(
+        "DocumentoFiscal",
+        remote_side="DocumentoFiscal.id",
+        foreign_keys=[tentativa_anterior_id],
+        uselist=False,
+        doc="Documento da tentativa anterior"
+    )
 
     # --- Timestamps ---
     data_emissao: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

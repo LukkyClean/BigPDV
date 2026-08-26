@@ -7,7 +7,6 @@ import os
 import platform
 import secrets
 from pydantic_settings import BaseSettings
-from pydantic import ConfigDict
 from cryptography.fernet import Fernet
 
 APP_NAME = "StartBigERP"
@@ -79,6 +78,9 @@ class Settings(BaseSettings):
     
     # Configurações de criptografia
     FERNET_KEY: bytes = _fernet_key_value
+
+    # Fiscal — mock habilitado permite testar sem API real
+    FISCAL_MOCK_ENABLED: bool = True
 
 # Instância única (Singleton)
 settings = Settings()

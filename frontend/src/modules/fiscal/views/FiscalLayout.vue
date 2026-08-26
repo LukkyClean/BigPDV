@@ -1,25 +1,29 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import { Lock, Sparkles, Check } from 'lucide-vue-next';
 
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
 import { recursoDisponivel, PLANO_ATUAL } from '@/shared/config/planos';
 
-import FiscalStats from '../components/FiscalStats.vue';
-import FiscalDocumentosTable from '../components/FiscalDocumentosTable.vue';
-import FiscalPendenciasPanel from '../components/FiscalPendenciasPanel.vue';
-import { useFiscalResumoQuery } from '../composables/useFiscalResumoQuery';
+import FiscalAmbienteBadge from '../components/FiscalAmbienteBadge.vue';
+import { useFiscalConfiguracaoQuery } from '../composables/useFiscalConfiguracaoQuery';
 
 const nfeDisponivel = recursoDisponivel('nfe');
 const upgradeSolicitado = ref(false);
 
-const { data: resumo, isLoading: isResumoLoading } = useFiscalResumoQuery();
+const { data: configuracao, isLoading: isConfigLoading } = useFiscalConfiguracaoQuery();
+
+const isHomologacao = ref(true);
+
+watch(configuracao, (cfg) => {
+  if (cfg) isHomologacao.value = cfg.ambiente === 2;
+}, { immediate: true });
 
 const beneficios = [
-  'Emissão de NF-e, NFC-e e NFS-e',
-  'Certificado digital A1 e integração com a prefeitura',
-  'Controle de séries e numeração',
-  'Ambiente de homologação e produção',
+  'Emissao de NF-e, NFC-e e NFS-e',
+  'Certificado digital A1 e integracao com a prefeitura',
+  'Controle de series e numeracao',
+  'Ambiente de homologacao e producao',
 ];
 
 function solicitarUpgrade() {
@@ -36,10 +40,10 @@ function solicitarUpgrade() {
           <Lock :size="28" class="text-brand-primary" />
         </div>
 
-        <h2 class="text-xl font-bold text-gray-800">Recurso não incluído no seu plano</h2>
+        <h2 class="text-xl font-bold text-gray-800">Recurso nao incluido no seu plano</h2>
         <p class="text-sm text-gray-500 mt-2 leading-relaxed">
-          Você está no plano <strong>{{ PLANO_ATUAL }}</strong>, que não inclui emissão de notas
-          fiscais. Faça upgrade para habilitar o módulo fiscal.
+          Voce esta no plano <strong>{{ PLANO_ATUAL }}</strong>, que nao inclui emissao de notas
+          fiscais. Faca upgrade para habilitar o modulo fiscal.
         </p>
 
         <ul class="text-left text-sm text-gray-600 space-y-2 mt-6 mb-7">
@@ -53,8 +57,8 @@ function solicitarUpgrade() {
           v-if="upgradeSolicitado"
           class="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-sm text-emerald-700"
         >
-          Interesse registrado! Em breve o módulo fiscal estará disponível — fale com o suporte
-          para habilitar a emissão de notas na sua empresa.
+          Interesse registrado! Em breve o modulo fiscal estara disponivel — fale com o suporte
+          para habilitar a emissao de notas na sua empresa.
         </div>
         <BaseButton
           v-else
@@ -69,18 +73,15 @@ function solicitarUpgrade() {
       </div>
     </div>
 
-    <!-- Centro Fiscal -->
+    <!-- Centro Fiscal (layout shell) -->
     <div v-else class="flex flex-col gap-6 flex-1 min-h-0">
-      <FiscalStats :resumo="resumo" :is-loading="isResumoLoading" />
-
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 min-h-0">
-        <div class="lg:col-span-2">
-          <FiscalDocumentosTable />
-        </div>
-        <div class="lg:col-span-1">
-          <FiscalPendenciasPanel />
-        </div>
+      <!-- Header com badge de ambiente -->
+      <div class="flex items-center gap-3">
+        <FiscalAmbienteBadge :configuracao="configuracao" :is-loading="isConfigLoading" />
       </div>
+
+      <!-- Child route content -->
+      <router-view :is-homologacao="isHomologacao" />
     </div>
   </div>
 </template>

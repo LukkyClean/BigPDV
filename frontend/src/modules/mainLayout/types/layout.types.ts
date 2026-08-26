@@ -20,12 +20,18 @@ export type SidebarLabelOptions =
     | 'Minha Conta'
     | 'Centro Fiscal'
 
+export interface SidebarSubItem {
+    id: string;
+    label: string;
+}
+
 export interface SidebarOption {
     id: string;
     icon: Component;
     label: SidebarLabelOptions;
     requiredPermission?: Permissions;
     featureFlag?: () => boolean;
+    children?: SidebarSubItem[];
 }
 
 export interface SidebarSection {

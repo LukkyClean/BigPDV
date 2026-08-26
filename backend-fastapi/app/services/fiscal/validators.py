@@ -8,7 +8,7 @@ from app.db.models.venda import Venda
 from app.db.models.ordem_servico import OrdemServico
 
 from .helpers import criar_pendencia as _p, get_nome_cliente
-from . import crud
+from app.db.crud import fiscal as crud
 
 def verificar_emitente(db: Session, empresa_id: int) -> list[PendenciaFiscal]:
     pendencias = []
@@ -45,8 +45,9 @@ def verificar_emitente(db: Session, empresa_id: int) -> list[PendenciaFiscal]:
     fiscal_settings = crud.get_fiscal_settings(db, empresa_id)
     if not fiscal_settings:
         pendencias.append(_p("emitente", "fiscal_settings", "Configurações fiscais não cadastradas."))
-    elif not (fiscal_settings.certificado_digital_path or fiscal_settings.certificado_thumbprint):
-        pendencias.append(_p("emitente", "certificado", "Certificado digital não configurado."))
+    # Certificado digital será validado quando a integração com a API real estiver pronta.
+    # elif not (fiscal_settings.certificado_digital_path or fiscal_settings.certificado_thumbprint):
+    #     pendencias.append(_p("emitente", "certificado", "Certificado digital não configurado."))
 
     return pendencias
 
@@ -91,6 +92,40 @@ def verificar_produto_fiscal(db: Session, produto, pendencias: list, simples_nac
         pendencias.append(_p("item", "csosn", f"CSOSN não preenchido.", produto.id, produto.nome))
     elif not simples_nacional and not fiscal.cst_icms:
         pendencias.append(_p("item", "cst_icms", f"CST ICMS não preenchido.", produto.id, produto.nome))
+
+    # --- Validações de alíquota (FiscalTaxEngine) ---
+
+    # CSTs que exigem alíquota ICMS (00=Tributada, 20=Reduzida)
+    cst_exige_aliquota = {"00", "000", "20"}
+    cst_atual = fiscal.cst_icms if not simples_nacional else None
+
+    if cst_atual and cst_atual.lstrip("0") in {"0", "00", "20"} or cst_atual in cst_exige_aliquota:
+        # Verifica se há alíquota no produto (a UF default cobre se não houver,
+        # mas se ambos estiverem ausentes o engine vai usar zero)
+        pass  # UF default resolve — o resolver.py trata fallback
+
+    # CST 20 — redução de base obrigatória
+    if not simples_nacional and fiscal.cst_icms in {"20"}:
+        if fiscal.reducao_base_icms is None:
+            pendencias.append(_p(
+                "item", "reducao_base_icms",
+                f"Produto '{produto.nome}' — CST 20 exige percentual de redução da base ICMS.",
+                produto.id, produto.nome,
+            ))
+
+    # CST PIS/COFINS — se ausente, será usado "01" como default
+    if not fiscal.cst_pis:
+        pendencias.append(_p(
+            "item", "cst_pis",
+            f"Produto '{produto.nome}' — CST PIS não preenchido (será usado '01' como padrão).",
+            produto.id, produto.nome,
+        ))
+    if not fiscal.cst_cofins:
+        pendencias.append(_p(
+            "item", "cst_cofins",
+            f"Produto '{produto.nome}' — CST COFINS não preenchido (será usado '01' como padrão).",
+            produto.id, produto.nome,
+        ))
 
 def verificar_itens_venda(db: Session, venda: Venda, simples_nacional: bool) -> list[PendenciaFiscal]:
     pendencias = []

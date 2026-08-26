@@ -9,6 +9,8 @@ export const fiscalKeys = {
   resumo: () => ['fiscal', 'resumo'] as const,
   pendencias: () => ['fiscal', 'pendencias'] as const,
   documento: (id: number) => ['fiscal', 'documento', id] as const,
+  configuracao: () => ['fiscal', 'configuracao'] as const,
+  historico: (id: number) => ['fiscal', 'historico', id] as const,
 };
 
 export const STATUS_COLORS: Record<string, { bg: string; text: string }> = {

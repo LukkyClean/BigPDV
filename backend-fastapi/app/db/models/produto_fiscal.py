@@ -84,6 +84,37 @@ class ProdutoFiscal(Base):
         doc="CSOSN (3 dígitos) — para empresas no Simples Nacional."
     )
 
+    # --- Alíquotas (overrides por produto, nullable = usa padrão da UF) ---
+
+    aliquota_icms: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True,
+        doc="Alíquota ICMS em centésimos de ponto percentual (1800 = 18,00%). Override do padrão da UF."
+    )
+    reducao_base_icms: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True,
+        doc="Percentual de redução da base de cálculo ICMS em centésimos (ex: 4112 = 41,12%). Usado com CST 20."
+    )
+    codigo_beneficio_fiscal: Mapped[Optional[str]] = mapped_column(
+        String(10), nullable=True,
+        doc="Código de Benefício Fiscal (cBenef). Obrigatório com CST 20 em SP, PR, RS, SC, GO."
+    )
+    aliquota_pis: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True,
+        doc="Alíquota PIS em centésimos de ponto percentual (165 = 1,65%). Override do padrão da UF."
+    )
+    aliquota_cofins: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True,
+        doc="Alíquota COFINS em centésimos de ponto percentual (760 = 7,60%). Override do padrão da UF."
+    )
+    cst_pis: Mapped[Optional[str]] = mapped_column(
+        String(2), nullable=True,
+        doc="CST PIS (2 dígitos). Ex: 01=Tributável alíquota normal, 04=Não tributável, 06=Alíquota zero."
+    )
+    cst_cofins: Mapped[Optional[str]] = mapped_column(
+        String(2), nullable=True,
+        doc="CST COFINS (2 dígitos). Ex: 01=Tributável alíquota normal, 04=Não tributável, 06=Alíquota zero."
+    )
+
     # --- Reforma Tributária (IBS/CBS) ---
 
     c_class_trib: Mapped[Optional[str]] = mapped_column(

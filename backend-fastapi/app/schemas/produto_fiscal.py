@@ -98,6 +98,40 @@ class ProdutoFiscalBase(BaseModel):
         examples=["102"],
     )
 
+    # --- Alíquotas (overrides — nullable = usa padrão da UF) ---
+
+    aliquota_icms: Optional[int] = Field(
+        None, ge=0, le=10000,
+        description="Alíquota ICMS em centésimos de pp (1800 = 18,00%). Override do padrão da UF.",
+    )
+    reducao_base_icms: Optional[int] = Field(
+        None, ge=0, le=10000,
+        description="Percentual de redução da base de cálculo ICMS em centésimos (4112 = 41,12%). Usado com CST 20.",
+    )
+    codigo_beneficio_fiscal: Optional[str] = Field(
+        None, max_length=10,
+        description="Código de Benefício Fiscal (cBenef). Obrigatório com CST 20 em SP, PR, RS, SC, GO.",
+        examples=["SP000001"],
+    )
+    aliquota_pis: Optional[int] = Field(
+        None, ge=0, le=10000,
+        description="Alíquota PIS em centésimos de pp (165 = 1,65%). Override do padrão da UF.",
+    )
+    aliquota_cofins: Optional[int] = Field(
+        None, ge=0, le=10000,
+        description="Alíquota COFINS em centésimos de pp (760 = 7,60%). Override do padrão da UF.",
+    )
+    cst_pis: Optional[str] = Field(
+        None, max_length=2,
+        description="CST PIS (2 dígitos). Ex: 01=Tributável, 04=Não tributável, 06=Alíquota zero.",
+        examples=["01"],
+    )
+    cst_cofins: Optional[str] = Field(
+        None, max_length=2,
+        description="CST COFINS (2 dígitos). Ex: 01=Tributável, 04=Não tributável, 06=Alíquota zero.",
+        examples=["01"],
+    )
+
     # --- Reforma Tributária (IBS/CBS) ---
 
     c_class_trib: Optional[str] = Field(
@@ -181,6 +215,27 @@ class ProdutoFiscalBase(BaseModel):
         if len(limpo) not in (3,):
             raise ValueError(f"CSOSN deve ter 3 dígitos numéricos (recebido: {v!r})")
         return limpo
+
+    @field_validator("cst_pis", mode="before")
+    @classmethod
+    def validar_cst_pis(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or v == "":
+            return None
+        return _apenas_digitos(v, "CST PIS", 2)
+
+    @field_validator("cst_cofins", mode="before")
+    @classmethod
+    def validar_cst_cofins(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or v == "":
+            return None
+        return _apenas_digitos(v, "CST COFINS", 2)
+
+    @field_validator("codigo_beneficio_fiscal", mode="before")
+    @classmethod
+    def validar_codigo_beneficio_fiscal(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or v == "":
+            return None
+        return v.strip()
 
     @field_validator("c_class_trib", mode="before")
     @classmethod

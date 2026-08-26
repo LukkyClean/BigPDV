@@ -29,6 +29,9 @@ class DocumentoFiscalRead(BaseModel):
     codigo_status_sefaz: Optional[int] = None
     motivo_rejeicao: Optional[str] = None
     valor_total: Optional[int] = None
+    ref_api: Optional[str] = None
+    ambiente_emissao: Optional[int] = None
+    tentativa_anterior_id: Optional[int] = None
     data_emissao: Optional[datetime] = None
     data_criacao: datetime
     data_atualizacao: datetime
@@ -70,3 +73,10 @@ class PendenciasGlobais(BaseModel):
     produtos_sem_ncm: list[PendenciaGlobalItem]
     servicos_sem_lc116: list[PendenciaGlobalItem]
     pagamentos_sem_sefaz: list[PendenciaGlobalItem]
+
+
+class DocumentoFiscalHistorico(BaseModel):
+    """Histórico de tentativas de emissão (linked list)."""
+
+    tentativas: list[DocumentoFiscalRead]
+    total_tentativas: int

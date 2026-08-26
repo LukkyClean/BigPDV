@@ -59,6 +59,13 @@ const DEFAULT_FORM_VALUES: ProductFormData = {
   fiscal_gtin_tributavel: '',
   fiscal_cst_icms: '',
   fiscal_csosn: '',
+  fiscal_aliquota_icms_display: '',
+  fiscal_reducao_base_icms_display: '',
+  fiscal_codigo_beneficio_fiscal: '',
+  fiscal_aliquota_pis_display: '',
+  fiscal_aliquota_cofins_display: '',
+  fiscal_cst_pis: '',
+  fiscal_cst_cofins: '',
   fiscal_c_class_trib: '',
   fiscal_cst_ibs_cbs: '',
   fiscal_aliquota_ibs_display: '',
@@ -115,6 +122,13 @@ export interface ProductFormContext {
   fiscal_gtin_tributavel: Ref<string>;
   fiscal_cst_icms: Ref<string>;
   fiscal_csosn: Ref<string>;
+  fiscal_aliquota_icms_display: Ref<string>;
+  fiscal_reducao_base_icms_display: Ref<string>;
+  fiscal_codigo_beneficio_fiscal: Ref<string>;
+  fiscal_aliquota_pis_display: Ref<string>;
+  fiscal_aliquota_cofins_display: Ref<string>;
+  fiscal_cst_pis: Ref<string>;
+  fiscal_cst_cofins: Ref<string>;
   fiscal_c_class_trib: Ref<string>;
   fiscal_cst_ibs_cbs: Ref<string>;
   fiscal_aliquota_ibs_display: Ref<string>;
@@ -190,6 +204,13 @@ export function useProductFormProvider() {
   const [fiscal_gtin_tributavel] = defineField('fiscal_gtin_tributavel');
   const [fiscal_cst_icms] = defineField('fiscal_cst_icms');
   const [fiscal_csosn] = defineField('fiscal_csosn');
+  const [fiscal_aliquota_icms_display] = defineField('fiscal_aliquota_icms_display');
+  const [fiscal_reducao_base_icms_display] = defineField('fiscal_reducao_base_icms_display');
+  const [fiscal_codigo_beneficio_fiscal] = defineField('fiscal_codigo_beneficio_fiscal');
+  const [fiscal_aliquota_pis_display] = defineField('fiscal_aliquota_pis_display');
+  const [fiscal_aliquota_cofins_display] = defineField('fiscal_aliquota_cofins_display');
+  const [fiscal_cst_pis] = defineField('fiscal_cst_pis');
+  const [fiscal_cst_cofins] = defineField('fiscal_cst_cofins');
   const [fiscal_c_class_trib] = defineField('fiscal_c_class_trib');
   const [fiscal_cst_ibs_cbs] = defineField('fiscal_cst_ibs_cbs');
   const [fiscal_aliquota_ibs_display] = defineField('fiscal_aliquota_ibs_display');
@@ -233,6 +254,13 @@ export function useProductFormProvider() {
             fiscal_gtin_tributavel: fiscal.gtin_tributavel ?? '',
             fiscal_cst_icms: fiscal.cst_icms ?? '',
             fiscal_csosn: fiscal.csosn ?? '',
+            fiscal_aliquota_icms_display: fiscal.aliquota_icms != null ? String(fiscal.aliquota_icms / 100) : '',
+            fiscal_reducao_base_icms_display: fiscal.reducao_base_icms != null ? String(fiscal.reducao_base_icms / 100) : '',
+            fiscal_codigo_beneficio_fiscal: fiscal.codigo_beneficio_fiscal ?? '',
+            fiscal_aliquota_pis_display: fiscal.aliquota_pis != null ? String(fiscal.aliquota_pis / 100) : '',
+            fiscal_aliquota_cofins_display: fiscal.aliquota_cofins != null ? String(fiscal.aliquota_cofins / 100) : '',
+            fiscal_cst_pis: fiscal.cst_pis ?? '',
+            fiscal_cst_cofins: fiscal.cst_cofins ?? '',
             fiscal_c_class_trib: fiscal.c_class_trib ?? '',
             fiscal_cst_ibs_cbs: fiscal.cst_ibs_cbs ?? '',
             fiscal_aliquota_ibs_display: fiscal.aliquota_ibs != null ? String(Math.round(fiscal.aliquota_ibs / 100)) : '',
@@ -354,6 +382,21 @@ export function useProductFormProvider() {
             gtin_tributavel: formData.fiscal_gtin_tributavel || null,
             cst_icms: formData.fiscal_cst_icms || null,
             csosn: formData.fiscal_csosn || null,
+            aliquota_icms: formData.fiscal_aliquota_icms_display
+              ? Math.round(Number(formData.fiscal_aliquota_icms_display) * 100)
+              : null,
+            reducao_base_icms: formData.fiscal_reducao_base_icms_display
+              ? Math.round(Number(formData.fiscal_reducao_base_icms_display) * 100)
+              : null,
+            codigo_beneficio_fiscal: formData.fiscal_codigo_beneficio_fiscal || null,
+            aliquota_pis: formData.fiscal_aliquota_pis_display
+              ? Math.round(Number(formData.fiscal_aliquota_pis_display) * 100)
+              : null,
+            aliquota_cofins: formData.fiscal_aliquota_cofins_display
+              ? Math.round(Number(formData.fiscal_aliquota_cofins_display) * 100)
+              : null,
+            cst_pis: formData.fiscal_cst_pis || null,
+            cst_cofins: formData.fiscal_cst_cofins || null,
             c_class_trib: formData.fiscal_c_class_trib || null,
             cst_ibs_cbs: formData.fiscal_cst_ibs_cbs || null,
             aliquota_ibs: formData.fiscal_aliquota_ibs_display
@@ -418,6 +461,13 @@ export function useProductFormProvider() {
     fiscal_gtin_tributavel,
     fiscal_cst_icms,
     fiscal_csosn,
+    fiscal_aliquota_icms_display,
+    fiscal_reducao_base_icms_display,
+    fiscal_codigo_beneficio_fiscal,
+    fiscal_aliquota_pis_display,
+    fiscal_aliquota_cofins_display,
+    fiscal_cst_pis,
+    fiscal_cst_cofins,
     fiscal_c_class_trib,
     fiscal_cst_ibs_cbs,
     fiscal_aliquota_ibs_display,

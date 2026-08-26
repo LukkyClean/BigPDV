@@ -1,15 +1,21 @@
 import api from '@/api/axios';
 import type {
+  DocumentoFiscalHistorico,
   DocumentoFiscalListRead,
   DocumentoFiscalRead,
   DocumentoFiscalResumo,
   DocumentoFiscalFilters,
+  EmissaoNFeRequest,
+  EmissaoResponse,
+  FiscalConfiguracao,
   PendenciasGlobais,
 } from '../types/fiscal.types';
 
 const FISCAL_ENDPOINT = '/fiscal';
 
 export const fiscalService = {
+  // --- Existentes ---
+
   async listarDocumentos(
     filters: DocumentoFiscalFilters = {},
     pagina: number = 1,
@@ -53,6 +59,52 @@ export const fiscalService = {
   async reemitirDocumento(id: number): Promise<DocumentoFiscalRead> {
     const { data } = await api.post<DocumentoFiscalRead>(
       `${FISCAL_ENDPOINT}/documentos/${id}/reemitir`,
+    );
+    return data;
+  },
+
+  // --- Novos (emissao, consulta, cancelamento) ---
+
+  async emitirNfe(payload: EmissaoNFeRequest): Promise<EmissaoResponse> {
+    const { data } = await api.post<EmissaoResponse>(
+      `${FISCAL_ENDPOINT}/emitir/nfe`,
+      payload,
+    );
+    return data;
+  },
+
+  async emitirTesteNfe(): Promise<EmissaoResponse> {
+    const { data } = await api.post<EmissaoResponse>(
+      `${FISCAL_ENDPOINT}/emitir/teste/nfe`,
+    );
+    return data;
+  },
+
+  async consultarDocumento(id: number): Promise<DocumentoFiscalRead> {
+    const { data } = await api.get<DocumentoFiscalRead>(
+      `${FISCAL_ENDPOINT}/documentos/${id}/consultar`,
+    );
+    return data;
+  },
+
+  async cancelarDocumento(id: number, justificativa: string): Promise<DocumentoFiscalRead> {
+    const { data } = await api.post<DocumentoFiscalRead>(
+      `${FISCAL_ENDPOINT}/documentos/${id}/cancelar`,
+      { justificativa },
+    );
+    return data;
+  },
+
+  async obterHistorico(id: number): Promise<DocumentoFiscalHistorico> {
+    const { data } = await api.get<DocumentoFiscalHistorico>(
+      `${FISCAL_ENDPOINT}/documentos/${id}/historico`,
+    );
+    return data;
+  },
+
+  async obterConfiguracao(): Promise<FiscalConfiguracao> {
+    const { data } = await api.get<FiscalConfiguracao>(
+      `${FISCAL_ENDPOINT}/configuracao`,
     );
     return data;
   },

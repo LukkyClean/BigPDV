@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import { FileText, FileCode, RefreshCw } from 'lucide-vue-next';
+import { FileText, FileCode, RefreshCw, Search, Ban } from 'lucide-vue-next';
 import { useMutation, useQueryClient } from '@tanstack/vue-query';
 
 import BaseTableContainer from '@/shared/components/commons/BaseTableContainer/BaseTableContainer.vue';
@@ -12,23 +12,35 @@ import type { AxiosError } from 'axios';
 import type { ApiError } from '@/shared/types/axios.types';
 
 import { useFiscalDocumentosQuery } from '../composables/useFiscalDocumentosQuery';
+import { useFiscalConsultarMutation } from '../composables/useFiscalConsultarMutation';
 import { fiscalService } from '../services/fiscal.service';
 import { fiscalKeys, STATUS_COLORS, TIPO_LABELS, ORIGEM_LABELS } from '../constants/fiscal.constants';
 import { abrirArquivo } from '../utils/abrirArquivo';
-import type { DocumentoFiscalFilters, DocumentoFiscalStatus } from '../types/fiscal.types';
+import FiscalCancelarModal from './FiscalCancelarModal.vue';
+import type { DocumentoFiscalFilters, DocumentoFiscalStatus, DocumentoFiscalTipo } from '../types/fiscal.types';
+
+interface Props {
+  tipoFiltro?: DocumentoFiscalTipo;
+  isHomologacao?: boolean;
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  tipoFiltro: undefined,
+  isHomologacao: false,
+});
 
 const toast = useToast();
 const queryClient = useQueryClient();
 
 const busca = ref('');
 const statusFilter = ref<string | null>(null);
-const tipoFilter = ref<string | null>(null);
+const tipoFilterInterno = ref<string | null>(null);
 const pagina = ref(1);
 
 const filters = computed<DocumentoFiscalFilters>(() => ({
   busca: busca.value || undefined,
   status: (statusFilter.value as DocumentoFiscalStatus) || undefined,
-  tipo: tipoFilter.value as DocumentoFiscalFilters['tipo'] || undefined,
+  tipo: (props.tipoFiltro ?? tipoFilterInterno.value) as DocumentoFiscalFilters['tipo'] || undefined,
 }));
 
 const { data, isLoading, isError } = useFiscalDocumentosQuery(filters, pagina);
@@ -63,6 +75,25 @@ const reemitirMutation = useMutation({
     toast.error(getErrorMessage(error as AxiosError<ApiError>));
   },
 });
+
+const consultarMutation = useFiscalConsultarMutation();
+
+// --- Modal cancelar ---
+const showCancelarModal = ref(false);
+const cancelarDocId = ref<number | null>(null);
+
+function abrirCancelarModal(id: number) {
+  cancelarDocId.value = id;
+  showCancelarModal.value = true;
+}
+
+function podeCancelar(status: string): boolean {
+  return status === 'AUTORIZADA';
+}
+
+function podeConsultar(status: string): boolean {
+  return status === 'PROCESSANDO' || status === 'PENDENTE';
+}
 
 function formatarData(iso: string | null): string {
   if (!iso) return '-';
@@ -117,7 +148,8 @@ function podeReemitir(status: string): boolean {
         button-label="Status"
       />
       <BaseFilter
-        v-model="tipoFilter"
+        v-if="!tipoFiltro"
+        v-model="tipoFilterInterno"
         :filter-config="tipoFilterConfig"
         title="Filtrar por Tipo"
         button-label="Tipo"
@@ -182,6 +214,15 @@ function podeReemitir(status: string): boolean {
                 <FileCode :size="16" />
               </button>
               <button
+                v-if="podeConsultar(doc.status)"
+                class="p-1.5 rounded-lg text-zinc-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                title="Consultar status"
+                :disabled="consultarMutation.isPending.value"
+                @click="consultarMutation.mutate(doc.id)"
+              >
+                <Search :size="16" />
+              </button>
+              <button
                 v-if="podeReemitir(doc.status)"
                 class="p-1.5 rounded-lg text-zinc-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
                 title="Reemitir"
@@ -190,10 +231,24 @@ function podeReemitir(status: string): boolean {
               >
                 <RefreshCw :size="16" />
               </button>
+              <button
+                v-if="podeCancelar(doc.status)"
+                class="p-1.5 rounded-lg text-zinc-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                title="Cancelar documento"
+                @click="abrirCancelarModal(doc.id)"
+              >
+                <Ban :size="16" />
+              </button>
             </div>
           </td>
         </tr>
       </tbody>
     </table>
   </BaseTableContainer>
+
+  <FiscalCancelarModal
+    :is-open="showCancelarModal"
+    :documento-id="cancelarDocId"
+    @close="showCancelarModal = false"
+  />
 </template>

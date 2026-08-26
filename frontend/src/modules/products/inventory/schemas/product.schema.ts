@@ -67,6 +67,19 @@ export const productSchema = z.object({
     .refine((v) => !v || /^\d{3}$/.test(v), { message: 'CSOSN deve ter 3 dígitos' })
     .optional().or(z.literal('')),
 
+  // Alíquotas e tributos (NF-e)
+  fiscal_aliquota_icms_display: z.string().optional().or(z.literal('')),
+  fiscal_reducao_base_icms_display: z.string().optional().or(z.literal('')),
+  fiscal_codigo_beneficio_fiscal: z.string().max(10).optional().or(z.literal('')),
+  fiscal_aliquota_pis_display: z.string().optional().or(z.literal('')),
+  fiscal_aliquota_cofins_display: z.string().optional().or(z.literal('')),
+  fiscal_cst_pis: z.string()
+    .refine((v) => !v || /^\d{2}$/.test(v), { message: 'CST PIS deve ter 2 dígitos' })
+    .optional().or(z.literal('')),
+  fiscal_cst_cofins: z.string()
+    .refine((v) => !v || /^\d{2}$/.test(v), { message: 'CST COFINS deve ter 2 dígitos' })
+    .optional().or(z.literal('')),
+
   // Reforma Tributária (IBS/CBS)
   fiscal_c_class_trib: z.string().max(20).optional().or(z.literal('')),
   fiscal_cst_ibs_cbs: z.string()

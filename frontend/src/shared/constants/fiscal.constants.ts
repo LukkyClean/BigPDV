@@ -40,6 +40,17 @@ export const CST_IBS_CBS_OPTIONS: SelectOption[] = [
   { value: '90', label: '90 - Outros' },
 ];
 
+export const CST_PIS_COFINS_OPTIONS: SelectOption[] = [
+  { value: '01', label: '01 - Tributável (alíquota básica)' },
+  { value: '02', label: '02 - Tributável (alíquota diferenciada)' },
+  { value: '04', label: '04 - Tributável monofásica (alíq. zero)' },
+  { value: '05', label: '05 - Tributável por ST' },
+  { value: '06', label: '06 - Tributável (alíq. zero)' },
+  { value: '07', label: '07 - Isenta' },
+  { value: '08', label: '08 - Sem incidência' },
+  { value: '09', label: '09 - Com suspensão' },
+];
+
 export const UNIDADE_PRODUTO_OPTIONS: SelectOption[] = [
   { value: 'UN', label: 'UN - Unidade' },
   { value: 'KG', label: 'KG - Quilograma' },

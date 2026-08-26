@@ -76,14 +76,47 @@ const homeRoutes: RouteRecordRaw[] = [
       },
       {
         path: '/fiscal',
-        name: 'fiscal',
-        component: () => import('@/modules/fiscal/views/FiscalView.vue'),
-        meta: {
-          title: 'Centro Fiscal',
-          subtitle: 'Documentos fiscais, pendências e emissão.',
-          tabId: 'fiscal',
-          requiresAuth: true,
-        },
+        component: () => import('@/modules/fiscal/views/FiscalLayout.vue'),
+        meta: { requiresAuth: true },
+        children: [
+          {
+            path: '',
+            redirect: { name: 'fiscal-nfe' },
+          },
+          {
+            path: 'nfe',
+            name: 'fiscal-nfe',
+            component: () => import('@/modules/fiscal/views/FiscalNFeView.vue'),
+            meta: {
+              title: 'NF-e',
+              subtitle: 'Notas Fiscais Eletrônicas',
+              tabId: 'fiscal-nfe',
+              requiresAuth: true,
+            },
+          },
+          {
+            path: 'nfce',
+            name: 'fiscal-nfce',
+            component: () => import('@/modules/fiscal/views/FiscalNFCeView.vue'),
+            meta: {
+              title: 'NFC-e',
+              subtitle: 'Notas Fiscais de Consumidor',
+              tabId: 'fiscal-nfce',
+              requiresAuth: true,
+            },
+          },
+          {
+            path: 'nfse',
+            name: 'fiscal-nfse',
+            component: () => import('@/modules/fiscal/views/FiscalNFSeView.vue'),
+            meta: {
+              title: 'NFS-e',
+              subtitle: 'Notas Fiscais de Serviço',
+              tabId: 'fiscal-nfse',
+              requiresAuth: true,
+            },
+          },
+        ],
       },
       {
         path: '/servicos',

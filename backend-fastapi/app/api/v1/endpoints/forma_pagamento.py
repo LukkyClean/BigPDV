@@ -48,7 +48,7 @@ def _create_fp_service(db: Session, fp_data: FormaPagamentoCreate) -> FormaPagam
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Já existe uma forma de pagamento com o nome '{fp_data.nome}'"
         )
-    fp_to_db = FormaPagamentoModel(nome=fp_data.nome, ativo=fp_data.ativo)
+    fp_to_db = FormaPagamentoModel(nome=fp_data.nome, ativo=fp_data.ativo, codigo_sefaz=fp_data.codigo_sefaz)
     return fp_crud.create_forma_pagamento(db, fp_to_add=fp_to_db)
 
 
@@ -69,6 +69,9 @@ def _update_fp_service(db: Session, fp_id: int, fp_data: FormaPagamentoUpdate) -
 
     if fp_data.ativo is not None:
         fp_in_db.ativo = fp_data.ativo
+
+    if fp_data.codigo_sefaz is not None:
+        fp_in_db.codigo_sefaz = fp_data.codigo_sefaz
 
     return fp_crud.update_forma_pagamento(db, fp_to_update=fp_in_db)
 
@@ -129,7 +132,7 @@ def update_forma_pagamento(
     fp_data: FormaPagamentoUpdate,
     db: Session = Depends(get_db)
 ):
-    return _handle_db_transaction(db, _update_fp_service, db, fp_id, fp_data)
+    return _handle_db_transaction(db, _update_fp_service, fp_id, fp_data)
 
 
 @router.delete(
@@ -144,5 +147,5 @@ def delete_forma_pagamento(
     *,
     db: Session = Depends(get_db)
 ):
-    _handle_db_transaction(db, _delete_fp_service, db, fp_id)
+    _handle_db_transaction(db, _delete_fp_service, fp_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

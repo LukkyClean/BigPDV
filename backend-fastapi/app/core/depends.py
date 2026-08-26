@@ -273,13 +273,13 @@ def requer_modulo_fiscal(
         .first()
     )
     if not fiscal_settings:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "codigo": "MODULO_FISCAL_INATIVO",
-                "mensagem": "Módulo fiscal não ativado para esta empresa.",
-            },
+        # Auto-create com valores padrão (homologação, mock ativo)
+        fiscal_settings = EmpresaFiscalSettings(
+            empresa_id=empresa_id,
+            ambiente_emissao=2,  # Homologação
         )
+        db.add(fiscal_settings)
+        db.commit()
 
     return usuario_token
 

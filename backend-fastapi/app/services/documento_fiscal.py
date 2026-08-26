@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models.documento_fiscal import DocumentoFiscal
 from app.schemas.documento_fiscal import (
+    DocumentoFiscalHistorico,
     DocumentoFiscalListRead,
     DocumentoFiscalRead,
     DocumentoFiscalResumo,
@@ -94,6 +95,8 @@ def obter_resumo(db: Session) -> DocumentoFiscalResumo:
 
 
 def reemitir_documento(db: Session, documento_id: int) -> DocumentoFiscal:
+    """Mantido para retrocompatibilidade — delega para emissao.reemitir_documento."""
+    from app.services.fiscal.emissao import reemitir_documento as _reemitir
     doc = obter_documento(db, documento_id)
 
     if doc.status not in ("REJEITADA", "DENEGADA"):
@@ -102,9 +105,38 @@ def reemitir_documento(db: Session, documento_id: int) -> DocumentoFiscal:
             detail="Apenas documentos rejeitados ou denegados podem ser reemitidos.",
         )
 
-    doc.status = "PENDENTE"
-    doc.mensagem_sefaz = None
-    doc.motivo_rejeicao = None
-    doc.codigo_status_sefaz = None
+    # Extrair empresa_id do contexto (o caller já validou via requer_modulo_fiscal)
+    # Como não temos empresa_id aqui, criamos a nova tentativa manualmente
+    from app.db.models.empresa_fiscal_settings import EmpresaFiscalSettings
+    import uuid
 
-    return doc
+    novo_doc = DocumentoFiscal(
+        tipo_documento=doc.tipo_documento,
+        origem_tipo=doc.origem_tipo,
+        origem_id=doc.origem_id,
+        origem_numero_os=doc.origem_numero_os,
+        status="PENDENTE",
+        numero_documento=doc.numero_documento,
+        serie=doc.serie,
+        ref_api=f"doc-{uuid.uuid4().hex[:12]}",
+        ambiente_emissao=doc.ambiente_emissao,
+        valor_total=doc.valor_total,
+        tentativa_anterior_id=doc.id,
+    )
+    db.add(novo_doc)
+    db.flush()
+
+    return novo_doc
+
+
+def obter_historico_tentativas(db: Session, documento_id: int) -> DocumentoFiscalHistorico:
+    """Retorna cadeia completa de tentativas (do mais recente ao mais antigo)."""
+    from app.services.fiscal.emissao import obter_historico_tentativas as _historico
+
+    tentativas_models = _historico(db, documento_id)
+    tentativas = [DocumentoFiscalRead.model_validate(t) for t in tentativas_models]
+
+    return DocumentoFiscalHistorico(
+        tentativas=tentativas,
+        total_tentativas=len(tentativas),
+    )

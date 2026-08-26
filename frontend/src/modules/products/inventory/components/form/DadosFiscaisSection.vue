@@ -20,6 +20,7 @@ import {
   CSOSN_OPTIONS,
   UNIDADE_PRODUTO_OPTIONS,
   CST_IBS_CBS_OPTIONS,
+  CST_PIS_COFINS_OPTIONS,
 } from '@/shared/constants/fiscal.constants';
 
 // =============================================
@@ -47,6 +48,13 @@ const {
   fiscal_gtin_tributavel,
   fiscal_cst_icms,
   fiscal_csosn,
+  fiscal_aliquota_icms_display,
+  fiscal_reducao_base_icms_display,
+  fiscal_codigo_beneficio_fiscal,
+  fiscal_aliquota_pis_display,
+  fiscal_aliquota_cofins_display,
+  fiscal_cst_pis,
+  fiscal_cst_cofins,
   fiscal_c_class_trib,
   fiscal_cst_ibs_cbs,
   fiscal_aliquota_ibs_display,
@@ -105,6 +113,22 @@ const ORIGEM_OPTIONS = [
   { value: '7', label: '7 - Estrangeira (mercado interno, sem similar)' },
   { value: '8', label: '8 - Nacional (produção em ZFM)' },
 ];
+
+// =============================================
+// Visibilidade dinâmica (alíquotas e tributos)
+// =============================================
+
+const exigeAliquotaIcms = computed(() =>
+  !isSimplesNacional.value && ['00', '20'].includes(fiscal_cst_icms.value),
+);
+const exigeReducaoBase = computed(() =>
+  !isSimplesNacional.value && fiscal_cst_icms.value === '20',
+);
+const exigeBeneficioFiscal = computed(() =>
+  !isSimplesNacional.value && fiscal_cst_icms.value === '20',
+);
+const pisTributavel = computed(() => ['01', '02'].includes(fiscal_cst_pis.value));
+const cofinsTributavel = computed(() => ['01', '02'].includes(fiscal_cst_cofins.value));
 </script>
 
 <template>
@@ -244,6 +268,88 @@ const ORIGEM_OPTIONS = [
           />
           <span class="text-xs text-zinc-500">Usar código de barras (EAN) do produto</span>
         </label>
+      </div>
+    </div>
+
+    <!-- Alíquotas e Tributos (NF-e) -->
+    <div class="mt-6 pt-5 border-t border-zinc-200">
+      <h4 class="text-sm font-semibold text-zinc-700 mb-4">Alíquotas e Tributos</h4>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <!-- Alíquota ICMS (CST 00 ou 20, regime normal) -->
+        <BaseInput
+          v-if="exigeAliquotaIcms"
+          v-model="fiscal_aliquota_icms_display"
+          label="Alíquota ICMS (%)"
+          placeholder="Ex: 18.00"
+          :disabled="disabled"
+          inputmode="decimal"
+          :error="submitCount > 0 ? errors.fiscal_aliquota_icms_display : undefined"
+        />
+
+        <!-- Redução de Base ICMS (CST 20) -->
+        <BaseInput
+          v-if="exigeReducaoBase"
+          v-model="fiscal_reducao_base_icms_display"
+          label="Redução Base ICMS (%)"
+          placeholder="Ex: 41.12"
+          :disabled="disabled"
+          inputmode="decimal"
+          :error="submitCount > 0 ? errors.fiscal_reducao_base_icms_display : undefined"
+        />
+
+        <!-- Código Benefício Fiscal (CST 20) -->
+        <BaseInput
+          v-if="exigeBeneficioFiscal"
+          v-model="fiscal_codigo_beneficio_fiscal"
+          label="Cód. Benefício Fiscal"
+          placeholder="Ex: SP000001"
+          :disabled="disabled"
+          maxlength="10"
+          :error="submitCount > 0 ? errors.fiscal_codigo_beneficio_fiscal : undefined"
+        />
+
+        <!-- CST PIS -->
+        <BaseSelect
+          v-model="fiscal_cst_pis"
+          label="CST PIS"
+          :options="CST_PIS_COFINS_OPTIONS"
+          :disabled="disabled"
+          placeholder="Selecione o CST PIS"
+          :error="submitCount > 0 ? errors.fiscal_cst_pis : undefined"
+        />
+
+        <!-- Alíquota PIS (CST 01 ou 02) -->
+        <BaseInput
+          v-if="pisTributavel"
+          v-model="fiscal_aliquota_pis_display"
+          label="Alíquota PIS (%)"
+          placeholder="Ex: 1.65"
+          :disabled="disabled"
+          inputmode="decimal"
+          :error="submitCount > 0 ? errors.fiscal_aliquota_pis_display : undefined"
+        />
+
+        <!-- CST COFINS -->
+        <BaseSelect
+          v-model="fiscal_cst_cofins"
+          label="CST COFINS"
+          :options="CST_PIS_COFINS_OPTIONS"
+          :disabled="disabled"
+          placeholder="Selecione o CST COFINS"
+          :error="submitCount > 0 ? errors.fiscal_cst_cofins : undefined"
+        />
+
+        <!-- Alíquota COFINS (CST 01 ou 02) -->
+        <BaseInput
+          v-if="cofinsTributavel"
+          v-model="fiscal_aliquota_cofins_display"
+          label="Alíquota COFINS (%)"
+          placeholder="Ex: 7.60"
+          :disabled="disabled"
+          inputmode="decimal"
+          :error="submitCount > 0 ? errors.fiscal_aliquota_cofins_display : undefined"
+        />
       </div>
     </div>
 

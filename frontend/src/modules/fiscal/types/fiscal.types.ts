@@ -20,6 +20,9 @@ export interface DocumentoFiscalRead {
   codigo_status_sefaz: number | null;
   motivo_rejeicao: string | null;
   valor_total: number | null;
+  ref_api: string | null;
+  ambiente_emissao: number | null;
+  tentativa_anterior_id: number | null;
   data_emissao: string | null;
   data_criacao: string;
   data_atualizacao: string;
@@ -60,4 +63,34 @@ export interface DocumentoFiscalFilters {
   busca?: string;
   data_inicio?: string;
   data_fim?: string;
+}
+
+export interface DocumentoFiscalHistorico {
+  tentativas: DocumentoFiscalRead[];
+  total_tentativas: number;
+}
+
+export interface EmissaoNFeRequest {
+  venda_id?: number;
+  numero_os?: string;
+}
+
+export interface CancelamentoRequest {
+  justificativa: string;
+}
+
+export interface EmissaoResponse {
+  documento_id: number;
+  ref_api: string | null;
+  status: string;
+  mensagem: string;
+  ambiente: number;
+}
+
+export interface FiscalConfiguracao {
+  ambiente: number;
+  ambiente_label: string;
+  mock_ativo: boolean;
+  certificado_configurado: boolean;
+  certificado_valido: boolean;
 }

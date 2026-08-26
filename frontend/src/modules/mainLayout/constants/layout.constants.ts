@@ -71,6 +71,11 @@ export const SIDEBAR_SECTIONS: SidebarSection[] = [
         label: 'Centro Fiscal',
         requiredPermission: PERMISSIONS.enterprise,
         featureFlag: () => recursoDisponivel('nfe'),
+        children: [
+          { id: 'fiscal-nfe', label: 'NF-e' },
+          { id: 'fiscal-nfce', label: 'NFC-e' },
+          { id: 'fiscal-nfse', label: 'NFS-e' },
+        ],
       },
       {
         id: 'employees',

@@ -169,24 +169,27 @@ async def _loop_renovacao_licenca():
 
 
 _FORMAS_PAGAMENTO_PADRAO = [
-    "Dinheiro",
-    "PIX",
-    "Cartão de Crédito",
-    "Cartão de Débito",
-    "Transferência Bancária",
-    "Boleto",
+    {"nome": "Dinheiro",               "codigo_sefaz": "01"},
+    {"nome": "PIX",                     "codigo_sefaz": "17"},
+    {"nome": "Cartão de Crédito",       "codigo_sefaz": "03"},
+    {"nome": "Cartão de Débito",        "codigo_sefaz": "04"},
+    {"nome": "Transferência Bancária",  "codigo_sefaz": "99"},
+    {"nome": "Boleto",                  "codigo_sefaz": "15"},
 ]
 
 
 def _seed_formas_pagamento():
-    """Insere formas de pagamento padrão caso a tabela esteja vazia ou faltem registros."""
+    """Insere formas de pagamento padrão e garante que o código SEFAZ esteja preenchido."""
     db = SessionLocal()
     try:
-        for nome in _FORMAS_PAGAMENTO_PADRAO:
-            existe = db.query(FormaPagamento).filter(FormaPagamento.nome.ilike(nome)).first()
+        for fp in _FORMAS_PAGAMENTO_PADRAO:
+            existe = db.query(FormaPagamento).filter(FormaPagamento.nome.ilike(fp["nome"])).first()
             if not existe:
-                db.add(FormaPagamento(nome=nome, ativo=True))
-                logger.info("Forma de pagamento criada: %s", nome)
+                db.add(FormaPagamento(nome=fp["nome"], ativo=True, codigo_sefaz=fp["codigo_sefaz"]))
+                logger.info("Forma de pagamento criada: %s (SEFAZ %s)", fp["nome"], fp["codigo_sefaz"])
+            elif not existe.codigo_sefaz:
+                existe.codigo_sefaz = fp["codigo_sefaz"]
+                logger.info("Código SEFAZ atualizado: %s → %s", fp["nome"], fp["codigo_sefaz"])
         db.commit()
     except Exception:
         db.rollback()
