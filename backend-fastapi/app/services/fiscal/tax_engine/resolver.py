@@ -99,7 +99,8 @@ def resolver_aliquotas_venda(
         )
 
     # 1. Carregar defaults da UF
-    aliq_uf = db.query(AliquotaUF).filter(AliquotaUF.uf == uf_emitente.upper()).first()
+    from app.db.crud import fiscal as crud
+    aliq_uf = crud.get_aliquota_uf(db, uf_emitente)
 
     if not aliq_uf and not simples_nacional:
         raise AliquotaNaoEncontradaError(

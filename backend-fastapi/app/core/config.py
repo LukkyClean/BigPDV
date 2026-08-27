@@ -80,7 +80,7 @@ class Settings(BaseSettings):
     FERNET_KEY: bytes = _fernet_key_value
 
     # Fiscal — mock habilitado permite testar sem API real
-    FISCAL_MOCK_ENABLED: bool = True
+    FISCAL_MOCK_ENABLED: bool = False
 
 # Instância única (Singleton)
 settings = Settings()

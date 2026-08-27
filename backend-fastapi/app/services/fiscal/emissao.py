@@ -144,15 +144,13 @@ def emitir_nfe_venda(db: Session, venda_id: int, empresa_id: int) -> DocumentoFi
         valor_total=venda.total,
         data_emissao=datetime.now(),
     )
-    db.add(doc)
-
     # 5. Incrementar numeração (atômico na mesma transação)
     fiscal_settings.ultimo_numero_nfe = numero
-
-    db.flush()
+    crud.salvar_documento(db, doc)
 
     # 6. Chamar client fiscal
-    client = get_fiscal_client(fiscal_settings.ambiente_emissao)
+    token = crud.get_licenca_token(db)
+    client = get_fiscal_client(fiscal_settings.ambiente_emissao, token)
 
     try:
         resultado = client.emitir_nfe(ref, payload)
@@ -170,7 +168,7 @@ def emitir_nfe_venda(db: Session, venda_id: int, empresa_id: int) -> DocumentoFi
 
 def consultar_documento(db: Session, documento_id: int, empresa_id: int) -> DocumentoFiscal:
     """Polling: consulta status do documento na API e atualiza."""
-    doc = db.query(DocumentoFiscal).filter(DocumentoFiscal.id == documento_id).first()
+    doc = crud.get_documento_fiscal(db, documento_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Documento fiscal não encontrado.")
 
@@ -184,7 +182,8 @@ def consultar_documento(db: Session, documento_id: int, empresa_id: int) -> Docu
         return doc
 
     fiscal_settings = _obter_fiscal_settings(db, empresa_id)
-    client = get_fiscal_client(fiscal_settings.ambiente_emissao)
+    token = crud.get_licenca_token(db)
+    client = get_fiscal_client(fiscal_settings.ambiente_emissao, token)
 
     try:
         resultado = client.consultar_nfe(doc.ref_api)
@@ -197,11 +196,35 @@ def consultar_documento(db: Session, documento_id: int, empresa_id: int) -> Docu
     return doc
 
 
+import asyncio
+from app.db.session import SessionLocal
+
+async def poll_nfe_status_async(documento_id: int, empresa_id: int):
+    """
+    Realiza o polling assíncrono para a API StartBig.
+    Tempo máximo: ~3 minutos.
+    """
+    intervals = [3, 5, 8, 12, 15, 20, 20, 20, 25, 25, 30] # soma aprox 183 segundos
+    for wait_time in intervals:
+        await asyncio.sleep(wait_time)
+        
+        db = SessionLocal()
+        try:
+            doc = consultar_documento(db, documento_id, empresa_id)
+            if doc.status not in ("PROCESSANDO", "PENDENTE"):
+                break
+        except Exception as e:
+            logger.error("[FISCAL] Erro no polling background: %s", e)
+        finally:
+            db.commit()
+            db.close()
+
+
 def cancelar_documento(
     db: Session, documento_id: int, empresa_id: int, justificativa: str
 ) -> DocumentoFiscal:
     """Cancela documento fiscal autorizado."""
-    doc = db.query(DocumentoFiscal).filter(DocumentoFiscal.id == documento_id).first()
+    doc = crud.get_documento_fiscal(db, documento_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Documento fiscal não encontrado.")
 
@@ -218,7 +241,8 @@ def cancelar_documento(
         )
 
     fiscal_settings = _obter_fiscal_settings(db, empresa_id)
-    client = get_fiscal_client(fiscal_settings.ambiente_emissao)
+    token = crud.get_licenca_token(db)
+    client = get_fiscal_client(fiscal_settings.ambiente_emissao, token)
 
     try:
         resultado = client.cancelar_nfe(doc.ref_api, justificativa)
@@ -244,7 +268,7 @@ def reemitir_documento(db: Session, documento_id: int, empresa_id: int) -> Docum
     O documento anterior mantém seu status original (REJEITADA/DENEGADA).
     O novo documento inicia como PENDENTE para nova tentativa.
     """
-    doc_anterior = db.query(DocumentoFiscal).filter(DocumentoFiscal.id == documento_id).first()
+    doc_anterior = crud.get_documento_fiscal(db, documento_id)
     if not doc_anterior:
         raise HTTPException(status_code=404, detail="Documento fiscal não encontrado.")
 
@@ -271,8 +295,7 @@ def reemitir_documento(db: Session, documento_id: int, empresa_id: int) -> Docum
         tentativa_anterior_id=doc_anterior.id,
         data_emissao=datetime.now(),
     )
-    db.add(novo_doc)
-    db.flush()
+    crud.salvar_documento(db, novo_doc)
 
     return novo_doc
 
@@ -315,12 +338,12 @@ def emitir_teste_nfe(db: Session, empresa_id: int) -> DocumentoFiscal:
         valor_total=100,  # R$ 1,00 em centavos
         data_emissao=datetime.now(),
     )
-    db.add(doc)
-
+    
     fiscal_settings.ultimo_numero_nfe = numero
-    db.flush()
+    crud.salvar_documento(db, doc)
 
-    client = get_fiscal_client(2)
+    token = crud.get_licenca_token(db)
+    client = get_fiscal_client(2, token)
 
     try:
         resultado = client.emitir_nfe(ref, payload)
@@ -339,20 +362,16 @@ def obter_historico_tentativas(db: Session, documento_id: int) -> list[Documento
     Segue a linked list via tentativa_anterior_id.
     """
     tentativas = []
-    doc = db.query(DocumentoFiscal).filter(DocumentoFiscal.id == documento_id).first()
+    doc = crud.get_documento_fiscal(db, documento_id)
 
     if not doc:
         raise HTTPException(status_code=404, detail="Documento fiscal não encontrado.")
 
     # Subir na cadeia: encontrar o documento mais recente que aponta para este
-    doc_mais_recente = db.query(DocumentoFiscal).filter(
-        DocumentoFiscal.tentativa_anterior_id == documento_id
-    ).first()
+    doc_mais_recente = crud.get_documento_by_tentativa_anterior(db, documento_id)
 
     while doc_mais_recente:
-        proximo = db.query(DocumentoFiscal).filter(
-            DocumentoFiscal.tentativa_anterior_id == doc_mais_recente.id
-        ).first()
+        proximo = crud.get_documento_by_tentativa_anterior(db, doc_mais_recente.id)
         if proximo:
             doc_mais_recente = proximo
         else:
@@ -363,9 +382,7 @@ def obter_historico_tentativas(db: Session, documento_id: int) -> list[Documento
     while atual:
         tentativas.append(atual)
         if atual.tentativa_anterior_id:
-            atual = db.query(DocumentoFiscal).filter(
-                DocumentoFiscal.id == atual.tentativa_anterior_id
-            ).first()
+            atual = crud.get_documento_fiscal(db, atual.tentativa_anterior_id)
         else:
             break
 

@@ -49,3 +49,25 @@ def get_os_completa(db: Session, numero_os: str):
         subqueryload(OrdemServico.pagamentos).joinedload(OrdemServicoPagamento.forma_pagamento),
         joinedload(OrdemServico.nota_fiscal),
     ).filter(OrdemServico.numero_os == numero_os).first()
+
+from app.db.models.documento_fiscal import DocumentoFiscal
+from app.db.models.configuracao_licenca import ConfiguracaoLicenca
+from app.db.models.aliquota_uf import AliquotaUF
+
+def get_licenca_token(db: Session) -> str:
+    licenca = db.query(ConfiguracaoLicenca).first()
+    return licenca.token if licenca else ""
+
+def get_documento_fiscal(db: Session, documento_id: int):
+    return db.query(DocumentoFiscal).filter(DocumentoFiscal.id == documento_id).first()
+
+def get_documento_by_tentativa_anterior(db: Session, anterior_id: int):
+    return db.query(DocumentoFiscal).filter(DocumentoFiscal.tentativa_anterior_id == anterior_id).first()
+
+def salvar_documento(db: Session, documento: DocumentoFiscal):
+    db.add(documento)
+    db.flush()
+    return documento
+
+def get_aliquota_uf(db: Session, uf: str):
+    return db.query(AliquotaUF).filter(AliquotaUF.uf == uf.upper()).first()

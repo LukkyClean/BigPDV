@@ -161,6 +161,8 @@ def reemitir_documento(
 # EMISSÃO DE NF-e
 # ===========================================================================
 
+from fastapi import BackgroundTasks
+
 @router.post(
     "/emitir/nfe",
     response_model=EmissaoResponse,
@@ -168,12 +170,13 @@ def reemitir_documento(
     description="Emite NF-e a partir de uma venda ou OS (apenas itens de produto).",
 )
 def emitir_nfe(
+    background_tasks: BackgroundTasks,
     user_token: dict = Depends(requer_modulo_fiscal),
     *,
     db: Session = Depends(get_db),
     payload: EmissaoNFeRequest = Body(...),
 ):
-    from app.services.fiscal.emissao import emitir_nfe_venda
+    from app.services.fiscal.emissao import emitir_nfe_venda, poll_nfe_status_async
 
     empresa_id = user_token["empresa_id"]
 
@@ -187,6 +190,9 @@ def emitir_nfe(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
             detail="Emissão de NF-e para OS será implementada em fase futura.",
         )
+
+    if doc.status == "PROCESSANDO":
+        background_tasks.add_task(poll_nfe_status_async, doc.id, empresa_id)
 
     return EmissaoResponse(
         documento_id=doc.id,
@@ -207,14 +213,18 @@ def emitir_nfe(
     ),
 )
 def emitir_teste_nfe(
+    background_tasks: BackgroundTasks,
     user_token: dict = Depends(requer_modulo_fiscal),
     *,
     db: Session = Depends(get_db),
 ):
-    from app.services.fiscal.emissao import emitir_teste_nfe as _emitir_teste
+    from app.services.fiscal.emissao import emitir_teste_nfe as _emitir_teste, poll_nfe_status_async
 
     empresa_id = user_token["empresa_id"]
     doc = _handle_db_transaction(db, _emitir_teste, empresa_id)
+
+    if doc.status == "PROCESSANDO":
+        background_tasks.add_task(poll_nfe_status_async, doc.id, empresa_id)
 
     return EmissaoResponse(
         documento_id=doc.id,

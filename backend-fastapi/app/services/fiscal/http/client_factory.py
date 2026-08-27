@@ -14,19 +14,16 @@ from .client_startbig import FiscalClientStartBig
 logger = logging.getLogger(__name__)
 
 
-def get_fiscal_client(ambiente: int) -> FiscalClientProtocol:
+def get_fiscal_client(ambiente: int, token: str = "") -> FiscalClientProtocol:
     """
     Retorna o client adequado ao ambiente de emissão.
 
-    - ambiente == 2 (Homologação) OU FISCAL_MOCK_ENABLED: retorna mock
-    - ambiente == 1 (Produção): retorna client StartBig (real)
-
-    O FISCAL_MOCK_ENABLED permite forçar mock mesmo em ambiente 1 (dev).
+    - FISCAL_MOCK_ENABLED=True: retorna mock (não faz chamadas HTTP)
+    - FISCAL_MOCK_ENABLED=False: retorna client StartBig (ambiente=1=Produção, ambiente=2=Homologação)
     """
-    if ambiente == 2 or settings.FISCAL_MOCK_ENABLED:
-        logger.info("[FISCAL] Usando client MOCK (ambiente=%d, mock_enabled=%s)",
-                     ambiente, settings.FISCAL_MOCK_ENABLED)
+    if settings.FISCAL_MOCK_ENABLED:
+        logger.info("[FISCAL] Usando client MOCK (mock_enabled=%s)", settings.FISCAL_MOCK_ENABLED)
         return FiscalClientMock()
 
     logger.info("[FISCAL] Usando client StartBig (ambiente=%d)", ambiente)
-    return FiscalClientStartBig()
+    return FiscalClientStartBig(ambiente=ambiente, token=token)
