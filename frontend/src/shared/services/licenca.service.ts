@@ -27,10 +27,11 @@ export interface LicencaStatusResponse {
    * Módulos contratados, lidos do JWT assinado da licença.
    *
    * AUSENTE (`undefined`/`null`) = o token não carrega a claim, ou o backend é
-   * anterior a ela. Trate como "libera tudo", nunca como lista vazia — quem
-   * cuida dessa regra é a `modulos.store`.
+   * anterior a ela. Lista VAZIA = a plataforma ainda não cadastrou módulo
+   * nenhum. Os dois significam "não sei" e liberam; só uma lista PREENCHIDA
+   * sem o identificador é que bloqueia.
    *
-   * Lista VAZIA é diferente: significa nenhum módulo liberado.
+   * Não interprete nada disto aqui — quem cuida da regra é a `modulos.store`.
    */
   modulos?: string[] | null;
 }

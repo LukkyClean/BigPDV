@@ -60,15 +60,23 @@ const filteredSidebar = computed(() => {
         // Loja sem Ordem de Serviço não vê o módulo. Único item gateado por
         // segmento aqui; todo o resto continua sendo só permissão.
         if (opt.id === 'services' && !usaOrdemServico.value) return false;
-        // Módulo não contratado some para todo mundo, dono incluído. Enquanto o
-        // /licenca/status não respondeu, `temModulo` devolve true — o item
-        // aparece e some se não for o caso, que é o erro barato dos dois.
-        if (opt.requiredModule && !modulosStore.temModulo(opt.requiredModule)) return false;
         return hasPermission(opt.requiredPermission);
       })
       .map((opt) => ({
         ...opt,
         children: opt.children ? resolverFilhos(opt.children) : undefined,
+        // Módulo não contratado TRAVA, não some — nem para o dono. Sumir vira
+        // "o sistema perdeu uma tela" no suporte; o cadeado diz a verdade e é
+        // onde a venda do upgrade acontece. Mesma razão que o backend já dá em
+        // core/modulos.py para responder 403 e não 404.
+        //
+        // Grupo não trava no pai: quem carrega o cadeado são os filhos, cada um
+        // com o seu próprio módulo — e num grupo eles podem ser de planos
+        // diferentes, como Contas a Pagar e Fluxo de Caixa.
+        bloqueado:
+          !opt.children &&
+          !!opt.requiredModule &&
+          !modulosStore.temModulo(opt.requiredModule),
       }))
       // Grupo que perdeu todos os filhos por permissão vira um pai que abre e
       // não mostra nada. Some junto.
@@ -127,6 +135,7 @@ onUnmounted(() => {
               :icon="option.icon"
               :label="option.label"
               :active="activeTab === option.id"
+              :bloqueado="option.bloqueado"
             />
           </template>
         </div>

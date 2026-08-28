@@ -14,7 +14,7 @@ import { computed, ref } from 'vue';
  * fica no banco da máquina do cliente, editável. Quem manda é sempre o token
  * corrente; aqui é só o eco dele nesta execução.
  *
- * `null` NÃO é "nenhum módulo": é "ainda não sei". Ver `temModulo`.
+ * `null` e `[]` NÃO são "nenhum módulo": são "ainda não sei". Ver `temModulo`.
  */
 export const useModulosStore = defineStore('modulos', () => {
   const modulos = ref<string[] | null>(null);
@@ -22,7 +22,7 @@ export const useModulosStore = defineStore('modulos', () => {
   /**
    * Esta licença pode usar `identificador`?
    *
-   * NULO LIBERA. São dois casos, e os dois exigem liberar:
+   * SEM RESPOSTA ÚTIL, LIBERA. São três casos, e os três exigem liberar:
    *
    * 1. O `/licenca/status` ainda não respondeu (primeiro render, ou a
    *    verificação falhou por rede). Errar para "tem" mostra um item a mais
@@ -32,15 +32,27 @@ export const useModulosStore = defineStore('modulos', () => {
    *    dias, então no dia em que a trava estreia boa parte da base ainda está
    *    com token antigo — e bloquear derrubaria cliente pagante por uma
    *    semana, sem mensagem de erro nenhuma, só com o menu sumindo.
+   * 3. A lista veio VAZIA. Já foi tratada como "nenhum módulo liberado", e
+   *    estava errado: nenhuma licença em campo tem módulo cadastrado ainda,
+   *    então toda licença chega aqui com `[]`. Bloquear nesse caso esconderia
+   *    o recurso de 100% dos clientes — inclusive de quem pagou por ele —
+   *    porque a PLATAFORMA ainda não foi configurada, não porque a loja
+   *    deixou de contratar. Lista vazia é "não sei", não é "não tem".
    *
-   * Lista presente e VAZIA é outra coisa: significa "nenhum módulo liberado",
-   * e essa bloqueia normalmente.
+   * O bloqueio real acontece quando a lista vem PREENCHIDA e o identificador
+   * não está nela. Aí sim a plataforma falou, e falou que esta loja não tem.
    */
   const temModulo = (identificador: string): boolean =>
-    modulos.value === null || modulos.value.includes(identificador);
+    modulos.value === null ||
+    modulos.value.length === 0 ||
+    modulos.value.includes(identificador);
 
-  /** Conhecido = o servidor já disse quais são. Para telas que queiram esperar. */
-  const conhecido = computed(() => modulos.value !== null);
+  /**
+   * Conhecido = a plataforma já disse quais são, e disse algo.
+   *
+   * Lista vazia não conta: ver o caso 3 de `temModulo`.
+   */
+  const conhecido = computed(() => modulos.value !== null && modulos.value.length > 0);
 
   function definir(lista: string[] | null | undefined) {
     modulos.value = lista ?? null;

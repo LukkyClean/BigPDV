@@ -46,11 +46,21 @@ def requer_modulo(identificador: str) -> Callable:
     def modulo_dependency(db: Session = Depends(get_db)) -> None:
         modulos = licenca_service.modulos_da_licenca(db)
 
-        # None = token sem a claim, ou sem como conferir a assinatura. Não é
-        # "nenhum módulo", é "não sei" -- e não saber libera, senão a estreia
+        # Vazio ou None = "não sei", e não saber LIBERA.
+        #
+        # None é token sem a claim, ou sem como conferir a assinatura: a estreia
         # desta trava tiraria o sistema de quem paga, por até uma semana,
         # enquanto os tokens antigos não expiram.
-        if modulos is None:
+        #
+        # Lista vazia entra aqui pelo mesmo motivo, e este é o caso comum hoje:
+        # a plataforma emite a claim mas ainda não cadastrou módulo nenhum, então
+        # TODA licença em campo chega com `[]`. Bloquear nesse caso recusaria a
+        # rota para 100% dos clientes -- inclusive os que pagaram -- por falta de
+        # configuração do lado de lá, não por decisão comercial.
+        #
+        # A trava morde quando a lista vem PREENCHIDA e o identificador não está
+        # nela: aí a plataforma falou, e falou que esta loja não tem.
+        if not modulos:
             return
 
         if identificador in modulos:

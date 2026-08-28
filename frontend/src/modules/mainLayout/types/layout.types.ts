@@ -37,11 +37,13 @@ export interface SidebarSubItem {
     /**
      * Módulo que este sub-item exige.
      *
-     * Repare na diferença de tratamento em relação ao pai: sub-item sem módulo
-     * aparece COM CADEADO, não some. O pai some porque anunciar um módulo que a
-     * loja não comprou não ajuda ninguém; aqui a loja já está dentro do módulo,
-     * e o item travado é justamente onde o upgrade se vende. Sumir com ele só
-     * geraria "o sistema perdeu uma tela" no suporte.
+     * Sem o módulo o item aparece COM CADEADO, nunca some — mesma regra do item
+     * pai. Sumir viraria "o sistema perdeu uma tela" no suporte, e o item
+     * travado é justamente onde o upgrade se vende.
+     *
+     * Num grupo os filhos podem exigir módulos DIFERENTES (Contas a Pagar é do
+     * plano de entrada, Fluxo de Caixa do superior), e é por isso que a trava
+     * mora aqui e não só no pai.
      */
     requiredModule?: string;
 }
@@ -55,8 +57,14 @@ export interface SidebarOption {
      * Modulo contratado que este item exige (ex.: 'FINANCEIRO').
      *
      * Eixo diferente de `requiredPermission`: permissao diz o que ESTE
-     * funcionario pode fazer, modulo diz o que a LOJA comprou. Sem modulo o
-     * item nao aparece para ninguem, nem para o dono.
+     * funcionario pode fazer, modulo diz o que a LOJA comprou. Sem o modulo o
+     * item aparece TRAVADO, com cadeado -- nao some, nem para o dono. Sumir
+     * vira chamado de suporte com "o sistema perdeu uma tela"; o cadeado diz a
+     * verdade e e onde o upgrade se vende. Mesma razao que o backend ja da em
+     * core/modulos.py para responder 403 e nao 404.
+     *
+     * Em item que tem `children` a trava e ignorada: quem carrega o cadeado sao
+     * os filhos, cada um com o seu modulo.
      */
     requiredModule?: string;
     /**

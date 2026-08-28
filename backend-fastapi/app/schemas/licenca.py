@@ -120,8 +120,10 @@ class LicencaStatusResponse(BaseModel):
         None,
         description=(
             "Modulos liberados para esta licenca, lidos do JWT assinado. "
-            "AUSENTE/None = token sem a claim (emitido antes dos modulos existirem) "
-            "e o frontend libera tudo. Lista VAZIA = nenhum modulo liberado."
+            "AUSENTE/None = token sem a claim (emitido antes dos modulos existirem). "
+            "Lista VAZIA = a plataforma ainda nao cadastrou modulo nenhum. "
+            "Os dois casos significam 'nao sei' e LIBERAM; so uma lista "
+            "PREENCHIDA sem o identificador e que bloqueia."
         ),
     )
 
