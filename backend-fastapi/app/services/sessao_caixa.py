@@ -458,17 +458,23 @@ def listar_historico(
 # ===========================================================================
 
 def calcular_saldo_esperado_em_especie(db: Session, sessao: SessaoCaixa) -> int:
-    """saldo_inicial + entradas em dinheiro + suprimentos - sangrias.
+    """Entradas em espécie MENOS saídas em espécie, no turno.
 
     A abertura e o suprimento já entram como movimento em espécie, então somar
     `saldo_inicial` de novo contaria o troco duas vezes: o que se soma aqui são
     os movimentos, e o saldo inicial já está entre eles.
+
+    Subtrai por TIPO e não pela origem SANGRIA, como fazia antes. O resultado é
+    idêntico para os dados de sempre — a sangria é lançada com forma em espécie
+    e continua sendo descontada. O que muda é o que ANTES ESCAPAVA: o estorno de
+    uma OS reaberta sem pagamento real tira da gaveta dinheiro que nunca entrou,
+    e pela regra antiga não era descontado, porque a origem não era SANGRIA.
+    Contar por tipo faz qualquer saída futura já nascer na conta certa.
     """
     formas_especie = _ids_das_formas_em_especie(db)
-    entradas_especie = caixa_crud.somar_dinheiro_em_especie(db, sessao.id, formas_especie)
-    totais = caixa_crud.somar_por_origem(db, sessao.id)
-    sangrias = totais.get(MovimentacaoFinanceiraOrigem.SANGRIA.value, 0)
-    return int(entradas_especie - sangrias)
+    entradas = caixa_crud.somar_dinheiro_em_especie(db, sessao.id, formas_especie)
+    saidas = caixa_crud.somar_saidas_em_especie(db, sessao.id, formas_especie)
+    return int(entradas - saidas)
 
 
 def montar_resumo(
@@ -593,6 +599,120 @@ def registrar_pagamentos_de_venda(
             venda_pagamento_id=pagamento.id,
             funcionario_id=venda.funcionario_id,
             funcionario_nome=getattr(funcionario, "nome", None),
+        )
+
+
+def registrar_pagamentos_de_os(
+    db: Session,
+    ordem_servico,
+    pagamentos,
+    operador_funcionario_id: Optional[int] = None,
+) -> None:
+    """Lança no livro os pagamentos recebidos ao finalizar uma OS.
+
+    GÊMEA de `registrar_pagamentos_de_venda`, e existe porque faltava: o
+    fechamento de caixa SOMA a origem ORDEM_SERVICO (ver
+    `crud/sessao_caixa.py`), mas nada nunca escreveu com ela. Havia leitor sem
+    escritor -- e numa loja com o caixa ligado, receber uma OS em dinheiro
+    enchia a gaveta sem o sistema saber, fazendo o turno fechar com SOBRA todo
+    dia.
+
+    `pagamentos` são os criados NESTA finalização, nunca `os.pagamentos`
+    inteiro: uma OS reaberta e refinalizada carrega os pagamentos antigos junto,
+    e relançá-los duplicaria dinheiro que já entrou.
+
+    Mesmas duas guardas da venda, e pelas mesmas razões:
+      - caixa desligado devolve na hora, o que mantém as lojas de hoje idênticas;
+      - pagamento com vencimento futuro é promessa e não gaveta.
+
+    O ADIANTAMENTO (`valor_entrada`) NÃO entra aqui, de propósito: ele é
+    recebido quando a OS é ABERTA, e lançá-lo na finalização o jogaria no turno
+    e no dia errados -- às vezes semanas depois. Fechar essa parte exige um
+    gancho no momento da abertura, e é trabalho à parte.
+    """
+    if not pagamentos:
+        return
+
+    funcionario = getattr(ordem_servico, "funcionario", None)
+    empresa_id = getattr(funcionario, "empresa_id", None)
+    if not empresa_id or not caixa_esta_ligado(db, empresa_id):
+        return
+
+    sessao = None
+    if operador_funcionario_id:
+        sessao = caixa_crud.get_sessao_aberta_do_funcionario(db, operador_funcionario_id)
+    if not sessao and ordem_servico.funcionario_id:
+        sessao = caixa_crud.get_sessao_aberta_do_funcionario(db, ordem_servico.funcionario_id)
+    if not sessao:
+        return
+
+    from app.core.tempo import hoje_local
+
+    hoje = hoje_local()
+
+    for pagamento in pagamentos:
+        if pagamento.vencimento and pagamento.vencimento > hoje:
+            continue  # promessa: é conta a receber, não gaveta
+        pagamento.sessao_caixa_id = sessao.id
+        caixa_crud.registrar_movimento(
+            db,
+            tipo=MovimentacaoFinanceiraTipo.ENTRADA,
+            origem=MovimentacaoFinanceiraOrigem.ORDEM_SERVICO,
+            valor=pagamento.valor,
+            sessao_caixa_id=sessao.id,
+            forma_pagamento_id=pagamento.forma_pagamento_id,
+            ordem_servico_pagamento_id=pagamento.id,
+            funcionario_id=ordem_servico.funcionario_id,
+            funcionario_nome=getattr(funcionario, "nome", None),
+        )
+
+
+def estornar_pagamentos_de_os(
+    db: Session,
+    ordem_servico,
+    pagamentos,
+    operador_funcionario_id: Optional[int] = None,
+) -> None:
+    """Devolve ao livro o dinheiro de uma OS reaberta SEM pagamento real.
+
+    Reabrir com `cliente_pagou=False` significa que o pagamento nunca
+    aconteceu, e a OS apaga os registros. Sem esta função, as linhas do livro
+    ficariam para trás contando dinheiro que não entrou -- o turno passaria a
+    fechar com FALTA, o espelho exato do defeito que esta onda veio corrigir.
+
+    NÃO apaga nada: lança o movimento CONTRÁRIO, com a data de hoje. Mesma
+    regra do estorno de conta a pagar, e pela mesma razão -- `sessao_caixa`
+    persiste o saldo esperado, e mexer num turno fechado faria a quebra gravada
+    discordar da recalculada.
+    """
+    if not pagamentos:
+        return
+
+    funcionario = getattr(ordem_servico, "funcionario", None)
+    empresa_id = getattr(funcionario, "empresa_id", None)
+    if not empresa_id or not caixa_esta_ligado(db, empresa_id):
+        return
+
+    sessao = None
+    if operador_funcionario_id:
+        sessao = caixa_crud.get_sessao_aberta_do_funcionario(db, operador_funcionario_id)
+    if not sessao:
+        sessao = caixa_crud.get_sessao_aberta_do_funcionario(db, ordem_servico.funcionario_id)
+
+    for pagamento in pagamentos:
+        # Só devolve o que chegou a entrar: promessa nunca virou movimento.
+        if pagamento.sessao_caixa_id is None:
+            continue
+        caixa_crud.registrar_movimento(
+            db,
+            tipo=MovimentacaoFinanceiraTipo.SAIDA,
+            origem=MovimentacaoFinanceiraOrigem.ORDEM_SERVICO,
+            valor=pagamento.valor,
+            sessao_caixa_id=sessao.id if sessao else None,
+            forma_pagamento_id=pagamento.forma_pagamento_id,
+            funcionario_id=ordem_servico.funcionario_id,
+            funcionario_nome=getattr(funcionario, "nome", None),
+            motivo=f"Estorno: OS {ordem_servico.numero_os} reaberta sem pagamento",
         )
 
 

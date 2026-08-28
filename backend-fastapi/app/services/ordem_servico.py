@@ -1068,6 +1068,7 @@ def finalizar_ordem_servico(
             raise pagamento_valor_invalido_exce
 
     # Valida e cria cada pagamento
+    pagamentos_criados = []
     for pagamento_data in data.pagamentos:
         forma_pagamento = fp_crud.get_forma_pagamento_by_id(db, fp_id=pagamento_data.forma_pagamento_id)
         if not forma_pagamento or not forma_pagamento.ativo:
@@ -1085,6 +1086,9 @@ def finalizar_ordem_servico(
             detalhes=pagamento_data.detalhes,
         )
         os_crud.create_os_pagamento(db, pagamento_to_add=pagamento)
+        # Guarda só os desta finalização: `os_in_db.pagamentos` traz também os
+        # de finalizações anteriores, e relançá-los duplicaria dinheiro no livro.
+        pagamentos_criados.append(pagamento)
 
     # Para SEM_REPARO / CONDENADO: trata o excedente do adiantamento (entrada - total cobrado)
     if situacao_sem_cobranca and (os_in_db.valor_entrada or 0) > 0:
@@ -1097,6 +1101,18 @@ def finalizar_ordem_servico(
     # Baixa das peças aplicadas. Vai aqui, junto da mudança de status, para que
     # a OS só consuma estoque quando de fato fecha — e para que reabrir devolva.
     _movimentar_estoque_os(db, os_in_db, saida=True, usuario_token=usuario_token)
+
+    # O dinheiro entra no livro junto com a peça saindo do estoque, e pelo mesmo
+    # motivo: é neste instante que a OS fecha. Sem isto o fechamento de caixa
+    # somava a origem ORDEM_SERVICO que ninguém escrevia, e a gaveta de uma loja
+    # com caixa ligado fechava com sobra todo dia.
+    from app.services import sessao_caixa as caixa_service
+    caixa_service.registrar_pagamentos_de_os(
+        db,
+        os_in_db,
+        pagamentos_criados,
+        operador_funcionario_id=(usuario_token or {}).get("funcionario_id"),
+    )
 
     # Aplica finalização
     os_in_db.situacao_equipamento = data.situacao_equipamento
@@ -1217,6 +1233,18 @@ def reabrir_ordem_servico(
     else:
         # Pagamento não era real: apaga os pagamentos (cascade delete-orphan) e
         # zera o crédito, para a OS recobrar o valor cheio.
+        #
+        # Antes de apagar, devolve ao livro o que chegou a entrar. A FK do
+        # movimento é SET NULL, então as linhas ficariam para trás contando
+        # dinheiro que nunca existiu, e o turno passaria a fechar com FALTA.
+        # O estorno lança o contrário na data de hoje; nada é apagado do livro.
+        from app.services import sessao_caixa as caixa_service
+        caixa_service.estornar_pagamentos_de_os(
+            db,
+            os_in_db,
+            list(os_in_db.pagamentos),
+            operador_funcionario_id=(usuario_token or {}).get("funcionario_id"),
+        )
         os_in_db.pagamentos.clear()
         os_in_db.credito_anterior = None
 

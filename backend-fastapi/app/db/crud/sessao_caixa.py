@@ -212,13 +212,39 @@ def somar_dinheiro_em_especie(db: Session, sessao_id: int, formas_dinheiro: Sequ
     Cartão e PIX entram no faturamento mas não no que se conta na mão. Sem essa
     separação o fechamento acusaria diferença todo dia.
     """
+    return _somar_em_especie(
+        db, sessao_id, formas_dinheiro, MovimentacaoFinanceiraTipo.ENTRADA
+    )
+
+
+def somar_saidas_em_especie(
+    db: Session, sessao_id: int, formas_dinheiro: Sequence[int]
+) -> int:
+    """Saídas do turno que tiraram dinheiro da gaveta.
+
+    A sangria é a mais comum, mas não é a única: o estorno de uma OS reaberta
+    sem pagamento real também devolve dinheiro que nunca entrou. Somar por TIPO
+    em vez de por origem faz qualquer saída futura já entrar na conta certa,
+    sem alguém precisar lembrar de acrescentá-la aqui.
+    """
+    return _somar_em_especie(
+        db, sessao_id, formas_dinheiro, MovimentacaoFinanceiraTipo.SAIDA
+    )
+
+
+def _somar_em_especie(
+    db: Session,
+    sessao_id: int,
+    formas_dinheiro: Sequence[int],
+    tipo: MovimentacaoFinanceiraTipo,
+) -> int:
     if not formas_dinheiro:
         return 0
     total = (
         db.query(func.coalesce(func.sum(MovimentacaoFinanceira.valor), 0))
         .filter(
             MovimentacaoFinanceira.sessao_caixa_id == sessao_id,
-            MovimentacaoFinanceira.tipo == MovimentacaoFinanceiraTipo.ENTRADA.value,
+            MovimentacaoFinanceira.tipo == tipo.value,
             MovimentacaoFinanceira.forma_pagamento_id.in_(formas_dinheiro),
         )
         .scalar()
