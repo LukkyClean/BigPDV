@@ -253,6 +253,39 @@ def criar_conta_pagar(db: Session, conta: ContaPagar) -> ContaPagar:
     return conta
 
 
+def get_ocorrencia_gerada(
+    db: Session, empresa_id: int, conta_id: int
+) -> Optional[ContaPagar]:
+    """A ocorrência que a baixa desta conta gerou pela recorrência, se houver.
+
+    Serve para os dois lados do problema: impedir que pagar de novo crie uma
+    segunda, e permitir que o estorno remova a que aquele pagamento criou.
+    """
+    return (
+        db.query(ContaPagar)
+        .filter(
+            ContaPagar.empresa_id == empresa_id,
+            ContaPagar.gerada_por_id == conta_id,
+        )
+        .first()
+    )
+
+
+def apagar_conta(db: Session, conta: ContaPagar) -> None:
+    """Remove a linha de vez.
+
+    EXCEÇÃO ÚNICA à regra de "cancela, não exclui" -- e as três condições são
+    verificadas pelo serviço antes de chegar aqui: a conta foi criada pelo
+    SISTEMA (não por uma pessoa), continua PENDENTE (nenhum dinheiro andou), e
+    está sendo removida ao desfazer exatamente o pagamento que a criou.
+
+    Cancelar em vez de apagar deixaria um fantasma "Cancelada" na lista a cada
+    estorno, de uma conta que ninguém lançou -- ruído sem verdade nenhuma dentro.
+    """
+    db.delete(conta)
+    db.flush()
+
+
 def proximas_a_vencer(
     db: Session, empresa_id: int, *, ate: date, limite: int = 5
 ) -> Sequence[ContaPagar]:

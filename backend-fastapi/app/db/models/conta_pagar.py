@@ -145,6 +145,22 @@ class ContaPagar(Base):
         doc="Ao dar baixa, gera automaticamente a ocorrência do mês seguinte",
     )
 
+    # Qual conta, ao ser paga, gerou ESTA pela recorrência.
+    #
+    # Sem este elo a recorrência não tinha volta e nem trava: estornar o
+    # pagamento devolvia a conta para pendente mas deixava a do mês seguinte na
+    # lista (a loja aparentava dever duas), e pagar de novo criava MAIS uma --
+    # a dívida se multiplicava a cada estorno-e-repagamento.
+    #
+    # Só a recorrência usa. Parcelamento não precisa: lá as parcelas nascem
+    # todas juntas no cadastro, nenhuma é consequência da baixa de outra.
+    gerada_por_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        index=True,
+        doc="Conta cuja baixa gerou esta ocorrência; NULL quando foi lançada à mão",
+    )
+
     # --- Parcelamento ---
     # OUTRO mecanismo, não uma variação da recorrência -- é a distinção que Odoo,
     # ERPNext, Omie e Conta Azul fazem igual:

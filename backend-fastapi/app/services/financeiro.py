@@ -630,7 +630,13 @@ def pagar_conta(
     # Recorrência: a próxima nasce agora, com o valor ORIGINAL da conta e não o
     # pago. A luz veio R$ 80 mais cara este mês por causa do calor; repetir esse
     # valor viraria previsão errada todo mês seguinte.
-    if conta.recorrente:
+    #
+    # IDEMPOTENTE. Sem a checagem, estornar e pagar de novo criava uma SEGUNDA
+    # ocorrência do mês seguinte, e a dívida se multiplicava a cada repetição do
+    # ciclo. `gerada_por_id` é o que permite perguntar "já gerei a partir desta?".
+    if conta.recorrente and not financeiro_crud.get_ocorrencia_gerada(
+        db, empresa_id, conta.id
+    ):
         financeiro_crud.criar_conta_pagar(
             db,
             ContaPagar(
@@ -642,6 +648,7 @@ def pagar_conta(
                 fornecedor_id=conta.fornecedor_id,
                 recorrente=True,
                 status=ContaPagarStatus.PENDENTE.value,
+                gerada_por_id=conta.id,
             ),
         )
 
@@ -693,6 +700,24 @@ def estornar_pagamento(
         valor_novo=f"PENDENTE — {dados.motivo}",
         funcionario_id=func_id, funcionario_nome=func_nome,
     )
+
+    # Desfaz também a CONSEQUÊNCIA do pagamento: a ocorrência do mês seguinte
+    # que a recorrência criou ao dar a baixa.
+    #
+    # Sem isto, estornar deixava a loja aparentando dever duas contas de
+    # internet -- a de setembro, de volta a pendente, e a de outubro, que só
+    # existia por causa do pagamento que acabou de ser desfeito.
+    #
+    # Apaga em vez de cancelar, e é a única exceção à regra da casa: a linha foi
+    # criada pelo SISTEMA, nunca teve dinheiro andando, e some ao desfazer
+    # exatamente o que a criou. Um fantasma "Cancelada" por estorno seria ruído
+    # de uma conta que ninguém lançou.
+    #
+    # Se a ocorrência JÁ FOI PAGA ou cancelada, fica onde está: aí houve decisão
+    # de gente no meio, e apagá-la levaria junto um pagamento de verdade.
+    gerada = financeiro_crud.get_ocorrencia_gerada(db, empresa_id, conta.id)
+    if gerada is not None and gerada.status == ContaPagarStatus.PENDENTE.value:
+        financeiro_crud.apagar_conta(db, gerada)
 
     # Volta a PENDENTE e limpa a baixa. A CHECK do banco exige coerência: conta
     # não-PAGA não pode carregar `pago_em` nem `valor_pago`.

@@ -555,3 +555,86 @@ def test_conta_sem_parcelamento_nao_ganha_marca(client, db_session):
     assert conta["parcelamento_id"] is None
     assert conta["parcela_numero"] is None
     assert conta["parcela_total"] is None
+
+
+# ===========================================================================
+# RECORRENCIA: DESFAZER A CONSEQUENCIA
+#
+# Encontrado no uso real: estornar devolvia a conta para pendente mas deixava
+# a ocorrencia do mes seguinte, e a loja aparentava dever duas internets.
+# ===========================================================================
+
+def _contas_pendentes(client, header):
+    return client.get("/api/v1/financeiro/contas-pagar?status=PENDENTE",
+                      headers=header).json()
+
+
+def test_estorno_remove_a_ocorrencia_que_o_pagamento_criou(client, db_session):
+    header = _auth(client)
+    conta = _criar_conta(client, header, descricao="Internet", valor=8000,
+                         recorrente=True)
+    base = f"/api/v1/financeiro/contas-pagar/{conta['id']}"
+
+    client.post(f"{base}/pagar", json={}, headers=header)
+    assert _contas_pendentes(client, header)["total_itens"] == 1, "nasceu a do mês seguinte"
+
+    client.post(f"{base}/estornar", json={"motivo": "paguei em duplicidade"},
+                headers=header)
+
+    pendentes = _contas_pendentes(client, header)
+    assert pendentes["total_itens"] == 1, "só a original volta; a gerada some"
+    assert pendentes["itens"][0]["id"] == conta["id"]
+
+
+def test_estornar_e_pagar_de_novo_nao_multiplica_a_divida(client, db_session):
+    """O efeito composto do mesmo defeito: cada ciclo criava mais uma."""
+    header = _auth(client)
+    conta = _criar_conta(client, header, descricao="Internet", valor=8000,
+                         recorrente=True)
+    base = f"/api/v1/financeiro/contas-pagar/{conta['id']}"
+
+    for _ in range(3):
+        client.post(f"{base}/pagar", json={}, headers=header)
+        client.post(f"{base}/estornar", json={"motivo": "errado de novo"},
+                    headers=header)
+
+    client.post(f"{base}/pagar", json={}, headers=header)
+
+    todas = client.get("/api/v1/financeiro/contas-pagar", headers=header).json()
+    assert todas["total_itens"] == 2, "a original mais UMA do mês seguinte, sempre"
+
+
+def test_estorno_preserva_ocorrencia_que_ja_foi_paga(client, db_session):
+    """Se houve decisão de gente no meio, apagar levaria junto um pagamento
+    de verdade."""
+    header = _auth(client)
+    conta = _criar_conta(client, header, descricao="Internet", valor=8000,
+                         recorrente=True)
+    client.post(f"/api/v1/financeiro/contas-pagar/{conta['id']}/pagar",
+                json={}, headers=header)
+
+    proxima = _contas_pendentes(client, header)["itens"][0]
+    client.post(f"/api/v1/financeiro/contas-pagar/{proxima['id']}/pagar",
+                json={}, headers=header)
+
+    client.post(f"/api/v1/financeiro/contas-pagar/{conta['id']}/estornar",
+                json={"motivo": "mês errado"}, headers=header)
+
+    ids = {i["id"] for i in client.get("/api/v1/financeiro/contas-pagar",
+                                       headers=header).json()["itens"]}
+    assert proxima["id"] in ids, "a ocorrência paga não pode ser apagada"
+
+
+def test_parcelamento_nao_e_afetado_pelo_estorno(client, db_session):
+    """Parcelas nascem juntas no cadastro; nenhuma é consequência da baixa de
+    outra, então estornar uma não pode encostar nas demais."""
+    header = _auth(client)
+    primeira = _criar_conta(client, header, descricao="Cartão", valor=10000,
+                            parcelas=3)
+    base = f"/api/v1/financeiro/contas-pagar/{primeira['id']}"
+
+    client.post(f"{base}/pagar", json={}, headers=header)
+    client.post(f"{base}/estornar", json={"motivo": "engano"}, headers=header)
+
+    assert client.get("/api/v1/financeiro/contas-pagar",
+                      headers=header).json()["total_itens"] == 3
