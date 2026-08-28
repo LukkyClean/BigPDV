@@ -638,3 +638,107 @@ def test_parcelamento_nao_e_afetado_pelo_estorno(client, db_session):
 
     assert client.get("/api/v1/financeiro/contas-pagar",
                       headers=header).json()["total_itens"] == 3
+
+
+# ===========================================================================
+# CONTAS A RECEBER — baixa e estorno (Onda 2A)
+# ===========================================================================
+
+def _criar_receber(client, header, **kwargs):
+    payload = {
+        "descricao": "Fiado do Joao",
+        "valor": 20000,
+        "vencimento": (date.today() + timedelta(days=15)).isoformat(),
+    }
+    payload.update(kwargs)
+    r = client.post("/api/v1/financeiro/contas-receber", json=payload, headers=header)
+    assert r.status_code == status.HTTP_201_CREATED, r.text
+    return r.json()
+
+
+def test_receber_gera_entrada_no_livro(client, db_session):
+    from app.db.models.movimentacao_financeira import MovimentacaoFinanceira
+
+    header = _auth(client)
+    conta = _criar_receber(client, header)
+    assert conta["status"] == "PENDENTE"
+    assert conta["automatica"] is False, "lançada à mão"
+
+    r = client.post(f"/api/v1/financeiro/contas-receber/{conta['id']}/receber",
+                    json={}, headers=header)
+    assert r.status_code == status.HTTP_200_OK, r.text
+    assert r.json()["status"] == "RECEBIDA"
+    assert r.json()["valor_recebido"] == 20000
+
+    movimentos = db_session.query(MovimentacaoFinanceira).all()
+    assert len(movimentos) == 1
+    assert movimentos[0].tipo == "ENTRADA"
+    assert movimentos[0].origem == "RECEBIMENTO"
+    # Quitar dívida antiga não é venda no PDV: não pertence a turno nenhum.
+    assert movimentos[0].sessao_caixa_id is None
+
+
+def test_recebimento_parcial_registra_o_que_entrou(client, db_session):
+    """O cliente devia 200 e trouxe 150 — o livro conta o que entrou."""
+    header = _auth(client)
+    conta = _criar_receber(client, header)
+    r = client.post(f"/api/v1/financeiro/contas-receber/{conta['id']}/receber",
+                    json={"valor_recebido": 15000}, headers=header)
+    assert r.json()["valor"] == 20000, "o previsto não muda"
+    assert r.json()["valor_recebido"] == 15000
+
+
+def test_estorno_de_recebimento_nao_apaga_o_lancamento(client, db_session):
+    from app.db.models.movimentacao_financeira import MovimentacaoFinanceira
+
+    header = _auth(client)
+    conta = _criar_receber(client, header)
+    base = f"/api/v1/financeiro/contas-receber/{conta['id']}"
+    client.post(f"{base}/receber", json={}, headers=header)
+
+    r = client.post(f"{base}/estornar", json={"motivo": "o cheque voltou"}, headers=header)
+    assert r.status_code == status.HTTP_200_OK, r.text
+    assert r.json()["status"] == "PENDENTE"
+    assert r.json()["valor_recebido"] is None
+
+    movimentos = db_session.query(MovimentacaoFinanceira).order_by(
+        MovimentacaoFinanceira.id
+    ).all()
+    assert len(movimentos) == 2, "estorno INSERE o contrário"
+    assert movimentos[0].tipo == "ENTRADA"
+    assert movimentos[1].tipo == "SAIDA"
+
+
+def test_conta_recebida_nao_pode_ser_editada(client, db_session):
+    header = _auth(client)
+    conta = _criar_receber(client, header)
+    client.post(f"/api/v1/financeiro/contas-receber/{conta['id']}/receber",
+                json={}, headers=header)
+    r = client.patch(f"/api/v1/financeiro/contas-receber/{conta['id']}",
+                     json={"valor": 100}, headers=header)
+    assert r.status_code == status.HTTP_400_BAD_REQUEST
+
+
+def test_totais_de_receber_vem_do_filtro_inteiro(client, db_session):
+    header = _auth(client)
+    a = _criar_receber(client, header, descricao="A", valor=10000)
+    _criar_receber(client, header, descricao="B", valor=30000)
+    client.post(f"/api/v1/financeiro/contas-receber/{a['id']}/receber",
+                json={}, headers=header)
+
+    dados = client.get("/api/v1/financeiro/contas-receber?status=PENDENTE",
+                       headers=header).json()
+    assert dados["total_itens"] == 1
+    assert dados["total_pendente"] == 30000
+    assert dados["total_recebido"] == 10000, "o recebido segue visível no rodapé"
+
+
+def test_cancelar_cobranca_nao_exclui(client, db_session):
+    header = _auth(client)
+    conta = _criar_receber(client, header)
+    r = client.delete(f"/api/v1/financeiro/contas-receber/{conta['id']}", headers=header)
+    assert r.status_code == status.HTTP_200_OK, r.text
+    assert r.json()["status"] == "CANCELADA"
+
+    todas = client.get("/api/v1/financeiro/contas-receber", headers=header).json()
+    assert todas["total_itens"] == 1, "continua na lista, como cancelada"

@@ -149,3 +149,63 @@ export interface ContaPagarFiltros {
   plano_conta_id?: number;
   busca?: string;
 }
+
+// ===========================================================================
+// CONTAS A RECEBER
+// ===========================================================================
+
+export const ContaReceberSchema = z.object({
+  id: z.number(),
+  descricao: z.string(),
+  valor: z.number(),
+  taxa: z.number(),
+  vencimento: z.string(),
+  status: z.string(),
+
+  cliente_id: z.number().nullable().optional(),
+  cliente_nome: z.string().nullable().optional(),
+
+  valor_recebido: z.number().nullable().optional(),
+  recebido_em: z.string().nullable().optional(),
+  conta_bancaria_id: z.number().nullable().optional(),
+  conta_bancaria_nome: z.string().nullable().optional(),
+  forma_pagamento_id: z.number().nullable().optional(),
+
+  venda_pagamento_id: z.number().nullable().optional(),
+  ordem_servico_pagamento_id: z.number().nullable().optional(),
+  // Nasceu do fecho de uma venda ou OS. A tela usa para explicar de onde veio e
+  // para nao oferecer edicao livre do que um documento fechado ja decidiu.
+  automatica: z.boolean(),
+
+  observacao: z.string().nullable().optional(),
+  criado_em: z.string(),
+  vencida: z.boolean(),
+  dias_para_vencer: z.number().nullable().optional(),
+});
+export type ContaReceber = z.infer<typeof ContaReceberSchema>;
+
+export const ContaReceberListagemSchema = z.object({
+  itens: z.array(ContaReceberSchema),
+  total_itens: z.number(),
+  total_pendente: z.number(),
+  total_recebido: z.number(),
+  total_vencido: z.number(),
+});
+export type ContaReceberListagem = z.infer<typeof ContaReceberListagemSchema>;
+
+export interface ContaReceberPayload {
+  descricao: string;
+  valor: number;
+  vencimento: string;
+  cliente_id?: number | null;
+  taxa?: number;
+  observacao?: string | null;
+}
+
+export interface ContaReceberBaixaPayload {
+  valor_recebido?: number;
+  recebido_em?: string;
+  conta_bancaria_id?: number | null;
+  forma_pagamento_id?: number | null;
+  observacao?: string | null;
+}

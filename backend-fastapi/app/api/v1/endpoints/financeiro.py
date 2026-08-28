@@ -37,6 +37,14 @@ from app.schemas.conta_pagar import (
     ContaPagarUpdate,
     HistoricoFinanceiroRead,
 )
+from app.schemas.conta_receber import (
+    ContaReceberBaixa,
+    ContaReceberCreate,
+    ContaReceberEstorno,
+    ContaReceberListagem,
+    ContaReceberRead,
+    ContaReceberUpdate,
+)
 from app.schemas.financeiro import ResumoFinanceiro
 from app.schemas.plano_conta import PlanoContaCreate, PlanoContaRead, PlanoContaUpdate
 from app.services import financeiro as financeiro_service
@@ -335,6 +343,160 @@ def historico_da_conta(
 ):
     return _handle_db_transaction(
         db, financeiro_service.listar_historico_da_conta,
+        usuario_token["empresa_id"], conta_id,
+    )
+
+
+# ===========================================================================
+# CONTAS A RECEBER
+#
+# A maioria destas contas NASCE SOZINHA, no fecho da venda ou da OS, quando o
+# pagamento tem vencimento futuro. As rotas de cadastro existem para o que não
+# passou pelo sistema — o cliente que já devia antes do módulo existir.
+# ===========================================================================
+
+@router.get(
+    "/contas-receber",
+    response_model=ContaReceberListagem,
+    summary="Lista o que ainda não entrou, com os totais do filtro",
+)
+def listar_contas_receber(
+    status_filtro: Optional[str] = Query(
+        None, alias="status", description="PENDENTE, RECEBIDA ou CANCELADA"
+    ),
+    inicio: Optional[date] = Query(None, description="Vencimento a partir de"),
+    fim: Optional[date] = Query(None, description="Vencimento até"),
+    cliente_id: Optional[int] = Query(None),
+    busca: Optional[str] = Query(None, description="Trecho da descrição"),
+    limit: int = Query(200, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    usuario_token: dict = Depends(check_permission(required_permission=PERMISSAO_VER)),
+    db: Session = Depends(get_db),
+):
+    return _handle_db_transaction(
+        db,
+        lambda db_: financeiro_service.listar_contas_receber(
+            db_, usuario_token["empresa_id"], status=status_filtro, inicio=inicio,
+            fim=fim, cliente_id=cliente_id, busca=busca, limit=limit, offset=offset,
+        ),
+    )
+
+
+@router.post(
+    "/contas-receber",
+    response_model=ContaReceberRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Lança uma cobrança à mão",
+)
+def criar_conta_receber(
+    dados: ContaReceberCreate,
+    usuario_token: dict = Depends(check_permission(required_permission=PERMISSAO_GERIR)),
+    db: Session = Depends(get_db),
+):
+    return _handle_db_transaction(
+        db, financeiro_service.criar_conta_receber,
+        usuario_token["empresa_id"], dados, usuario_token,
+    )
+
+
+@router.get(
+    "/contas-receber/{conta_id}",
+    response_model=ContaReceberRead,
+    summary="Detalhe de uma cobrança",
+)
+def get_conta_receber(
+    conta_id: int = Path(..., gt=0),
+    usuario_token: dict = Depends(check_permission(required_permission=PERMISSAO_VER)),
+    db: Session = Depends(get_db),
+):
+    return _handle_db_transaction(
+        db, financeiro_service.get_conta_receber, usuario_token["empresa_id"], conta_id
+    )
+
+
+@router.patch(
+    "/contas-receber/{conta_id}",
+    response_model=ContaReceberRead,
+    summary="Altera uma cobrança ainda não recebida",
+)
+def atualizar_conta_receber(
+    dados: ContaReceberUpdate,
+    conta_id: int = Path(..., gt=0),
+    usuario_token: dict = Depends(check_permission(required_permission=PERMISSAO_GERIR)),
+    db: Session = Depends(get_db),
+):
+    """Renegociar prazo com o cliente é legítimo — e deixa rastro."""
+    return _handle_db_transaction(
+        db, financeiro_service.atualizar_conta_receber,
+        usuario_token["empresa_id"], conta_id, dados, usuario_token,
+    )
+
+
+@router.delete(
+    "/contas-receber/{conta_id}",
+    response_model=ContaReceberRead,
+    summary="Cancela a cobrança (não exclui)",
+)
+def cancelar_conta_receber(
+    conta_id: int = Path(..., gt=0),
+    usuario_token: dict = Depends(check_permission(required_permission=PERMISSAO_GERIR)),
+    db: Session = Depends(get_db),
+):
+    """Dívida perdoada continua sendo história, e o histórico responde por ela."""
+    return _handle_db_transaction(
+        db, financeiro_service.cancelar_conta_receber,
+        usuario_token["empresa_id"], conta_id, usuario_token,
+    )
+
+
+@router.post(
+    "/contas-receber/{conta_id}/receber",
+    response_model=ContaReceberRead,
+    summary="Dá baixa e lança a entrada no livro",
+)
+def receber_conta(
+    dados: ContaReceberBaixa,
+    conta_id: int = Path(..., gt=0),
+    usuario_token: dict = Depends(check_permission(required_permission=PERMISSAO_GERIR)),
+    db: Session = Depends(get_db),
+):
+    """O momento que o fecho da venda deixou marcado: "o movimento nasce no dia
+    em que o cliente pagar". Origem RECEBIMENTO."""
+    return _handle_db_transaction(
+        db, financeiro_service.receber_conta,
+        usuario_token["empresa_id"], conta_id, dados, usuario_token,
+    )
+
+
+@router.post(
+    "/contas-receber/{conta_id}/estornar",
+    response_model=ContaReceberRead,
+    summary="Desfaz o recebimento sem apagar o lançamento",
+)
+def estornar_recebimento(
+    dados: ContaReceberEstorno,
+    conta_id: int = Path(..., gt=0),
+    usuario_token: dict = Depends(check_permission(required_permission=PERMISSAO_GERIR)),
+    db: Session = Depends(get_db),
+):
+    return _handle_db_transaction(
+        db, financeiro_service.estornar_recebimento,
+        usuario_token["empresa_id"], conta_id, dados, usuario_token,
+    )
+
+
+@router.get(
+    "/contas-receber/{conta_id}/historico",
+    response_model=List[HistoricoFinanceiroRead],
+    summary="Quem mexeu nesta cobrança, quando e o quê",
+)
+def historico_da_cobranca(
+    conta_id: int = Path(..., gt=0),
+    usuario_token: dict = Depends(check_permission(required_permission=PERMISSAO_VER)),
+    db: Session = Depends(get_db),
+):
+    return _handle_db_transaction(
+        db, financeiro_service.listar_historico_do_recebimento,
         usuario_token["empresa_id"], conta_id,
     )
 

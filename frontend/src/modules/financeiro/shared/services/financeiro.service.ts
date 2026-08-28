@@ -14,6 +14,12 @@ import {
   type ContaPagarFiltros,
   type ContaPagarListagem,
   type ContaPagarPayload,
+  ContaReceberListagemSchema,
+  ContaReceberSchema,
+  type ContaReceber,
+  type ContaReceberBaixaPayload,
+  type ContaReceberListagem,
+  type ContaReceberPayload,
   type HistoricoFinanceiro,
   type PlanoConta,
   type ResumoFinanceiro,
@@ -129,4 +135,49 @@ export async function listarHistoricoDaConta(id: number): Promise<HistoricoFinan
 export async function getResumo(inicio: string, fim: string): Promise<ResumoFinanceiro> {
   const { data } = await api.get('/financeiro/resumo', { params: { inicio, fim } });
   return safeParseResponse(ResumoFinanceiroSchema, data, 'getResumo');
+}
+
+// ===========================================================================
+// CONTAS A RECEBER
+// ===========================================================================
+
+export async function listarContasReceber(
+  filtros: ContaPagarFiltros = {},
+): Promise<ContaReceberListagem> {
+  const params = Object.fromEntries(
+    Object.entries(filtros).filter(([, v]) => v !== undefined && v !== '' && v !== null),
+  );
+  const { data } = await api.get('/financeiro/contas-receber', { params });
+  return safeParseResponse(ContaReceberListagemSchema, data, 'listarContasReceber');
+}
+
+export async function criarContaReceber(payload: ContaReceberPayload): Promise<ContaReceber> {
+  const { data } = await api.post('/financeiro/contas-receber', payload);
+  return safeParseResponse(ContaReceberSchema, data, 'criarContaReceber');
+}
+
+export async function atualizarContaReceber(
+  id: number,
+  payload: Partial<ContaReceberPayload>,
+): Promise<ContaReceber> {
+  const { data } = await api.patch(`/financeiro/contas-receber/${id}`, payload);
+  return safeParseResponse(ContaReceberSchema, data, 'atualizarContaReceber');
+}
+
+export async function cancelarContaReceber(id: number): Promise<ContaReceber> {
+  const { data } = await api.delete(`/financeiro/contas-receber/${id}`);
+  return safeParseResponse(ContaReceberSchema, data, 'cancelarContaReceber');
+}
+
+export async function receberConta(
+  id: number,
+  payload: ContaReceberBaixaPayload,
+): Promise<ContaReceber> {
+  const { data } = await api.post(`/financeiro/contas-receber/${id}/receber`, payload);
+  return safeParseResponse(ContaReceberSchema, data, 'receberConta');
+}
+
+export async function estornarRecebimento(id: number, motivo: string): Promise<ContaReceber> {
+  const { data } = await api.post(`/financeiro/contas-receber/${id}/estornar`, { motivo });
+  return safeParseResponse(ContaReceberSchema, data, 'estornarRecebimento');
 }

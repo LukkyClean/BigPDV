@@ -10,6 +10,8 @@ import type {
   ContaPagarBaixaPayload,
   ContaPagarFiltros,
   ContaPagarPayload,
+  ContaReceberBaixaPayload,
+  ContaReceberPayload,
 } from '../schemas/financeiro.schema';
 
 /**
@@ -173,5 +175,85 @@ export function useAtualizarPlanoConta() {
       service.atualizarPlanoConta(id, dados),
     onSuccess: () => invalidar(),
     onError: () => toast.error('Não foi possível salvar a categoria'),
+  });
+}
+
+// ===========================================================================
+// CONTAS A RECEBER
+// ===========================================================================
+
+export function useContasReceberQuery(filtros: MaybeRef<ContaPagarFiltros>) {
+  return useQuery({
+    queryKey: computed(() => financeiroKeys.contasReceber(unref(filtros))),
+    queryFn: () => service.listarContasReceber(unref(filtros)),
+    refetchInterval: REFETCH_CADASTROS,
+  });
+}
+
+export function useCriarContaReceber() {
+  const invalidar = useInvalidarFinanceiro();
+  const toast = useToast();
+
+  return useMutation({
+    mutationFn: (payload: ContaReceberPayload) => service.criarContaReceber(payload),
+    onSuccess: () => {
+      invalidar();
+      toast.success('Cobrança lançada');
+    },
+  });
+}
+
+export function useAtualizarContaReceber() {
+  const invalidar = useInvalidarFinanceiro();
+  const toast = useToast();
+
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: number; payload: Partial<ContaReceberPayload> }) =>
+      service.atualizarContaReceber(id, payload),
+    onSuccess: () => {
+      invalidar();
+      toast.success('Cobrança atualizada');
+    },
+  });
+}
+
+export function useCancelarContaReceber() {
+  const invalidar = useInvalidarFinanceiro();
+  const toast = useToast();
+
+  return useMutation({
+    mutationFn: (id: number) => service.cancelarContaReceber(id),
+    onSuccess: () => {
+      invalidar();
+      toast.success('Cobrança cancelada');
+    },
+  });
+}
+
+export function useReceberConta() {
+  const invalidar = useInvalidarFinanceiro();
+  const toast = useToast();
+
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: number; payload: ContaReceberBaixaPayload }) =>
+      service.receberConta(id, payload),
+    onSuccess: () => {
+      invalidar();
+      toast.success('Recebimento registrado');
+    },
+  });
+}
+
+export function useEstornarRecebimento() {
+  const invalidar = useInvalidarFinanceiro();
+  const toast = useToast();
+
+  return useMutation({
+    mutationFn: ({ id, motivo }: { id: number; motivo: string }) =>
+      service.estornarRecebimento(id, motivo),
+    onSuccess: () => {
+      invalidar();
+      toast.success('Recebimento estornado', 'A cobrança voltou para pendente.');
+    },
   });
 }
