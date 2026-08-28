@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 from app.core.enum import (
     ContaBancariaTipo,
     ContaPagarStatus,
+    ContaReceberStatus,
     MovimentacaoFinanceiraOrigem,
     MovimentacaoFinanceiraTipo,
     PlanoContaTipo,
@@ -34,6 +35,7 @@ from app.db.crud import financeiro as financeiro_crud
 from app.db.crud import sessao_caixa as caixa_crud
 from app.db.models.conta_bancaria import ContaBancaria
 from app.db.models.conta_pagar import ContaPagar
+from app.db.models.conta_receber import ContaReceber
 from app.db.models.plano_conta import PlanoConta
 from app.helpers.exceptions import BadRequestException, NotFoundException
 from app.schemas.conta_bancaria import ContaBancariaCreate, ContaBancariaUpdate
@@ -793,3 +795,121 @@ def get_resumo(db: Session, empresa_id: int, inicio: date, fim: date) -> ResumoF
         despesas_por_categoria=categorias,
         proximas_a_vencer=[_serializar_conta(c, hoje) for c in proximas],
     )
+
+
+# ===========================================================================
+# CONTAS A RECEBER — geração a partir da promessa
+# ===========================================================================
+
+ENTIDADE_CONTA_RECEBER = "CONTA_RECEBER"
+
+
+def _nome_do_cliente(cliente) -> Optional[str]:
+    return getattr(cliente, "nome", None) if cliente else None
+
+
+def _criar_promessa(
+    db: Session,
+    empresa_id: int,
+    *,
+    descricao: str,
+    cliente_id: Optional[int],
+    valor: int,
+    vencimento: date,
+    venda_pagamento_id: Optional[int] = None,
+    ordem_servico_pagamento_id: Optional[int] = None,
+) -> Optional[ContaReceber]:
+    """Cria a conta a receber de UM pagamento prometido.
+
+    IDEMPOTENTE. Uma OS reaberta e refinalizada passa de novo pelos mesmos
+    pagamentos; sem a checagem, a dívida do cliente dobraria a cada
+    refinalização. Mesma lição do `gerada_por_id` na recorrência.
+    """
+    if financeiro_crud.get_receber_do_pagamento(
+        db,
+        empresa_id,
+        venda_pagamento_id=venda_pagamento_id,
+        ordem_servico_pagamento_id=ordem_servico_pagamento_id,
+    ):
+        return None
+
+    return financeiro_crud.criar_conta_receber(
+        db,
+        ContaReceber(
+            empresa_id=empresa_id,
+            descricao=descricao,
+            cliente_id=cliente_id,
+            valor=valor,
+            vencimento=vencimento,
+            status=ContaReceberStatus.PENDENTE.value,
+            venda_pagamento_id=venda_pagamento_id,
+            ordem_servico_pagamento_id=ordem_servico_pagamento_id,
+        ),
+    )
+
+
+def registrar_promessas_de_venda(db: Session, venda) -> None:
+    """Transforma em conta a receber cada pagamento de venda com vencimento futuro.
+
+    NÃO decide o que é promessa — só registra. Quem decide já existia:
+    `registrar_pagamentos_de_venda` pula o pagamento com vencimento futuro no
+    livro do dinheiro, com a regra escrita lá ("promessa: é conta a receber, não
+    gaveta"). Esta função é o outro lado dessa frase, que faltava.
+
+    Roda com o caixa LIGADO OU DESLIGADO, ao contrário da irmã do livro: fiado é
+    fiado em qualquer loja, e amarrar o contas a receber ao controle de caixa
+    esconderia a dívida de quem não usa gaveta.
+    """
+    funcionario = getattr(venda, "funcionario", None)
+    empresa_id = getattr(funcionario, "empresa_id", None)
+    if not empresa_id:
+        return
+
+    hoje = hoje_local()
+    cliente = getattr(venda, "cliente", None)
+    nome = _nome_do_cliente(cliente)
+    referencia = venda.numero_venda or venda.id
+
+    for pagamento in venda.pagamentos:
+        if not pagamento.vencimento or pagamento.vencimento <= hoje:
+            continue
+        _criar_promessa(
+            db,
+            empresa_id,
+            descricao=f"Venda {referencia}" + (f" — {nome}" if nome else ""),
+            cliente_id=venda.cliente_id,
+            valor=pagamento.valor,
+            vencimento=pagamento.vencimento,
+            venda_pagamento_id=pagamento.id,
+        )
+
+
+def registrar_promessas_de_os(db: Session, ordem_servico, pagamentos) -> None:
+    """Gêmea da de venda, para a OS.
+
+    `pagamentos` são os desta finalização. A idempotência cobre a refinalização
+    de qualquer forma, mas passar só os novos evita consulta à toa.
+    """
+    funcionario = getattr(ordem_servico, "funcionario", None)
+    empresa_id = getattr(funcionario, "empresa_id", None)
+    if not empresa_id:
+        return
+
+    hoje = hoje_local()
+    objeto = getattr(ordem_servico, "equipamento", None)
+    cliente = getattr(objeto, "cliente", None)
+    nome = _nome_do_cliente(cliente)
+    cliente_id = getattr(cliente, "id", None)
+
+    for pagamento in pagamentos:
+        if not pagamento.vencimento or pagamento.vencimento <= hoje:
+            continue
+        _criar_promessa(
+            db,
+            empresa_id,
+            descricao=f"OS {ordem_servico.numero_os}" + (f" — {nome}" if nome else ""),
+            cliente_id=cliente_id,
+            valor=pagamento.valor,
+            vencimento=pagamento.vencimento,
+            ordem_servico_pagamento_id=pagamento.id,
+        )

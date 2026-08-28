@@ -262,3 +262,16 @@ class ContaPagarStatus(str, enum.Enum):
     PENDENTE = "PENDENTE"
     PAGA = "PAGA"
     CANCELADA = "CANCELADA"
+
+
+class ContaReceberStatus(str, enum.Enum):
+    """Situação de uma conta a receber.
+
+    Espelho de `ContaPagarStatus`, e RECEBIDA tem a mesma propriedade de PAGA:
+    não é o fim da linha. O estorno devolve a conta para PENDENTE, e é assim que
+    um recebimento lançado errado se corrige -- editando o documento, nunca
+    apagando a linha do livro que ele gerou.
+    """
+    PENDENTE = "PENDENTE"
+    RECEBIDA = "RECEBIDA"
+    CANCELADA = "CANCELADA"

@@ -257,3 +257,80 @@ def test_refinalizar_nao_duplica_o_dinheiro(client, db_session):
     assert r.status_code == 200, r.text
 
     assert len(_movimentos_de_os(db_session)) == 1, "o dinheiro entrou uma vez só"
+
+
+# ===========================================================================
+# PROMESSA -> CONTA A RECEBER (Onda 2A)
+#
+# O sistema sempre soube separar dinheiro de promessa; o que faltava era a
+# promessa virar registro. Estes testes travam a geracao pelos DOIS lados.
+# ===========================================================================
+
+def test_os_a_prazo_gera_conta_a_receber(client, db_session):
+    from app.db.models.conta_receber import ContaReceber
+
+    header = _auth(client)
+    funcionario_id, fp_id, cliente_id = _cenario(client, header, db_session)
+    numero = _criar_os(client, header, cliente_id, funcionario_id, "SN-R1", 15000)
+    vence = date.today() + timedelta(days=30)
+    _finalizar(client, header, numero, fp_id, 15000, vencimento=vence)
+
+    contas = db_session.query(ContaReceber).all()
+    assert len(contas) == 1
+    assert contas[0].valor == 15000
+    assert contas[0].vencimento == vence
+    assert contas[0].cliente_id == cliente_id
+    assert contas[0].ordem_servico_pagamento_id is not None
+    assert numero in contas[0].descricao
+    # E o dinheiro NAO entrou na gaveta -- promessa nao e caixa.
+    assert _movimentos_de_os(db_session) == []
+
+
+def test_os_paga_na_hora_nao_gera_conta_a_receber(client, db_session):
+    from app.db.models.conta_receber import ContaReceber
+
+    header = _auth(client)
+    funcionario_id, fp_id, cliente_id = _cenario(client, header, db_session)
+    numero = _criar_os(client, header, cliente_id, funcionario_id, "SN-R2", 15000)
+    _finalizar(client, header, numero, fp_id, 15000)
+
+    assert db_session.query(ContaReceber).count() == 0
+    assert len(_movimentos_de_os(db_session)) == 1
+
+
+def test_refinalizar_nao_duplica_a_divida_do_cliente(client, db_session):
+    """Uma OS reaberta passa de novo pelos mesmos pagamentos; sem idempotencia
+    a divida do cliente dobraria a cada refinalizacao."""
+    from app.db.models.conta_receber import ContaReceber
+
+    header = _auth(client)
+    funcionario_id, fp_id, cliente_id = _cenario(client, header, db_session)
+    numero = _criar_os(client, header, cliente_id, funcionario_id, "SN-R3", 15000)
+    vence = date.today() + timedelta(days=30)
+    _finalizar(client, header, numero, fp_id, 15000, vencimento=vence)
+
+    client.put(f"/api/v1/ordens-servico/{numero}/reabrir",
+               json={"cliente_pagou": True}, headers=header)
+    r = client.put(f"/api/v1/ordens-servico/{numero}/finalizar", json={
+        "situacao_equipamento": "REPARADO", "garantia": "90 dias", "pagamentos": [],
+    }, headers=header)
+    assert r.status_code == 200, r.text
+
+    assert db_session.query(ContaReceber).count() == 1, "a dívida nasce uma vez só"
+
+
+def test_conta_a_receber_nasce_mesmo_com_o_caixa_desligado(client, db_session):
+    """Amarrar o contas a receber ao controle de caixa esconderia a dívida de
+    quem não usa gaveta — e é a maioria."""
+    from app.db.models.conta_receber import ContaReceber
+
+    header = _auth(client)
+    funcionario_id, fp_id, cliente_id = _cenario(
+        client, header, db_session, caixa_ligado=False
+    )
+    numero = _criar_os(client, header, cliente_id, funcionario_id, "SN-R4", 15000)
+    _finalizar(client, header, numero, fp_id, 15000,
+               vencimento=date.today() + timedelta(days=15))
+
+    assert db_session.query(ContaReceber).count() == 1
+    assert db_session.query(MovimentacaoFinanceira).count() == 0

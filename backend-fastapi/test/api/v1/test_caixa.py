@@ -1023,3 +1023,78 @@ def test_desligar_a_fila_nao_aprisiona_quem_ja_estava_nela(client, db_session):
     dev = client.post(f"/api/v1/vendas/{venda_id}/devolver-para-montagem", headers=header)
     assert dev.status_code == 200, dev.text
     assert dev.json()["enviada_ao_caixa_em"] is None
+
+
+# ===========================================================================
+# PROMESSA -> CONTA A RECEBER (Onda 2A)
+#
+# O outro lado de `test_pagamento_com_vencimento_futuro_nao_entra_na_gaveta`,
+# cujo docstring ja prometia: "o movimento nasce no dia em que o cliente pagar,
+# e quem vai registrar isso e o modulo financeiro".
+# ===========================================================================
+
+def test_venda_a_prazo_gera_conta_a_receber(client, db_session):
+    from app.db.models.conta_receber import ContaReceber
+
+    header = _auth(client)
+    funcionario_id = _funcionario(client, header)
+    fp_id = _forma(client, header, nome="Boleto")
+    produto_id = _produto(client, header)
+    _config_caixa(db_session, controlar_caixa=True)
+    client.post("/api/v1/caixa/abrir", json={"saldo_inicial": 10000}, headers=header)
+
+    vence = date.today() + timedelta(days=30)
+    venda_id, total, fin = _venda_finalizada(
+        client, header, db_session, funcionario_id, produto_id, fp_id,
+        vencimento=vence,
+    )
+    assert fin.status_code == 200, fin.text
+
+    contas = db_session.query(ContaReceber).all()
+    assert len(contas) == 1, "a promessa vira divida registrada"
+    assert contas[0].valor == total
+    assert contas[0].vencimento == vence
+    assert contas[0].venda_pagamento_id is not None
+    assert contas[0].status == "PENDENTE"
+
+    # E continua nao entrando na gaveta: as duas coisas convivem.
+    assert db_session.query(MovimentacaoFinanceira).filter(
+        MovimentacaoFinanceira.origem == "VENDA"
+    ).count() == 0
+
+
+def test_venda_a_vista_nao_gera_conta_a_receber(client, db_session):
+    """A inercia do outro lado: venda paga na hora nao pode virar divida."""
+    from app.db.models.conta_receber import ContaReceber
+
+    header = _auth(client)
+    funcionario_id = _funcionario(client, header)
+    fp_id = _forma(client, header)
+    produto_id = _produto(client, header)
+    _config_caixa(db_session, controlar_caixa=True)
+    client.post("/api/v1/caixa/abrir", json={"saldo_inicial": 10000}, headers=header)
+
+    _venda_finalizada(client, header, db_session, funcionario_id, produto_id, fp_id)
+
+    assert db_session.query(ContaReceber).count() == 0
+    assert db_session.query(MovimentacaoFinanceira).filter(
+        MovimentacaoFinanceira.origem == "VENDA"
+    ).count() == 1
+
+
+def test_venda_a_prazo_com_caixa_desligado_tambem_gera(client, db_session):
+    from app.db.models.conta_receber import ContaReceber
+
+    header = _auth(client)
+    funcionario_id = _funcionario(client, header)
+    fp_id = _forma(client, header, nome="Fiado")
+    produto_id = _produto(client, header)
+    _config_caixa(db_session, controlar_caixa=False)
+
+    _venda_finalizada(
+        client, header, db_session, funcionario_id, produto_id, fp_id,
+        vencimento=date.today() + timedelta(days=10),
+    )
+
+    assert db_session.query(ContaReceber).count() == 1
+    assert db_session.query(MovimentacaoFinanceira).count() == 0

@@ -10,9 +10,10 @@ from typing import List, Optional, Sequence, Tuple
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
-from app.core.enum import ContaPagarStatus
+from app.core.enum import ContaPagarStatus, ContaReceberStatus
 from app.db.models.conta_bancaria import ContaBancaria
 from app.db.models.conta_pagar import ContaPagar
+from app.db.models.conta_receber import ContaReceber
 from app.db.models.historico_financeiro import HistoricoFinanceiro
 from app.db.models.plano_conta import PlanoConta
 
@@ -396,3 +397,145 @@ def listar_historico(
         .order_by(HistoricoFinanceiro.criado_em.desc(), HistoricoFinanceiro.id.desc())
         .all()
     )
+
+
+# ===========================================================================
+# CONTAS A RECEBER
+#
+# Espelho do contas a pagar. As consultas sao deliberadamente as mesmas, com os
+# nomes trocados: quem ler uma entende a outra, e o dia em que a regra do
+# "vencido" mudar, muda igual dos dois lados.
+# ===========================================================================
+
+def _query_receber(
+    db: Session,
+    empresa_id: int,
+    *,
+    status: Optional[str] = None,
+    inicio: Optional[date] = None,
+    fim: Optional[date] = None,
+    cliente_id: Optional[int] = None,
+    busca: Optional[str] = None,
+):
+    q = db.query(ContaReceber).filter(ContaReceber.empresa_id == empresa_id)
+    if status:
+        q = q.filter(ContaReceber.status == status)
+    if inicio:
+        q = q.filter(ContaReceber.vencimento >= inicio)
+    if fim:
+        q = q.filter(ContaReceber.vencimento <= fim)
+    if cliente_id:
+        q = q.filter(ContaReceber.cliente_id == cliente_id)
+    if busca:
+        q = q.filter(ContaReceber.descricao.ilike(f"%{busca.strip()}%"))
+    return q
+
+
+def listar_contas_receber(
+    db: Session,
+    empresa_id: int,
+    *,
+    status: Optional[str] = None,
+    inicio: Optional[date] = None,
+    fim: Optional[date] = None,
+    cliente_id: Optional[int] = None,
+    busca: Optional[str] = None,
+    limit: int = 200,
+    offset: int = 0,
+) -> Tuple[Sequence[ContaReceber], int]:
+    q = _query_receber(
+        db, empresa_id, status=status, inicio=inicio, fim=fim,
+        cliente_id=cliente_id, busca=busca,
+    )
+    total = q.count()
+    itens = (
+        q.options(joinedload(ContaReceber.cliente), joinedload(ContaReceber.conta_bancaria))
+        .order_by(ContaReceber.vencimento.asc(), ContaReceber.id.asc())
+        .limit(limit)
+        .offset(offset)
+        .all()
+    )
+    return itens, total
+
+
+def totais_contas_receber(
+    db: Session,
+    empresa_id: int,
+    *,
+    hoje: date,
+    inicio: Optional[date] = None,
+    fim: Optional[date] = None,
+    cliente_id: Optional[int] = None,
+    busca: Optional[str] = None,
+) -> Tuple[int, int, int]:
+    """(pendente, recebido, vencido) — sem o recorte de status, como no pagar."""
+    def _soma(coluna, *extra):
+        q = _query_receber(
+            db, empresa_id, inicio=inicio, fim=fim, cliente_id=cliente_id, busca=busca,
+        )
+        for condicao in extra:
+            q = q.filter(condicao)
+        return q.with_entities(func.coalesce(func.sum(coluna), 0)).scalar() or 0
+
+    pendente = _soma(ContaReceber.valor, ContaReceber.status == ContaReceberStatus.PENDENTE.value)
+    recebido = _soma(
+        ContaReceber.valor_recebido, ContaReceber.status == ContaReceberStatus.RECEBIDA.value
+    )
+    vencido = _soma(
+        ContaReceber.valor,
+        ContaReceber.status == ContaReceberStatus.PENDENTE.value,
+        ContaReceber.vencimento < hoje,
+    )
+    return int(pendente), int(recebido), int(vencido)
+
+
+def get_conta_receber(db: Session, empresa_id: int, conta_id: int) -> Optional[ContaReceber]:
+    return (
+        db.query(ContaReceber)
+        .options(joinedload(ContaReceber.cliente), joinedload(ContaReceber.conta_bancaria))
+        .filter(ContaReceber.id == conta_id, ContaReceber.empresa_id == empresa_id)
+        .first()
+    )
+
+
+def criar_conta_receber(db: Session, conta: ContaReceber) -> ContaReceber:
+    db.add(conta)
+    db.flush()
+    return conta
+
+
+def get_receber_do_pagamento(
+    db: Session,
+    empresa_id: int,
+    *,
+    venda_pagamento_id: Optional[int] = None,
+    ordem_servico_pagamento_id: Optional[int] = None,
+) -> Optional[ContaReceber]:
+    """A conta a receber que este pagamento ja originou, se houver.
+
+    E o que torna a geracao IDEMPOTENTE: uma OS reaberta e refinalizada passa de
+    novo pelos mesmos pagamentos, e sem esta checagem a divida do cliente
+    dobraria a cada refinalizacao.
+    """
+    q = db.query(ContaReceber).filter(ContaReceber.empresa_id == empresa_id)
+    if venda_pagamento_id is not None:
+        q = q.filter(ContaReceber.venda_pagamento_id == venda_pagamento_id)
+    elif ordem_servico_pagamento_id is not None:
+        q = q.filter(ContaReceber.ordem_servico_pagamento_id == ordem_servico_pagamento_id)
+    else:
+        return None
+    return q.first()
+
+
+def total_recebido(db: Session, empresa_id: int, inicio, fim) -> int:
+    total = (
+        db.query(func.coalesce(func.sum(ContaReceber.valor_recebido), 0))
+        .filter(
+            ContaReceber.empresa_id == empresa_id,
+            ContaReceber.status == ContaReceberStatus.RECEBIDA.value,
+            ContaReceber.recebido_em >= inicio,
+            ContaReceber.recebido_em <= fim,
+        )
+        .scalar()
+    )
+    return int(total or 0)

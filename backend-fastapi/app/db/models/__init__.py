@@ -48,3 +48,4 @@ from app.db.models.plano_conta import PlanoConta  # noqa: F401
 from app.db.models.conta_bancaria import ContaBancaria  # noqa: F401
 from app.db.models.conta_pagar import ContaPagar  # noqa: F401
 from app.db.models.historico_financeiro import HistoricoFinanceiro  # noqa: F401
+from app.db.models.conta_receber import ContaReceber  # noqa: F401

@@ -439,6 +439,13 @@ def finish_sale(
     db.flush()
     caixa_service.registrar_pagamentos_de_venda(db, sale_in_db, operador_funcionario_id)
 
+    # O outro lado da mesma frase. `registrar_pagamentos_de_venda` PULA o
+    # pagamento com vencimento futuro, porque "promessa: e conta a receber, nao
+    # gaveta" -- e ate agora nada criava essa conta a receber. Roda com o caixa
+    # ligado ou desligado: fiado e fiado em qualquer loja.
+    from app.services import financeiro as financeiro_service
+    financeiro_service.registrar_promessas_de_venda(db, sale_in_db)
+
     return venda_crud.update_sale(db, sale_in_db)
 
 def cancel_sale(db: Session, sale_id: int, motivo: str, codigo_gerente: str | None = None) -> Venda:
