@@ -92,6 +92,13 @@ const paymentValueReais = ref(0);
 const moneyInputRef = ref();
 const confirmacao = ref(false);
 
+/** Data de hoje mais N dias, em AAAA-MM-DD no fuso local. */
+function emDias(dias: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + dias);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 const paymentDetails = ref<{
   parcelas: number;
   bandeira: CardFlag | '';
@@ -101,10 +108,27 @@ const paymentDetails = ref<{
 }>({
   parcelas: 1,
   bandeira: '',
-  vencimento: new Date().toISOString().split('T')[0],
+  vencimento: emDias(30),
   banco_destino: '',
   codigo_transacao: '',
 });
+
+/**
+ * O cliente leva a mercadoria e paga depois.
+ *
+ * Disponível em QUALQUER forma, e não só no boleto. A forma continua verdadeira
+ * -- "dinheiro, para receber dia 27" é o que foi combinado --, e uma forma
+ * "Fiado" no catálogo perderia isso e sujaria o relatório de formas.
+ *
+ * Mapeia na regra que o backend já tinha: vencimento FUTURO é promessa, não
+ * entra na gaveta, e vira conta a receber. Antes disto o único jeito de
+ * declarar fiado era escolher Boleto e trocar a data.
+ */
+const receberDepois = ref(false);
+
+const ehBoleto = computed(
+  () => !!currentPaymentMethod.value && getMethodTipo(currentPaymentMethod.value) === 'BOLETO',
+);
 
 // Computed values
 const activePaymentMethods = computed(() =>
@@ -259,10 +283,11 @@ function handleAddPaymentClick(method: PaymentFormReadDataType) {
   paymentDetails.value = {
     parcelas: 1,
     bandeira: '',
-    vencimento: new Date().toISOString().split('T')[0],
+    vencimento: emDias(30),
     banco_destino: '',
     codigo_transacao: '',
   };
+  receberDepois.value = false;
   resetJuros();
   showPaymentDetails.value = true;
   nextTick(() => {
@@ -366,7 +391,11 @@ function confirmAddPayment(viaTeclado = false) {
     juros_valor: jurosAmount,
     juros_responsavel: responsavel,
     bandeira_cartao: tipo.includes('CARTAO') ? (paymentDetails.value.bandeira || undefined) : undefined,
-    vencimento: tipo === 'BOLETO' ? paymentDetails.value.vencimento : undefined,
+    // Boleto sempre tem vencimento; qualquer outra forma só vira promessa
+    // se o operador marcar explicitamente.
+    vencimento: (tipo === 'BOLETO' || receberDepois.value)
+      ? paymentDetails.value.vencimento
+      : undefined,
     detalhes,
   });
 
@@ -855,11 +884,18 @@ function handleFinish() {
         />
       </div>
 
-      <!-- Boleto: data de vencimento -->
-      <div v-if="getMethodTipo(currentPaymentMethod) === 'BOLETO'" class="pt-1">
+      <!-- Fiado / a prazo, para qualquer forma -->
+      <div v-if="!ehBoleto" class="pt-1">
+        <BaseCheckbox v-model="receberDepois" label="Vou receber depois (fiado / a prazo)" />
+        <p class="mt-1 text-xs text-zinc-500">
+          O valor não entra no caixa hoje e vira uma conta a receber.
+        </p>
+      </div>
+
+      <div v-if="ehBoleto || receberDepois" class="pt-1">
         <BaseDateInput
           v-model="paymentDetails.vencimento"
-          label="Data de Vencimento"
+          :label="ehBoleto ? 'Data de Vencimento' : 'Quando vai receber'"
         />
       </div>
 

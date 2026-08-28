@@ -77,6 +77,13 @@ const {
   reset: resetJuros,
 } = useJurosPagamento();
 
+/** Data de hoje mais N dias, em AAAA-MM-DD no fuso local. */
+function emDias(dias: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + dias);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 const moneyInputRef = ref();
 
 const showPaymentDetails = ref(false);
@@ -87,8 +94,27 @@ const paymentDetails = ref<{
   vencimento?: string;
   banco_destino?: string;
   codigo_transacao?: string;
-}>({ parcelas: 1, bandeira: '', vencimento: new Date().toISOString().split('T')[0], banco_destino: '', codigo_transacao: '' });
+}>({ parcelas: 1, bandeira: '', vencimento: emDias(30), banco_destino: '', codigo_transacao: '' });
 const paymentValueReais = ref(0);
+
+/**
+ * O cliente leva o serviço e paga depois.
+ *
+ * Disponível em QUALQUER forma de pagamento, e não só no boleto. A forma
+ * continua verdadeira -- "dinheiro, para receber dia 27" é o que foi de fato
+ * combinado --, e uma forma "Fiado" no catálogo perderia essa informação e
+ * sujaria o relatório de formas de pagamento.
+ *
+ * Mapeia direto na regra que o backend já tinha: pagamento com vencimento
+ * FUTURO é promessa, não entra na gaveta, e vira conta a receber. Antes disto a
+ * única forma de declarar fiado era escolher Boleto e trocar a data -- mentir
+ * sobre a forma para dizer a verdade sobre o recebimento.
+ */
+const receberDepois = ref(false);
+
+const ehBoleto = computed(
+  () => !!currentPaymentMethod.value && getMethodTipo(currentPaymentMethod.value) === 'BOLETO',
+);
 
 const paymentBaseCentavos = computed(() => Math.round(paymentValueReais.value * 100));
 /** Juros do pagamento em edição. Só existe para cartão. */
@@ -215,7 +241,8 @@ function getPaymentIconById(id: number) {
 function handleAddPaymentClick(method: PaymentFormReadDataType) {
   currentPaymentMethod.value = method;
   paymentValueReais.value = restante.value / 100;
-  paymentDetails.value = { parcelas: 1, bandeira: '', vencimento: new Date().toISOString().split('T')[0], banco_destino: '', codigo_transacao: '' };
+  paymentDetails.value = { parcelas: 1, bandeira: '', vencimento: emDias(30), banco_destino: '', codigo_transacao: '' };
+  receberDepois.value = false;
   resetJuros();
   showPaymentDetails.value = true;
   
@@ -251,7 +278,13 @@ function confirmAddPayment() {
     juros_responsavel: responsavel,
     parcelas: paymentDetails.value.parcelas,
     bandeira_cartao: (paymentDetails.value.bandeira || undefined) as OsCardsFlagEnumDataType | undefined,
-    vencimento: paymentDetails.value.vencimento,
+    // Só vai data quando existe promessa: boleto sempre tem vencimento, e
+    // qualquer forma vira promessa se o operador marcar "receber depois".
+    // Mandar a data de HOJE em todo pagamento à vista, como antes, enchia a
+    // coluna de ruído e escondia quem era promessa de verdade.
+    vencimento: (ehBoleto.value || receberDepois.value)
+      ? paymentDetails.value.vencimento
+      : undefined,
     detalhes: payloadDetalhes,
   });
   showPaymentDetails.value = false;
@@ -625,10 +658,20 @@ watch(() => props.isOpen, (open) => {
         />
       </div>
 
-      <div v-if="getMethodTipo(currentPaymentMethod) === 'BOLETO'" class="pt-1">
+      <!-- Fiado / a prazo. Vale para QUALQUER forma: o boleto já tem
+           vencimento por natureza, mas dinheiro, PIX e cartão também podem
+           ficar para depois. -->
+      <div v-if="!ehBoleto" class="pt-1">
+        <BaseCheckbox v-model="receberDepois" label="Vou receber depois (fiado / a prazo)" />
+        <p class="mt-1 text-xs text-zinc-500">
+          O valor não entra no caixa hoje e vira uma conta a receber.
+        </p>
+      </div>
+
+      <div v-if="ehBoleto || receberDepois" class="pt-1">
         <BaseDateInput
           v-model="paymentDetails.vencimento"
-          label="Data de Vencimento"
+          :label="ehBoleto ? 'Data de Vencimento' : 'Quando vai receber'"
         />
       </div>
 
