@@ -795,3 +795,62 @@ def test_estorno_zera_o_juros(client, db_session):
 
     assert r.json()["juros"] == 0
     assert r.json()["valor_recebido"] is None
+
+
+def test_juros_da_maquininha_nao_entra_no_caixa_da_loja(client, db_session):
+    """O cliente desembolsa o total, mas o juros do parcelamento vai para a
+    operadora. Lancar tudo mostraria saldo que a conta bancaria nao tem."""
+    from app.db.models.movimentacao_financeira import MovimentacaoFinanceira
+
+    header = _auth(client)
+    conta = _criar_receber(client, header, valor=20000)
+
+    r = client.post(
+        f"/api/v1/financeiro/contas-receber/{conta['id']}/receber",
+        json={"juros": 1500, "juros_destino": "OPERADORA"}, headers=header,
+    )
+    assert r.status_code == status.HTTP_200_OK, r.text
+    dados = r.json()
+
+    # O documento guarda o que o CLIENTE desembolsou...
+    assert dados["valor_recebido"] == 21500
+    assert dados["juros"] == 1500
+    assert dados["juros_destino"] == "OPERADORA"
+
+    # ...e o livro, o que entrou na LOJA.
+    mov = db_session.query(MovimentacaoFinanceira).one()
+    assert mov.valor == 20000, "os juros da maquininha nao sao dinheiro da loja"
+    assert "operadora" in (mov.motivo or "").lower()
+
+
+def test_estorno_devolve_so_o_que_tinha_entrado(client, db_session):
+    """O juros da operadora nunca virou movimento; estorna-lo tiraria do caixa
+    dinheiro que nunca esteve la."""
+    from app.db.models.movimentacao_financeira import MovimentacaoFinanceira
+
+    header = _auth(client)
+    conta = _criar_receber(client, header, valor=20000)
+    base = f"/api/v1/financeiro/contas-receber/{conta['id']}"
+
+    client.post(f"{base}/receber",
+                json={"juros": 1500, "juros_destino": "OPERADORA"}, headers=header)
+    client.post(f"{base}/estornar", json={"motivo": "engano"}, headers=header)
+
+    movimentos = db_session.query(MovimentacaoFinanceira).order_by(
+        MovimentacaoFinanceira.id
+    ).all()
+    assert len(movimentos) == 2
+    assert movimentos[0].valor == movimentos[1].valor == 20000, "entra e sai o mesmo"
+
+
+def test_multa_por_atraso_continua_entrando_no_caixa(client, db_session):
+    """O padrao e LOJA, e o caso da esmagadora maioria."""
+    from app.db.models.movimentacao_financeira import MovimentacaoFinanceira
+
+    header = _auth(client)
+    conta = _criar_receber(client, header, valor=20000)
+    client.post(f"/api/v1/financeiro/contas-receber/{conta['id']}/receber",
+                json={"juros": 1500}, headers=header)
+
+    mov = db_session.query(MovimentacaoFinanceira).one()
+    assert mov.valor == 21500, "multa por atraso e receita da loja"

@@ -105,7 +105,18 @@ class ContaReceber(Base):
     # indistinguível de "o cliente pagou errado".
     juros: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0",
-        doc="Juros/multa recebidos por atraso (centavos). valor_recebido inclui",
+        doc="Juros cobrados do cliente (centavos). Ver juros_destino",
+    )
+    # Para ONDE vai esse juros -- e é a diferença entre registrar dinheiro que
+    # existe e dinheiro que não existe.
+    #
+    # LOJA: multa por atraso, receita da loja, entra no caixa com o principal.
+    # OPERADORA: juros do parcelamento na maquininha. O cliente desembolsa, mas
+    # esse pedaço nunca chega na loja; lançá-lo como entrada faria o sistema
+    # mostrar saldo que a conta bancária não tem.
+    juros_destino: Mapped[str] = mapped_column(
+        String(10), nullable=False, default="LOJA", server_default="LOJA",
+        doc="LOJA (multa por atraso) ou OPERADORA (juros da maquininha)",
     )
 
     status: Mapped[str] = mapped_column(

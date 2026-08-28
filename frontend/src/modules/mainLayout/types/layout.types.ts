@@ -19,6 +19,7 @@ export type SidebarLabelOptions =
     | 'Gestão de Equipe'
     | 'Minha Conta'
     | 'Gestão Financeira'
+    | 'Contas e Cartões'
 
 /**
  * Sub-item de um menu que agrupa (ex.: Contas a Pagar dentro de Gestão

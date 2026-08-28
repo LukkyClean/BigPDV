@@ -931,6 +931,7 @@ def _serializar_receber(conta: ContaReceber, hoje: date) -> Dict[str, Any]:
         "valor": conta.valor,
         "taxa": conta.taxa,
         "juros": conta.juros,
+        "juros_destino": conta.juros_destino,
         "vencimento": conta.vencimento,
         "status": conta.status,
         "cliente_id": conta.cliente_id,
@@ -1104,10 +1105,19 @@ def receber_conta(
     # O padrão já soma os juros: quem cobrou multa quer receber o total, e
     # obrigar a redigitar a soma convida ao erro de conta na hora do balcão.
     juros = dados.juros or 0
+    destino = getattr(dados.juros_destino, "value", dados.juros_destino) or "LOJA"
     valor_recebido = (
         dados.valor_recebido if dados.valor_recebido is not None else conta.valor + juros
     )
     dia = dados.recebido_em or hoje_local()
+
+    # QUANTO ENTROU DE FATO NA LOJA. Quando o juros é da maquininha, o cliente
+    # desembolsa o total mas esse pedaço vai para a operadora -- lançar tudo
+    # faria o sistema mostrar saldo que a conta bancária não tem, e o caixa
+    # fecharia com sobra todo dia em que houvesse parcelamento.
+    valor_para_a_loja = (
+        valor_recebido - juros if destino == "OPERADORA" else valor_recebido
+    )
 
     if dados.conta_bancaria_id is not None:
         if not financeiro_crud.get_conta_bancaria(db, empresa_id, dados.conta_bancaria_id):
@@ -1119,17 +1129,24 @@ def receber_conta(
         db,
         tipo=MovimentacaoFinanceiraTipo.ENTRADA,
         origem=MovimentacaoFinanceiraOrigem.RECEBIMENTO,
-        valor=valor_recebido,
+        valor=valor_para_a_loja,
         forma_pagamento_id=dados.forma_pagamento_id,
         funcionario_id=func_id,
         funcionario_nome=func_nome,
-        motivo=f"Recebimento: {conta.descricao}",
+        motivo=(
+            f"Recebimento: {conta.descricao}"
+            + (f" (juros de {juros} retido pela operadora)" if destino == "OPERADORA" else "")
+        ),
     )
     movimento.conta_bancaria_id = dados.conta_bancaria_id
 
     conta.status = ContaReceberStatus.RECEBIDA.value
+    # `valor_recebido` é o que o CLIENTE desembolsou; o livro guarda o que
+    # entrou na loja. Os dois só divergem quando o juros é da operadora, e
+    # guardar os dois é o que permite explicar a diferença depois.
     conta.valor_recebido = valor_recebido
     conta.juros = juros
+    conta.juros_destino = destino
     conta.recebido_em = inicio_do_dia_utc(dia)
     conta.conta_bancaria_id = dados.conta_bancaria_id
     conta.forma_pagamento_id = dados.forma_pagamento_id
@@ -1160,7 +1177,12 @@ def estornar_recebimento(
         raise BadRequestException(detail="Só é possível estornar uma conta recebida.")
 
     func_id, func_nome = _funcionario_do_token(usuario_token)
+    # Devolve o que ENTROU na loja, não o que o cliente desembolsou: o juros da
+    # operadora nunca virou movimento, então estorná-lo tiraria do caixa
+    # dinheiro que nunca esteve lá.
     valor = conta.valor_recebido or conta.valor
+    if conta.juros_destino == "OPERADORA":
+        valor -= conta.juros
 
     caixa_crud.registrar_movimento(
         db,
@@ -1185,6 +1207,7 @@ def estornar_recebimento(
     # O juros some junto: ele foi cobrado por causa daquele recebimento, e
     # deixá-lo para trás faria a próxima baixa somar multa duas vezes.
     conta.juros = 0
+    conta.juros_destino = "LOJA"
     conta.recebido_em = None
     conta.conta_bancaria_id = None
     conta.forma_pagamento_id = None

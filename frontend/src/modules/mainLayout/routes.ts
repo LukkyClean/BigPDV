@@ -204,6 +204,19 @@ const homeRoutes: RouteRecordRaw[] = [
             },
           },
           {
+            path: 'contas-e-cartoes',
+            name: 'finance-accounts',
+            component: () =>
+              import('@/modules/financeiro/contas-bancarias/views/ContasBancariasView.vue'),
+            meta: {
+              title: 'Contas e Cartões',
+              subtitle: 'Onde o dinheiro da loja fica: caixa, bancos e cartões.',
+              tabId: 'finance-accounts',
+              requiresAuth: true,
+              exigeModulo: MODULOS.FINANCEIRO,
+            },
+          },
+          {
             path: 'plano-de-contas',
             name: 'finance-chart-accounts',
             component: () =>

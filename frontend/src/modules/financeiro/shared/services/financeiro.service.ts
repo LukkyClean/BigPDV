@@ -71,6 +71,23 @@ export async function listarContasBancarias(apenasAtivas = true): Promise<ContaB
   return safeParseResponse(z.array(ContaBancariaSchema), data, 'listarContasBancarias');
 }
 
+export async function criarContaBancaria(payload: {
+  nome: string;
+  tipo: string;
+  principal?: boolean;
+}): Promise<ContaBancaria> {
+  const { data } = await api.post('/financeiro/contas-bancarias', payload);
+  return safeParseResponse(ContaBancariaSchema, data, 'criarContaBancaria');
+}
+
+export async function atualizarContaBancaria(
+  id: number,
+  dados: { nome?: string; tipo?: string; principal?: boolean; ativo?: boolean },
+): Promise<ContaBancaria> {
+  const { data } = await api.patch(`/financeiro/contas-bancarias/${id}`, dados);
+  return safeParseResponse(ContaBancariaSchema, data, 'atualizarContaBancaria');
+}
+
 // ===========================================================================
 // CONTAS A PAGAR
 // ===========================================================================

@@ -8,6 +8,8 @@ from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.core.enum import JurosDestino
+
 
 # ===========================================================================
 # CADASTRO MANUAL
@@ -60,7 +62,14 @@ class ContaReceberBaixa(BaseModel):
     # Separado do total porque juros de mora é RECEITA FINANCEIRA, não venda:
     # embutido no principal, inflaria o faturamento do mês com dinheiro que não
     # veio de mercadoria nem de serviço.
-    juros: int = Field(0, ge=0, description="Juros/multa por atraso (centavos)")
+    juros: int = Field(0, ge=0, description="Juros cobrados do cliente (centavos)")
+    juros_destino: JurosDestino = Field(
+        JurosDestino.LOJA,
+        description=(
+            "LOJA = multa por atraso, entra no caixa. OPERADORA = juros da "
+            "maquininha, o cliente paga mas a loja NÃO recebe"
+        ),
+    )
     recebido_em: Optional[date] = Field(
         None, description="Dia do recebimento. Omitir usa hoje"
     )
@@ -96,6 +105,7 @@ class ContaReceberRead(BaseModel):
     valor: int
     taxa: int
     juros: int
+    juros_destino: str
     vencimento: date
     status: str
 

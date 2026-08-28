@@ -275,3 +275,21 @@ class ContaReceberStatus(str, enum.Enum):
     PENDENTE = "PENDENTE"
     RECEBIDA = "RECEBIDA"
     CANCELADA = "CANCELADA"
+
+
+class JurosDestino(str, enum.Enum):
+    """Para ONDE vai o juros cobrado ao quitar uma conta a receber.
+
+    Eixo diferente do `juros_responsavel` dos pagamentos de venda e OS: lá a
+    pergunta é QUEM PAGA o juros (cliente ou loja), e a resposta nunca muda o
+    destino -- juros de cartão sempre fica com a operadora. Aqui a pergunta é
+    QUEM RECEBE, e as duas respostas são possíveis:
+
+      LOJA       multa por atraso. É receita financeira da loja, e entra no
+                 caixa junto com o principal.
+      OPERADORA  juros do parcelamento na maquininha. O cliente desembolsa, mas
+                 esse pedaço nunca chega na loja -- registrar como se chegasse
+                 faria o sistema mostrar dinheiro que não existe na conta.
+    """
+    LOJA = "LOJA"
+    OPERADORA = "OPERADORA"
