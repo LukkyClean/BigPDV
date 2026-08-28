@@ -119,11 +119,45 @@ const filaPendente = computed(
   () => enviarAoCaixaMutation.isPending.value || devolverParaMontagemMutation.isPending.value,
 );
 
+/**
+ * O que acontece quando o atendimento termina — finalizado OU entregue ao caixa.
+ *
+ * As duas coisas terminam igual para quem monta a venda: aquele cliente acabou
+ * e o próximo está esperando.
+ *
+ * Fora do Modo Balcão: volta para a lista, como sempre.
+ *
+ * No Modo Balcão a próxima venda já abre — no balcão as vendas são encadeadas e
+ * mandar o operador clicar em "Nova venda" a cada cliente é atrito puro.
+ *
+ * A ORDEM IMPORTA: fecha primeiro, abre depois. Se a criação da próxima falhar
+ * (caixa fechado no meio do turno, por exemplo), o operador cai na lista com o
+ * aviso do servidor, em vez de ficar preso numa tela mostrando a venda que ele
+ * acabou de despachar.
+ */
+function encerrarAtendimento() {
+  closeSaleModal();
+  if (modoBalcao.value && !exigirClienteIdentificado.value) {
+    iniciarVendaSemCliente();
+  }
+}
+
 function alternarFilaDoCaixa() {
   const saleId = sale.value?.id;
   if (!saleId) return;
-  if (naFilaDoCaixa.value) devolverParaMontagemMutation.mutate(saleId);
-  else enviarAoCaixaMutation.mutate(saleId);
+
+  // Tirar da fila e o contrario de terminar: quem clica ali quer MEXER na
+  // venda. A tela tem que ficar exatamente onde esta.
+  if (naFilaDoCaixa.value) {
+    devolverParaMontagemMutation.mutate(saleId);
+    return;
+  }
+
+  // Entregue ao caixa, a venda saiu das maos de quem monta. Segurar o carrinho
+  // do cliente anterior na tela so cria o risco de o proximo item entrar na
+  // venda errada -- e alterar item aqui devolve a venda para montagem, ou seja,
+  // desfaz a entrega que o operador acabou de fazer.
+  enviarAoCaixaMutation.mutate(saleId, { onSuccess: encerrarAtendimento });
 }
 
 const {
@@ -168,29 +202,12 @@ watch(saleModalIsOpen, (isOpen) => {
 }, { immediate: true });
 
 /**
- * O que acontece depois que a venda fecha.
- *
- * Fora do Modo Balcão: volta para a lista, como sempre.
- *
- * No Modo Balcão a próxima venda já abre — no balcão as vendas são encadeadas e
- * mandar o operador clicar em "Nova venda" a cada cliente é atrito puro.
- *
- * A ORDEM IMPORTA: fecha primeiro, abre depois. Se a criação da próxima falhar
- * (caixa fechado no meio do turno, por exemplo), o operador cai na lista com o
- * aviso do servidor, em vez de ficar preso numa tela mostrando a venda que ele
- * acabou de finalizar.
- *
  * Emenda só depois da impressão, porque é o `afterPrint` que roda quando o
  * cupom saiu — trocar a venda da tela antes disso mexeria no que está sendo
  * impresso.
  */
 function handleFinalized(finishedSale: SaleRead) {
-  imprimirAposFinalizar(finishedSale, () => {
-    closeSaleModal();
-    if (modoBalcao.value && !exigirClienteIdentificado.value) {
-      iniciarVendaSemCliente();
-    }
-  });
+  imprimirAposFinalizar(finishedSale, encerrarAtendimento);
 }
 
 function handleChangeCliente() {
