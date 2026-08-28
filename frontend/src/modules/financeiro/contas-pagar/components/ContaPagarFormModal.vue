@@ -7,8 +7,7 @@
  * discordar do movimento. Para corrigir, estorna-se primeiro.
  */
 import { computed, ref, watch } from 'vue';
-import { X } from 'lucide-vue-next';
-
+import BaseModal from '@/shared/components/commons/BaseModal/BaseModal.vue';
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
 import BaseInput from '@/shared/components/ui/BaseInput/BaseInput.vue';
 import BaseMoneyInput from '@/shared/components/ui/BaseMoneyInput/MoneyInput.vue';
@@ -173,88 +172,86 @@ function salvar() {
 </script>
 
 <template>
-  <Teleport to="body">
-    <div
-      v-if="aberto"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
-      @click.self="emit('fechar')"
-    >
-      <div class="w-full max-w-lg rounded-2xl bg-white shadow-xl">
-        <header class="flex items-center justify-between border-b border-gray-100 px-6 py-4">
-          <h2 class="text-lg font-bold text-gray-800">
-            {{ editando ? 'Editar conta' : 'Nova conta a pagar' }}
-          </h2>
-          <button type="button" class="text-gray-400 hover:text-gray-600 cursor-pointer" @click="emit('fechar')" aria-label="Fechar">
-            <X :size="20" />
-          </button>
-        </header>
+  <BaseModal
+    :is-open="aberto"
+    :title="editando ? 'Editar conta' : 'Nova conta a pagar'"
+    size="md"
+    overlay
+    @close="emit('fechar')"
+  >
+    <div class="flex flex-col gap-4">
+      <BaseInput v-model="descricao" label="Descrição" placeholder="Ex.: Aluguel de setembro" required />
 
-        <form class="flex flex-col gap-4 px-6 py-5" @submit.prevent="salvar">
-          <BaseInput v-model="descricao" label="Descrição" placeholder="Ex.: Aluguel de setembro" required />
-
-          <div class="grid gap-4 sm:grid-cols-2">
-            <BaseMoneyInput v-model="valorReais" label="Valor" />
-            <BaseInput v-model="vencimento" type="date" label="Vencimento" required />
-          </div>
-
-          <BaseSelect v-model="planoContaId" :options="opcoesCategoria" label="Categoria" placeholder="Sem categoria" />
-
-          <!-- Como a conta se repete. Três opções exclusivas: ver o comentário
-               de `repeticao` no script para o porquê da separação. -->
-          <fieldset v-if="podeParcelar" class="flex flex-col gap-2">
-            <legend class="mb-1.5 block text-sm font-medium text-gray-700">Repetição</legend>
-            <div class="grid gap-2 sm:grid-cols-3">
-              <label
-                v-for="opcao in [
-                  { valor: 'UNICA', titulo: 'Conta única', ajuda: 'Vence uma vez só' },
-                  { valor: 'PARCELADA', titulo: 'Parcelada', ajuda: 'Tem fim: 10x, 4x…' },
-                  { valor: 'MENSAL', titulo: 'Todo mês', ajuda: 'Aluguel, luz, internet' },
-                ]"
-                :key="opcao.valor"
-                class="cursor-pointer rounded-xl border px-3 py-2.5 transition"
-                :class="repeticao === opcao.valor
-                  ? 'border-brand-primary bg-brand-primary/5 ring-1 ring-brand-primary'
-                  : 'border-gray-200 hover:border-gray-300'"
-              >
-                <input v-model="repeticao" type="radio" :value="opcao.valor" class="sr-only" />
-                <span class="block text-sm font-medium text-gray-800">{{ opcao.titulo }}</span>
-                <span class="block text-[11px] text-gray-400">{{ opcao.ajuda }}</span>
-              </label>
-            </div>
-          </fieldset>
-
-          <div v-if="podeParcelar && repeticao === 'PARCELADA'" class="flex flex-col gap-2">
-            <div class="w-full sm:w-40">
-              <BaseInput
-                v-model.number="parcelas" type="number" :min="2" :max="360"
-                label="Quantas parcelas"
-              />
-            </div>
-            <!-- A simulação vem da Omie: mostra o que vai acontecer antes de
-                 salvar, porque gerar dez linhas sem avisar assusta. -->
-            <p v-if="simulacao" class="rounded-xl bg-gray-50 px-3.5 py-2.5 text-xs text-gray-600">
-              <strong class="text-gray-800">
-                {{ simulacao.n }} parcelas de {{ formatCurrency(Math.round(valorReais * 100)) }}
-              </strong>
-              · {{ simulacao.de }} a {{ simulacao.ate }} · total
-              {{ formatCurrency(simulacao.total) }}
-            </p>
-          </div>
-
-          <p v-if="podeParcelar && repeticao === 'MENSAL'" class="-mt-1 text-xs text-gray-400">
-            Ao dar baixa, a conta do mês seguinte é criada automaticamente com o valor previsto.
-          </p>
-
-          <BaseInput v-model="observacao" label="Observação" placeholder="Opcional" />
-
-          <footer class="mt-2 flex justify-end gap-3">
-            <BaseButton type="button" variant="secondary" @click="emit('fechar')">Cancelar</BaseButton>
-            <BaseButton type="submit" variant="primary" :disabled="!podeSalvar || salvando">
-              {{ salvando ? 'Salvando…' : 'Salvar' }}
-            </BaseButton>
-          </footer>
-        </form>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <BaseMoneyInput v-model="valorReais" label="Valor" />
+        <BaseInput v-model="vencimento" type="date" label="Vencimento" required />
       </div>
+
+      <BaseSelect v-model="planoContaId" :options="opcoesCategoria" label="Categoria" placeholder="Sem categoria" />
+
+      <!-- Como a conta se repete. Três opções exclusivas: ver o comentário
+           de `repeticao` no script para o porquê da separação. -->
+      <fieldset v-if="podeParcelar" class="flex flex-col gap-2">
+        <legend class="mb-1.5 block text-sm font-medium text-gray-700">Repetição</legend>
+        <div class="grid gap-2 sm:grid-cols-3">
+          <label
+            v-for="opcao in [
+              { valor: 'UNICA', titulo: 'Conta única', ajuda: 'Vence uma vez só' },
+              { valor: 'PARCELADA', titulo: 'Parcelada', ajuda: 'Tem fim: 10x, 4x…' },
+              { valor: 'MENSAL', titulo: 'Todo mês', ajuda: 'Aluguel, luz, internet' },
+            ]"
+            :key="opcao.valor"
+            class="cursor-pointer rounded-xl border px-3 py-2.5 transition"
+            :class="repeticao === opcao.valor
+              ? 'border-brand-primary bg-brand-primary/5 ring-1 ring-brand-primary'
+              : 'border-gray-200 hover:border-gray-300'"
+          >
+            <input v-model="repeticao" type="radio" :value="opcao.valor" class="sr-only" />
+            <span class="block text-sm font-medium text-gray-800">{{ opcao.titulo }}</span>
+            <span class="block text-[11px] text-gray-400">{{ opcao.ajuda }}</span>
+          </label>
+        </div>
+      </fieldset>
+
+      <div v-if="podeParcelar && repeticao === 'PARCELADA'" class="flex flex-col gap-2">
+        <div class="w-full sm:w-40">
+          <BaseInput
+            v-model.number="parcelas" type="number" :min="2" :max="360"
+            label="Quantas parcelas"
+          />
+        </div>
+        <!-- A simulação vem da Omie: mostra o que vai acontecer antes de
+             salvar, porque gerar dez linhas sem avisar assusta. -->
+        <p v-if="simulacao" class="rounded-xl bg-gray-50 px-3.5 py-2.5 text-xs text-gray-600">
+          <strong class="text-gray-800">
+            {{ simulacao.n }} parcelas de {{ formatCurrency(Math.round(valorReais * 100)) }}
+          </strong>
+          · {{ simulacao.de }} a {{ simulacao.ate }} · total
+          {{ formatCurrency(simulacao.total) }}
+        </p>
+      </div>
+
+      <p v-if="podeParcelar && repeticao === 'MENSAL'" class="-mt-1 text-xs text-gray-400">
+        Ao dar baixa, a conta do mês seguinte é criada automaticamente com o valor previsto.
+      </p>
+
+      <BaseInput v-model="observacao" label="Observação" placeholder="Opcional" />
+
     </div>
-  </Teleport>
+
+    <template #footer>
+      <div class="flex w-full justify-end gap-2">
+        <BaseButton variant="secondary" class="px-5" @click="emit('fechar')">Cancelar</BaseButton>
+        <BaseButton
+          variant="primary"
+          class="px-5"
+          :disabled="!podeSalvar"
+          :is-loading="salvando"
+          @click="salvar"
+        >
+          Salvar
+        </BaseButton>
+      </div>
+    </template>
+  </BaseModal>
 </template>

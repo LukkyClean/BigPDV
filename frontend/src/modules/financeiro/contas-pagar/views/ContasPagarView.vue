@@ -11,17 +11,19 @@ import { ChevronLeft, ChevronRight, Plus, Undo2 } from 'lucide-vue-next';
 
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
 import BaseSearchInput from '@/shared/components/ui/BaseSearchInput/BaseSearchInput.vue';
+import BaseConfirmModal from '@/shared/components/commons/BaseConfirmModal/BaseConfirmModal.vue';
+import { useConfirmacao } from '@/shared/composables/useConfirmacao';
 import { useToast } from '@/shared/composables/useToast';
 import { formatCurrency } from '@/shared/utils/finance';
 import { formatDataPura } from '@/shared/utils/date.utils';
 
 import ContaPagarBaixaModal from '../components/ContaPagarBaixaModal.vue';
+import ContaPagarEstornoModal from '../components/ContaPagarEstornoModal.vue';
 import ContaPagarFormModal from '../components/ContaPagarFormModal.vue';
 import { usePeriodoMes } from '../../shared/composables/usePeriodoMes';
 import {
   useCancelarContaPagar,
   useContasPagarQuery,
-  useEstornarPagamento,
 } from '../../shared/composables/useFinanceiro';
 import type { ContaPagar } from '../../shared/schemas/financeiro.schema';
 
@@ -40,11 +42,12 @@ const filtros = computed(() => ({
 
 const { data: listagem, isLoading } = useContasPagarQuery(filtros);
 const cancelar = useCancelarContaPagar();
-const estornar = useEstornarPagamento();
+const confirmacao = useConfirmacao();
 
 const formAberto = ref(false);
 const contaEmEdicao = ref<ContaPagar | null>(null);
 const contaParaBaixa = ref<ContaPagar | null>(null);
+const contaParaEstorno = ref<ContaPagar | null>(null);
 
 const ABAS = [
   { valor: '', rotulo: 'Todas' },
@@ -69,16 +72,24 @@ function editar(conta: ContaPagar) {
   formAberto.value = true;
 }
 
-function confirmarCancelamento(conta: ContaPagar) {
-  if (!window.confirm(`Cancelar a conta "${conta.descricao}"?`)) return;
+/**
+ * Cancelar usa o modal de confirmação da casa, não o `window.confirm`.
+ *
+ * O diálogo nativo do navegador aparece como "localhost:1420 diz" — fora do
+ * visual do sistema, e num app desktop denuncia que ali dentro é uma página web.
+ */
+async function confirmarCancelamento(conta: ContaPagar) {
+  const ok = await confirmacao.pedirConfirmacao({
+    titulo: 'Cancelar esta conta?',
+    descricao:
+      `<strong>${conta.descricao}</strong> deixa de ser cobrada, mas continua no histórico ` +
+      'como cancelada. Nada é excluído.',
+    confirmLabel: 'Cancelar conta',
+    cancelLabel: 'Voltar',
+    variant: 'warning',
+  });
+  if (!ok) return;
   cancelar.mutate(conta.id);
-}
-
-function confirmarEstorno(conta: ContaPagar) {
-  // O motivo é obrigatório no backend, e é o que a auditoria lê depois.
-  const motivo = window.prompt('Por que este pagamento está sendo estornado?');
-  if (!motivo || motivo.trim().length < 3) return;
-  estornar.mutate({ id: conta.id, motivo: motivo.trim() });
 }
 
 function classeStatus(conta: ContaPagar): string {
@@ -217,7 +228,7 @@ function rotuloStatus(conta: ContaPagar): string {
                   v-else-if="conta.status === 'PAGA'"
                   type="button"
                   class="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-700 cursor-pointer"
-                  @click="confirmarEstorno(conta)"
+                  @click="contaParaEstorno = conta"
                 >
                   <Undo2 :size="13" /> Estornar
                 </button>
@@ -235,5 +246,18 @@ function rotuloStatus(conta: ContaPagar): string {
       @fechar="formAberto = false"
     />
     <ContaPagarBaixaModal :conta="contaParaBaixa" @fechar="contaParaBaixa = null" />
+    <ContaPagarEstornoModal :conta="contaParaEstorno" @fechar="contaParaEstorno = null" />
+
+    <BaseConfirmModal
+      :is-open="confirmacao.isOpen.value"
+      :title="confirmacao.opcoes.value.titulo"
+      :description="confirmacao.opcoes.value.descricao"
+      :confirm-label="confirmacao.opcoes.value.confirmLabel"
+      :cancel-label="confirmacao.opcoes.value.cancelLabel"
+      :variant="confirmacao.opcoes.value.variant"
+      overlay
+      @confirm="confirmacao.confirmar"
+      @close="confirmacao.cancelar"
+    />
   </div>
 </template>

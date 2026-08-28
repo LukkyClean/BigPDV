@@ -7,8 +7,7 @@
  * soma o que saiu do bolso e não o que se previa.
  */
 import { computed, ref, watch } from 'vue';
-import { X } from 'lucide-vue-next';
-
+import BaseModal from '@/shared/components/commons/BaseModal/BaseModal.vue';
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
 import BaseInput from '@/shared/components/ui/BaseInput/BaseInput.vue';
 import BaseMoneyInput from '@/shared/components/ui/BaseMoneyInput/MoneyInput.vue';
@@ -90,56 +89,55 @@ function confirmar() {
 </script>
 
 <template>
-  <Teleport to="body">
-    <div
-      v-if="conta"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
-      @click.self="emit('fechar')"
-    >
-      <div class="w-full max-w-md rounded-2xl bg-white shadow-xl">
-        <header class="flex items-center justify-between border-b border-gray-100 px-6 py-4">
-          <h2 class="text-lg font-bold text-gray-800">Registrar pagamento</h2>
-          <button type="button" class="text-gray-400 hover:text-gray-600 cursor-pointer" @click="emit('fechar')" aria-label="Fechar">
-            <X :size="20" />
-          </button>
-        </header>
-
-        <form class="flex flex-col gap-4 px-6 py-5" @submit.prevent="confirmar">
-          <div class="rounded-xl bg-gray-50 px-4 py-3">
-            <p class="text-sm font-semibold text-gray-800">{{ conta.descricao }}</p>
-            <p class="mt-0.5 text-xs text-gray-500">
-              Previsto {{ formatCurrency(conta.valor) }} · vence {{ formatDataPura(conta.vencimento) }}
-            </p>
-          </div>
-
-          <BaseMoneyInput v-model="valorReais" label="Valor pago" />
-          <p v-if="diferenca !== 0" class="-mt-2 text-xs" :class="diferenca > 0 ? 'text-amber-600' : 'text-emerald-600'">
-            {{ diferenca > 0 ? 'Acréscimo' : 'Desconto' }} de
-            {{ formatCurrency(Math.abs(diferenca)) }} sobre o previsto.
-          </p>
-
-          <BaseInput v-model="pagoEm" type="date" label="Data do pagamento" required />
-
-          <BaseSelect
-            v-model="contaBancariaId"
-            :options="opcoesContas"
-            label="Saiu de"
-            placeholder="Selecione a conta"
-          />
-
-          <p class="text-xs text-gray-400">
-            Pagar fornecedor não é sangria de caixa. Se o dinheiro saiu da gaveta, registre a
-            sangria à parte no PDV.
-          </p>
-
-          <footer class="mt-2 flex justify-end gap-3">
-            <BaseButton type="button" variant="secondary" @click="emit('fechar')">Cancelar</BaseButton>
-            <BaseButton type="submit" variant="primary" :disabled="valorReais <= 0 || pagar.isPending.value">
-              {{ pagar.isPending.value ? 'Registrando…' : 'Confirmar pagamento' }}
-            </BaseButton>
-          </footer>
-        </form>
+  <BaseModal
+    :is-open="!!conta"
+    title="Registrar pagamento"
+    size="sm"
+    overlay
+    @close="emit('fechar')"
+  >
+    <div v-if="conta" class="flex flex-col gap-4">
+      <div class="rounded-xl bg-gray-50 px-4 py-3">
+        <p class="text-sm font-semibold text-gray-800">{{ conta.descricao }}</p>
+        <p class="mt-0.5 text-xs text-gray-500">
+          Previsto {{ formatCurrency(conta.valor) }} · vence {{ formatDataPura(conta.vencimento) }}
+        </p>
       </div>
+
+      <BaseMoneyInput v-model="valorReais" label="Valor pago" />
+      <p v-if="diferenca !== 0" class="-mt-2 text-xs" :class="diferenca > 0 ? 'text-amber-600' : 'text-emerald-600'">
+        {{ diferenca > 0 ? 'Acréscimo' : 'Desconto' }} de
+        {{ formatCurrency(Math.abs(diferenca)) }} sobre o previsto.
+      </p>
+
+      <BaseInput v-model="pagoEm" type="date" label="Data do pagamento" required />
+
+      <BaseSelect
+        v-model="contaBancariaId"
+        :options="opcoesContas"
+        label="Saiu de"
+        placeholder="Selecione a conta"
+      />
+
+      <p class="text-xs text-gray-400">
+        Pagar fornecedor não é sangria de caixa. Se o dinheiro saiu da gaveta, registre a
+        sangria à parte no PDV.
+      </p>
     </div>
-  </Teleport>
+
+    <template #footer>
+      <div class="flex w-full justify-end gap-2">
+        <BaseButton variant="secondary" class="px-5" @click="emit('fechar')">Cancelar</BaseButton>
+        <BaseButton
+          variant="primary"
+          class="px-5"
+          :disabled="valorReais <= 0"
+          :is-loading="pagar.isPending.value"
+          @click="confirmar"
+        >
+          Confirmar pagamento
+        </BaseButton>
+      </div>
+    </template>
+  </BaseModal>
 </template>
