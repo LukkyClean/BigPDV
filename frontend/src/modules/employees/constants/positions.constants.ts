@@ -14,6 +14,7 @@ import {
   Building,
   IdCard,
   ShieldCheck,
+  Wallet,
 } from 'lucide-vue-next';
 
 import { PERMISSIONS } from '@/shared/constants/permissions.constants';
@@ -136,6 +137,17 @@ export const PERMISSION_MATRIX: PermissionMatrixItem[] = [
     viewKey: 'view_reports',
     manageKey: 'manage_reports',
     // Read-only: sem acao de excluir.
+  },
+  {
+    id: 'finance',
+    label: 'Financeiro',
+    description: 'Contas a pagar, a receber e resultado',
+    icon: Wallet,
+    viewKey: 'view_financeiro',
+    manageKey: 'manage_financeiro',
+    // Sem acao de excluir, e nao por esquecimento: lancamento financeiro nao se
+    // apaga, se estorna. Oferecer o botao aqui prometeria uma operacao que o
+    // modulo nao vai ter.
   },
   {
     id: 'enterprise',
