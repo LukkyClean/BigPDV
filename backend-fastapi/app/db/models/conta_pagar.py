@@ -145,6 +145,39 @@ class ContaPagar(Base):
         doc="Ao dar baixa, gera automaticamente a ocorrência do mês seguinte",
     )
 
+    # --- Parcelamento ---
+    # OUTRO mecanismo, não uma variação da recorrência -- é a distinção que Odoo,
+    # ERPNext, Omie e Conta Azul fazem igual:
+    #
+    #   RECORRENTE  repetição no tempo, SEM total conhecido (aluguel, luz). Um
+    #               molde que gera documentos; a próxima nasce na baixa, porque
+    #               a conta de luz de dezembro ainda não tem valor.
+    #   PARCELADO   dívida ÚNICA dividida, com valores e datas definidos de
+    #               antemão (cartão em 10x). As dez já são dívida hoje, então
+    #               todas nascem juntas -- senão o fluxo de caixa de dezembro
+    #               ficaria cego para a parcela de dezembro e diria que sobra
+    #               dinheiro já comprometido.
+    #
+    # Os dois se excluem: uma compra em 10x não se repete para sempre.
+    #
+    # A UNIDADE DE CONTROLE É A PARCELA, não o contrato. É o que o Odoo faz ao
+    # gerar "um item contábil para cada data de vencimento", cada um com baixa e
+    # cobrança próprias -- e é o grão que esta tabela já tinha. Por isso não há
+    # tabela-pai: só a marca de quais linhas são a mesma compra.
+    parcelamento_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        index=True,
+        doc="ID da PRIMEIRA parcela do grupo; NULL em conta não parcelada. "
+            "Aponta para esta mesma tabela e dispensa tabela-pai e sequência",
+    )
+    parcela_numero: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True, doc="3, em '3 de 10'"
+    )
+    parcela_total: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True, doc="10, em '3 de 10'"
+    )
+
     observacao: Mapped[Optional[str]] = mapped_column(
         Text, nullable=True, doc="Anotação livre do lojista"
     )

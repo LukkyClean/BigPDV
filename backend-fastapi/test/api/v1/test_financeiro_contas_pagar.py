@@ -458,3 +458,100 @@ def test_atrasado_de_mes_anterior_continua_no_em_aberto(client, db_session):
 
     assert resumo["a_pagar_pendente"] == 250000
     assert resumo["a_pagar_vencido"] == 250000
+
+
+# ===========================================================================
+# PARCELAMENTO
+#
+# Mecanismo DIFERENTE da recorrencia, e os testes daqui existem para travar a
+# diferenca: parcelado nasce inteiro (as dez ja sao divida hoje), recorrente
+# nasce uma por vez (a luz de dezembro ainda nao tem valor).
+# ===========================================================================
+
+def test_parcelamento_gera_todas_as_parcelas_de_uma_vez(client, db_session):
+    """Se nascessem conforme o pagamento, o fluxo de caixa de dezembro ficaria
+    cego para a parcela de dezembro e diria que sobra dinheiro comprometido."""
+    header = _auth(client)
+    primeira = _criar_conta(
+        client, header, descricao="Cartão Nubank", valor=10000,
+        vencimento=date(2026, 9, 10).isoformat(), parcelas=10,
+    )
+
+    assert primeira["parcela_numero"] == 1
+    assert primeira["parcela_total"] == 10
+    # A primeira aponta para si mesma: o grupo é o id dela.
+    assert primeira["parcelamento_id"] == primeira["id"]
+
+    lista = client.get("/api/v1/financeiro/contas-pagar?status=PENDENTE",
+                       headers=header).json()
+    assert lista["total_itens"] == 10
+    # Cada parcela vale o valor digitado — nada de dividir e sobrar centavo.
+    assert lista["total_pendente"] == 100000
+
+    numeros = sorted(i["parcela_numero"] for i in lista["itens"])
+    assert numeros == list(range(1, 11))
+    assert {i["parcelamento_id"] for i in lista["itens"]} == {primeira["id"]}
+
+
+def test_parcelas_caem_um_mes_apos_a_outra(client, db_session):
+    header = _auth(client)
+    _criar_conta(
+        client, header, descricao="Notebook", valor=50000,
+        vencimento=date(2026, 11, 15).isoformat(), parcelas=4,
+    )
+    itens = client.get("/api/v1/financeiro/contas-pagar?status=PENDENTE",
+                       headers=header).json()["itens"]
+    vencimentos = sorted(i["vencimento"] for i in itens)
+    assert vencimentos == ["2026-11-15", "2026-12-15", "2027-01-15", "2027-02-15"]
+
+
+def test_parcela_de_dia_31_encolhe_em_mes_curto(client, db_session):
+    """Dia 31 em mês de 30 cai no dia 30, e NUNCA vaza para o dia 1º do mês
+    seguinte — isso atrasaria o alerta em um mês inteiro."""
+    header = _auth(client)
+    _criar_conta(
+        client, header, descricao="Financiamento", valor=20000,
+        vencimento=date(2026, 1, 31).isoformat(), parcelas=3,
+    )
+    itens = client.get("/api/v1/financeiro/contas-pagar?status=PENDENTE",
+                       headers=header).json()["itens"]
+    vencimentos = sorted(i["vencimento"] for i in itens)
+    assert vencimentos == ["2026-01-31", "2026-02-28", "2026-03-31"]
+
+
+def test_parcelado_e_recorrente_juntos_e_recusado(client, db_session):
+    """Aceitar os dois geraria dez parcelas e, na baixa de cada uma, mais uma
+    conta 'do mês seguinte' — multiplicando a dívida a cada pagamento."""
+    header = _auth(client)
+    r = client.post("/api/v1/financeiro/contas-pagar", json={
+        "descricao": "Impossível", "valor": 10000,
+        "vencimento": date.today().isoformat(),
+        "parcelas": 10, "recorrente": True,
+    }, headers=header)
+    assert r.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+
+def test_pagar_uma_parcela_nao_gera_outra(client, db_session):
+    """A diferença central: parcelado tem fim, então a baixa não cria nada."""
+    header = _auth(client)
+    primeira = _criar_conta(
+        client, header, descricao="TV em 3x", valor=30000,
+        vencimento=date(2026, 9, 5).isoformat(), parcelas=3,
+    )
+    client.post(f"/api/v1/financeiro/contas-pagar/{primeira['id']}/pagar",
+                json={}, headers=header)
+
+    todas = client.get("/api/v1/financeiro/contas-pagar", headers=header).json()
+    assert todas["total_itens"] == 3, "a recorrência criaria uma 4ª; o parcelamento não"
+    assert todas["total_pago"] == 30000
+    assert todas["total_pendente"] == 60000
+
+
+def test_conta_sem_parcelamento_nao_ganha_marca(client, db_session):
+    """1x é conta comum, e não parcelamento de uma parcela — a tela não deve
+    mostrar '1/1' em toda conta avulsa."""
+    header = _auth(client)
+    conta = _criar_conta(client, header, descricao="Conta única", valor=5000)
+    assert conta["parcelamento_id"] is None
+    assert conta["parcela_numero"] is None
+    assert conta["parcela_total"] is None

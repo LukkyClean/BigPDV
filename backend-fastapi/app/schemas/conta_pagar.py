@@ -6,7 +6,7 @@
 from datetime import date, datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.core.enum import ContaPagarStatus
 
@@ -33,7 +33,32 @@ class ContaPagarCreate(BaseModel):
     recorrente: bool = Field(
         False, description="Ao dar baixa, gera automaticamente a do mês seguinte"
     )
+    # `valor` é o valor DE CADA parcela, não o total. É como a maquininha e a
+    # fatura falam com o lojista ("10x de 100"), e mata o arredondamento: dividir
+    # um total por 3 sobra centavo, e alguém teria que decidir em qual parcela
+    # jogar a sobra.
+    parcelas: int = Field(
+        1, ge=1, le=360,
+        description="Quantidade de parcelas. 1 = conta única. Cada uma vale `valor`",
+    )
     observacao: Optional[str] = Field(None, description="Anotação livre")
+
+    @model_validator(mode="after")
+    def _parcelado_ou_recorrente(self) -> "ContaPagarCreate":
+        """Os dois se excluem, e não é preciosismo.
+
+        São mecanismos diferentes: parcelado é dívida única dividida, com fim
+        conhecido; recorrente é repetição sem total. Uma compra em 10x não se
+        repete para sempre — aceitar os dois juntos geraria dez parcelas e, na
+        baixa de cada uma, mais uma conta "do mês seguinte", multiplicando a
+        dívida a cada pagamento.
+        """
+        if self.parcelas > 1 and self.recorrente:
+            raise ValueError(
+                "Uma conta parcelada não pode repetir todo mês. "
+                "Escolha parcelamento ou recorrência."
+            )
+        return self
 
 
 class ContaPagarUpdate(BaseModel):
@@ -121,6 +146,9 @@ class ContaPagarRead(BaseModel):
     forma_pagamento_id: Optional[int] = None
 
     recorrente: bool
+    parcelamento_id: Optional[int] = None
+    parcela_numero: Optional[int] = Field(None, description="3, em '3 de 10'")
+    parcela_total: Optional[int] = Field(None, description="10, em '3 de 10'")
     observacao: Optional[str] = None
     criado_em: datetime
 

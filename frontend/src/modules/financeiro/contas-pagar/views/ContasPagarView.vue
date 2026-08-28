@@ -177,7 +177,15 @@ function rotuloStatus(conta: ContaPagar): string {
               <button type="button" class="text-left font-medium text-gray-800 cursor-pointer" @click="editar(conta)">
                 {{ conta.descricao }}
               </button>
-              <span v-if="conta.recorrente" class="ml-2 rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-600">
+              <!-- Uma marca ou outra, nunca as duas: parcelado e mensal são
+                   mecanismos que se excluem. -->
+              <span
+                v-if="conta.parcela_total"
+                class="ml-2 rounded-full bg-violet-50 px-1.5 py-0.5 text-[10px] font-medium text-violet-600 tabular-nums"
+              >
+                {{ conta.parcela_numero }}/{{ conta.parcela_total }}
+              </span>
+              <span v-else-if="conta.recorrente" class="ml-2 rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-600">
                 mensal
               </span>
             </td>

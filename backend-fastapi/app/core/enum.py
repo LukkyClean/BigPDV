@@ -245,6 +245,11 @@ class ContaBancariaTipo(str, enum.Enum):
     """
     CAIXA = "CAIXA"    # espécie na loja
     BANCO = "BANCO"    # conta corrente, poupança ou conta digital
+    # Cartão é um LUGAR, não uma forma de pagamento, e a diferença é o que faz a
+    # fatura fechar: com duas compras parceladas correndo juntas (10x de 100 e
+    # 4x de 50), a fatura de novembro é a soma do que vence naquele mês. Isso só
+    # se responde sozinho se o cartão for uma entidade e não um texto.
+    CARTAO_CREDITO = "CARTAO_CREDITO"
 
 
 class ContaPagarStatus(str, enum.Enum):

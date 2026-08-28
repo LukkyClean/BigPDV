@@ -54,6 +54,12 @@ export const ContaPagarSchema = z.object({
   forma_pagamento_id: z.number().nullable().optional(),
 
   recorrente: z.boolean(),
+  // Parcelamento e recorrencia sao mecanismos DIFERENTES, nunca os dois juntos.
+  // Nulos em conta avulsa: 1x e conta comum, nao "parcelamento de uma parcela",
+  // e mostrar "1/1" em toda conta seria ruido.
+  parcelamento_id: z.number().nullable().optional(),
+  parcela_numero: z.number().nullable().optional(),
+  parcela_total: z.number().nullable().optional(),
   observacao: z.string().nullable().optional(),
   criado_em: z.string(),
 
@@ -118,6 +124,13 @@ export interface ContaPagarPayload {
   plano_conta_id?: number | null;
   fornecedor_id?: number | null;
   recorrente?: boolean;
+  /**
+   * Quantidade de parcelas. 1 = conta unica.
+   *
+   * `valor` e o valor DE CADA parcela, nunca o total — e como a maquininha e a
+   * fatura falam ("10x de 100"), e nao sobra centavo para distribuir.
+   */
+  parcelas?: number;
   observacao?: string | null;
 }
 

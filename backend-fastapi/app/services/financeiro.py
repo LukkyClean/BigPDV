@@ -279,6 +279,9 @@ def _serializar_conta(conta: ContaPagar, hoje: date) -> Dict[str, Any]:
         "conta_bancaria_nome": conta.conta_bancaria.nome if conta.conta_bancaria else None,
         "forma_pagamento_id": conta.forma_pagamento_id,
         "recorrente": conta.recorrente,
+        "parcelamento_id": conta.parcelamento_id,
+        "parcela_numero": conta.parcela_numero,
+        "parcela_total": conta.parcela_total,
         "observacao": conta.observacao,
         "criado_em": conta.criado_em,
         "vencida": bool(pendente and conta.vencimento < hoje),
@@ -365,32 +368,73 @@ def _validar_referencias(
 def criar_conta_pagar(
     db: Session, empresa_id: int, dados: ContaPagarCreate, usuario_token: Dict[str, Any]
 ) -> Dict[str, Any]:
+    """Cria a conta — ou TODAS as parcelas, quando `parcelas > 1`.
+
+    Parcelamento gera tudo de uma vez, e não uma parcela por baixa como faz a
+    recorrência. O motivo é que as dez parcelas JÁ SÃO dívida hoje: se nascessem
+    conforme o pagamento, o fluxo de caixa de dezembro ficaria cego para a
+    parcela de dezembro e diria que sobra dinheiro já comprometido.
+
+    É também o que os ERPs fazem — o Odoo gera "um item contábil para cada data
+    de vencimento" no momento em que a fatura é lançada.
+
+    Devolve a PRIMEIRA parcela: é ela que a tela acabou de criar do ponto de
+    vista do usuário, e é o começo do grupo.
+    """
     _validar_referencias(db, empresa_id, dados.plano_conta_id)
-
-    conta = financeiro_crud.criar_conta_pagar(
-        db,
-        ContaPagar(
-            empresa_id=empresa_id,
-            descricao=dados.descricao.strip(),
-            valor=dados.valor,
-            vencimento=dados.vencimento,
-            plano_conta_id=dados.plano_conta_id,
-            fornecedor_id=dados.fornecedor_id,
-            recorrente=dados.recorrente,
-            observacao=dados.observacao,
-            status=ContaPagarStatus.PENDENTE.value,
-        ),
-    )
-
     func_id, func_nome = _funcionario_do_token(usuario_token)
-    financeiro_crud.registrar_historico(
-        db, empresa_id=empresa_id, entidade=ENTIDADE_CONTA_PAGAR, entidade_id=conta.id,
-        campo="criacao", valor_antigo=None, valor_novo=conta.descricao,
-        funcionario_id=func_id, funcionario_nome=func_nome,
-    )
 
-    db.refresh(conta)
-    return _serializar_conta(conta, hoje_local())
+    descricao = dados.descricao.strip()
+    total = dados.parcelas
+    parcelado = total > 1
+
+    primeira: Optional[ContaPagar] = None
+
+    for numero in range(1, total + 1):
+        # Sempre a partir do vencimento ORIGINAL, nunca da parcela anterior:
+        # ancorar é o que impede o dia encolhido de ficar encolhido.
+        vencimento = _somar_meses(dados.vencimento, numero - 1)
+
+        conta = financeiro_crud.criar_conta_pagar(
+            db,
+            ContaPagar(
+                empresa_id=empresa_id,
+                descricao=descricao,
+                valor=dados.valor,
+                vencimento=vencimento,
+                plano_conta_id=dados.plano_conta_id,
+                fornecedor_id=dados.fornecedor_id,
+                recorrente=dados.recorrente,
+                observacao=dados.observacao,
+                status=ContaPagarStatus.PENDENTE.value,
+                parcela_numero=numero if parcelado else None,
+                parcela_total=total if parcelado else None,
+                # A primeira parcela aponta para si mesma; as demais para ela.
+                # É o que dispensa tabela-pai e sequência — o grupo é o id da
+                # primeira linha, que o flush do CRUD já devolveu.
+                parcelamento_id=(primeira.id if primeira else None) if parcelado else None,
+            ),
+        )
+
+        if primeira is None:
+            primeira = conta
+            if parcelado:
+                conta.parcelamento_id = conta.id
+                db.flush()
+
+        # Só a primeira entra na auditoria: dez linhas de "criação" para uma
+        # única compra afogariam a trilha, e o grupo já diz que são a mesma.
+        if numero == 1:
+            financeiro_crud.registrar_historico(
+                db, empresa_id=empresa_id, entidade=ENTIDADE_CONTA_PAGAR,
+                entidade_id=conta.id, campo="criacao", valor_antigo=None,
+                valor_novo=f"{descricao} ({total}x)" if parcelado else descricao,
+                funcionario_id=func_id, funcionario_nome=func_nome,
+            )
+
+
+    db.refresh(primeira)
+    return _serializar_conta(primeira, hoje_local())
 
 
 # Campos cuja alteração o histórico registra. Descrição e observação ficam de
@@ -476,23 +520,43 @@ def cancelar_conta_pagar(
 # BAIXA E ESTORNO — onde o documento vira lançamento
 # ===========================================================================
 
-def _proximo_vencimento(vencimento: date) -> date:
-    """Mesmo dia do mês seguinte, encolhendo quando o dia não existe.
+def _somar_meses(base: date, meses: int) -> date:
+    """`base` mais N meses, ANCORADO no dia de `base`.
 
-    Vencimento dia 31 em mês de 30 cai no dia 30, e não vaza para o dia 1º do
-    mês seguinte -- que atrasaria o alerta em um mês inteiro justamente na conta
-    que vence no fim do mês.
+    Encolhe quando o dia não existe no mês de destino (31 em fevereiro vira 28),
+    e nunca vaza para o dia 1º do mês seguinte -- vazar atrasaria o alerta em um
+    mês inteiro justamente na conta que vence no fim do mês.
+
+    ANCORAR IMPORTA. Calcular cada parcela a partir da ANTERIOR faz o dia
+    encolhido ficar encolhido: 31/jan viraria 28/fev e depois 28/mar, quando o
+    correto é 31/mar. O erro cresce em silêncio ao longo do parcelamento.
     """
-    ano = vencimento.year + (1 if vencimento.month == 12 else 0)
-    mes = 1 if vencimento.month == 12 else vencimento.month + 1
+    total = base.month - 1 + meses
+    ano = base.year + total // 12
+    mes = total % 12 + 1
 
-    dia = vencimento.day
+    dia = base.day
     while dia > 1:
         try:
             return date(ano, mes, dia)
         except ValueError:
             dia -= 1
     return date(ano, mes, 1)
+
+
+def _proximo_vencimento(vencimento: date) -> date:
+    """O mês seguinte, para a RECORRÊNCIA.
+
+    Aqui a âncora é mesmo a conta anterior, e não há outra: a recorrência não
+    tem começo guardado -- cada ocorrência nasce da baixa da anterior. A
+    consequência é que uma conta de dia 31 encolhe para 28 em fevereiro e assim
+    permanece. É uma imprecisão conhecida e aceita: acertá-la exigiria guardar o
+    dia original numa coluna, e ninguém contratou aluguel para o dia 31.
+
+    No PARCELAMENTO isso não acontece -- lá existe a primeira parcela como
+    âncora, e `_somar_meses` a usa.
+    """
+    return _somar_meses(vencimento, 1)
 
 
 def pagar_conta(
