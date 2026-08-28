@@ -1,0 +1,177 @@
+import { computed, unref, type MaybeRef } from 'vue';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query';
+
+import { REFETCH_CADASTROS } from '@/core/config/queryIntervals';
+import { useToast } from '@/shared/composables/useToast';
+
+import { financeiroKeys } from '../constants/queryKeys';
+import * as service from '../services/financeiro.service';
+import type {
+  ContaPagarBaixaPayload,
+  ContaPagarFiltros,
+  ContaPagarPayload,
+} from '../schemas/financeiro.schema';
+
+/**
+ * Queries e mutations do módulo financeiro.
+ *
+ * TODA mutation invalida o PREFIXO inteiro (`financeiroKeys.todos`), nunca a
+ * chave específica. Dar baixa numa conta mexe em quatro lugares ao mesmo tempo:
+ * a lista, os totais do rodapé, o resultado do mês e as próximas a vencer.
+ * Invalidar chave a chave deixaria algum desses desatualizado na tela, e o
+ * usuário veria a conta sumir da lista com o total antigo embaixo.
+ */
+
+function useInvalidarFinanceiro() {
+  const queryClient = useQueryClient();
+  return () => queryClient.invalidateQueries({ queryKey: financeiroKeys.todos });
+}
+
+// ===========================================================================
+// LEITURA
+// ===========================================================================
+
+export function usePlanoContasQuery(apenasAtivos: MaybeRef<boolean> = false) {
+  return useQuery({
+    queryKey: computed(() => [...financeiroKeys.planoContas(), unref(apenasAtivos)]),
+    queryFn: () => service.listarPlanoContas(unref(apenasAtivos)),
+    // Categoria é cadastro: muda uma vez por mês, não a cada minuto.
+    staleTime: 1000 * 60 * 5,
+  });
+}
+
+export function useContasBancariasQuery() {
+  return useQuery({
+    queryKey: [...financeiroKeys.todos, 'contas-bancarias'],
+    queryFn: () => service.listarContasBancarias(true),
+    staleTime: 1000 * 60 * 5,
+  });
+}
+
+export function useContasPagarQuery(filtros: MaybeRef<ContaPagarFiltros>) {
+  return useQuery({
+    queryKey: computed(() => financeiroKeys.contasPagar(unref(filtros))),
+    queryFn: () => service.listarContasPagar(unref(filtros)),
+    // Financeiro não é tela de caixa: dois minutos é o intervalo dos cadastros,
+    // e é o que basta para o outro terminal ver a conta que este lançou.
+    refetchInterval: REFETCH_CADASTROS,
+  });
+}
+
+export function useResumoQuery(inicio: MaybeRef<string>, fim: MaybeRef<string>) {
+  return useQuery({
+    queryKey: computed(() =>
+      financeiroKeys.resumo({ inicio: unref(inicio), fim: unref(fim) }),
+    ),
+    queryFn: () => service.getResumo(unref(inicio), unref(fim)),
+    enabled: computed(() => !!unref(inicio) && !!unref(fim)),
+    refetchInterval: REFETCH_CADASTROS,
+  });
+}
+
+export function useHistoricoContaQuery(contaId: MaybeRef<number | null>) {
+  return useQuery({
+    queryKey: computed(() => [...financeiroKeys.todos, 'historico', unref(contaId)]),
+    queryFn: () => service.listarHistoricoDaConta(unref(contaId) as number),
+    enabled: computed(() => !!unref(contaId)),
+  });
+}
+
+// ===========================================================================
+// ESCRITA
+// ===========================================================================
+
+export function useCriarContaPagar() {
+  const invalidar = useInvalidarFinanceiro();
+  const toast = useToast();
+
+  return useMutation({
+    mutationFn: (payload: ContaPagarPayload) => service.criarContaPagar(payload),
+    onSuccess: () => {
+      invalidar();
+      toast.success('Conta lançada');
+    },
+  });
+}
+
+export function useAtualizarContaPagar() {
+  const invalidar = useInvalidarFinanceiro();
+  const toast = useToast();
+
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: number; payload: Partial<ContaPagarPayload> }) =>
+      service.atualizarContaPagar(id, payload),
+    onSuccess: () => {
+      invalidar();
+      toast.success('Conta atualizada');
+    },
+  });
+}
+
+export function useCancelarContaPagar() {
+  const invalidar = useInvalidarFinanceiro();
+  const toast = useToast();
+
+  return useMutation({
+    mutationFn: (id: number) => service.cancelarContaPagar(id),
+    onSuccess: () => {
+      invalidar();
+      // "Cancelada", nunca "excluída": a linha continua no banco, e chamar de
+      // exclusão faria o usuário procurá-la na lixeira que não existe.
+      toast.success('Conta cancelada');
+    },
+  });
+}
+
+export function usePagarConta() {
+  const invalidar = useInvalidarFinanceiro();
+  const toast = useToast();
+
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: number; payload: ContaPagarBaixaPayload }) =>
+      service.pagarConta(id, payload),
+    onSuccess: () => {
+      invalidar();
+      toast.success('Pagamento registrado');
+    },
+  });
+}
+
+export function useEstornarPagamento() {
+  const invalidar = useInvalidarFinanceiro();
+  const toast = useToast();
+
+  return useMutation({
+    mutationFn: ({ id, motivo }: { id: number; motivo: string }) =>
+      service.estornarPagamento(id, motivo),
+    onSuccess: () => {
+      invalidar();
+      toast.success('Pagamento estornado', 'A conta voltou para pendente.');
+    },
+  });
+}
+
+export function useCriarPlanoConta() {
+  const invalidar = useInvalidarFinanceiro();
+  const toast = useToast();
+
+  return useMutation({
+    mutationFn: (nome: string) => service.criarPlanoConta(nome),
+    onSuccess: () => {
+      invalidar();
+      toast.success('Categoria criada');
+    },
+  });
+}
+
+export function useAtualizarPlanoConta() {
+  const invalidar = useInvalidarFinanceiro();
+  const toast = useToast();
+
+  return useMutation({
+    mutationFn: ({ id, dados }: { id: number; dados: { nome?: string; ativo?: boolean } }) =>
+      service.atualizarPlanoConta(id, dados),
+    onSuccess: () => invalidar(),
+    onError: () => toast.error('Não foi possível salvar a categoria'),
+  });
+}
