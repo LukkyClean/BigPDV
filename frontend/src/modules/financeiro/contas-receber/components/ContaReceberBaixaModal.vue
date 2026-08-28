@@ -16,6 +16,8 @@ import { useToast } from '@/shared/composables/useToast';
 import { formatCurrency } from '@/shared/utils/finance';
 import { formatDataPura } from '@/shared/utils/date.utils';
 
+import { usePaymentMethodsQuery } from '@/modules/sales/composables/queries/usePaymentMethodsQuery';
+
 import {
   useContasBancariasQuery,
   useReceberConta,
@@ -29,9 +31,15 @@ const toast = useToast();
 const { data: contasBancarias } = useContasBancariasQuery();
 const receber = useReceberConta();
 
+// O catálogo é o mesmo do PDV e da OS: reusar em vez de duplicar é o que
+// garante que a forma escolhida aqui seja a mesma que aparece no relatório.
+const { formasPagamento } = usePaymentMethodsQuery();
+
 const valorReais = ref(0);
+const jurosReais = ref(0);
 const recebidoEm = ref('');
 const contaBancariaId = ref<string | number>('');
+const formaPagamentoId = ref<string | number>('');
 
 function hojeLocal(): string {
   const d = new Date();
@@ -43,6 +51,8 @@ watch(
   (conta) => {
     if (!conta) return;
     valorReais.value = conta.valor / 100;
+    jurosReais.value = 0;
+    formaPagamentoId.value = '';
     recebidoEm.value = hojeLocal();
     contaBancariaId.value = contasBancarias.value?.find((c) => c.principal)?.id ?? '';
   },
@@ -59,10 +69,37 @@ const opcoesContas = computed(() =>
   (contasBancarias.value ?? []).map((c) => ({ value: c.id, label: c.nome })),
 );
 
-// O cliente devia R$ 200 e trouxe R$ 150: a diferença é informação, não erro.
+const opcoesFormas = computed(() =>
+  formasPagamento.value.filter((f) => f.ativo).map((f) => ({ value: f.id, label: f.nome })),
+);
+
+/**
+ * O total sobe sozinho quando há juros.
+ *
+ * Quem cobrou multa quer receber principal + multa, e obrigar a somar de cabeça
+ * no balcão convida ao erro. O campo continua editável para o recebimento
+ * PARCIAL -- o cliente que devia 200 e trouxe 150.
+ */
+watch(jurosReais, (juros, anterior) => {
+  if (!props.conta) return;
+  const esperadoAntes = props.conta.valor / 100 + (anterior ?? 0);
+  // Só reajusta se o operador não tinha mexido no total à mão.
+  if (Math.abs(valorReais.value - esperadoAntes) < 0.005) {
+    valorReais.value = props.conta.valor / 100 + juros;
+  }
+});
+
+/**
+ * Quanto falta (ou sobra) sobre o que era ESPERADO — principal mais juros.
+ *
+ * Comparar com o principal puro faria o juros aparecer duas vezes: uma no campo
+ * dele e outra como "entrou a mais". O que interessa aqui é o outro caso: o
+ * cliente devia R$ 200 e trouxe R$ 150.
+ */
 const diferenca = computed(() => {
   if (!props.conta) return 0;
-  return Math.round(valorReais.value * 100) - props.conta.valor;
+  const esperado = props.conta.valor + Math.round(jurosReais.value * 100);
+  return Math.round(valorReais.value * 100) - esperado;
 });
 
 function confirmar() {
@@ -72,8 +109,10 @@ function confirmar() {
       id: props.conta.id,
       payload: {
         valor_recebido: Math.round(valorReais.value * 100),
+        juros: Math.round(jurosReais.value * 100),
         recebido_em: recebidoEm.value,
         conta_bancaria_id: contaBancariaId.value === '' ? null : Number(contaBancariaId.value),
+        forma_pagamento_id: formaPagamentoId.value === '' ? null : Number(formaPagamentoId.value),
       },
     },
     {
@@ -104,7 +143,16 @@ function confirmar() {
         </p>
       </div>
 
-      <BaseMoneyInput v-model="valorReais" label="Valor recebido" />
+      <BaseSelect
+        v-model="formaPagamentoId"
+        :options="opcoesFormas"
+        label="Como está pagando"
+        placeholder="Selecione a forma"
+      />
+
+      <BaseMoneyInput v-model="jurosReais" label="Juros / multa por atraso" />
+
+      <BaseMoneyInput v-model="valorReais" label="Valor recebido (total)" />
       <p v-if="diferenca !== 0" class="-mt-2 text-xs" :class="diferenca > 0 ? 'text-emerald-600' : 'text-amber-600'">
         {{ diferenca > 0 ? 'Entrou' : 'Faltou' }}
         {{ formatCurrency(Math.abs(diferenca)) }} em relação ao previsto.

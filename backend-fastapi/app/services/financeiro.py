@@ -930,6 +930,7 @@ def _serializar_receber(conta: ContaReceber, hoje: date) -> Dict[str, Any]:
         "descricao": conta.descricao,
         "valor": conta.valor,
         "taxa": conta.taxa,
+        "juros": conta.juros,
         "vencimento": conta.vencimento,
         "status": conta.status,
         "cliente_id": conta.cliente_id,
@@ -1100,7 +1101,12 @@ def receber_conta(
     if conta.status == ContaReceberStatus.CANCELADA.value:
         raise BadRequestException(detail="Esta conta foi cancelada e não pode ser recebida.")
 
-    valor_recebido = dados.valor_recebido if dados.valor_recebido is not None else conta.valor
+    # O padrão já soma os juros: quem cobrou multa quer receber o total, e
+    # obrigar a redigitar a soma convida ao erro de conta na hora do balcão.
+    juros = dados.juros or 0
+    valor_recebido = (
+        dados.valor_recebido if dados.valor_recebido is not None else conta.valor + juros
+    )
     dia = dados.recebido_em or hoje_local()
 
     if dados.conta_bancaria_id is not None:
@@ -1123,6 +1129,7 @@ def receber_conta(
 
     conta.status = ContaReceberStatus.RECEBIDA.value
     conta.valor_recebido = valor_recebido
+    conta.juros = juros
     conta.recebido_em = inicio_do_dia_utc(dia)
     conta.conta_bancaria_id = dados.conta_bancaria_id
     conta.forma_pagamento_id = dados.forma_pagamento_id
@@ -1175,6 +1182,9 @@ def estornar_recebimento(
 
     conta.status = ContaReceberStatus.PENDENTE.value
     conta.valor_recebido = None
+    # O juros some junto: ele foi cobrado por causa daquele recebimento, e
+    # deixá-lo para trás faria a próxima baixa somar multa duas vezes.
+    conta.juros = 0
     conta.recebido_em = None
     conta.conta_bancaria_id = None
     conta.forma_pagamento_id = None

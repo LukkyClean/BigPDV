@@ -159,6 +159,7 @@ export const ContaReceberSchema = z.object({
   descricao: z.string(),
   valor: z.number(),
   taxa: z.number(),
+  juros: z.number(),
   vencimento: z.string(),
   status: z.string(),
 
@@ -203,7 +204,10 @@ export interface ContaReceberPayload {
 }
 
 export interface ContaReceberBaixaPayload {
+  /** TOTAL que entrou, juros incluso. */
   valor_recebido?: number;
+  /** Juros/multa por atraso. Separado porque e receita FINANCEIRA, nao venda. */
+  juros?: number;
   recebido_em?: string;
   conta_bancaria_id?: number | null;
   forma_pagamento_id?: number | null;

@@ -40,6 +40,7 @@ class ContaReceber(Base):
     __table_args__ = (
         CheckConstraint("valor > 0", name="ck_conta_receber_valor_positivo"),
         CheckConstraint("taxa >= 0", name="ck_conta_receber_taxa_nao_negativa"),
+        CheckConstraint("juros >= 0", name="ck_conta_receber_juros_nao_negativo"),
         # Mesma coerência exigida no contas a pagar: recebida diz quando e
         # quanto; pendente e cancelada não carregam recebimento nenhum. Sem
         # isto, um estorno malfeito deixaria a conta "pendente" com data antiga
@@ -93,6 +94,18 @@ class ContaReceber(Base):
     vencimento: Mapped[date] = mapped_column(
         Date, nullable=False, index=True,
         doc="Quando o dinheiro entra. DATA PURA: não converte fuso",
+    )
+
+    # Juros/multa por atraso, cobrados do cliente na hora de quitar.
+    #
+    # Coluna própria e não embutida em `valor_recebido` porque juros de mora é
+    # RECEITA FINANCEIRA, não venda: somado ao principal, ele inflaria o
+    # faturamento do mês com dinheiro que não veio de mercadoria nem de serviço.
+    # Sem a separação, "recebi R$ 110 de uma dívida de R$ 100" seria
+    # indistinguível de "o cliente pagou errado".
+    juros: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0",
+        doc="Juros/multa recebidos por atraso (centavos). valor_recebido inclui",
     )
 
     status: Mapped[str] = mapped_column(

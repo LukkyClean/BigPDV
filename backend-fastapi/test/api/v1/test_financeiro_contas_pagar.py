@@ -742,3 +742,56 @@ def test_cancelar_cobranca_nao_exclui(client, db_session):
 
     todas = client.get("/api/v1/financeiro/contas-receber", headers=header).json()
     assert todas["total_itens"] == 1, "continua na lista, como cancelada"
+
+
+def test_juros_de_atraso_fica_separado_do_principal(client, db_session):
+    """Juros de mora e receita FINANCEIRA, nao venda: somado ao principal ele
+    inflaria o faturamento com dinheiro que nao veio de mercadoria."""
+    from app.db.models.movimentacao_financeira import MovimentacaoFinanceira
+
+    header = _auth(client)
+    conta = _criar_receber(client, header, valor=20000)
+
+    r = client.post(f"/api/v1/financeiro/contas-receber/{conta['id']}/receber",
+                    json={"juros": 1500}, headers=header)
+    assert r.status_code == status.HTTP_200_OK, r.text
+    dados = r.json()
+
+    assert dados["valor"] == 20000, "o principal nao muda"
+    assert dados["juros"] == 1500
+    # Sem valor_recebido no payload, o padrao ja soma os juros.
+    assert dados["valor_recebido"] == 21500
+
+    # O livro registra o TOTAL que entrou.
+    mov = db_session.query(MovimentacaoFinanceira).one()
+    assert mov.valor == 21500
+
+
+def test_forma_de_pagamento_do_recebimento_vai_para_o_livro(client, db_session):
+    from app.db.models.movimentacao_financeira import MovimentacaoFinanceira
+
+    header = _auth(client)
+    fp = client.post("/api/v1/formas-pagamento/",
+                     json={"nome": "PIX", "ativo": True}, headers=header).json()
+    conta = _criar_receber(client, header)
+
+    client.post(f"/api/v1/financeiro/contas-receber/{conta['id']}/receber",
+                json={"forma_pagamento_id": fp["id"]}, headers=header)
+
+    mov = db_session.query(MovimentacaoFinanceira).one()
+    assert mov.forma_pagamento_id == fp["id"]
+
+
+def test_estorno_zera_o_juros(client, db_session):
+    """O juros existia por causa daquele recebimento; deixa-lo para tras faria a
+    proxima baixa somar multa duas vezes."""
+    header = _auth(client)
+    conta = _criar_receber(client, header, valor=20000)
+    base = f"/api/v1/financeiro/contas-receber/{conta['id']}"
+
+    client.post(f"{base}/receber", json={"juros": 1500}, headers=header)
+    r = client.post(f"{base}/estornar", json={"motivo": "cobranca indevida"},
+                    headers=header)
+
+    assert r.json()["juros"] == 0
+    assert r.json()["valor_recebido"] is None

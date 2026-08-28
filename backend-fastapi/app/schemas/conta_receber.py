@@ -54,8 +54,13 @@ class ContaReceberBaixa(BaseModel):
     # Separado do `valor` porque os dois divergem: o cliente que devia R$ 100
     # trouxe R$ 90 e ficou de trazer o resto, ou pagou com juros de atraso.
     valor_recebido: Optional[int] = Field(
-        None, gt=0, description="Quanto entrou de fato. Omitir usa o valor da conta"
+        None, gt=0,
+        description="TOTAL que entrou, juros incluso. Omitir usa valor + juros",
     )
+    # Separado do total porque juros de mora é RECEITA FINANCEIRA, não venda:
+    # embutido no principal, inflaria o faturamento do mês com dinheiro que não
+    # veio de mercadoria nem de serviço.
+    juros: int = Field(0, ge=0, description="Juros/multa por atraso (centavos)")
     recebido_em: Optional[date] = Field(
         None, description="Dia do recebimento. Omitir usa hoje"
     )
@@ -90,6 +95,7 @@ class ContaReceberRead(BaseModel):
     descricao: str
     valor: int
     taxa: int
+    juros: int
     vencimento: date
     status: str
 
