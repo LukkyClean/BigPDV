@@ -1,5 +1,7 @@
 import type { RouteRecordRaw } from 'vue-router';
 
+import { MODULOS } from '@/shared/constants/modulos.constants';
+
 const homeRoutes: RouteRecordRaw[] = [
   {
     path: '/',
@@ -122,6 +124,99 @@ const homeRoutes: RouteRecordRaw[] = [
           tabId: 'reports',
           requiresAuth: true,
         },
+      },
+      {
+        // Rota-pai com casca própria: as telas de dentro dividem o mesmo
+        // container e, mais adiante, o mesmo seletor de período. O `exigeModulo`
+        // vai em cada FILHO e não aqui, porque Fluxo de Caixa e Conciliação são
+        // de um plano diferente do resto — pôr a trava no pai daria o módulo
+        // inteiro a quem contratou só a parte básica.
+        path: '/financeiro',
+        component: () => import('@/modules/financeiro/views/FinanceiroLayout.vue'),
+        meta: { requiresAuth: true },
+        children: [
+          {
+            path: '',
+            redirect: { name: 'finance-overview' },
+          },
+          {
+            path: 'visao-geral',
+            name: 'finance-overview',
+            component: () => import('@/modules/financeiro/views/VisaoGeralView.vue'),
+            meta: {
+              title: 'Gestão Financeira',
+              subtitle: 'O resultado do mês e o movimento do caixa.',
+              tabId: 'finance-overview',
+              requiresAuth: true,
+              exigeModulo: MODULOS.FINANCEIRO,
+            },
+          },
+          {
+            path: 'contas-a-pagar',
+            name: 'finance-payable',
+            component: () =>
+              import('@/modules/financeiro/contas-pagar/views/ContasPagarView.vue'),
+            meta: {
+              title: 'Contas a Pagar',
+              subtitle: 'O que a loja deve, para quem e quando vence.',
+              tabId: 'finance-payable',
+              requiresAuth: true,
+              exigeModulo: MODULOS.FINANCEIRO,
+            },
+          },
+          {
+            path: 'contas-a-receber',
+            name: 'finance-receivable',
+            component: () =>
+              import('@/modules/financeiro/contas-receber/views/ContasReceberView.vue'),
+            meta: {
+              title: 'Contas a Receber',
+              subtitle: 'O que ainda não entrou: fiado, boleto e cartão a repassar.',
+              tabId: 'finance-receivable',
+              requiresAuth: true,
+              exigeModulo: MODULOS.FINANCEIRO,
+            },
+          },
+          {
+            path: 'fluxo-de-caixa',
+            name: 'finance-cashflow',
+            component: () =>
+              import('@/modules/financeiro/fluxo-caixa/views/FluxoCaixaView.vue'),
+            meta: {
+              title: 'Fluxo de Caixa',
+              subtitle: 'A projeção dos próximos 30 e 60 dias.',
+              tabId: 'finance-cashflow',
+              requiresAuth: true,
+              exigeModulo: MODULOS.FINANCEIRO_PRO,
+            },
+          },
+          {
+            path: 'conciliacao',
+            name: 'finance-reconciliation',
+            component: () =>
+              import('@/modules/financeiro/conciliacao/views/ConciliacaoView.vue'),
+            meta: {
+              title: 'Conciliação',
+              subtitle: 'Extrato da operadora conferido contra o que a loja registrou.',
+              tabId: 'finance-reconciliation',
+              requiresAuth: true,
+              exigeModulo: MODULOS.FINANCEIRO_PRO,
+            },
+          },
+          {
+            path: 'plano-de-contas',
+            name: 'finance-chart-accounts',
+            component: () =>
+              import('@/modules/financeiro/plano-contas/views/PlanoContasView.vue'),
+            meta: {
+              title: 'Plano de Contas',
+              subtitle: 'As categorias de despesa e de receita da loja.',
+              tabId: 'finance-chart-accounts',
+              requiresAuth: true,
+              exigeModulo: MODULOS.FINANCEIRO,
+            },
+          },
+        ],
       },
     ],
   },

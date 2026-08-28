@@ -5,6 +5,9 @@ import { useLayoutStore } from '@/modules/mainLayout/store/layout.store';
 import { useAuthStore } from '@/shared/stores/auth.store';
 
 import SidebarItem from './SidebarItem.vue';
+import SidebarItemGroup from './SidebarItemGroup.vue';
+import type { SidebarSubItemResolvido } from './SidebarItemGroup.vue';
+import type { SidebarSubItem } from '@/modules/mainLayout/types/layout.types';
 import CompanyCard from '../../ui/CompanyCard.vue';
 import SidebarSectionSkeleton from './SidebarSectionSkeleton.vue';
 import AppLogo from '@/shared/components/AppLogo.vue';
@@ -25,19 +28,51 @@ const { hasPermission } = useCheckPermission();
 const { usaOrdemServico } = useOrdemServico();
 const modulosStore = useModulosStore();
 
+/**
+ * Sub-itens que este usuário deve enxergar, já resolvidos.
+ *
+ * As duas travas tratam o filho de formas DIFERENTES, e é de propósito:
+ *
+ * - Sem PERMISSÃO o item some. Quem não pode ver a folha de pagamento também
+ *   não precisa saber que a tela existe.
+ * - Sem MÓDULO o item fica, com cadeado. A loja já está dentro do módulo; o
+ *   sub-item do plano superior é justamente onde o upgrade se vende, e sumir
+ *   com ele viraria "o sistema perdeu uma tela" no suporte.
+ *
+ * (No item PAI o módulo ausente esconde — ver `requiredModule` em
+ * layout.types.ts. Anunciar um módulo que a loja não comprou é outra conversa,
+ * e essa mora no painel de vendas.)
+ */
+function resolverFilhos(filhos: SidebarSubItem[]): SidebarSubItemResolvido[] {
+  return filhos
+    .filter((filho) => hasPermission(filho.requiredPermission))
+    .map((filho) => ({
+      ...filho,
+      bloqueado: !!filho.requiredModule && !modulosStore.temModulo(filho.requiredModule),
+    }));
+}
+
 const filteredSidebar = computed(() => {
   return SIDEBAR_SECTIONS.map((section) => ({
     ...section,
-    options: section.options.filter((opt) => {
-      // Loja sem Ordem de Serviço não vê o módulo. Único item gateado por
-      // segmento aqui; todo o resto continua sendo só permissão.
-      if (opt.id === 'services' && !usaOrdemServico.value) return false;
-      // Módulo não contratado some para todo mundo, dono incluído. Enquanto o
-      // /licenca/status não respondeu, `temModulo` devolve true — o item
-      // aparece e some se não for o caso, que é o erro barato dos dois.
-      if (opt.requiredModule && !modulosStore.temModulo(opt.requiredModule)) return false;
-      return hasPermission(opt.requiredPermission);
-    }),
+    options: section.options
+      .filter((opt) => {
+        // Loja sem Ordem de Serviço não vê o módulo. Único item gateado por
+        // segmento aqui; todo o resto continua sendo só permissão.
+        if (opt.id === 'services' && !usaOrdemServico.value) return false;
+        // Módulo não contratado some para todo mundo, dono incluído. Enquanto o
+        // /licenca/status não respondeu, `temModulo` devolve true — o item
+        // aparece e some se não for o caso, que é o erro barato dos dois.
+        if (opt.requiredModule && !modulosStore.temModulo(opt.requiredModule)) return false;
+        return hasPermission(opt.requiredPermission);
+      })
+      .map((opt) => ({
+        ...opt,
+        children: opt.children ? resolverFilhos(opt.children) : undefined,
+      }))
+      // Grupo que perdeu todos os filhos por permissão vira um pai que abre e
+      // não mostra nada. Some junto.
+      .filter((opt) => !opt.children || opt.children.length > 0),
   })).filter((section) => section.options.length > 0);
 });
 
@@ -78,14 +113,22 @@ onUnmounted(() => {
           <p class="px-4 text-[10px] font-bold text-zinc-600 uppercase tracking-widest mb-2">
             {{ section.title }}
           </p>
-          <SidebarItem
-            v-for="option in section.options"
-            :key="option.id"
-            :id="option.id"
-            :icon="option.icon"
-            :label="option.label"
-            :active="activeTab === option.id"
-          />
+          <template v-for="option in section.options" :key="option.id">
+            <SidebarItemGroup
+              v-if="option.children?.length"
+              :icon="option.icon"
+              :label="option.label"
+              :children="option.children"
+              :active-tab="activeTab"
+            />
+            <SidebarItem
+              v-else
+              :id="option.id"
+              :icon="option.icon"
+              :label="option.label"
+              :active="activeTab === option.id"
+            />
+          </template>
         </div>
       </nav>
 

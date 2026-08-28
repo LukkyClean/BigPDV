@@ -16,3 +16,4 @@
 export const PRODUTOS_KEY = 'produtos' as const;
 export const SERVICOS_KEY = 'servicos' as const;
 export const CLIENTES_KEY = 'clientes' as const;
+export const FINANCEIRO_KEY = 'financeiro' as const;

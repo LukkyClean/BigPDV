@@ -17,6 +17,16 @@ export const PERMISSIONS = {
   positions: 'cargo',
   suppliers: 'fornecedor',
   reports: 'view_reports',
+  /**
+   * Consultar o financeiro: ver contas, saldos e o resultado do mês.
+   *
+   * Separado de `manageFinance` de propósito. Contas a Pagar mostra aluguel e
+   * salário; cobrar um cliente que ficou para o fim do mês não. Sem os dois
+   * eixos, dar acesso à cobrança abriria a folha de pagamento junto.
+   */
+  finance: 'view_financeiro',
+  /** Lançar, dar baixa e estornar. Inclui o que `finance` já permite ver. */
+  manageFinance: 'manage_financeiro',
 } as const;
 
 export type PermissionKey = typeof PERMISSIONS[keyof typeof PERMISSIONS];
@@ -43,4 +53,9 @@ export const PERMISSION_ALIASES: Partial<Record<PermissionKey, string[]>> = {
   [PERMISSIONS.employees]: ['view_employees', 'manage_employees', 'delete_employees'],
   [PERMISSIONS.positions]: ['view_positions', 'manage_positions', 'delete_positions'],
   [PERMISSIONS.reports]: ['view_reports', 'manage_reports'],
+  // Quem pode lançar também pode ver: sem este alias, um cargo marcado só com
+  // `manage_financeiro` conseguiria dar baixa numa conta e mesmo assim não
+  // enxergaria a tela que a lista.
+  [PERMISSIONS.finance]: ['view_financeiro', 'manage_financeiro'],
+  [PERMISSIONS.manageFinance]: ['manage_financeiro'],
 };
