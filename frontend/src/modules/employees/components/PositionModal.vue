@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { useOrdemServico } from '@/shared/composables/useOrdemServico';
+import { useModulosStore } from '@/shared/stores/modulos.store';
+import { MODULOS } from '@/shared/constants/modulos.constants';
 /**
  * @component PositionModal
  * @description Modal for creating/editing cargos with permission matrix
@@ -23,6 +25,7 @@ import {
 } from '../constants/positions.constants';
 
 const { usaOrdemServico } = useOrdemServico();
+const modulosStore = useModulosStore();
 
 /**
  * A matriz sem as linhas de modulos que a loja nao tem.
@@ -30,9 +33,22 @@ const { usaOrdemServico } = useOrdemServico();
  * Oferecer permissao de Servicos numa adega confunde quem cadastra funcionario:
  * ele marca, salva, e nada acontece -- porque o modulo nao existe ali. A
  * permissao continua existindo no banco; some so da tela.
+ *
+ * Financeiro entra pela MESMA razao, so que por outro eixo: Servicos depende do
+ * segmento da loja, Financeiro depende do modulo contratado na licenca. O
+ * sintoma de errar seria identico -- marcar, salvar e o item continuar sumido
+ * do menu, porque quem esconde ali e o `requiredModule`.
+ *
+ * `temModulo` libera enquanto a licenca nao respondeu, entao o padrao e mostrar:
+ * numa duvida momentanea e melhor oferecer a permissao a mais do que esconder a
+ * linha de quem paga por ela.
  */
 const matrizVisivel = computed(() =>
-  PERMISSION_MATRIX.filter((item) => item.id !== 'services' || usaOrdemServico.value),
+  PERMISSION_MATRIX.filter((item) => {
+    if (item.id === 'services') return usaOrdemServico.value;
+    if (item.id === 'finance') return modulosStore.temModulo(MODULOS.FINANCEIRO);
+    return true;
+  }),
 );
 
 const {
