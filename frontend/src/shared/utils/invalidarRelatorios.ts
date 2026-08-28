@@ -3,12 +3,13 @@ import type { QueryClient } from '@tanstack/vue-query';
 /**
  * Raízes de cache que dependem de dinheiro e estoque.
  *
- * São as mesmas de `reportKeys.all` (modules/reports/query.keys.ts) e
- * `dashboardKeys.all` (modules/home/constants/dashboard.constants.ts).
+ * São as mesmas de `reportKeys.all` (modules/reports/query.keys.ts),
+ * `dashboardKeys.all` (modules/home/constants/dashboard.constants.ts) e
+ * `FINANCEIRO_KEY` (shared/constants/entityKeys.ts).
  * Ficam literais aqui de propósito: `shared/` não deve importar de `modules/`.
- * Se alguma das duas raízes mudar, muda aqui também.
+ * Se alguma das três raízes mudar, muda aqui também.
  */
-const RAIZES_FINANCEIRAS = [['relatorios'], ['dashboard']] as const;
+const RAIZES_FINANCEIRAS = [['relatorios'], ['dashboard'], ['financeiro']] as const;
 
 /**
  * Invalida relatórios e dashboard depois de uma operação que mexe em dinheiro
@@ -18,6 +19,11 @@ const RAIZES_FINANCEIRAS = [['relatorios'], ['dashboard']] as const;
  * só invalidavam as chaves do próprio módulo. Cancelar uma venda atualizava a
  * lista de vendas mas deixava o relatório mostrando o dinheiro no caixa — e o
  * usuário não tem como saber que está olhando um número velho.
+ *
+ * O financeiro entrou na lista pelo MESMO sintoma, e só apareceu quando o
+ * módulo foi usado de verdade: uma venda de R$ 50 fechada no PDV não mexia no
+ * "Sobrou" da Visão Geral, que só se corrigia sozinho no polling de 2 minutos.
+ * Invalidar a raiz de um módulo nunca alcança a do vizinho.
  *
  * Chame em toda mutação que altere faturamento, comissão ou estoque:
  * finalizar/cancelar/reabrir venda e OS, e movimentação de estoque.

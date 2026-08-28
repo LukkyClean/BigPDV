@@ -660,7 +660,20 @@ def get_resumo(db: Session, empresa_id: int, inicio: date, fim: date) -> ResumoF
     faturamento = int(stats.vendas_total or 0) + int(stats.os_soma or 0)
 
     despesas = financeiro_crud.total_despesas_pagas(db, empresa_id, dt_inicio, dt_fim)
-    pendente, _pago, vencido = financeiro_crud.totais_contas_pagar(db, empresa_id, hoje=hoje)
+
+    # Em aberto ATÉ O FIM DO MÊS VISTO, sem piso de data.
+    #
+    # Sem o teto, este era o único número da tela que ignorava o mês: olhando
+    # agosto, o card somava contas de outubro. Foi assim que o primeiro uso real
+    # pegou o defeito -- pagar a internet de setembro criou a de outubro pela
+    # recorrência, e o total "em aberto" não se moveu, porque uma saiu e a outra
+    # entrou na mesma soma.
+    #
+    # Sem o piso porque conta atrasada de mês anterior continua sendo devida:
+    # ela precisa aparecer aqui, não sumir junto com o mês que passou.
+    pendente, _pago, vencido = financeiro_crud.totais_contas_pagar(
+        db, empresa_id, hoje=hoje, fim=fim
+    )
 
     categorias = [
         DespesaPorCategoria(

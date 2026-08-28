@@ -393,3 +393,68 @@ def test_conta_bancaria_padrao_e_criada_sozinha(client, db_session):
     assert len(contas) == 1
     assert contas[0]["tipo"] == "CAIXA"
     assert contas[0]["principal"] is True
+
+
+def test_recorrente_nao_infla_o_em_aberto_do_mes_visto(client, db_session):
+    """O caso que o primeiro uso real pegou.
+
+    Pagar a conta de um mês cria a do mês SEGUINTE pela recorrência. Se o card
+    "a pagar em aberto" não tivesse teto de data, uma sairia da soma e a outra
+    entraria — e o total ficaria parado depois do pagamento, como se nada
+    tivesse sido pago.
+    """
+    header = _auth(client)
+    hoje = date.today()
+    primeiro = hoje.replace(day=1)
+    ultimo_dia = (primeiro + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+
+    # Duas contas vencendo neste mês; uma delas repete.
+    internet = _criar_conta(
+        client, header, descricao="Internet", valor=8000,
+        vencimento=ultimo_dia.isoformat(), recorrente=True,
+    )
+    _criar_conta(
+        client, header, descricao="Água", valor=7000,
+        vencimento=ultimo_dia.isoformat(),
+    )
+
+    def em_aberto() -> int:
+        r = client.get(
+            f"/api/v1/financeiro/resumo?inicio={primeiro}&fim={ultimo_dia}",
+            headers=header,
+        )
+        assert r.status_code == status.HTTP_200_OK, r.text
+        return r.json()["a_pagar_pendente"]
+
+    assert em_aberto() == 15000
+
+    client.post(f"/api/v1/financeiro/contas-pagar/{internet['id']}/pagar",
+                json={}, headers=header)
+
+    # A internet do mês que vem existe e está pendente...
+    todas = client.get("/api/v1/financeiro/contas-pagar?status=PENDENTE",
+                       headers=header).json()
+    assert todas["total_itens"] == 2, "a recorrência criou a do mês seguinte"
+
+    # ...mas ela vence DEPOIS deste mês, e por isso não entra neste card.
+    assert em_aberto() == 7000, "sobrou só a água"
+
+
+def test_atrasado_de_mes_anterior_continua_no_em_aberto(client, db_session):
+    """O teto é só para frente: dívida velha não some com o mês que passou."""
+    header = _auth(client)
+    hoje = date.today()
+    primeiro = hoje.replace(day=1)
+    ultimo_dia = (primeiro + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+
+    _criar_conta(
+        client, header, descricao="Aluguel atrasado", valor=250000,
+        vencimento=(primeiro - timedelta(days=20)).isoformat(),
+    )
+
+    resumo = client.get(
+        f"/api/v1/financeiro/resumo?inicio={primeiro}&fim={ultimo_dia}", headers=header
+    ).json()
+
+    assert resumo["a_pagar_pendente"] == 250000
+    assert resumo["a_pagar_vencido"] == 250000

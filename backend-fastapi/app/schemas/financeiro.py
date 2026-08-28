@@ -48,7 +48,12 @@ class ResumoFinanceiro(BaseModel):
     )
 
     a_pagar_pendente: int = Field(
-        ..., description="Total ainda em aberto, vencido ou não (centavos)"
+        ...,
+        description=(
+            "Em aberto com vencimento ATÉ o fim do período (centavos). Inclui o "
+            "atrasado de meses anteriores, que continua devido; exclui o que só "
+            "vence depois — senão o card somaria outubro na visão de agosto."
+        ),
     )
     a_pagar_vencido: int = Field(
         ..., description="Parte do pendente que já passou do vencimento (centavos)"

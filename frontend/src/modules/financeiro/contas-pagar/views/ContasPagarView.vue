@@ -197,7 +197,11 @@ function rotuloStatus(conta: ContaPagar): string {
                   <button type="button" class="text-xs font-semibold text-brand-primary cursor-pointer" @click="contaParaBaixa = conta">
                     Pagar
                   </button>
-                  <button type="button" class="text-xs font-medium text-gray-400 hover:text-gray-600 cursor-pointer" @click="confirmarCancelamento(conta)">
+                  <!-- Discreto ao lado de "Pagar", mas nunca cinza-desabilitado:
+                       em `text-gray-400` ele lia como rótulo morto e ninguém
+                       achava a ação. Continua secundário pela ausência de cor
+                       de marca, não pela falta de contraste. -->
+                  <button type="button" class="text-xs font-medium text-gray-600 underline-offset-2 hover:text-gray-900 hover:underline cursor-pointer" @click="confirmarCancelamento(conta)">
                     Cancelar
                   </button>
                 </template>
