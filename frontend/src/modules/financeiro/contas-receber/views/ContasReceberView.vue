@@ -21,6 +21,7 @@ import { formatCurrency } from '@/shared/utils/finance';
 import { formatDataPura } from '@/shared/utils/date.utils';
 
 import ContaReceberBaixaModal from '../components/ContaReceberBaixaModal.vue';
+import ContaReceberDetalheModal from '../components/ContaReceberDetalheModal.vue';
 import ContaReceberEstornoModal from '../components/ContaReceberEstornoModal.vue';
 import { usePeriodoMes } from '../../shared/composables/usePeriodoMes';
 import {
@@ -50,6 +51,7 @@ const criar = useCriarContaReceber();
 
 const contaParaBaixa = ref<ContaReceber | null>(null);
 const contaParaEstorno = ref<ContaReceber | null>(null);
+const contaParaDetalhe = ref<ContaReceber | null>(null);
 
 const ABAS = [
   { valor: '', rotulo: 'Todas' },
@@ -199,7 +201,13 @@ function rotuloStatus(conta: ContaReceber): string {
         <tbody class="divide-y divide-gray-100">
           <tr v-for="conta in listagem.itens" :key="conta.id" class="hover:bg-gray-50/60">
             <td class="px-5 py-3">
-              <span class="font-medium text-gray-800">{{ conta.descricao }}</span>
+              <button
+                type="button"
+                class="text-left font-medium text-gray-800 hover:underline underline-offset-2 cursor-pointer"
+                @click="contaParaDetalhe = conta"
+              >
+                {{ conta.descricao }}
+              </button>
               <!-- "automática" = reflexo de um documento fechado. Vale dizer,
                    porque explica por que a linha apareceu sem ninguém digitar. -->
               <span v-if="conta.automatica" class="ml-2 rounded-full bg-sky-50 px-1.5 py-0.5 text-[10px] font-medium text-sky-600">
@@ -242,6 +250,7 @@ function rotuloStatus(conta: ContaReceber): string {
       </table>
     </div>
 
+    <ContaReceberDetalheModal :conta="contaParaDetalhe" @fechar="contaParaDetalhe = null" />
     <ContaReceberBaixaModal :conta="contaParaBaixa" @fechar="contaParaBaixa = null" />
     <ContaReceberEstornoModal :conta="contaParaEstorno" @fechar="contaParaEstorno = null" />
 

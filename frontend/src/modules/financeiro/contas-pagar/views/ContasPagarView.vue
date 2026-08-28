@@ -18,6 +18,7 @@ import { formatCurrency } from '@/shared/utils/finance';
 import { formatDataPura } from '@/shared/utils/date.utils';
 
 import ContaPagarBaixaModal from '../components/ContaPagarBaixaModal.vue';
+import ContaPagarDetalheModal from '../components/ContaPagarDetalheModal.vue';
 import ContaPagarEstornoModal from '../components/ContaPagarEstornoModal.vue';
 import ContaPagarFormModal from '../components/ContaPagarFormModal.vue';
 import { usePeriodoMes } from '../../shared/composables/usePeriodoMes';
@@ -48,6 +49,7 @@ const formAberto = ref(false);
 const contaEmEdicao = ref<ContaPagar | null>(null);
 const contaParaBaixa = ref<ContaPagar | null>(null);
 const contaParaEstorno = ref<ContaPagar | null>(null);
+const contaParaDetalhe = ref<ContaPagar | null>(null);
 
 const ABAS = [
   { valor: '', rotulo: 'Todas' },
@@ -245,6 +247,7 @@ function rotuloStatus(conta: ContaPagar): string {
       :conta="contaEmEdicao"
       @fechar="formAberto = false"
     />
+    <ContaPagarDetalheModal :conta="contaParaDetalhe" @fechar="contaParaDetalhe = null" />
     <ContaPagarBaixaModal :conta="contaParaBaixa" @fechar="contaParaBaixa = null" />
     <ContaPagarEstornoModal :conta="contaParaEstorno" @fechar="contaParaEstorno = null" />
 

@@ -186,6 +186,17 @@ export async function receberConta(
   return safeParseResponse(ContaReceberSchema, data, 'receberConta');
 }
 
+export async function listarHistoricoDoRecebimento(
+  id: number,
+): Promise<HistoricoFinanceiro[]> {
+  const { data } = await api.get(`/financeiro/contas-receber/${id}/historico`);
+  return safeParseResponse(
+    z.array(HistoricoFinanceiroSchema),
+    data,
+    'listarHistoricoDoRecebimento',
+  );
+}
+
 export async function estornarRecebimento(id: number, motivo: string): Promise<ContaReceber> {
   const { data } = await api.post(`/financeiro/contas-receber/${id}/estornar`, { motivo });
   return safeParseResponse(ContaReceberSchema, data, 'estornarRecebimento');

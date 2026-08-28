@@ -71,6 +71,14 @@ export function useResumoQuery(inicio: MaybeRef<string>, fim: MaybeRef<string>) 
   });
 }
 
+export function useHistoricoRecebimentoQuery(contaId: MaybeRef<number | null>) {
+  return useQuery({
+    queryKey: computed(() => [...financeiroKeys.todos, 'historico-receber', unref(contaId)]),
+    queryFn: () => service.listarHistoricoDoRecebimento(unref(contaId) as number),
+    enabled: computed(() => !!unref(contaId)),
+  });
+}
+
 export function useHistoricoContaQuery(contaId: MaybeRef<number | null>) {
   return useQuery({
     queryKey: computed(() => [...financeiroKeys.todos, 'historico', unref(contaId)]),
