@@ -29,5 +29,10 @@ declare module 'vue-router' {
     subtitle?: string;
     tabId?: string;
     requiresAuth?: boolean;
+    /**
+     * Identificador do módulo que esta rota exige (ex.: 'FINANCEIRO').
+     * O guard em router/index.ts lê isto e manda para a home quem não tem.
+     */
+    exigeModulo?: string;
   }
 }

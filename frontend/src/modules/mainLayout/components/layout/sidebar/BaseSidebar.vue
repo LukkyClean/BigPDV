@@ -13,6 +13,7 @@ import { SIDEBAR_SECTIONS } from '@/modules/mainLayout/constants/layout.constant
 import { computed, onMounted, onUnmounted } from 'vue';
 import { useCheckPermission } from '@/modules/mainLayout/composables/useCheckPermission';
 import { useOrdemServico } from '@/shared/composables/useOrdemServico';
+import { useModulosStore } from '@/shared/stores/modulos.store';
 
 const layoutStore = useLayoutStore();
 const { activeTab, isMobile, isMobileOpen } = storeToRefs(layoutStore);
@@ -22,6 +23,7 @@ const { userData, isLoading } = storeToRefs(authStore);
 
 const { hasPermission } = useCheckPermission();
 const { usaOrdemServico } = useOrdemServico();
+const modulosStore = useModulosStore();
 
 const filteredSidebar = computed(() => {
   return SIDEBAR_SECTIONS.map((section) => ({
@@ -30,6 +32,10 @@ const filteredSidebar = computed(() => {
       // Loja sem Ordem de Serviço não vê o módulo. Único item gateado por
       // segmento aqui; todo o resto continua sendo só permissão.
       if (opt.id === 'services' && !usaOrdemServico.value) return false;
+      // Módulo não contratado some para todo mundo, dono incluído. Enquanto o
+      // /licenca/status não respondeu, `temModulo` devolve true — o item
+      // aparece e some se não for o caso, que é o erro barato dos dois.
+      if (opt.requiredModule && !modulosStore.temModulo(opt.requiredModule)) return false;
       return hasPermission(opt.requiredPermission);
     }),
   })).filter((section) => section.options.length > 0);

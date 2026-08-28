@@ -4,7 +4,7 @@
 # ---------------------------------------------------------------------------
 
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 from pydantic import BaseModel, Field
 
 
@@ -115,6 +115,14 @@ class LicencaStatusResponse(BaseModel):
     )
     dias_restantes_carencia: Optional[int] = Field(
         None, description="Dias que ainda faltam da carencia, quando estiver em carencia"
+    )
+    modulos: Optional[List[str]] = Field(
+        None,
+        description=(
+            "Modulos liberados para esta licenca, lidos do JWT assinado. "
+            "AUSENTE/None = token sem a claim (emitido antes dos modulos existirem) "
+            "e o frontend libera tudo. Lista VAZIA = nenhum modulo liberado."
+        ),
     )
 
 

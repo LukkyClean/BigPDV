@@ -527,6 +527,96 @@ def _carencia_vigente(licenca, agora: datetime) -> bool:
     return agora < limite
 
 
+def _decifrar_public_key(licenca: ConfiguracaoLicenca, hwid: str) -> str | None:
+    """Chave publica da licenca, ou None se nao der para le-la.
+
+    Best-effort de proposito. Quem depende dela para AUTORIZAR -- a validacao
+    offline -- tem o proprio caminho, com resgate online e erro CHAVE_CORROMPIDA.
+    Aqui ela serve so para ler claims, e nesse uso uma chave ilegivel nao pode
+    virar erro de licenca: o caminho online funciona hoje sem tocar nela, e
+    passar a exigi-la derrubaria instalacao que esta rodando bem.
+    """
+    if not licenca.public_key:
+        return None
+
+    try:
+        return decriptar_valor(licenca.public_key, hwid)
+    except Exception as e:
+        logger.warning("[licenca] public_key ilegivel para leitura de modulos: %s", e)
+        return None
+
+
+def ler_modulos_liberados(token: str | None, public_key: str | None) -> list[str] | None:
+    """Modulos que o token carrega, ou None quando nao da para saber.
+
+    None NAO e "nenhum modulo": e "nao sei", e quem consome trata como libera
+    tudo. Token emitido antes desta versao nao tem a claim, e o contrato da
+    plataforma manda tratar ausencia como acesso liberado -- o JWT vive 7 dias,
+    entao no dia em que a claim estreia boa parte da base ainda esta com token
+    antigo, e bloquear aqui esconderia o sistema de cliente pagante por uma
+    semana, sem erro aparecendo em lugar nenhum.
+
+    Lista presente e VAZIA e outra coisa e passa adiante como lista vazia:
+    significa "nenhum modulo liberado".
+
+    A assinatura E conferida. Sem isso a claim seria o unico elo forjavel entre
+    a API e o ERP: o token mora no SQLite da propria maquina do cliente, e ler
+    sem verificar deixaria qualquer um se conceder todos os modulos editando o
+    banco. Sem chave publica para conferir devolvemos None -- libera, mas por
+    nao saber, nunca por acreditar num payload nao verificado.
+    """
+    if not token or not public_key:
+        return None
+
+    try:
+        payload = jwt.decode(
+            token,
+            public_key,
+            algorithms=["RS256"],
+            # A validade ja foi decidida antes de chegar aqui: no caminho online
+            # pelo servidor, no offline pelo proprio _validar_offline. Reprovar
+            # por expiracao neste ponto so trocaria uma licenca valida por um
+            # menu vazio.
+            options={"verify_exp": False, "verify_aud": False},
+        )
+    except (JWTError, JOSEError) as e:
+        logger.warning("[licenca] Nao foi possivel ler os modulos do token: %s", e)
+        return None
+
+    modulos = payload.get("modulos")
+    if modulos is None:
+        return None
+
+    if not isinstance(modulos, list):
+        logger.warning(
+            "[licenca] Claim 'modulos' em formato inesperado (%s) -- ignorada.",
+            type(modulos).__name__,
+        )
+        return None
+
+    return [str(m) for m in modulos]
+
+
+def modulos_da_licenca(db: Session) -> list[str] | None:
+    """Modulos do token guardado, para quem precisa decidir acesso fora do /status.
+
+    Mesma regra de sempre: None = nao sei = libera. Le do token corrente a cada
+    chamada, e nao de um campo proprio, porque o token e a unica copia assinada
+    -- guardar os modulos ao lado dele criaria uma segunda verdade, que
+    envelhece e que o cliente pode editar.
+    """
+    licenca = licenca_crud.get_licenca(db)
+    if not licenca:
+        return None
+
+    try:
+        hwid = obter_hwid()
+    except RuntimeError:
+        return None
+
+    return ler_modulos_liberados(licenca.token, _decifrar_public_key(licenca, hwid))
+
+
 def _validar_offline(
     licenca: ConfiguracaoLicenca,
     public_key: str,
@@ -692,7 +782,13 @@ def verificar_licenca_ativa(db: Session) -> dict:
 
     # 4. Tentar validação online (prioridade)
     try:
-        return _tentar_conexao_remota(db, licenca, chave_ativacao, hwid)
+        resultado = _tentar_conexao_remota(db, licenca, chave_ativacao, hwid)
+        # O token acabou de ser trocado pelo que o servidor mandou: os módulos
+        # saem DELE, na hora. Quem manda é sempre o token corrente.
+        resultado["modulos"] = ler_modulos_liberados(
+            licenca.token, _decifrar_public_key(licenca, hwid)
+        )
+        return resultado
     except (httpx.ConnectError, httpx.TimeoutException) as e:
         logger.info("[licenca] Nuvem inacessível (%s), iniciando fallback offline.", e)
     except HTTPException:
@@ -716,7 +812,9 @@ def verificar_licenca_ativa(db: Session) -> dict:
             )
 
     # 6. Fallback offline
-    return _validar_offline(licenca, public_key)
+    resultado = _validar_offline(licenca, public_key)
+    resultado["modulos"] = ler_modulos_liberados(licenca.token, public_key)
+    return resultado
 
 
 # ===========================================================================

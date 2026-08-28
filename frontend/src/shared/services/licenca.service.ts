@@ -23,6 +23,16 @@ export interface LicencaStatusResponse {
   em_carencia?: boolean;
   /** Dias que ainda faltam da carência. */
   dias_restantes_carencia?: number | null;
+  /**
+   * Módulos contratados, lidos do JWT assinado da licença.
+   *
+   * AUSENTE (`undefined`/`null`) = o token não carrega a claim, ou o backend é
+   * anterior a ela. Trate como "libera tudo", nunca como lista vazia — quem
+   * cuida dessa regra é a `modulos.store`.
+   *
+   * Lista VAZIA é diferente: significa nenhum módulo liberado.
+   */
+  modulos?: string[] | null;
 }
 
 export interface LicencaErroResponse {

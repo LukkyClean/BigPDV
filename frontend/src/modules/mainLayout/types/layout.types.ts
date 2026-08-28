@@ -24,6 +24,14 @@ export interface SidebarOption {
     icon: Component;
     label: SidebarLabelOptions;
     requiredPermission?: Permissions;
+    /**
+     * Modulo contratado que este item exige (ex.: 'FINANCEIRO').
+     *
+     * Eixo diferente de `requiredPermission`: permissao diz o que ESTE
+     * funcionario pode fazer, modulo diz o que a LOJA comprou. Sem modulo o
+     * item nao aparece para ninguem, nem para o dono.
+     */
+    requiredModule?: string;
 }
 
 export interface SidebarSection {

@@ -3,6 +3,7 @@ import { useAuthStore } from '@/shared/stores/auth.store';
 import { verificarLicenca } from '@/shared/services/licenca.service';
 import { useNetworkConfigStore } from '@/shared/stores/networkConfig.store';
 import { useLicencaStore } from '@/shared/stores/licenca.store';
+import { useModulosStore } from '@/shared/stores/modulos.store';
 import { storeToRefs } from 'pinia';
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router';
 import { watch } from 'vue';
@@ -36,8 +37,12 @@ router.beforeEach(async (to) => {
 
     if (agora - ultimaVerificacaoLicenca >= INTERVALO_VERIFICACAO_MS) {
       try {
-        await verificarLicenca();
+        const licenca = await verificarLicenca();
         ultimaVerificacaoLicenca = agora;
+        // Os módulos contratados vêm de carona nesta resposta, e é aqui que
+        // eles entram na memória do app. Uma requisição própria só faria o
+        // menu piscar, já que esta chamada acontece antes de qualquer render.
+        useModulosStore().definir(licenca.modulos);
         // Voltou a valer (renovou, ou entrou em carência): sai do estado de
         // paywall sozinho, sem precisar reiniciar o sistema.
         useLicencaStore().limpar();
@@ -152,6 +157,20 @@ router.beforeEach(async (to) => {
     if (!usaOrdemServico) {
       return { name: 'home' };
     }
+  }
+
+  // -----------------------------------------------------------------------
+  // ETAPA 4: Módulos que a loja não contratou
+  // -----------------------------------------------------------------------
+  // Mesmo motivo da etapa anterior: esconder o item do menu não basta, porque
+  // digitar /financeiro na barra de endereço — ou uma aba que ficou aberta de
+  // quando a loja ainda tinha o módulo — abriria a tela assim mesmo.
+  //
+  // Manda para a home em vez de para uma tela de erro: quem não contratou não
+  // errou nada, e não há o que ele possa fazer nessa tela além de sair dela. A
+  // oferta de contratar mora no painel, com quem vende.
+  if (to.meta.exigeModulo && !useModulosStore().temModulo(to.meta.exigeModulo)) {
+    return { name: 'home' };
   }
 });
 
