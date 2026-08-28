@@ -106,15 +106,6 @@ export const SIDEBAR_SECTIONS: SidebarSection[] = [
             requiredPermission: PERMISSIONS.manageFinance,
             requiredModule: MODULOS.FINANCEIRO,
           },
-          {
-            // Onde o dinheiro fica. Sem esta tela o lojista só tinha a "Caixa
-            // da loja" semeada pelo sistema, e não conseguia cadastrar banco
-            // nem cartão -- o que deixava o tipo CARTAO_CREDITO inalcançável.
-            id: 'finance-accounts',
-            label: 'Contas e Cartões',
-            requiredPermission: PERMISSIONS.manageFinance,
-            requiredModule: MODULOS.FINANCEIRO,
-          },
         ],
       },
     ],

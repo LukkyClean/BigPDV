@@ -80,14 +80,6 @@ export async function criarContaBancaria(payload: {
   return safeParseResponse(ContaBancariaSchema, data, 'criarContaBancaria');
 }
 
-export async function atualizarContaBancaria(
-  id: number,
-  dados: { nome?: string; tipo?: string; principal?: boolean; ativo?: boolean },
-): Promise<ContaBancaria> {
-  const { data } = await api.patch(`/financeiro/contas-bancarias/${id}`, dados);
-  return safeParseResponse(ContaBancariaSchema, data, 'atualizarContaBancaria');
-}
-
 // ===========================================================================
 // CONTAS A PAGAR
 // ===========================================================================

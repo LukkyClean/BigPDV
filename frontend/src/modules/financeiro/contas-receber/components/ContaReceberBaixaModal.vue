@@ -6,6 +6,7 @@
  * nasce no dia em que o cliente pagar".
  */
 import { computed, ref, watch } from 'vue';
+import { Banknote, CreditCard, FileText, Plus, QrCode, Wallet } from 'lucide-vue-next';
 
 import BaseModal from '@/shared/components/commons/BaseModal/BaseModal.vue';
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
@@ -20,6 +21,7 @@ import { usePaymentMethodsQuery } from '@/modules/sales/composables/queries/useP
 
 import {
   useContasBancariasQuery,
+  useCriarContaBancaria,
   useReceberConta,
 } from '../../shared/composables/useFinanceiro';
 import type { ContaReceber } from '../../shared/schemas/financeiro.schema';
@@ -30,6 +32,7 @@ const emit = defineEmits<{ fechar: [] }>();
 const toast = useToast();
 const { data: contasBancarias } = useContasBancariasQuery();
 const receber = useReceberConta();
+const criarConta = useCriarContaBancaria();
 
 // O catálogo é o mesmo do PDV e da OS: reusar em vez de duplicar é o que
 // garante que a forma escolhida aqui seja a mesma que aparece no relatório.
@@ -81,9 +84,28 @@ const opcoesContas = computed(() =>
   (contasBancarias.value ?? []).map((c) => ({ value: c.id, label: c.nome })),
 );
 
-const opcoesFormas = computed(() =>
-  formasPagamento.value.filter((f) => f.ativo).map((f) => ({ value: f.id, label: f.nome })),
-);
+const formasAtivas = computed(() => formasPagamento.value.filter((f) => f.ativo));
+
+/**
+ * Mesmos ícones do PDV e da OS, de propósito.
+ *
+ * O operador já reconhece esse grid dos outros dois lugares onde recebe
+ * dinheiro; obrigá-lo a aprender um seletor diferente só porque a tela é do
+ * financeiro seria atrito sem motivo.
+ *
+ * O que NÃO se reusa é a `OSPagamentoModal` inteira: ela exige `ordemServico`,
+ * `dadosOs` e `descontoOs`, e é construída em torno de "vários pagamentos que
+ * precisam somar o total da OS". Um recebimento é um pagamento só.
+ */
+function iconeDaForma(forma: { tipo?: string | null; nome: string }) {
+  switch (forma.tipo ?? forma.nome.toUpperCase()) {
+    case 'PIX': return QrCode;
+    case 'CARTAO_CREDITO': return CreditCard;
+    case 'CARTAO_DEBITO': return Wallet;
+    case 'BOLETO': return FileText;
+    default: return Banknote;
+  }
+}
 
 /**
  * O total sobe sozinho quando há juros.
@@ -100,6 +122,36 @@ watch(jurosReais, (juros, anterior) => {
     valorReais.value = props.conta.valor / 100 + juros;
   }
 });
+
+/**
+ * Cadastro de conta SEM sair do recebimento.
+ *
+ * A conta que falta só se descobre aqui, no meio do fluxo -- e é por isso que o
+ * cadastro mora aqui, e não numa tela à parte: mandar o operador sair e voltar
+ * perderia o que ele estava fazendo, que é o atrito que faz o módulo ser
+ * abandonado.
+ */
+const cadastrandoConta = ref(false);
+const nomeNovaConta = ref('');
+const tipoNovaConta = ref('BANCO');
+
+function salvarNovaConta() {
+  const nome = nomeNovaConta.value.trim();
+  if (!nome) return;
+  criarConta.mutate(
+    { nome, tipo: tipoNovaConta.value },
+    {
+      onSuccess: (conta) => {
+        // Já deixa selecionada: quem acabou de cadastrar quer usar agora.
+        contaBancariaId.value = conta.id;
+        cadastrandoConta.value = false;
+        nomeNovaConta.value = '';
+      },
+      onError: (e: any) =>
+        toast.error(e?.response?.data?.detail ?? 'Não foi possível cadastrar a conta'),
+    },
+  );
+}
 
 /** O que de fato entra na loja: sem o juros quando ele é da operadora. */
 const entraNaLoja = computed(() => {
@@ -164,12 +216,22 @@ function confirmar() {
         </p>
       </div>
 
-      <BaseSelect
-        v-model="formaPagamentoId"
-        :options="opcoesFormas"
-        label="Como está pagando"
-        placeholder="Selecione a forma"
-      />
+      <div>
+        <p class="mb-1.5 block select-none text-xs font-medium text-gray-700">Como está pagando</p>
+        <div class="grid grid-cols-3 gap-1.5">
+          <button
+            v-for="forma in formasAtivas" :key="forma.id" type="button"
+            class="flex flex-col items-center justify-center gap-0.5 rounded-lg border-2 p-2 transition-all cursor-pointer"
+            :class="formaPagamentoId === forma.id
+              ? 'border-brand-primary bg-brand-primary/5 text-brand-primary'
+              : 'border-zinc-200 bg-white text-zinc-500 hover:border-zinc-300 hover:bg-zinc-50'"
+            @click="formaPagamentoId = forma.id"
+          >
+            <component :is="iconeDaForma(forma)" :size="15" />
+            <span class="text-[11px] font-medium leading-tight text-center">{{ forma.nome }}</span>
+          </button>
+        </div>
+      </div>
 
       <BaseMoneyInput v-model="jurosReais" label="Juros / multa" />
 
@@ -209,12 +271,56 @@ function confirmar() {
 
       <BaseInput v-model="recebidoEm" type="date" label="Data do recebimento" required />
 
-      <BaseSelect
-        v-model="contaBancariaId"
-        :options="opcoesContas"
-        label="Entrou em"
-        placeholder="Selecione a conta"
-      />
+      <div>
+        <BaseSelect
+          v-model="contaBancariaId"
+          :options="opcoesContas"
+          label="Entrou em"
+          placeholder="Selecione a conta"
+        />
+
+        <button
+          v-if="!cadastrandoConta" type="button"
+          class="mt-1.5 flex items-center gap-1 text-xs font-medium text-brand-primary cursor-pointer"
+          @click="cadastrandoConta = true"
+        >
+          <Plus :size="13" /> Cadastrar outra conta
+        </button>
+
+        <div v-else class="mt-2 flex flex-col gap-2 rounded-xl border border-gray-200 p-3">
+          <BaseInput v-model="nomeNovaConta" label="Nome da conta" placeholder="Ex.: Nubank" />
+          <div class="grid grid-cols-3 gap-1.5">
+            <button
+              v-for="op in [
+                { valor: 'CAIXA', titulo: 'Caixa' },
+                { valor: 'BANCO', titulo: 'Banco' },
+                { valor: 'CARTAO_CREDITO', titulo: 'Cartão' },
+              ]"
+              :key="op.valor" type="button"
+              class="rounded-lg border-2 px-2 py-1.5 text-xs font-medium transition cursor-pointer"
+              :class="tipoNovaConta === op.valor
+                ? 'border-brand-primary bg-brand-primary/5 text-brand-primary'
+                : 'border-zinc-200 text-zinc-500 hover:border-zinc-300'"
+              @click="tipoNovaConta = op.valor"
+            >
+              {{ op.titulo }}
+            </button>
+          </div>
+          <div class="flex justify-end gap-2">
+            <button type="button" class="text-xs text-gray-500 cursor-pointer" @click="cadastrandoConta = false">
+              Cancelar
+            </button>
+            <button
+              type="button"
+              class="text-xs font-semibold text-brand-primary disabled:opacity-40 cursor-pointer"
+              :disabled="!nomeNovaConta.trim() || criarConta.isPending.value"
+              @click="salvarNovaConta"
+            >
+              Salvar conta
+            </button>
+          </div>
+        </div>
+      </div>
 
       <p class="text-xs text-gray-400">
         Quitar uma dívida antiga não é venda no PDV. Se o dinheiro entrou na gaveta, registre

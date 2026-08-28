@@ -271,20 +271,3 @@ export function useCriarContaBancaria() {
     },
   });
 }
-
-export function useAtualizarContaBancaria() {
-  const invalidar = useInvalidarFinanceiro();
-  const toast = useToast();
-
-  return useMutation({
-    mutationFn: ({
-      id,
-      dados,
-    }: {
-      id: number;
-      dados: { nome?: string; tipo?: string; principal?: boolean; ativo?: boolean };
-    }) => service.atualizarContaBancaria(id, dados),
-    onSuccess: () => invalidar(),
-    onError: () => toast.error('Não foi possível salvar a conta'),
-  });
-}
