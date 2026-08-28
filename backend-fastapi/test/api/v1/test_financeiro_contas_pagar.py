@@ -1,0 +1,395 @@
+# ---------------------------------------------------------------------------
+# Testes do módulo de gestão financeira — Onda 1 (contas a pagar).
+#
+# O teste mais importante deste arquivo é o do ESTORNO: ele prova a regra que
+# separa este módulo de uma planilha — o livro do dinheiro só recebe INSERT, e
+# desfazer um pagamento gera um movimento contrário em vez de apagar o original.
+# Se ele um dia falhar, a trilha de auditoria deixou de existir.
+# ---------------------------------------------------------------------------
+
+from datetime import date, timedelta
+
+from starlette import status
+
+from app.db.models.conta_pagar import ContaPagar
+from app.db.models.movimentacao_financeira import MovimentacaoFinanceira
+
+TEST_USER_EMAIL = "financeiro.dono@example.com"
+TEST_USER_PASSWORD = "senhaSegura789"
+
+
+# ===========================================================================
+# HELPERS
+# ===========================================================================
+
+def _auth(client):
+    client.post("/api/v1/usuarios/", json={
+        "nome": "Dono da Oficina", "email": TEST_USER_EMAIL, "senha": TEST_USER_PASSWORD,
+    })
+    login = client.post("/api/v1/auth/login", data={
+        "username": TEST_USER_EMAIL, "password": TEST_USER_PASSWORD, "hwid": "hwid-financeiro",
+    })
+    assert login.status_code == 200, login.text
+    header = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    client.post("/api/v1/empresas/", json={
+        "razao_social": "Oficina Financeiro LTDA", "nome_fantasia": "Oficina", "is_cnpj": True,
+        "documento": "12345678000188", "regime_tributario": "Simples Nacional",
+        "celular": "11999997777", "segmento": "assistencia_tecnica",
+        "endereco": [{"logradouro": "Av. Brasil", "numero": "500", "bairro": "Centro",
+                      "cidade": "São Paulo", "estado": "SP", "cep": "01310-100"}],
+    }, headers=header)
+    return header
+
+
+def _criar_conta(client, header, **kwargs):
+    payload = {
+        "descricao": "Aluguel de setembro",
+        "valor": 250000,
+        "vencimento": (date.today() + timedelta(days=5)).isoformat(),
+    }
+    payload.update(kwargs)
+    r = client.post("/api/v1/financeiro/contas-pagar", json=payload, headers=header)
+    assert r.status_code == status.HTTP_201_CREATED, r.text
+    return r.json()
+
+
+# ===========================================================================
+# PLANO DE CONTAS
+# ===========================================================================
+
+def test_plano_de_contas_e_semeado_no_primeiro_acesso(client, db_session):
+    """Lista vazia trava o módulo no primeiro uso — por isso as padrão existem."""
+    header = _auth(client)
+
+    r = client.get("/api/v1/financeiro/plano-contas", headers=header)
+    assert r.status_code == status.HTTP_200_OK, r.text
+
+    categorias = r.json()
+    assert len(categorias) > 0, "o primeiro acesso tem que vir com categorias"
+    assert all(c["padrao"] for c in categorias)
+    assert any("Aluguel" in c["nome"] for c in categorias)
+
+
+def test_semeadura_nao_ressuscita_categoria_apagada(client, db_session):
+    """Semear pela lista vazia faria as padrão voltarem toda vez que o lojista
+    desativasse todas — e ele nunca conseguiria dizer 'não quero nenhuma'."""
+    header = _auth(client)
+
+    primeira = client.get("/api/v1/financeiro/plano-contas", headers=header).json()
+    quantidade_inicial = len(primeira)
+
+    # Desativa todas
+    for c in primeira:
+        client.patch(
+            f"/api/v1/financeiro/plano-contas/{c['id']}",
+            json={"ativo": False}, headers=header,
+        )
+
+    segunda = client.get("/api/v1/financeiro/plano-contas", headers=header).json()
+    assert len(segunda) == quantidade_inicial, "não pode semear de novo"
+    assert all(not c["ativo"] for c in segunda)
+
+
+def test_categoria_duplicada_e_recusada(client, db_session):
+    header = _auth(client)
+    client.post("/api/v1/financeiro/plano-contas",
+                json={"nome": "Contador"}, headers=header)
+    r = client.post("/api/v1/financeiro/plano-contas",
+                    json={"nome": "contador"}, headers=header)
+    assert r.status_code == status.HTTP_400_BAD_REQUEST
+
+
+# ===========================================================================
+# CADASTRO E EDIÇÃO
+# ===========================================================================
+
+def test_conta_nasce_pendente_e_sem_lancamento_no_livro(client, db_session):
+    """Cobrança não é movimento: uma conta que ainda não venceu não é dinheiro
+    que saiu, e o livro tem que continuar vazio."""
+    header = _auth(client)
+    conta = _criar_conta(client, header)
+
+    assert conta["status"] == "PENDENTE"
+    assert conta["valor_pago"] is None
+    assert conta["pago_em"] is None
+
+    movimentos = db_session.query(MovimentacaoFinanceira).all()
+    assert movimentos == [], "cadastrar conta NÃO pode escrever no livro"
+
+
+def test_conta_vencida_e_marcada_na_leitura(client, db_session):
+    """`vencida` é derivado de hoje, nunca guardado: uma coluna precisaria de
+    alguém rodando à meia-noite, e a loja passa a noite desligada."""
+    header = _auth(client)
+    conta = _criar_conta(
+        client, header, vencimento=(date.today() - timedelta(days=3)).isoformat()
+    )
+    assert conta["vencida"] is True
+    assert conta["dias_para_vencer"] == -3
+
+
+def test_alterar_vencimento_deixa_rastro(client, db_session):
+    header = _auth(client)
+    conta = _criar_conta(client, header)
+    novo = (date.today() + timedelta(days=20)).isoformat()
+
+    r = client.patch(
+        f"/api/v1/financeiro/contas-pagar/{conta['id']}",
+        json={"vencimento": novo}, headers=header,
+    )
+    assert r.status_code == status.HTTP_200_OK, r.text
+
+    hist = client.get(
+        f"/api/v1/financeiro/contas-pagar/{conta['id']}/historico", headers=header
+    ).json()
+    campos = [h["campo"] for h in hist]
+    assert "vencimento" in campos, "prorrogar boleto tem que deixar rastro"
+
+
+def test_cancelar_nao_exclui(client, db_session):
+    """'Sumiu uma conta de R$ 3.000' é a pergunta que o módulo tem que responder."""
+    header = _auth(client)
+    conta = _criar_conta(client, header)
+
+    r = client.delete(f"/api/v1/financeiro/contas-pagar/{conta['id']}", headers=header)
+    assert r.status_code == status.HTTP_200_OK, r.text
+    assert r.json()["status"] == "CANCELADA"
+
+    assert db_session.query(ContaPagar).filter_by(id=conta["id"]).first() is not None
+
+
+# ===========================================================================
+# BAIXA
+# ===========================================================================
+
+def test_baixa_gera_saida_no_livro_do_dinheiro(client, db_session):
+    header = _auth(client)
+    conta = _criar_conta(client, header)
+
+    r = client.post(
+        f"/api/v1/financeiro/contas-pagar/{conta['id']}/pagar", json={}, headers=header
+    )
+    assert r.status_code == status.HTTP_200_OK, r.text
+    paga = r.json()
+
+    assert paga["status"] == "PAGA"
+    assert paga["valor_pago"] == 250000
+    assert paga["pago_em"] is not None
+
+    movimentos = db_session.query(MovimentacaoFinanceira).all()
+    assert len(movimentos) == 1
+    assert movimentos[0].tipo == "SAIDA"
+    assert movimentos[0].origem == "DESPESA"
+    assert movimentos[0].valor == 250000
+    # Pagar fornecedor não é sangria: não pertence a turno de caixa nenhum.
+    assert movimentos[0].sessao_caixa_id is None
+
+
+def test_valor_pago_pode_diferir_do_valor_previsto(client, db_session):
+    """Juros por atraso e desconto por antecipação são a regra, não a exceção."""
+    header = _auth(client)
+    conta = _criar_conta(client, header)
+
+    r = client.post(
+        f"/api/v1/financeiro/contas-pagar/{conta['id']}/pagar",
+        json={"valor_pago": 265000}, headers=header,
+    )
+    assert r.status_code == status.HTTP_200_OK, r.text
+    assert r.json()["valor"] == 250000, "o previsto não muda"
+    assert r.json()["valor_pago"] == 265000, "o realizado é o que saiu"
+
+
+def test_conta_paga_nao_pode_ser_editada(client, db_session):
+    header = _auth(client)
+    conta = _criar_conta(client, header)
+    client.post(f"/api/v1/financeiro/contas-pagar/{conta['id']}/pagar",
+                json={}, headers=header)
+
+    r = client.patch(
+        f"/api/v1/financeiro/contas-pagar/{conta['id']}",
+        json={"valor": 100}, headers=header,
+    )
+    assert r.status_code == status.HTTP_400_BAD_REQUEST
+
+
+def test_pagar_duas_vezes_e_recusado(client, db_session):
+    header = _auth(client)
+    conta = _criar_conta(client, header)
+    url = f"/api/v1/financeiro/contas-pagar/{conta['id']}/pagar"
+
+    assert client.post(url, json={}, headers=header).status_code == 200
+    assert client.post(url, json={}, headers=header).status_code == 400
+    assert db_session.query(MovimentacaoFinanceira).count() == 1
+
+
+def test_conta_recorrente_gera_a_do_mes_seguinte_ao_dar_baixa(client, db_session):
+    """Redigitar o aluguel doze vezes por ano é o atrito que faz o módulo ser
+    abandonado. A próxima nasce com o valor ORIGINAL, não com o pago."""
+    header = _auth(client)
+    vencimento = date.today().replace(day=10)
+    conta = _criar_conta(
+        client, header, vencimento=vencimento.isoformat(), recorrente=True
+    )
+
+    client.post(f"/api/v1/financeiro/contas-pagar/{conta['id']}/pagar",
+                json={"valor_pago": 999999}, headers=header)
+
+    lista = client.get("/api/v1/financeiro/contas-pagar?status=PENDENTE",
+                       headers=header).json()
+    assert lista["total_itens"] == 1
+    proxima = lista["itens"][0]
+    assert proxima["valor"] == 250000, "a próxima usa o previsto, não o pago"
+    assert proxima["vencimento"] > vencimento.isoformat()
+    assert proxima["recorrente"] is True
+
+
+# ===========================================================================
+# ESTORNO — o teste que prova a imutabilidade do livro
+# ===========================================================================
+
+def test_estorno_nao_apaga_o_lancamento_original(client, db_session):
+    header = _auth(client)
+    conta = _criar_conta(client, header)
+    client.post(f"/api/v1/financeiro/contas-pagar/{conta['id']}/pagar",
+                json={}, headers=header)
+
+    r = client.post(
+        f"/api/v1/financeiro/contas-pagar/{conta['id']}/estornar",
+        json={"motivo": "lancado na conta errada"}, headers=header,
+    )
+    assert r.status_code == status.HTTP_200_OK, r.text
+
+    # A conta volta a dever
+    assert r.json()["status"] == "PENDENTE"
+    assert r.json()["valor_pago"] is None
+    assert r.json()["pago_em"] is None
+
+    # O livro tem DOIS lançamentos: o original intacto e o contrário.
+    movimentos = db_session.query(MovimentacaoFinanceira).order_by(
+        MovimentacaoFinanceira.id
+    ).all()
+    assert len(movimentos) == 2, "estorno INSERE, nunca apaga"
+    assert movimentos[0].tipo == "SAIDA"
+    assert movimentos[1].tipo == "ENTRADA"
+    assert movimentos[0].valor == movimentos[1].valor
+    assert "Estorno" in (movimentos[1].motivo or "")
+
+
+def test_estorno_exige_motivo(client, db_session):
+    header = _auth(client)
+    conta = _criar_conta(client, header)
+    client.post(f"/api/v1/financeiro/contas-pagar/{conta['id']}/pagar",
+                json={}, headers=header)
+
+    r = client.post(f"/api/v1/financeiro/contas-pagar/{conta['id']}/estornar",
+                    json={}, headers=header)
+    assert r.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+
+def test_nao_estorna_conta_que_nao_foi_paga(client, db_session):
+    header = _auth(client)
+    conta = _criar_conta(client, header)
+    r = client.post(f"/api/v1/financeiro/contas-pagar/{conta['id']}/estornar",
+                    json={"motivo": "engano"}, headers=header)
+    assert r.status_code == status.HTTP_400_BAD_REQUEST
+
+
+def test_conta_volta_a_ser_pagavel_depois_do_estorno(client, db_session):
+    """O ciclo completo: paga, estorna, paga de novo. Três lançamentos no livro."""
+    header = _auth(client)
+    conta = _criar_conta(client, header)
+    base = f"/api/v1/financeiro/contas-pagar/{conta['id']}"
+
+    client.post(f"{base}/pagar", json={}, headers=header)
+    client.post(f"{base}/estornar", json={"motivo": "valor errado"}, headers=header)
+    r = client.post(f"{base}/pagar", json={"valor_pago": 240000}, headers=header)
+
+    assert r.status_code == status.HTTP_200_OK, r.text
+    assert r.json()["valor_pago"] == 240000
+    assert db_session.query(MovimentacaoFinanceira).count() == 3
+
+
+# ===========================================================================
+# LISTAGEM E RESUMO
+# ===========================================================================
+
+def test_totais_vem_do_filtro_inteiro_e_nao_da_pagina(client, db_session):
+    """Somar no frontend daria o total da página; a diferença só apareceria
+    quando a loja já tivesse contas o bastante para paginar."""
+    header = _auth(client)
+    for i in range(5):
+        _criar_conta(client, header, descricao=f"Conta {i}", valor=10000)
+
+    r = client.get("/api/v1/financeiro/contas-pagar?limit=2", headers=header)
+    dados = r.json()
+
+    assert len(dados["itens"]) == 2, "a página respeita o limite"
+    assert dados["total_itens"] == 5
+    assert dados["total_pendente"] == 50000, "o total ignora a paginação"
+
+
+def test_totais_ignoram_o_filtro_de_status(client, db_session):
+    """O rodapé mostra pendente, pago e vencido lado a lado — aplicar o status
+    faria dois deles virarem zero sempre que o usuário filtrasse por um."""
+    header = _auth(client)
+    a = _criar_conta(client, header, descricao="A", valor=10000)
+    _criar_conta(client, header, descricao="B", valor=30000)
+    client.post(f"/api/v1/financeiro/contas-pagar/{a['id']}/pagar",
+                json={}, headers=header)
+
+    dados = client.get("/api/v1/financeiro/contas-pagar?status=PENDENTE",
+                       headers=header).json()
+    assert dados["total_itens"] == 1
+    assert dados["total_pendente"] == 30000
+    assert dados["total_pago"] == 10000, "o pago continua visível no rodapé"
+
+
+def test_resumo_desconta_a_despesa_do_faturamento(client, db_session):
+    header = _auth(client)
+    conta = _criar_conta(client, header, valor=80000)
+    client.post(f"/api/v1/financeiro/contas-pagar/{conta['id']}/pagar",
+                json={}, headers=header)
+
+    hoje = date.today().isoformat()
+    r = client.get(
+        f"/api/v1/financeiro/resumo?inicio={hoje}&fim={hoje}", headers=header
+    )
+    assert r.status_code == status.HTTP_200_OK, r.text
+    resumo = r.json()
+
+    assert resumo["despesas_pagas"] == 80000
+    # Sem vendas no período, o resultado é o negativo da despesa — e o módulo
+    # tem que conseguir dizer isso em vez de mostrar zero.
+    assert resumo["resultado"] == resumo["faturamento"] - 80000
+    assert resumo["a_pagar_pendente"] == 0
+
+
+def test_resumo_agrupa_despesa_por_categoria(client, db_session):
+    header = _auth(client)
+    categorias = client.get("/api/v1/financeiro/plano-contas", headers=header).json()
+    aluguel = next(c for c in categorias if "Aluguel" in c["nome"])
+
+    conta = _criar_conta(client, header, valor=120000, plano_conta_id=aluguel["id"])
+    client.post(f"/api/v1/financeiro/contas-pagar/{conta['id']}/pagar",
+                json={}, headers=header)
+
+    hoje = date.today().isoformat()
+    resumo = client.get(
+        f"/api/v1/financeiro/resumo?inicio={hoje}&fim={hoje}", headers=header
+    ).json()
+
+    linha = next(c for c in resumo["despesas_por_categoria"] if c["nome"] == aluguel["nome"])
+    assert linha["total"] == 120000
+
+
+def test_conta_bancaria_padrao_e_criada_sozinha(client, db_session):
+    """O lojista que só usa dinheiro nunca vai cadastrar banco nenhum, e sem
+    nenhuma conta a baixa exigiria criar uma antes."""
+    header = _auth(client)
+    r = client.get("/api/v1/financeiro/contas-bancarias", headers=header)
+    assert r.status_code == status.HTTP_200_OK, r.text
+
+    contas = r.json()
+    assert len(contas) == 1
+    assert contas[0]["tipo"] == "CAIXA"
+    assert contas[0]["principal"] is True

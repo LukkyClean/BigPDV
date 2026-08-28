@@ -70,6 +70,22 @@ class MovimentacaoFinanceira(Base):
         doc="Turno de caixa em que o movimento caiu; NULL se não passou pela gaveta",
     )
 
+    # Onde o dinheiro está DEPOIS do movimento. Complementa `sessao_caixa_id`,
+    # que só sabe dizer "passou por um turno de gaveta ou não" -- e isso responde
+    # por uma gaveta, não por uma loja que também tem conta no banco.
+    #
+    # NULL nas linhas antigas e em tudo que a Onda 1 não alcançar. É o mesmo
+    # tipo de lacuna admitida em `ordem_servico_pagamentos.data_pagamento`:
+    # inventar a conta de origem de um movimento passado seria pior que
+    # reconhecer que não se sabe.
+    conta_bancaria_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("contas_bancarias.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        doc="Conta de onde o dinheiro saiu ou para onde entrou",
+    )
+
     # --- A cobrança que causou (quando houve uma) ---
     # SET NULL em tudo, nunca CASCADE: linha de dinheiro não pode desaparecer
     # porque o documento que a originou foi apagado.

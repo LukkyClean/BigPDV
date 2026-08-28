@@ -18,6 +18,7 @@ from app.api.v1.endpoints import cargo
 from app.api.v1.endpoints import usuario
 from app.api.v1.endpoints import ordem_servico
 from app.api.v1.endpoints import forma_pagamento
+from app.api.v1.endpoints import financeiro
 from app.api.v1.endpoints import sessao_caixa
 from app.api.v1.endpoints import terminal
 from app.api.v1.endpoints import venda
@@ -118,3 +119,8 @@ router.include_router(checklist_mobile.router, prefix="/checklist", tags=["Check
 # Inclui o roteador de backup sob o prefixo /backup
 # Restauracao de cadeia vinda da nuvem — exclusivo do Master
 router.include_router(backup.router, prefix="/backup", tags=["Backup"])
+
+# Inclui o roteador de Gestao Financeira sob o prefixo /financeiro
+# Contas a pagar, plano de contas e contas bancarias. TODA rota exige o modulo
+# FINANCEIRO na licenca (403 MODULO_NAO_CONTRATADO) alem da permissao do cargo.
+router.include_router(financeiro.router, prefix="/financeiro", tags=["Financeiro"])

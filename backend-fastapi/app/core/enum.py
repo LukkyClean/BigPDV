@@ -219,3 +219,41 @@ class MovimentacaoFinanceiraOrigem(str, enum.Enum):
     # tabela não precise ser alterada quando ele chegar.
     RECEBIMENTO = "RECEBIMENTO"    # baixa de conta a receber (fiado, boleto)
     DESPESA = "DESPESA"            # conta a pagar (aluguel, fornecedor)
+
+
+# ===========================================================================
+# GESTÃO FINANCEIRA
+# ===========================================================================
+
+class PlanoContaTipo(str, enum.Enum):
+    """Natureza de uma categoria do plano de contas.
+
+    É o que permite ao resultado do mês dizer ONDE o dinheiro foi, e não só
+    quanto saiu. Sem isso, "gastei R$ 12 mil" não separa aluguel de mercadoria,
+    e a conversa sobre onde cortar não acontece.
+    """
+    DESPESA = "DESPESA"
+    RECEITA = "RECEITA"
+
+
+class ContaBancariaTipo(str, enum.Enum):
+    """Onde o dinheiro fica parado.
+
+    Existe desde a primeira versão porque fluxo de caixa que não sabe se o
+    dinheiro está na gaveta ou no banco é meia resposta -- e acrescentar a
+    coluna depois, com lançamento de loja dentro, sai caro.
+    """
+    CAIXA = "CAIXA"    # espécie na loja
+    BANCO = "BANCO"    # conta corrente, poupança ou conta digital
+
+
+class ContaPagarStatus(str, enum.Enum):
+    """Situação de uma conta a pagar.
+
+    PAGA não é o fim da linha: o estorno devolve a conta para PENDENTE, e é
+    assim que um pagamento lançado errado se corrige -- editando a conta, nunca
+    apagando a linha do livro que ela gerou.
+    """
+    PENDENTE = "PENDENTE"
+    PAGA = "PAGA"
+    CANCELADA = "CANCELADA"
