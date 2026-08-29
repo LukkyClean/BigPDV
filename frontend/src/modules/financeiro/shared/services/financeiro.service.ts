@@ -267,3 +267,13 @@ export async function listarExtrato(filtros: ExtratoFiltros = {}): Promise<Extra
   const { data } = await api.get('/financeiro/extrato', { params });
   return safeParseResponse(ExtratoSchema, data, 'listarExtrato');
 }
+
+/**
+ * Cala um alerta do painel por alguns dias.
+ *
+ * Não existe "dispensar para sempre", e a ausência é deliberada: alerta
+ * financeiro que some de vez vira problema escondido.
+ */
+export async function adiarAlerta(codigo: string, dias = 7): Promise<void> {
+  await api.post(`/financeiro/alertas/${codigo}/adiar`, null, { params: { dias } });
+}

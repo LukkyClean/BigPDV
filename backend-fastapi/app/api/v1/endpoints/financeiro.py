@@ -673,3 +673,34 @@ def listar_extrato(
             limit=limit, offset=offset,
         ),
     )
+
+
+@router.post(
+    "/alertas/{codigo}/adiar",
+    summary="Cala um alerta do painel por alguns dias",
+)
+def adiar_alerta(
+    codigo: str = Path(..., description="Código do alerta (ver AlertaFinanceiro)"),
+    dias: int = Query(
+        7, ge=1, le=90,
+        description="Por quantos dias calar. Teto de 90: silêncio longo demais vira problema escondido",
+    ),
+    usuario_token: dict = Depends(check_permission(required_permission=PERMISSAO_GERIR)),
+    db: Session = Depends(get_db),
+):
+    """Adia, nunca dispensa para sempre.
+
+    É o snooze do portlet de lembretes do NetSuite, com uma diferença
+    deliberada: lá dá para dispensar de vez; aqui não. Alerta financeiro que
+    some para sempre vira problema escondido — o prazo devolve o aviso, e se o
+    problema tiver sido resolvido no meio tempo ele nem reaparece.
+
+    Exige `manage_financeiro`: calar o aviso da loja inteira não é ação de quem
+    só consulta.
+    """
+    return _handle_db_transaction(
+        db,
+        lambda db_: financeiro_service.adiar_alerta(
+            db_, usuario_token["empresa_id"], codigo, dias, usuario_token
+        ),
+    )

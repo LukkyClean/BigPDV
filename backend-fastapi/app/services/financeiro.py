@@ -767,11 +767,42 @@ def estornar_pagamento(
 # couberam um fim de semana de vendas e as contas do começo do mês.
 DIAS_ATE_O_SALDO_ENVELHECER = 7
 
+# ---------------------------------------------------------------------------
+# COMO A GRAVIDADE É DECIDIDA
+#
+# Business Central resolve isto com os "Cues": o indicador muda de cor por
+# LIMIAR, e não pelo tipo do dado. Copiamos a ideia e jogamos fora a execução —
+# lá o administrador DIGITA os limiares numa tela de setup, e lojista nenhum vai
+# abrir uma tela para digitar quanto é muito dinheiro. Aqui o limiar sai do
+# porte da própria loja: uma padaria e uma concessionária ganham gravidades
+# diferentes sem ninguém configurar nada.
+#
+# Do Odoo vem a segunda metade: nas atividades dele a cor vem do PRAZO (verde no
+# futuro, laranja hoje, vermelho atrasado). Por isso valor e tempo decidem
+# juntos — R$ 80 vencidos há três meses é grave, e R$ 80 vencidos ontem não é.
+# ---------------------------------------------------------------------------
+
+# 10% do que a loja fatura no mês. Abaixo disso, é ruído para ela.
+FRACAO_MATERIAL_DO_FATURAMENTO = 0.10
+
+# Piso, para a loja parada (ou no primeiro mês de uso): sem ele, 10% de zero
+# faria QUALQUER centavo vencido virar alerta crítico.
+PISO_VALOR_MATERIAL = 20000  # R$ 200,00
+
+# Um mês de atraso é grave por si só, custe o que custar: já passou de
+# esquecimento para inadimplência.
+DIAS_DE_ATRASO_GRAVE = 30
+
+# Dentro de uma semana já não dá para "resolver depois" — é o horizonte em que
+# adiar uma conta ou cobrar um cliente ainda muda o desfecho.
+DIAS_ATE_O_APERTO_SER_URGENTE = 7
+
 
 def _montar_alertas(
     db: Session,
     empresa_id: int,
     *,
+    faturamento: int,
     resultado: int,
     a_pagar_vencido: int,
     a_receber_vencido: int,
@@ -786,10 +817,28 @@ def _montar_alertas(
     importava. Na dúvida, fica de fora.
 
     Não é IA e não deve ser vendido como tal: são regras explícitas, com limiar
-    escrito e defensável.
+    escrito e defensável -- ver o bloco de constantes acima.
     """
     alertas: List[AlertaFinanceiro] = []
     hoje = hoje_local()
+
+    # O que é "muito dinheiro" PARA ESTA LOJA. É o limiar do Business Central,
+    # só que derivado em vez de digitado.
+    material = max(
+        int(faturamento * FRACAO_MATERIAL_DO_FATURAMENTO), PISO_VALOR_MATERIAL
+    )
+
+    def _dias_de_atraso(*, receber: bool) -> int:
+        mais_antigo = financeiro_crud.vencimento_mais_antigo_pendente(
+            db, empresa_id, hoje=hoje, receber=receber
+        )
+        return (hoje - mais_antigo).days if mais_antigo else 0
+
+    def _gravidade(valor: int, dias: int) -> str:
+        """Valor material OU atraso longo. Qualquer um dos dois basta."""
+        if valor >= material or dias >= DIAS_DE_ATRASO_GRAVE:
+            return "CRITICO"
+        return "ATENCAO"
 
     # 1. O DINHEIRO VAI ACABAR. O mais grave que o módulo sabe dizer, e o único
     #    que olha para frente. Só existe com FINANCEIRO_PRO (é o Fluxo de Caixa
@@ -798,28 +847,42 @@ def _montar_alertas(
     if com_projecao:
         fluxo = get_fluxo_caixa(db, empresa_id, dias=30)
         if fluxo.saldo_declarado and fluxo.primeiro_dia_negativo:
+            faltam = (fluxo.primeiro_dia_negativo - hoje).days
             alertas.append(
                 AlertaFinanceiro(
                     codigo="CAIXA_NEGATIVO",
-                    severidade="CRITICO",
+                    # Longe ainda dá para resolver sem susto; dentro da semana,
+                    # não. A urgência vem do prazo, como nas atividades do Odoo.
+                    severidade=(
+                        "CRITICO" if faltam <= DIAS_ATE_O_APERTO_SER_URGENTE else "ATENCAO"
+                    ),
                     data=fluxo.primeiro_dia_negativo,
                     valor=fluxo.menor_saldo,
+                    quantidade=faltam,
                 )
             )
 
     # 2. Dívida vencida: já passou do prazo e continua devida.
     if a_pagar_vencido > 0:
+        dias = _dias_de_atraso(receber=False)
         alertas.append(
             AlertaFinanceiro(
-                codigo="CONTAS_VENCIDAS", severidade="CRITICO", valor=a_pagar_vencido
+                codigo="CONTAS_VENCIDAS",
+                severidade=_gravidade(a_pagar_vencido, dias),
+                valor=a_pagar_vencido,
+                quantidade=dias,
             )
         )
 
     # 3. Fiado atrasado: dinheiro na rua que já deveria ter voltado.
     if a_receber_vencido > 0:
+        dias = _dias_de_atraso(receber=True)
         alertas.append(
             AlertaFinanceiro(
-                codigo="FIADO_ATRASADO", severidade="ATENCAO", valor=a_receber_vencido
+                codigo="FIADO_ATRASADO",
+                severidade=_gravidade(a_receber_vencido, dias),
+                valor=a_receber_vencido,
+                quantidade=dias,
             )
         )
 
@@ -828,12 +891,15 @@ def _montar_alertas(
     if resultado < 0:
         alertas.append(
             AlertaFinanceiro(
-                codigo="MES_NO_VERMELHO", severidade="ATENCAO", valor=resultado
+                codigo="MES_NO_VERMELHO",
+                severidade="CRITICO" if -resultado >= material else "ATENCAO",
+                valor=resultado,
             )
         )
 
     # 5 e 6. O saldo é a base de toda projeção. Nunca informado é pior que
-    #        desatualizado, e por isso são dois alertas e não um.
+    #        desatualizado, e por isso são dois alertas e não um. Nenhum dos
+    #        dois é CRÍTICO: é falta de informação, não perda de dinheiro.
     contas = financeiro_crud.listar_contas_bancarias(db, empresa_id, apenas_ativas=True)
     datas = [c.saldo_informado_em for c in contas if c.saldo_informado_em]
     if not datas:
@@ -854,7 +920,8 @@ def _montar_alertas(
             )
 
     # 7. Gasto sem categoria: o gráfico "para onde o dinheiro foi" não responde
-    #    nada enquanto a maior fatia se chamar "Sem categoria".
+    #    nada enquanto a maior fatia se chamar "Sem categoria". Nunca crítico --
+    #    é organização, não dinheiro em risco.
     sem_categoria = next(
         (c for c in categorias if c.plano_conta_id is None and c.total > 0), None
     )
@@ -866,9 +933,51 @@ def _montar_alertas(
             )
         )
 
+    # O SILÊNCIO PEDIDO PELO DONO, aplicado no fim de propósito: o alerta é
+    # calculado de qualquer jeito e só então some da lista. Assim, quando o
+    # prazo expira, ele volta com o número de HOJE -- e não com o de quando foi
+    # silenciado.
+    calados = financeiro_crud.codigos_dispensados(db, empresa_id, hoje)
+    alertas = [a for a in alertas if a.codigo not in calados]
+
     # Crítico antes de atenção, preservando a ordem de urgência dentro de cada
     # grupo (o `sorted` do Python é estável).
     return sorted(alertas, key=lambda a: 0 if a.severidade == "CRITICO" else 1)
+
+
+# Só estes códigos podem ser silenciados. Lista fechada para a rota não virar
+# porta de entrada de linha inventada na tabela.
+CODIGOS_DE_ALERTA = (
+    "CAIXA_NEGATIVO",
+    "CONTAS_VENCIDAS",
+    "FIADO_ATRASADO",
+    "MES_NO_VERMELHO",
+    "SALDO_NUNCA_INFORMADO",
+    "SALDO_DESATUALIZADO",
+    "DESPESA_SEM_CATEGORIA",
+)
+
+
+def adiar_alerta(
+    db: Session, empresa_id: int, codigo: str, dias: int, usuario_token: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Cala um alerta por `dias`. Nunca para sempre.
+
+    "Dispensar de vez" não existe aqui, e a diferença é de propósito: alerta
+    financeiro que some para sempre vira problema escondido. O prazo devolve o
+    aviso; se o problema tiver sido resolvido no meio tempo, ele nem reaparece,
+    porque a regra deixou de valer.
+    """
+    if codigo not in CODIGOS_DE_ALERTA:
+        raise BadRequestException(detail="Alerta desconhecido.")
+
+    func_id, func_nome = _funcionario_do_token(usuario_token)
+    ate = hoje_local() + timedelta(days=dias)
+    registro = financeiro_crud.dispensar_alerta(
+        db, empresa_id, codigo=codigo, ate=ate,
+        funcionario_id=func_id, funcionario_nome=func_nome,
+    )
+    return {"codigo": registro.codigo, "dispensado_ate": registro.dispensado_ate}
 
 
 def get_resumo(
@@ -963,6 +1072,7 @@ def get_resumo(
         proximas_a_vencer=[_serializar_conta(c, hoje) for c in proximas],
         alertas=_montar_alertas(
             db, empresa_id,
+            faturamento=faturamento,
             resultado=faturamento - despesas,
             a_pagar_vencido=vencido,
             a_receber_vencido=a_receber_vencido,

@@ -12,17 +12,19 @@
  */
 import { computed } from 'vue';
 import { useRouter } from 'vue-router';
-import { AlertTriangle, ArrowRight, CircleAlert } from 'lucide-vue-next';
+import { AlertTriangle, ArrowRight, BellOff, CircleAlert } from 'lucide-vue-next';
 
 import { formatCurrency } from '@/shared/utils/finance';
 import { formatDataPura } from '@/shared/utils/date.utils';
 
+import { useAdiarAlerta } from '../composables/useFinanceiro';
 import type { AlertaFinanceiro } from '../schemas/financeiro.schema';
 
 const props = defineProps<{ alertas: AlertaFinanceiro[] }>();
 const emit = defineEmits<{ informarSaldo: [] }>();
 
 const router = useRouter();
+const adiar = useAdiarAlerta();
 
 interface Texto {
   titulo: string;
@@ -32,6 +34,22 @@ interface Texto {
   evento?: 'informarSaldo';
 }
 
+/** "ontem", "há 12 dias", "há 3 meses" — o texto que gradua a urgência. */
+function haQuantoTempo(dias?: number | null): string {
+  const d = dias ?? 0;
+  if (d <= 0) return 'hoje';
+  if (d === 1) return 'ontem';
+  if (d < 60) return `há ${d} dias`;
+  return `há ${Math.floor(d / 30)} meses`;
+}
+
+function emQuantoTempo(dias?: number | null): string {
+  const d = dias ?? 0;
+  if (d <= 0) return 'Hoje';
+  if (d === 1) return 'Amanhã';
+  return `Em ${d} dias`;
+}
+
 function traduzir(alerta: AlertaFinanceiro): Texto | null {
   const valor = formatCurrency(Math.abs(alerta.valor ?? 0));
 
@@ -39,21 +57,23 @@ function traduzir(alerta: AlertaFinanceiro): Texto | null {
     case 'CAIXA_NEGATIVO':
       return {
         titulo: `O dinheiro acaba em ${formatDataPura(alerta.data ?? '')}`,
-        detalhe: `Pelo que está agendado, o saldo fica negativo nesse dia e chega a ${valor}. Dá para adiar uma conta, cobrar um fiado ou reforçar o caixa até lá.`,
+        detalhe: `${emQuantoTempo(alerta.quantidade)}, pelo que está agendado, o saldo fica negativo e chega a ${valor}. Dá para adiar uma conta, cobrar um fiado ou reforçar o caixa até lá.`,
         acao: 'Ver a projeção',
         rota: 'finance-cashflow',
       };
     case 'CONTAS_VENCIDAS':
       return {
         titulo: `${valor} em contas vencidas`,
-        detalhe: 'Passou do vencimento e continua devido. Quanto mais tempo, maior a multa.',
+        // O TEMPO é metade da gravidade, não enfeite: R$ 80 vencidos ontem e
+        // R$ 80 vencidos há três meses são problemas diferentes.
+        detalhe: `A mais antiga venceu ${haQuantoTempo(alerta.quantidade)}. Quanto mais tempo, maior a multa.`,
         acao: 'Ver contas a pagar',
         rota: 'finance-payable',
       };
     case 'FIADO_ATRASADO':
       return {
         titulo: `${valor} atrasado a receber`,
-        detalhe: 'Dinheiro seu que já deveria ter voltado. Cobrar cedo é o que separa atraso de calote.',
+        detalhe: `O mais antigo venceu ${haQuantoTempo(alerta.quantidade)}. Cobrar cedo é o que separa atraso de calote.`,
         acao: 'Ver quem deve',
         rota: 'finance-receivable',
       };
@@ -134,15 +154,36 @@ function agir(item: { alerta: AlertaFinanceiro; texto: Texto }) {
           </div>
         </div>
 
-        <button
-          v-if="item.texto.acao"
-          type="button"
-          class="flex shrink-0 items-center gap-1 text-xs font-semibold text-brand-primary cursor-pointer hover:underline underline-offset-2"
-          @click="agir(item)"
-        >
-          {{ item.texto.acao }} <ArrowRight :size="13" />
-        </button>
+        <div class="flex shrink-0 items-center gap-4">
+          <!-- ADIAR, e nunca "dispensar": o aviso volta em 7 dias se o
+               problema continuar. Sem esta saída, o alerta que o dono decidiu
+               não resolver grita todos os dias — e é assim que ele aprende a
+               ignorar o painel inteiro. -->
+          <button
+            type="button"
+            class="flex items-center gap-1 text-xs font-medium text-gray-400 cursor-pointer hover:text-gray-700"
+            title="Adiar por 7 dias"
+            :disabled="adiar.isPending.value"
+            @click="adiar.mutate({ codigo: item.alerta.codigo, dias: 7 })"
+          >
+            <BellOff :size="13" /> Adiar
+          </button>
+
+          <button
+            v-if="item.texto.acao"
+            type="button"
+            class="flex items-center gap-1 text-xs font-semibold text-brand-primary cursor-pointer hover:underline underline-offset-2"
+            @click="agir(item)"
+          >
+            {{ item.texto.acao }} <ArrowRight :size="13" />
+          </button>
+        </div>
       </li>
     </ul>
+
+    <p class="mt-3 text-xs text-gray-400">
+      Adiar cala o aviso por 7 dias. Se o problema continuar, ele volta — com o número
+      daquele dia, não com o de hoje.
+    </p>
   </section>
 </template>

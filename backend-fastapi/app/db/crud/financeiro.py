@@ -16,6 +16,7 @@ from app.core.enum import (
     MovimentacaoFinanceiraOrigem,
     MovimentacaoFinanceiraTipo,
 )
+from app.db.models.alerta_dispensado import AlertaDispensado
 from app.db.models.conta_bancaria import ContaBancaria
 from app.db.models.conta_pagar import ContaPagar
 from app.db.models.conta_receber import ContaReceber
@@ -790,3 +791,83 @@ def total_entrou_no_caixa(db: Session, empresa_id: int, inicio, fim) -> int:
     return _soma(MovimentacaoFinanceiraTipo.ENTRADA.value) - _soma(
         MovimentacaoFinanceiraTipo.SAIDA.value
     )
+
+
+# ===========================================================================
+# ALERTAS — o atraso mais antigo e o silenciamento
+# ===========================================================================
+
+def vencimento_mais_antigo_pendente(
+    db: Session, empresa_id: int, *, hoje: date, receber: bool = False
+) -> Optional[date]:
+    """A conta vencida há mais tempo. É o que gradua a gravidade.
+
+    Business Central deixa o admin digitar o limiar do indicador; aqui a
+    pergunta "isto é grave?" se responde com o próprio dado -- e o tempo de
+    atraso é metade da resposta (a outra metade é o valor).
+    """
+    if receber:
+        q = db.query(func.min(ContaReceber.vencimento)).filter(
+            ContaReceber.empresa_id == empresa_id,
+            ContaReceber.status == ContaReceberStatus.PENDENTE.value,
+            ContaReceber.vencimento < hoje,
+        )
+    else:
+        q = db.query(func.min(ContaPagar.vencimento)).filter(
+            ContaPagar.empresa_id == empresa_id,
+            ContaPagar.status == ContaPagarStatus.PENDENTE.value,
+            ContaPagar.vencimento < hoje,
+        )
+    return q.scalar()
+
+
+def codigos_dispensados(db: Session, empresa_id: int, hoje: date) -> set:
+    """Alertas silenciados que ainda não venceram o prazo."""
+    linhas = (
+        db.query(AlertaDispensado.codigo)
+        .filter(
+            AlertaDispensado.empresa_id == empresa_id,
+            AlertaDispensado.dispensado_ate >= hoje,
+        )
+        .all()
+    )
+    return {linha[0] for linha in linhas}
+
+
+def dispensar_alerta(
+    db: Session,
+    empresa_id: int,
+    *,
+    codigo: str,
+    ate: date,
+    funcionario_id: Optional[int] = None,
+    funcionario_nome: Optional[str] = None,
+) -> AlertaDispensado:
+    """Silencia (ou re-silencia) um alerta até a data.
+
+    Uma linha por empresa/código: adiar de novo ESTENDE o prazo em vez de
+    empilhar linhas. Histórico de quem calou o quê é assunto da trilha de
+    auditoria, não desta tabela, que existe só para responder "mostrar ou não".
+    """
+    existente = (
+        db.query(AlertaDispensado)
+        .filter(
+            AlertaDispensado.empresa_id == empresa_id,
+            AlertaDispensado.codigo == codigo,
+        )
+        .first()
+    )
+    if existente:
+        existente.dispensado_ate = ate
+        existente.funcionario_id = funcionario_id
+        existente.funcionario_nome = funcionario_nome
+        db.flush()
+        return existente
+
+    registro = AlertaDispensado(
+        empresa_id=empresa_id, codigo=codigo, dispensado_ate=ate,
+        funcionario_id=funcionario_id, funcionario_nome=funcionario_nome,
+    )
+    db.add(registro)
+    db.flush()
+    return registro

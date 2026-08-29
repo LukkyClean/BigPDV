@@ -337,3 +337,124 @@ def test_loja_em_dia_nao_recebe_alerta_nenhum(client, db_session):
     _informar_saldo(client, header, 100000)
 
     assert _alertas(client, header) == {}
+
+
+# ===========================================================================
+# GRAVIDADE POR LIMIAR (Business Central) E TEMPO (Odoo)
+#
+# O Business Central colore o "Cue" por limiar, e o limiar e DIGITADO pelo
+# administrador. Aqui ele e derivado do porte da loja -- lojista nao abre tela
+# de setup para dizer quanto e muito dinheiro. Do Odoo vem a outra metade: nas
+# atividades dele a cor sai do PRAZO, entao valor e tempo decidem juntos.
+# ===========================================================================
+
+def test_valor_pequeno_para_a_loja_nao_e_critico(client, db_session):
+    """R$ 50 vencidos ontem nao acorda ninguem."""
+    header = _auth(client)
+    _informar_saldo(client, header, 100000)
+    _pagar(client, header, 5000, dias=-1, descricao="Cafe")
+
+    assert _alertas(client, header)["CONTAS_VENCIDAS"]["severidade"] == "ATENCAO"
+
+
+def test_valor_material_para_a_loja_e_critico(client, db_session):
+    """Acima do piso de R$ 200 (a loja de teste nao fatura), vira critico."""
+    header = _auth(client)
+    _informar_saldo(client, header, 100000)
+    _pagar(client, header, 25000, dias=-1, descricao="Fornecedor")
+
+    assert _alertas(client, header)["CONTAS_VENCIDAS"]["severidade"] == "CRITICO"
+
+
+def test_atraso_longo_e_critico_mesmo_com_valor_pequeno(client, db_session):
+    """A metade do Odoo: R$ 50 vencidos ha tres meses e outro problema.
+
+    Valor OU tempo -- qualquer um dos dois basta. Sem esta regra, a divida
+    pequena e antiga (a que vira negativacao) ficaria para sempre em cinza.
+    """
+    header = _auth(client)
+    _informar_saldo(client, header, 100000)
+    _pagar(client, header, 5000, dias=-95, descricao="Cafe esquecido")
+
+    alerta = _alertas(client, header)["CONTAS_VENCIDAS"]
+    assert alerta["severidade"] == "CRITICO"
+    assert alerta["quantidade"] == 95, "o tempo viaja para a tela graduar o texto"
+
+
+def test_aperto_distante_e_atencao_e_nao_critico(client, db_session):
+    """Faltando 20 dias ainda da para agir sem susto."""
+    header = _auth(client)
+    _informar_saldo(client, header, 30000)
+    _pagar(client, header, 50000, dias=20, descricao="Aluguel")
+
+    alerta = _alertas(client, header)["CAIXA_NEGATIVO"]
+    assert alerta["severidade"] == "ATENCAO"
+    assert alerta["quantidade"] == 20
+
+
+# ===========================================================================
+# ADIAR (o snooze do NetSuite, sem o "dispensar para sempre")
+# ===========================================================================
+
+def test_adiar_cala_o_alerta_e_ele_volta_depois(client, db_session):
+    from app.db.models.alerta_dispensado import AlertaDispensado
+
+    header = _auth(client)
+    _informar_saldo(client, header, 100000)
+    _pagar(client, header, 25000, dias=-2)
+    assert "CONTAS_VENCIDAS" in _alertas(client, header)
+
+    r = client.post("/api/v1/financeiro/alertas/CONTAS_VENCIDAS/adiar?dias=7",
+                    headers=header)
+    assert r.status_code == status.HTTP_200_OK, r.text
+    assert "CONTAS_VENCIDAS" not in _alertas(client, header)
+
+    # Vencido o prazo, o aviso volta -- e volta com o numero de HOJE, porque o
+    # alerta e recalculado e so entao filtrado.
+    registro = db_session.query(AlertaDispensado).one()
+    registro.dispensado_ate = date.today() - timedelta(days=1)
+    db_session.commit()
+
+    assert "CONTAS_VENCIDAS" in _alertas(client, header)
+
+
+def test_adiar_de_novo_estende_em_vez_de_empilhar(client, db_session):
+    from app.db.models.alerta_dispensado import AlertaDispensado
+
+    header = _auth(client)
+    _informar_saldo(client, header, 100000)
+    _pagar(client, header, 25000, dias=-2)
+
+    client.post("/api/v1/financeiro/alertas/CONTAS_VENCIDAS/adiar?dias=7", headers=header)
+    client.post("/api/v1/financeiro/alertas/CONTAS_VENCIDAS/adiar?dias=30", headers=header)
+
+    registros = db_session.query(AlertaDispensado).all()
+    assert len(registros) == 1, "uma linha por empresa/codigo"
+    assert registros[0].dispensado_ate == date.today() + timedelta(days=30)
+
+
+def test_adiar_nao_esconde_os_outros_alertas(client, db_session):
+    """Calar um aviso nao cala o painel."""
+    header = _auth(client)
+    _pagar(client, header, 25000, dias=-2)
+
+    client.post("/api/v1/financeiro/alertas/CONTAS_VENCIDAS/adiar?dias=7", headers=header)
+
+    alertas = _alertas(client, header)
+    assert "CONTAS_VENCIDAS" not in alertas
+    assert "SALDO_NUNCA_INFORMADO" in alertas
+
+
+def test_codigo_inventado_e_recusado(client, db_session):
+    """A rota nao vira porta de entrada de linha inventada na tabela."""
+    header = _auth(client)
+    r = client.post("/api/v1/financeiro/alertas/QUALQUER_COISA/adiar", headers=header)
+    assert r.status_code == status.HTTP_400_BAD_REQUEST
+
+
+def test_silencio_tem_teto(client, db_session):
+    """Calar por um ano seria esconder problema, nao adiar."""
+    header = _auth(client)
+    r = client.post("/api/v1/financeiro/alertas/CONTAS_VENCIDAS/adiar?dias=365",
+                    headers=header)
+    assert r.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY

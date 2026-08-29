@@ -300,6 +300,20 @@ export function useEstornarRecebimento() {
   });
 }
 
+export function useAdiarAlerta() {
+  const invalidar = useInvalidarFinanceiro();
+  const toast = useToast();
+
+  return useMutation({
+    mutationFn: ({ codigo, dias }: { codigo: string; dias?: number }) =>
+      service.adiarAlerta(codigo, dias),
+    onSuccess: () => {
+      invalidar();
+      toast.success('Aviso adiado — ele volta se o problema continuar');
+    },
+  });
+}
+
 export function useBaixarLote() {
   const invalidar = useInvalidarFinanceiro();
   const toast = useToast();
