@@ -187,7 +187,16 @@ function rotuloStatus(conta: ContaPagar): string {
         <tbody class="divide-y divide-gray-100">
           <tr v-for="conta in listagem.itens" :key="conta.id" class="hover:bg-gray-50/60">
             <td class="px-5 py-3">
-              <button type="button" class="text-left font-medium text-gray-800 cursor-pointer" @click="editar(conta)">
+              <!-- Abre o DETALHE, como em Contas a Receber — não o formulário.
+                   A trilha de auditoria só existe aqui dentro, e enquanto este
+                   clique chamava `editar` ela era inalcançável: o modal estava
+                   montado na tela e nada nunca o preenchia. Editar continua a
+                   um clique, na coluna de ações. -->
+              <button
+                type="button"
+                class="text-left font-medium text-gray-800 hover:underline underline-offset-2 cursor-pointer"
+                @click="contaParaDetalhe = conta"
+              >
                 {{ conta.descricao }}
               </button>
               <!-- Uma marca ou outra, nunca as duas: parcelado e mensal são
@@ -222,6 +231,9 @@ function rotuloStatus(conta: ContaPagar): string {
                        em `text-gray-400` ele lia como rótulo morto e ninguém
                        achava a ação. Continua secundário pela ausência de cor
                        de marca, não pela falta de contraste. -->
+                  <button type="button" class="text-xs font-medium text-gray-600 underline-offset-2 hover:text-gray-900 hover:underline cursor-pointer" @click="editar(conta)">
+                    Editar
+                  </button>
                   <button type="button" class="text-xs font-medium text-gray-600 underline-offset-2 hover:text-gray-900 hover:underline cursor-pointer" @click="confirmarCancelamento(conta)">
                     Cancelar
                   </button>
