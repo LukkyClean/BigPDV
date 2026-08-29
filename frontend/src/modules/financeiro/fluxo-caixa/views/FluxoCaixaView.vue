@@ -173,7 +173,11 @@ function diaSemana(iso: string): string {
             class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide"
             :class="fluxo.saldo_final < 0 ? 'text-rose-600' : 'text-emerald-700'"
           >
-            <CalendarClock :size="15" /> Sobra em {{ formatDataPura(fluxo.fim) }}
+            <!-- Sem saldo declarado isto não é sobra, é o movimento líquido do
+                 período — que continua sendo informação boa ("vai sair mais do
+                 que entra"), mas com outro nome. -->
+            <CalendarClock :size="15" />
+            {{ fluxo.saldo_declarado ? `Sobra em ${formatDataPura(fluxo.fim)}` : 'Movimento no período' }}
           </p>
           <p
             class="mt-2 text-xl font-bold"
@@ -182,7 +186,11 @@ function diaSemana(iso: string): string {
             {{ formatCurrency(fluxo.saldo_final) }}
           </p>
           <p class="mt-1 text-xs" :class="fluxo.saldo_final < 0 ? 'text-rose-500' : 'text-emerald-600'">
-            Saldo previsto no fim do período
+            {{
+              fluxo.saldo_declarado
+                ? 'Saldo previsto no fim do período'
+                : 'O que entra menos o que sai, sem saldo de partida'
+            }}
           </p>
         </div>
       </div>
@@ -226,7 +234,24 @@ function diaSemana(iso: string): string {
           receber aparecem aqui na data do vencimento.
         </p>
 
-        <ul v-else class="mt-4 flex flex-col divide-y divide-gray-100">
+        <!-- Cabeçalho das DUAS colunas de número. Sem ele, "no dia" e
+             "acumulado" ficam lado a lado sem dizer o que são, e o acumulado é
+             lido como o movimento do dia — foi exatamente onde o primeiro uso
+             real tropeçou. -->
+        <div
+          v-else
+          class="mt-4 flex items-baseline justify-between gap-3 border-b border-gray-100 pb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400"
+        >
+          <span>Dia</span>
+          <div class="flex items-baseline gap-4">
+            <span class="min-w-32 text-right">No dia</span>
+            <span class="min-w-28 text-right">
+              {{ fluxo.saldo_declarado ? 'Saldo previsto' : 'Acumulado' }}
+            </span>
+          </div>
+        </div>
+
+        <ul v-if="fluxo.linha.length" class="flex flex-col divide-y divide-gray-100">
           <li v-for="dia in fluxo.linha" :key="dia.data" class="py-3">
             <div class="flex items-baseline justify-between gap-3">
               <p class="text-sm font-semibold text-gray-800">
@@ -236,17 +261,28 @@ function diaSemana(iso: string): string {
                 </span>
               </p>
               <div class="flex items-baseline gap-4 text-sm tabular-nums">
-                <span v-if="dia.entradas > 0" class="text-emerald-600">
-                  +{{ formatCurrency(dia.entradas) }}
+                <span class="flex min-w-32 justify-end gap-3">
+                  <span v-if="dia.entradas > 0" class="text-emerald-600">
+                    +{{ formatCurrency(dia.entradas) }}
+                  </span>
+                  <span v-if="dia.saidas > 0" class="text-rose-600">
+                    −{{ formatCurrency(dia.saidas) }}
+                  </span>
                 </span>
-                <span v-if="dia.saidas > 0" class="text-rose-600">
-                  −{{ formatCurrency(dia.saidas) }}
-                </span>
-                <!-- O saldo acumulado é o número que responde a pergunta da
-                     tela; por isso é o mais forte da linha. -->
+                <!-- O acumulado é o número que responde a pergunta da tela; por
+                     isso é o mais forte da linha.
+                     SEM SALDO DECLARADO ele não é dinheiro, é só a soma do
+                     movimento — e aí não se pinta de vermelho, senão um dia
+                     tranquilo aparece como se a loja estivesse quebrada. -->
                 <span
                   class="min-w-28 text-right font-bold"
-                  :class="dia.saldo < 0 ? 'text-rose-700' : 'text-gray-800'"
+                  :class="
+                    !fluxo.saldo_declarado
+                      ? 'text-gray-400'
+                      : dia.saldo < 0
+                        ? 'text-rose-700'
+                        : 'text-gray-800'
+                  "
                 >
                   {{ formatCurrency(dia.saldo) }}
                 </span>
@@ -267,6 +303,11 @@ function diaSemana(iso: string): string {
             </ul>
           </li>
         </ul>
+
+        <p v-if="fluxo.linha.length && !fluxo.saldo_declarado" class="mt-3 text-xs text-gray-400">
+          Sem saldo informado, a coluna da direita soma só o movimento a partir de zero — não
+          é o seu dinheiro. Informe o saldo para ela virar o saldo previsto de cada dia.
+        </p>
       </section>
     </template>
 
