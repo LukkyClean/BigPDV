@@ -51,6 +51,7 @@ from app.schemas.financeiro import (
     ConciliacaoResultado,
     Extrato,
     FluxoCaixa,
+    Serie,
     ResumoFinanceiro,
 )
 from app.schemas.plano_conta import PlanoContaCreate, PlanoContaRead, PlanoContaUpdate
@@ -713,4 +714,36 @@ def adiar_alerta(
         lambda db_: financeiro_service.adiar_alerta(
             db_, usuario_token["empresa_id"], codigo, dias, usuario_token
         ),
+    )
+
+
+# ===========================================================================
+# ANÁLISE — série mensal
+# ===========================================================================
+
+@router.get(
+    "/serie",
+    response_model=Serie,
+    summary="Receita por origem, despesa e caixa, mês a mês",
+    # A tela de Análise inteira é PRO: base guarda e controla o dinheiro; pro
+    # avisa e aconselha.
+    dependencies=[Depends(requer_modulo("FINANCEIRO_PRO"))],
+)
+def get_serie(
+    meses: int = Query(
+        12, ge=1, le=36,
+        description="Quantos meses FECHADOS trazer, do mais antigo para o mais novo",
+    ),
+    usuario_token: dict = Depends(check_permission(required_permission=PERMISSAO_VER)),
+    db: Session = Depends(get_db),
+):
+    """Só meses fechados: o mês corrente não entra em série nenhuma.
+
+    `meses_disponiveis` é o que abre e fecha os portões da tela — cada métrica
+    declara quantos meses de histórico exige, e abaixo disso a tela diz o que
+    falta em vez de desenhar uma reta entre dois pontos.
+    """
+    return _handle_db_transaction(
+        db,
+        lambda db_: financeiro_service.get_serie(db_, usuario_token["empresa_id"], meses),
     )

@@ -320,3 +320,65 @@ class Extrato(BaseModel):
     total_saidas: int
     saldo: int = Field(..., description="entradas - saidas no filtro (pode ser negativo)")
     itens: List[ExtratoLinha] = Field(default_factory=list)
+
+
+# ===========================================================================
+# SÉRIE MENSAL (Análise — Fase 1)
+# ===========================================================================
+
+class SerieOrigem(BaseModel):
+    """De onde veio o dinheiro num mês.
+
+    ORIGEM É DADO, NÃO CÓDIGO NA TELA. A lista chega pronta, com rótulo, e o
+    frontend desenha o que vier — ele não pode conhecer "venda" nem "OS". Uma
+    tela que soubesse disso teria um `v-if` por segmento, e a serigrafia, a
+    marcenaria e o que vier depois quebrariam uma a uma.
+
+    Origem nova (locação, assinatura) é uma declaração no backend, sem tocar em
+    Vue.
+    """
+
+    chave: str = Field(..., description="Identificador técnico (VENDA, ORDEM_SERVICO)")
+    rotulo: str = Field(..., description="Nome que o lojista lê, já no vocabulário dele")
+    total: int = Field(..., description="Receita da origem no mês (centavos)")
+
+
+class SerieMes(BaseModel):
+    """Um mês FECHADO. O mês corrente nunca entra.
+
+    Comparar oito dias com um mês inteiro acusaria queda todo início de mês --
+    e é o erro mais fácil de reintroduzir sem perceber.
+    """
+
+    mes: str = Field(..., description="AAAA-MM")
+    inicio: date
+    fim: date
+
+    receita: int = Field(..., description="Soma das origens (centavos), por competência")
+    origens: List[SerieOrigem] = Field(default_factory=list)
+
+    despesas_pagas: int
+    resultado: int = Field(..., description="receita - despesas_pagas (pode ser negativo)")
+    entrou_caixa: int = Field(
+        ..., description="O que passou pelo caixa no mês, pelo livro do dinheiro"
+    )
+
+
+class Serie(BaseModel):
+    """A série mensal que sustenta a tela de Análise.
+
+    `meses_disponiveis` é o número que abre e fecha os PORTÕES da tela: cada
+    métrica declara quantos meses fechados exige, e abaixo disso não aparece
+    torta nem vazia -- aparece dizendo o que falta. Dois pontos fazem qualquer
+    reta, e um sistema que projeta doze meses a partir de dois está inventando.
+    """
+
+    meses_disponiveis: int = Field(
+        ...,
+        description=(
+            "Meses FECHADOS de histórico, do primeiro mês com movimento até o "
+            "último mês fechado. Zero = a loja começou neste mês"
+        ),
+    )
+    primeiro_mes: str | None = Field(None, description="AAAA-MM do primeiro mês com movimento")
+    meses: List[SerieMes] = Field(default_factory=list)

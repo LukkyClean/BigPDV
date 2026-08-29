@@ -50,6 +50,9 @@ from app.schemas.conta_pagar import (
 from app.schemas.conta_receber import ContaReceberBaixa
 from app.schemas.financeiro import (
     AlertaFinanceiro,
+    Serie,
+    SerieMes,
+    SerieOrigem,
     Conciliacao,
     ConciliacaoDia,
     ConciliacaoItem,
@@ -1924,4 +1927,128 @@ def listar_extrato(
             )
             for m in itens
         ],
+    )
+
+
+# ===========================================================================
+# SÉRIE MENSAL (Análise — Fase 1)
+# ===========================================================================
+
+# Rótulo de cada origem de receita.
+#
+# Fica AQUI, e não no Vue, porque é vocabulário de negócio: "Serviços" é o que o
+# menu já chama, e um segmento que amanhã chamar de outra coisa muda por
+# declaração. A tela recebe o rótulo pronto e não conhece nenhuma origem.
+ROTULO_ORIGEM_RECEITA = {
+    "VENDA": "Vendas",
+    "ORDEM_SERVICO": "Serviços",
+}
+
+
+def _primeiro_dia(referencia: date) -> date:
+    return referencia.replace(day=1)
+
+
+def _mes_anterior(referencia: date) -> date:
+    """Primeiro dia do mês anterior ao de `referencia`."""
+    primeiro = _primeiro_dia(referencia)
+    return _primeiro_dia(primeiro - timedelta(days=1))
+
+
+def _ultimo_dia_do_mes(primeiro: date) -> date:
+    return _primeiro_dia(primeiro + timedelta(days=32)) - timedelta(days=1)
+
+
+def get_serie(db: Session, empresa_id: int, meses: int = 12) -> Serie:
+    """Receita por origem, despesa e caixa, mês a mês — só de meses FECHADOS.
+
+    A RECEITA SAI DA MESMA FONTE DA VISÃO GERAL (`dashboard_crud`). Se a série
+    calculasse por conta própria, existiriam dois números para o mesmo mês, e
+    ninguém confia num módulo financeiro depois de ver isso uma vez.
+
+    UMA RODADA DE CONSULTAS POR MÊS, e é uma escolha: dá três consultas
+    agregadas por mês (36 numa janela de doze), todas triviais em SQLite. A
+    alternativa -- um GROUP BY por mês em cada métrica -- seria mais rápida e
+    reescreveria as regras de recorte de venda e de OS aqui dentro, que é
+    justamente o que abriria a porta para dois números diferentes.
+
+    O MÊS CORRENTE NÃO ENTRA. Comparar oito dias com um mês inteiro acusaria
+    queda todo início de mês.
+    """
+    hoje = hoje_local()
+
+    # Origens possíveis para ESTA loja. Sem OS no segmento, a série nasce com
+    # uma perna -- não com uma perna vazia.
+    from app.core.segmentos import segmento_usa_ordem_servico
+    from app.db.models.empresa import Empresa
+
+    empresa = db.query(Empresa).filter(Empresa.id == empresa_id).first()
+    usa_os = segmento_usa_ordem_servico(getattr(empresa, "segmento", None))
+
+    linhas: List[SerieMes] = []
+    cursor = _mes_anterior(hoje)  # o último mês FECHADO
+    for _ in range(meses):
+        inicio, fim = cursor, _ultimo_dia_do_mes(cursor)
+        dt_inicio, dt_fim = inicio_do_dia_utc(inicio), fim_do_dia_utc(fim)
+
+        stats = dashboard_crud.get_stats_agregados(db, dt_inicio, dt_fim, empresa_id)
+        por_origem = {"VENDA": int(stats.vendas_total or 0)}
+        if usa_os:
+            por_origem["ORDEM_SERVICO"] = int(stats.os_soma or 0)
+
+        despesas = financeiro_crud.total_despesas_pagas(db, empresa_id, dt_inicio, dt_fim)
+        caixa = financeiro_crud.total_entrou_no_caixa(db, empresa_id, dt_inicio, dt_fim)
+        receita = sum(por_origem.values())
+
+        linhas.append(
+            SerieMes(
+                mes=inicio.strftime("%Y-%m"),
+                inicio=inicio,
+                fim=fim,
+                receita=receita,
+                origens=[
+                    SerieOrigem(
+                        chave=chave,
+                        rotulo=ROTULO_ORIGEM_RECEITA.get(chave, chave),
+                        total=total,
+                    )
+                    for chave, total in por_origem.items()
+                ],
+                despesas_pagas=despesas,
+                resultado=receita - despesas,
+                entrou_caixa=caixa,
+            )
+        )
+        cursor = _mes_anterior(cursor)
+
+    linhas.reverse()  # do mais antigo para o mais novo, como se lê um gráfico
+
+    # ORIGEM ZERADA NA JANELA INTEIRA SAI. Uma linha reta no zero ocupa legenda,
+    # cor e espaço para não dizer nada -- e numa loja que só vende, "Serviços"
+    # seria exatamente isso.
+    zeradas = {
+        chave
+        for chave in ROTULO_ORIGEM_RECEITA
+        if all(
+            o.total == 0 for linha in linhas for o in linha.origens if o.chave == chave
+        )
+    }
+    if zeradas:
+        for linha in linhas:
+            linha.origens = [o for o in linha.origens if o.chave not in zeradas]
+
+    # HISTÓRICO É DESDE O PRIMEIRO MÊS COM MOVIMENTO, e conta o mês vazio do
+    # meio: loja que parou em julho não deixou de existir em julho.
+    com_movimento = [
+        linha for linha in linhas if linha.receita or linha.despesas_pagas
+    ]
+    primeiro = com_movimento[0] if com_movimento else None
+    disponiveis = 0
+    if primeiro:
+        disponiveis = sum(1 for linha in linhas if linha.mes >= primeiro.mes)
+
+    return Serie(
+        meses_disponiveis=disponiveis,
+        primeiro_mes=primeiro.mes if primeiro else None,
+        meses=linhas,
     )
