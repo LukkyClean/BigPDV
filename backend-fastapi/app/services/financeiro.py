@@ -49,6 +49,7 @@ from app.schemas.conta_pagar import (
 # baixada pelo mesmo caminho da baixa manual, com o mesmo schema de entrada.
 from app.schemas.conta_receber import ContaReceberBaixa
 from app.schemas.financeiro import (
+    AlertaFinanceiro,
     Conciliacao,
     ConciliacaoDia,
     ConciliacaoItem,
@@ -762,7 +763,121 @@ def estornar_pagamento(
 # RESUMO — a Visão Geral
 # ===========================================================================
 
-def get_resumo(db: Session, empresa_id: int, inicio: date, fim: date) -> ResumoFinanceiro:
+# Uma semana é o ponto em que o retrato do saldo deixa de servir: nele já
+# couberam um fim de semana de vendas e as contas do começo do mês.
+DIAS_ATE_O_SALDO_ENVELHECER = 7
+
+
+def _montar_alertas(
+    db: Session,
+    empresa_id: int,
+    *,
+    resultado: int,
+    a_pagar_vencido: int,
+    a_receber_vencido: int,
+    categorias: List[DespesaPorCategoria],
+    com_projecao: bool,
+) -> List[AlertaFinanceiro]:
+    """O que precisa de atenção, do mais grave para o menos.
+
+    TODO alerta daqui tem ação possível e uma tela para onde ir. A tentação é
+    somar sinal ("faturamento caiu 3%"), e é exatamente assim que um painel de
+    alertas morre: quem vê aviso todo dia para de ler, e some junto o aviso que
+    importava. Na dúvida, fica de fora.
+
+    Não é IA e não deve ser vendido como tal: são regras explícitas, com limiar
+    escrito e defensável.
+    """
+    alertas: List[AlertaFinanceiro] = []
+    hoje = hoje_local()
+
+    # 1. O DINHEIRO VAI ACABAR. O mais grave que o módulo sabe dizer, e o único
+    #    que olha para frente. Só existe com FINANCEIRO_PRO (é o Fluxo de Caixa
+    #    respondendo) e só faz sentido com saldo declarado -- sem ponto de
+    #    partida, "ficar negativo" não significa nada.
+    if com_projecao:
+        fluxo = get_fluxo_caixa(db, empresa_id, dias=30)
+        if fluxo.saldo_declarado and fluxo.primeiro_dia_negativo:
+            alertas.append(
+                AlertaFinanceiro(
+                    codigo="CAIXA_NEGATIVO",
+                    severidade="CRITICO",
+                    data=fluxo.primeiro_dia_negativo,
+                    valor=fluxo.menor_saldo,
+                )
+            )
+
+    # 2. Dívida vencida: já passou do prazo e continua devida.
+    if a_pagar_vencido > 0:
+        alertas.append(
+            AlertaFinanceiro(
+                codigo="CONTAS_VENCIDAS", severidade="CRITICO", valor=a_pagar_vencido
+            )
+        )
+
+    # 3. Fiado atrasado: dinheiro na rua que já deveria ter voltado.
+    if a_receber_vencido > 0:
+        alertas.append(
+            AlertaFinanceiro(
+                codigo="FIADO_ATRASADO", severidade="ATENCAO", valor=a_receber_vencido
+            )
+        )
+
+    # 4. O mês fechou no vermelho. Sem link para "resolver" -- a ação é olhar
+    #    para onde o dinheiro foi, que está logo abaixo na mesma tela.
+    if resultado < 0:
+        alertas.append(
+            AlertaFinanceiro(
+                codigo="MES_NO_VERMELHO", severidade="ATENCAO", valor=resultado
+            )
+        )
+
+    # 5 e 6. O saldo é a base de toda projeção. Nunca informado é pior que
+    #        desatualizado, e por isso são dois alertas e não um.
+    contas = financeiro_crud.listar_contas_bancarias(db, empresa_id, apenas_ativas=True)
+    datas = [c.saldo_informado_em for c in contas if c.saldo_informado_em]
+    if not datas:
+        alertas.append(
+            AlertaFinanceiro(codigo="SALDO_NUNCA_INFORMADO", severidade="ATENCAO")
+        )
+    else:
+        # A conta mais ANTIGA é a que envelhece o número: quem atualizou o banco
+        # hoje e esqueceu a gaveta há um mês tem um saldo de um mês atrás.
+        mais_antiga = min(datas)
+        dias = (hoje - mais_antiga).days
+        if dias >= DIAS_ATE_O_SALDO_ENVELHECER:
+            alertas.append(
+                AlertaFinanceiro(
+                    codigo="SALDO_DESATUALIZADO", severidade="ATENCAO",
+                    data=mais_antiga, quantidade=dias,
+                )
+            )
+
+    # 7. Gasto sem categoria: o gráfico "para onde o dinheiro foi" não responde
+    #    nada enquanto a maior fatia se chamar "Sem categoria".
+    sem_categoria = next(
+        (c for c in categorias if c.plano_conta_id is None and c.total > 0), None
+    )
+    if sem_categoria:
+        alertas.append(
+            AlertaFinanceiro(
+                codigo="DESPESA_SEM_CATEGORIA", severidade="ATENCAO",
+                valor=sem_categoria.total,
+            )
+        )
+
+    # Crítico antes de atenção, preservando a ordem de urgência dentro de cada
+    # grupo (o `sorted` do Python é estável).
+    return sorted(alertas, key=lambda a: 0 if a.severidade == "CRITICO" else 1)
+
+
+def get_resumo(
+    db: Session,
+    empresa_id: int,
+    inicio: date,
+    fim: date,
+    com_projecao: bool = False,
+) -> ResumoFinanceiro:
     """Entrou, saiu, sobrou — em regime de caixa. Ver o docstring do schema."""
     hoje = hoje_local()
     dt_inicio, dt_fim = inicio_do_dia_utc(inicio), fim_do_dia_utc(fim)
@@ -846,6 +961,14 @@ def get_resumo(db: Session, empresa_id: int, inicio: date, fim: date) -> ResumoF
         a_receber_vencido=a_receber_vencido,
         despesas_por_categoria=categorias,
         proximas_a_vencer=[_serializar_conta(c, hoje) for c in proximas],
+        alertas=_montar_alertas(
+            db, empresa_id,
+            resultado=faturamento - despesas,
+            a_pagar_vencido=vencido,
+            a_receber_vencido=a_receber_vencido,
+            categorias=categorias,
+            com_projecao=com_projecao,
+        ),
     )
 
 

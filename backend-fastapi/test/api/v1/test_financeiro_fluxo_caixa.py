@@ -255,3 +255,85 @@ def test_o_dia_lista_o_que_o_compoe_com_entrada_antes_de_saida(client, db_sessio
     assert [item["tipo"] for item in dia["lancamentos"]] == ["ENTRADA", "SAIDA"]
     assert dia["lancamentos"][0]["descricao"] == "Fiado do Joao"
     assert dia["lancamentos"][1]["valor"] == 30000, "valor positivo; o sinal é o tipo"
+
+
+# ===========================================================================
+# PAINEL "PRECISA DE ATENCAO" (Visao Geral)
+# ===========================================================================
+
+def _alertas(client, header):
+    hoje = date.today()
+    primeiro = hoje.replace(day=1)
+    ultimo = (primeiro + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+    r = client.get(
+        f"/api/v1/financeiro/resumo?inicio={primeiro}&fim={ultimo}", headers=header
+    )
+    assert r.status_code == status.HTTP_200_OK, r.text
+    return {a["codigo"]: a for a in r.json()["alertas"]}
+
+
+def test_loja_nova_e_avisada_de_que_falta_o_saldo(client, db_session):
+    """Sem saldo nao ha projecao, e o dono nao tem como adivinhar isso sozinho."""
+    header = _auth(client)
+    alertas = _alertas(client, header)
+    assert "SALDO_NUNCA_INFORMADO" in alertas
+    assert alertas["SALDO_NUNCA_INFORMADO"]["severidade"] == "ATENCAO"
+
+
+def test_conta_vencida_e_critica_e_traz_o_valor(client, db_session):
+    header = _auth(client)
+    _informar_saldo(client, header, 100000)
+    _pagar(client, header, 25000, dias=-5, descricao="Fornecedor atrasado")
+
+    alerta = _alertas(client, header)["CONTAS_VENCIDAS"]
+    assert alerta["severidade"] == "CRITICO"
+    assert alerta["valor"] == 25000
+
+
+def test_fiado_atrasado_vira_alerta_de_cobranca(client, db_session):
+    header = _auth(client)
+    _informar_saldo(client, header, 100000)
+    _receber(client, header, 7000, dias=-3, descricao="Fiado do Joao")
+
+    alerta = _alertas(client, header)["FIADO_ATRASADO"]
+    assert alerta["valor"] == 7000
+    assert alerta["severidade"] == "ATENCAO"
+
+
+def test_o_dia_em_que_o_dinheiro_acaba_vira_alerta_critico(client, db_session):
+    """O unico alerta que olha para FRENTE -- e o mais valioso do painel."""
+    header = _auth(client)
+    _informar_saldo(client, header, 30000)
+    _pagar(client, header, 50000, dias=4, descricao="Aluguel")
+
+    alerta = _alertas(client, header)["CAIXA_NEGATIVO"]
+    assert alerta["severidade"] == "CRITICO"
+    assert alerta["data"] == (date.today() + timedelta(days=4)).isoformat()
+    assert alerta["valor"] == -20000, "o fundo do poco"
+
+
+def test_critico_vem_antes_de_atencao(client, db_session):
+    """A ordem E a informacao: o que resolver hoje primeiro."""
+    header = _auth(client)
+    _informar_saldo(client, header, 10000)
+    _pagar(client, header, 25000, dias=-5)      # CRITICO
+    _receber(client, header, 7000, dias=-3)     # ATENCAO
+
+    hoje = date.today()
+    primeiro = hoje.replace(day=1)
+    ultimo = (primeiro + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+    lista = client.get(
+        f"/api/v1/financeiro/resumo?inicio={primeiro}&fim={ultimo}", headers=header
+    ).json()["alertas"]
+
+    severidades = [a["severidade"] for a in lista]
+    assert severidades == sorted(severidades, key=lambda s: 0 if s == "CRITICO" else 1)
+    assert lista[0]["severidade"] == "CRITICO"
+
+
+def test_loja_em_dia_nao_recebe_alerta_nenhum(client, db_session):
+    """Painel que grita todo dia deixa de ser lido. Vazio e boa noticia."""
+    header = _auth(client)
+    _informar_saldo(client, header, 100000)
+
+    assert _alertas(client, header) == {}

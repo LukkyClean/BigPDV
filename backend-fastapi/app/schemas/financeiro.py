@@ -19,6 +19,31 @@ class DespesaPorCategoria(BaseModel):
     total: int = Field(..., description="Soma do que foi PAGO na categoria (centavos)")
 
 
+class AlertaFinanceiro(BaseModel):
+    """Um ponto que precisa de atenção — SEM TEXTO, de propósito.
+
+    O backend diz o QUE aconteceu (código + números); quem escreve a frase é a
+    tela. Mandar texto pronto daqui congelaria o idioma, o rótulo por segmento
+    ("cliente" vs "paciente") e a redação numa camada que não vê a tela.
+
+    A regra para entrar nesta lista: precisa ter AÇÃO POSSÍVEL e um lugar para
+    onde ir. Alerta que só informa vira ruído, e um painel que grita todo dia
+    deixa de ser lido -- e aí some junto o alerta que importava.
+    """
+
+    codigo: str = Field(
+        ...,
+        description=(
+            "CAIXA_NEGATIVO, CONTAS_VENCIDAS, FIADO_ATRASADO, MES_NO_VERMELHO, "
+            "SALDO_NUNCA_INFORMADO, SALDO_DESATUALIZADO, DESPESA_SEM_CATEGORIA"
+        ),
+    )
+    severidade: str = Field(..., description="CRITICO ou ATENCAO")
+    valor: int | None = Field(None, description="Quanto (centavos), quando faz sentido")
+    data: date | None = Field(None, description="Quando, quando faz sentido")
+    quantidade: int | None = Field(None, description="Contagem (dias, itens)")
+
+
 class ResumoFinanceiro(BaseModel):
     """O resultado do mês, em regime de CAIXA.
 
@@ -93,6 +118,10 @@ class ResumoFinanceiro(BaseModel):
     proximas_a_vencer: List[ContaPagarRead] = Field(
         default_factory=list,
         description="Contas pendentes vencendo nos próximos dias, das mais urgentes",
+    )
+    alertas: List[AlertaFinanceiro] = Field(
+        default_factory=list,
+        description="O que precisa de atenção, mais grave primeiro. Vazio é bom sinal",
     )
 
 

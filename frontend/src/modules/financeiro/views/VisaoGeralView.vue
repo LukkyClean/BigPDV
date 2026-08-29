@@ -6,7 +6,7 @@
  * que comparasse os dois acharia diferença legítima e abriria chamado. Aqui a
  * pergunta é a que o dono faz — entrou quanto, saiu quanto, sobrou quanto.
  */
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { ChevronLeft, ChevronRight, TrendingDown, TrendingUp, Wallet, AlertTriangle } from 'lucide-vue-next';
 
@@ -15,6 +15,8 @@ import { formatDataPura } from '@/shared/utils/date.utils';
 
 import { useOrdemServico } from '@/shared/composables/useOrdemServico';
 
+import PainelAtencao from '../shared/components/PainelAtencao.vue';
+import SaldoContasModal from '../fluxo-caixa/components/SaldoContasModal.vue';
 import { usePeriodoMes } from '../shared/composables/usePeriodoMes';
 import { useResumoQuery } from '../shared/composables/useFinanceiro';
 
@@ -23,6 +25,11 @@ const { range, rotulo, ehMesAtual, anterior, proximo } = usePeriodoMes();
 // Numa loja sem OS, prometer "ordens de serviço" no card faz o dono procurar
 // um módulo que ele não tem.
 const { usaOrdemServico } = useOrdemServico();
+
+// O alerta de saldo resolve NA HORA, aqui mesmo: mandar o dono para a tela de
+// Fluxo de Caixa só para clicar em "Atualizar saldo" seria uma volta inteira
+// para digitar um número.
+const modalSaldo = ref(false);
 
 const inicio = computed(() => range.value.inicio);
 const fim = computed(() => range.value.fim);
@@ -70,6 +77,9 @@ const diferencaCaixa = computed(
     <div v-if="isLoading" class="text-sm text-gray-500">Carregando…</div>
 
     <template v-else-if="resumo">
+      <!-- Antes dos números, de propósito: quem abre a tela com um problema
+           precisa ver o problema, não descobrir sozinho lendo seis cards. -->
+      <PainelAtencao :alertas="resumo.alertas" @informar-saldo="modalSaldo = true" />
       <!-- Entrou / saiu / sobrou -->
       <div class="grid gap-4 sm:grid-cols-3">
         <div class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
@@ -236,5 +246,7 @@ const diferencaCaixa = computed(
         </section>
       </div>
     </template>
+
+    <SaldoContasModal :aberto="modalSaldo" @fechar="modalSaldo = false" />
   </div>
 </template>

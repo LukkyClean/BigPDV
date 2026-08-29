@@ -105,6 +105,15 @@ export const DespesaPorCategoriaSchema = z.object({
 });
 export type DespesaPorCategoria = z.infer<typeof DespesaPorCategoriaSchema>;
 
+export const AlertaFinanceiroSchema = z.object({
+  codigo: z.string(),
+  severidade: z.string(),
+  valor: z.number().nullable().optional(),
+  data: z.string().nullable().optional(),
+  quantidade: z.number().nullable().optional(),
+});
+export type AlertaFinanceiro = z.infer<typeof AlertaFinanceiroSchema>;
+
 export const ResumoFinanceiroSchema = z.object({
   periodo_inicio: z.string(),
   periodo_fim: z.string(),
@@ -126,6 +135,10 @@ export const ResumoFinanceiroSchema = z.object({
   a_receber_vencido: z.number(),
   despesas_por_categoria: z.array(DespesaPorCategoriaSchema),
   proximas_a_vencer: z.array(ContaPagarSchema),
+  // O backend manda só o código e os números; a frase e o destino são daqui.
+  // `.default([])` porque um backend mais antigo que este frontend não manda o
+  // campo — e a tela não pode quebrar por causa de um alerta.
+  alertas: z.array(AlertaFinanceiroSchema).default([]),
 });
 export type ResumoFinanceiro = z.infer<typeof ResumoFinanceiroSchema>;
 

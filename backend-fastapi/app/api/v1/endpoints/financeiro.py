@@ -55,6 +55,7 @@ from app.schemas.financeiro import (
 )
 from app.schemas.plano_conta import PlanoContaCreate, PlanoContaRead, PlanoContaUpdate
 from app.services import financeiro as financeiro_service
+from app.services import licenca as licenca_service
 
 router = APIRouter(dependencies=[Depends(requer_modulo("FINANCEIRO"))])
 
@@ -528,10 +529,21 @@ def get_resumo(
     O faturamento sai da mesma fonte do dashboard e dos relatórios; recalcular
     aqui abriria a porta para dois números diferentes para o mesmo mês.
     """
+    # O alerta "o dinheiro acaba dia X" é o Fluxo de Caixa respondendo, e o
+    # Fluxo é FINANCEIRO_PRO. A Visão Geral é do plano base, então a projeção só
+    # entra para quem contratou -- senão o painel de alertas entregaria de graça
+    # a resposta que o módulo pago existe para dar.
+    #
+    # Mesma regra do `requer_modulo`: lista vazia (a plataforma ainda não
+    # cadastrou módulo nenhum) LIBERA. Bloquear aqui recusaria o alerta para
+    # 100% das lojas em campo, inclusive as que pagam.
+    modulos = licenca_service.modulos_da_licenca(db)
+    com_projecao = not modulos or "FINANCEIRO_PRO" in modulos
+
     return _handle_db_transaction(
         db,
         lambda db_: financeiro_service.get_resumo(
-            db_, usuario_token["empresa_id"], inicio, fim
+            db_, usuario_token["empresa_id"], inicio, fim, com_projecao=com_projecao
         ),
     )
 
