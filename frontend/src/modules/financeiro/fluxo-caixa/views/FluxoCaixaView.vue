@@ -9,6 +9,10 @@
  * A tela existe para responder UMA pergunta: "em que dia o dinheiro acaba?".
  * Por isso o aviso do primeiro dia negativo vem antes da lista — quem já sabe
  * a resposta não precisa ler o resto.
+ *
+ * As janelas param em 90 dias (o teto do backend) porque é até onde a loja tem
+ * documento lançado: além disso a linha viraria uma reta, e uma projeção que
+ * não tem de onde tirar número não é projeção, é palpite.
  */
 import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
@@ -67,7 +71,7 @@ function diaSemana(iso: string): string {
     <div class="flex flex-wrap items-center justify-between gap-3">
       <div class="flex items-center gap-2">
         <button
-          v-for="opcao in [30, 60]"
+          v-for="opcao in [30, 60, 90]"
           :key="opcao"
           type="button"
           class="rounded-lg border px-3.5 py-1.5 text-sm font-semibold cursor-pointer"
