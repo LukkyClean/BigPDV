@@ -1116,8 +1116,8 @@ def finalizar_ordem_servico(
 
     # E o que NÃO entrou na gaveta por ser promessa vira conta a receber. Roda
     # com o caixa ligado ou desligado — fiado é fiado em qualquer loja.
-    from app.services import financeiro as financeiro_service
-    financeiro_service.registrar_promessas_de_os(db, os_in_db, pagamentos_criados)
+    from app.services import financeiro_receber as financeiro_receber_service
+    financeiro_receber_service.registrar_promessas_de_os(db, os_in_db, pagamentos_criados)
 
     # Aplica finalização
     os_in_db.situacao_equipamento = data.situacao_equipamento

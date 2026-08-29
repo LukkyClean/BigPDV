@@ -443,8 +443,8 @@ def finish_sale(
     # pagamento com vencimento futuro, porque "promessa: e conta a receber, nao
     # gaveta" -- e ate agora nada criava essa conta a receber. Roda com o caixa
     # ligado ou desligado: fiado e fiado em qualquer loja.
-    from app.services import financeiro as financeiro_service
-    financeiro_service.registrar_promessas_de_venda(db, sale_in_db)
+    from app.services import financeiro_receber as financeiro_receber_service
+    financeiro_receber_service.registrar_promessas_de_venda(db, sale_in_db)
 
     return venda_crud.update_sale(db, sale_in_db)
 
