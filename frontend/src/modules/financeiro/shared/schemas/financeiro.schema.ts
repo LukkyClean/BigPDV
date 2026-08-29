@@ -111,6 +111,9 @@ export const AlertaFinanceiroSchema = z.object({
   valor: z.number().nullable().optional(),
   data: z.string().nullable().optional(),
   quantidade: z.number().nullable().optional(),
+  // Nome de uma origem, quando o alerta fala de uma. Continua sendo DADO: a
+  // frase é escrita aqui na tela.
+  rotulo: z.string().nullable().optional(),
 });
 export type AlertaFinanceiro = z.infer<typeof AlertaFinanceiroSchema>;
 
@@ -399,3 +402,33 @@ export const SerieSchema = z.object({
   meses: z.array(SerieMesSchema),
 });
 export type Serie = z.infer<typeof SerieSchema>;
+
+// --- Projeção de 12 meses ---
+
+export const ProjecaoMesSchema = z.object({
+  mes: z.string(),
+  receita: z.number(),
+  despesa: z.number(),
+  resultado: z.number(),
+  acumulado: z.number(),
+});
+export type ProjecaoMes = z.infer<typeof ProjecaoMesSchema>;
+
+export const ProjecaoSchema = z.object({
+  // `false` enquanto faltar histórico — e a tela mostra o que falta, não um
+  // gráfico chutado.
+  disponivel: z.boolean(),
+  meses_faltando: z.number(),
+  base_meses: z.number(),
+  receita_mensal: z.number(),
+  despesa_mensal: z.number(),
+  resultado_mensal: z.number(),
+  receita_12_meses: z.number(),
+  despesa_12_meses: z.number(),
+  resultado_12_meses: z.number(),
+  margem: z.number(),
+  piso_12_meses: z.number(),
+  teto_12_meses: z.number(),
+  meses: z.array(ProjecaoMesSchema),
+});
+export type Projecao = z.infer<typeof ProjecaoSchema>;

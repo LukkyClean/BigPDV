@@ -10,6 +10,7 @@ import {
   ConciliacaoSchema,
   ExtratoSchema,
   SerieSchema,
+  ProjecaoSchema,
   ConciliacaoResultadoSchema,
   FluxoCaixaSchema,
   ResumoFinanceiroSchema,
@@ -30,6 +31,7 @@ import {
   type Conciliacao,
   type Extrato,
   type Serie,
+  type Projecao,
   type ExtratoFiltros,
   type ConciliacaoBaixaLotePayload,
   type ConciliacaoResultado,
@@ -287,4 +289,9 @@ export async function adiarAlerta(codigo: string, dias = 7): Promise<void> {
 export async function getSerie(meses: number): Promise<Serie> {
   const { data } = await api.get('/financeiro/serie', { params: { meses } });
   return safeParseResponse(SerieSchema, data, 'getSerie');
+}
+
+export async function getProjecao(): Promise<Projecao> {
+  const { data } = await api.get('/financeiro/projecao');
+  return safeParseResponse(ProjecaoSchema, data, 'getProjecao');
 }

@@ -16,12 +16,12 @@
  * andamento é a Visão Geral.
  */
 import { computed, ref } from 'vue';
-import { CalendarRange, Percent, TrendingUp, Wallet } from 'lucide-vue-next';
+import { CalendarRange, LineChart, Percent, TrendingUp, Wallet } from 'lucide-vue-next';
 
 import { formatCurrency } from '@/shared/utils/finance';
 
 import SerieBarras from '../components/SerieBarras.vue';
-import { useSerieQuery } from '../../shared/composables/useFinanceiro';
+import { useProjecaoQuery, useSerieQuery } from '../../shared/composables/useFinanceiro';
 
 // Quantos meses fechados cada leitura exige. Os números vêm do plano e são a
 // razão de a tela não mentir no primeiro mês de uso.
@@ -35,6 +35,7 @@ const FAIXA_NA_MEDIA = 0.1;
 
 const meses = ref(12);
 const { data: serie, isLoading } = useSerieQuery(meses);
+const { data: projecao } = useProjecaoQuery();
 
 const disponiveis = computed(() => serie.value?.meses_disponiveis ?? 0);
 const historico = computed(() => serie.value?.meses ?? []);
@@ -231,6 +232,80 @@ function faltam(portao: number): number {
           <div class="mt-4">
             <SerieBarras :meses="historico" />
           </div>
+        </section>
+
+        <!-- A PROJEÇÃO — a leitura mais arriscada da tela, e a mais cercada.
+             Ela repete a média dos últimos meses e NÃO extrapola a inclinação:
+             com seis pontos, uma reta de regressão erra feio e a tela passaria
+             a prometer uma data de falência que o dado não sustenta. -->
+        <section
+          v-if="projecao"
+          class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm"
+        >
+          <h3 class="flex items-center gap-2 text-sm font-bold text-gray-800">
+            <LineChart :size="16" class="text-gray-400" /> Se o ritmo continuar
+          </h3>
+
+          <template v-if="projecao.disponivel">
+            <div class="mt-4 grid gap-4 sm:grid-cols-3">
+              <div>
+                <p class="text-xs text-gray-500">Entra em 12 meses</p>
+                <p class="mt-1 text-lg font-bold text-gray-800">
+                  {{ formatCurrency(projecao.receita_12_meses) }}
+                </p>
+              </div>
+              <div>
+                <p class="text-xs text-gray-500">Sai em 12 meses</p>
+                <p class="mt-1 text-lg font-bold text-gray-800">
+                  {{ formatCurrency(projecao.despesa_12_meses) }}
+                </p>
+              </div>
+              <div>
+                <p class="text-xs text-gray-500">Sobra</p>
+                <p
+                  class="mt-1 text-lg font-bold"
+                  :class="projecao.resultado_12_meses < 0 ? 'text-rose-700' : 'text-emerald-700'"
+                >
+                  {{ formatCurrency(projecao.resultado_12_meses) }}
+                </p>
+              </div>
+            </div>
+
+            <!-- FAIXA, NUNCA NÚMERO SECO. Número seco vira promessa; e os dois
+                 cenários se explicam numa frase, que é o que os torna
+                 conferíveis. -->
+            <p class="mt-4 rounded-xl bg-gray-50 px-3.5 py-2.5 text-xs text-gray-600">
+              Entre <strong>{{ formatCurrency(projecao.piso_12_meses) }}</strong> e
+              <strong>{{ formatCurrency(projecao.teto_12_meses) }}</strong> —
+              vendendo {{ Math.round(projecao.margem * 100) }}% a menos e gastando
+              {{ Math.round(projecao.margem * 100) }}% a mais, ou o contrário.
+            </p>
+
+            <p
+              v-if="projecao.resultado_mensal < 0"
+              class="mt-2 text-xs font-semibold text-rose-600"
+            >
+              No ritmo dos últimos {{ projecao.base_meses }} meses, cada mês fecha negativo em
+              {{ formatCurrency(Math.abs(projecao.resultado_mensal)) }}.
+            </p>
+
+            <p class="mt-3 text-xs text-gray-400">
+              Conta feita sobre a média dos últimos {{ projecao.base_meses }} meses fechados.
+              Ela repete esse ritmo — não adivinha crescimento nem queda.
+            </p>
+          </template>
+
+          <template v-else>
+            <p class="mt-3 text-sm text-gray-500">
+              A projeção precisa de 6 meses fechados para existir. Faltam
+              <strong>{{ projecao.meses_faltando }}</strong>
+              {{ projecao.meses_faltando === 1 ? 'mês' : 'meses' }}.
+            </p>
+            <p class="mt-1 text-xs text-gray-400">
+              Com menos que isso, uma linha de doze meses seria desenhada sobre três pontos —
+              e você decidiria em cima dela.
+            </p>
+          </template>
         </section>
 
         <!-- O que ainda vai aparecer, com data. É informação, não desculpa: o

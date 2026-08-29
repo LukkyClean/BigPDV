@@ -80,6 +80,17 @@ export function useSerieQuery(meses: MaybeRef<number>) {
   });
 }
 
+/**
+ * A projeção de 12 meses. Muda quando um mês fecha, como a série.
+ */
+export function useProjecaoQuery() {
+  return useQuery({
+    queryKey: financeiroKeys.projecao(),
+    queryFn: () => service.getProjecao(),
+    staleTime: 1000 * 60 * 30,
+  });
+}
+
 export function useExtratoQuery(filtros: MaybeRef<ExtratoFiltros>) {
   return useQuery({
     queryKey: computed(() => financeiroKeys.extrato(unref(filtros))),

@@ -102,6 +102,43 @@ function traduzir(alerta: AlertaFinanceiro): Texto | null {
         acao: 'Atualizar saldo',
         evento: 'informarSaldo',
       };
+    // --- TENDÊNCIA: o que a série sabe e a fotografia do mês não sabe ---
+    case 'RECEITA_CAINDO':
+      return {
+        titulo: `Sua receita cai há ${alerta.quantidade} meses seguidos`,
+        detalhe: `São ${valor} a menos do que no início da sequência. Um mês ruim acontece; três em fila é direção.`,
+        acao: 'Ver a série',
+        rota: 'finance-analysis',
+      };
+    case 'ORIGEM_CAINDO':
+      return {
+        titulo: `${alerta.rotulo} caiu ${alerta.quantidade}%`,
+        detalhe: `São ${valor} a menos que a média dos últimos meses. O total pode até estar segurando — esta perna não está.`,
+        acao: 'Ver a série',
+        rota: 'finance-analysis',
+      };
+    case 'DEPENDENCIA_DE_ORIGEM':
+      return {
+        titulo: `${alerta.quantidade}% do seu dinheiro vem de ${alerta.rotulo}`,
+        detalhe: 'Uma semana parada nessa frente para o seu caixa inteiro. Não é erro — é risco concentrado.',
+        acao: 'Ver a série',
+        rota: 'finance-analysis',
+      };
+    case 'CUSTO_SUBINDO_MAIS':
+      return {
+        titulo: `Seu custo subiu ${alerta.quantidade}% mais rápido que a receita`,
+        detalhe: `São ${valor} a mais por mês que há três meses. Vender mais não resolve enquanto o custo correr na frente.`,
+        acao: 'Ver para onde foi',
+        rota: 'finance-payable',
+      };
+    case 'RECEBIMENTO_LENTO':
+      return {
+        titulo: `Seu cliente está levando ${alerta.quantidade} dias para pagar`,
+        detalhe: `Era ${alerta.valor} dias na média dos meses anteriores. O dinheiro está sendo faturado e demorando mais a entrar.`,
+        acao: 'Ver quem deve',
+        rota: 'finance-receivable',
+      };
+
     case 'DESPESA_SEM_CATEGORIA':
       return {
         titulo: `${valor} gastos sem categoria`,

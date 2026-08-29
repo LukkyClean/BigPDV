@@ -51,6 +51,7 @@ from app.schemas.financeiro import (
     ConciliacaoResultado,
     Extrato,
     FluxoCaixa,
+    Projecao,
     Serie,
     ResumoFinanceiro,
 )
@@ -746,4 +747,26 @@ def get_serie(
     return _handle_db_transaction(
         db,
         lambda db_: financeiro_service.get_serie(db_, usuario_token["empresa_id"], meses),
+    )
+
+
+@router.get(
+    "/projecao",
+    response_model=Projecao,
+    summary="Onde o ritmo atual leva a loja em 12 meses",
+    dependencies=[Depends(requer_modulo("FINANCEIRO_PRO"))],
+)
+def get_projecao(
+    usuario_token: dict = Depends(check_permission(required_permission=PERMISSAO_VER)),
+    db: Session = Depends(get_db),
+):
+    """Repete a média dos últimos meses; NÃO extrapola inclinação.
+
+    Com seis pontos, uma reta de regressão erra feio — e a tela passaria a
+    prometer uma data que o dado não sustenta. Responde `disponivel=false`
+    enquanto faltar histórico, com quantos meses faltam.
+    """
+    return _handle_db_transaction(
+        db,
+        lambda db_: financeiro_service.get_projecao(db_, usuario_token["empresa_id"]),
     )

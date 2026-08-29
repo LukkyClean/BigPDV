@@ -42,6 +42,14 @@ class AlertaFinanceiro(BaseModel):
     valor: int | None = Field(None, description="Quanto (centavos), quando faz sentido")
     data: date | None = Field(None, description="Quando, quando faz sentido")
     quantidade: int | None = Field(None, description="Contagem (dias, itens)")
+    rotulo: str | None = Field(
+        None,
+        description=(
+            "Nome de uma origem, quando o alerta fala de uma. É DADO, não frase: "
+            "a tela escreve 'X% veio de {rotulo}' — o backend continua sem "
+            "mandar texto pronto"
+        ),
+    )
 
 
 class ResumoFinanceiro(BaseModel):
@@ -390,3 +398,55 @@ class Serie(BaseModel):
     )
     primeiro_mes: str | None = Field(None, description="AAAA-MM do primeiro mês com movimento")
     meses: List[SerieMes] = Field(default_factory=list)
+
+
+# ===========================================================================
+# PROJEÇÃO DE 12 MESES (Análise — Fase 4)
+# ===========================================================================
+
+class ProjecaoMes(BaseModel):
+    """Um mês futuro estimado. Nada aqui existe no banco."""
+
+    mes: str
+    receita: int
+    despesa: int
+    resultado: int
+    acumulado: int = Field(..., description="Soma dos resultados até este mês")
+
+
+class Projecao(BaseModel):
+    """Onde o ritmo atual leva a loja em doze meses.
+
+    É a leitura mais arriscada do módulo, e por isso a mais cercada:
+
+    RETA, E NÃO TENDÊNCIA. A projeção repete a média dos últimos meses; ela NÃO
+    extrapola a inclinação. Com seis pontos, uma reta de regressão erra feio e a
+    tela passaria a prometer uma data ("em março você quebra") que o dado não
+    sustenta. Se a média já é negativa, isso é dito -- e é uma afirmação sobre o
+    presente, não uma adivinhação.
+
+    FAIXA, NUNCA NÚMERO SECO. `piso` e `teto` são os dois cenários explicáveis:
+    vender `margem` a menos gastando `margem` a mais, e o contrário.
+
+    A MARGEM SAI DO PRÓPRIO HISTÓRICO (coeficiente de variação da receita): loja
+    estável ganha faixa estreita, loja instável ganha faixa larga. E alarga mais
+    ainda quando o histórico é curto -- é a forma honesta de dizer "sei menos".
+    """
+
+    disponivel: bool = Field(..., description="False enquanto faltar histórico")
+    meses_faltando: int = Field(0, description="Quantos meses até a projeção existir")
+    base_meses: int = Field(0, description="Quantos meses entraram na média")
+
+    receita_mensal: int = 0
+    despesa_mensal: int = 0
+    resultado_mensal: int = 0
+
+    receita_12_meses: int = 0
+    despesa_12_meses: int = 0
+    resultado_12_meses: int = 0
+
+    margem: float = Field(0, description="0.30 = os cenários abrem 30% para cada lado")
+    piso_12_meses: int = Field(0, description="Cenário ruim: vende menos e gasta mais")
+    teto_12_meses: int = Field(0, description="Cenário bom")
+
+    meses: List[ProjecaoMes] = Field(default_factory=list)
