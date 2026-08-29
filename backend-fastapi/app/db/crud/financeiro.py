@@ -14,6 +14,9 @@ from app.core.enum import ContaPagarStatus, ContaReceberStatus
 from app.db.models.conta_bancaria import ContaBancaria
 from app.db.models.conta_pagar import ContaPagar
 from app.db.models.conta_receber import ContaReceber
+from app.db.models.forma_pagamento import FormaPagamento
+from app.db.models.ordem_servico_pagamento import OrdemServicoPagamento
+from app.db.models.venda_pagamento import PagamentoVenda
 from app.db.models.historico_financeiro import HistoricoFinanceiro
 from app.db.models.plano_conta import PlanoConta
 
@@ -512,6 +515,39 @@ def pendentes_por_vencimento(
         .all()
     )
     return pagar, receber
+
+
+def formas_de_origem(
+    db: Session, *, venda_pagamento_ids: Sequence[int], os_pagamento_ids: Sequence[int]
+) -> Tuple[dict, dict]:
+    """Nome da forma que originou cada cobranca, em DUAS consultas para a lista toda.
+
+    A conta a receber nao guarda a forma de origem -- ela nasce do pagamento, e
+    e o pagamento que sabe se foi cartao, PIX ou dinheiro a prazo. Perguntar
+    item a item seria o N+1 classico numa tela que lista o mes inteiro.
+    """
+    por_venda: dict = {}
+    por_os: dict = {}
+
+    if venda_pagamento_ids:
+        linhas = (
+            db.query(PagamentoVenda.id, FormaPagamento.nome)
+            .join(FormaPagamento, FormaPagamento.id == PagamentoVenda.forma_pagamento_id)
+            .filter(PagamentoVenda.id.in_(venda_pagamento_ids))
+            .all()
+        )
+        por_venda = {pid: nome for pid, nome in linhas}
+
+    if os_pagamento_ids:
+        linhas = (
+            db.query(OrdemServicoPagamento.id, FormaPagamento.nome)
+            .join(FormaPagamento, FormaPagamento.id == OrdemServicoPagamento.forma_pagamento_id)
+            .filter(OrdemServicoPagamento.id.in_(os_pagamento_ids))
+            .all()
+        )
+        por_os = {pid: nome for pid, nome in linhas}
+
+    return por_venda, por_os
 
 
 def get_conta_receber(db: Session, empresa_id: int, conta_id: int) -> Optional[ContaReceber]:

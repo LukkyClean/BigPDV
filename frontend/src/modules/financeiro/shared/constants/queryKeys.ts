@@ -19,4 +19,5 @@ export const financeiroKeys = {
   planoContas: () => [FINANCEIRO_KEY, 'plano-contas'] as const,
   resumo: (periodo?: unknown) => [FINANCEIRO_KEY, 'resumo', periodo] as const,
   fluxoCaixa: (dias?: unknown) => [FINANCEIRO_KEY, 'fluxo-caixa', dias] as const,
+  conciliacao: (periodo?: unknown) => [FINANCEIRO_KEY, 'conciliacao', periodo] as const,
 };

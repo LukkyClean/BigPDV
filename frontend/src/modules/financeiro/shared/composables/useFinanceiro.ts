@@ -7,6 +7,7 @@ import { useToast } from '@/shared/composables/useToast';
 import { financeiroKeys } from '../constants/queryKeys';
 import * as service from '../services/financeiro.service';
 import type {
+  ConciliacaoBaixaLotePayload,
   ContaPagarBaixaPayload,
   ContaPagarFiltros,
   ContaPagarPayload,
@@ -61,6 +62,16 @@ export function useFluxoCaixaQuery(dias: MaybeRef<number>) {
   return useQuery({
     queryKey: computed(() => financeiroKeys.fluxoCaixa(unref(dias))),
     queryFn: () => service.getFluxoCaixa(unref(dias)),
+  });
+}
+
+export function useConciliacaoQuery(inicio: MaybeRef<string>, fim: MaybeRef<string>) {
+  return useQuery({
+    queryKey: computed(() =>
+      financeiroKeys.conciliacao({ inicio: unref(inicio), fim: unref(fim) }),
+    ),
+    queryFn: () => service.getConciliacao(unref(inicio), unref(fim)),
+    enabled: computed(() => !!unref(inicio) && !!unref(fim)),
   });
 }
 
@@ -276,6 +287,22 @@ export function useEstornarRecebimento() {
     onSuccess: () => {
       invalidar();
       toast.success('Recebimento estornado', 'A cobrança voltou para pendente.');
+    },
+  });
+}
+
+export function useBaixarLote() {
+  const invalidar = useInvalidarFinanceiro();
+  const toast = useToast();
+
+  return useMutation({
+    mutationFn: (payload: ConciliacaoBaixaLotePayload) => service.baixarLote(payload),
+    onSuccess: (resultado) => {
+      invalidar();
+      toast.success(
+        `${resultado.quantidade} cobrança(s) conferida(s)` +
+          (resultado.diferenca !== 0 ? ' com diferença' : ''),
+      );
     },
   });
 }

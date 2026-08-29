@@ -267,3 +267,47 @@ export const FluxoCaixaSchema = z.object({
   linha: z.array(FluxoDiaSchema),
 });
 export type FluxoCaixa = z.infer<typeof FluxoCaixaSchema>;
+
+// --- Conciliação (Onda 4) ---
+
+export const ConciliacaoItemSchema = z.object({
+  conta_id: z.number(),
+  descricao: z.string(),
+  valor: z.number(),
+  cliente_nome: z.string().nullable().optional(),
+  forma_origem: z.string().nullable().optional(),
+});
+export type ConciliacaoItem = z.infer<typeof ConciliacaoItemSchema>;
+
+export const ConciliacaoDiaSchema = z.object({
+  data: z.string(),
+  quantidade: z.number(),
+  total_previsto: z.number(),
+  itens: z.array(ConciliacaoItemSchema),
+});
+export type ConciliacaoDia = z.infer<typeof ConciliacaoDiaSchema>;
+
+export const ConciliacaoSchema = z.object({
+  inicio: z.string(),
+  fim: z.string(),
+  total_previsto: z.number(),
+  // Um grupo por DIA de vencimento: é o formato em que o dinheiro chega.
+  dias: z.array(ConciliacaoDiaSchema),
+});
+export type Conciliacao = z.infer<typeof ConciliacaoSchema>;
+
+export const ConciliacaoResultadoSchema = z.object({
+  data: z.string(),
+  quantidade: z.number(),
+  total_previsto: z.number(),
+  total_recebido: z.number(),
+  diferenca: z.number(),
+});
+export type ConciliacaoResultado = z.infer<typeof ConciliacaoResultadoSchema>;
+
+export interface ConciliacaoBaixaLotePayload {
+  data: string;
+  valor_recebido: number;
+  conta_bancaria_id?: number | null;
+  forma_pagamento_id?: number | null;
+}

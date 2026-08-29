@@ -45,7 +45,13 @@ from app.schemas.conta_receber import (
     ContaReceberRead,
     ContaReceberUpdate,
 )
-from app.schemas.financeiro import FluxoCaixa, ResumoFinanceiro
+from app.schemas.financeiro import (
+    Conciliacao,
+    ConciliacaoBaixaLote,
+    ConciliacaoResultado,
+    FluxoCaixa,
+    ResumoFinanceiro,
+)
 from app.schemas.plano_conta import PlanoContaCreate, PlanoContaRead, PlanoContaUpdate
 from app.services import financeiro as financeiro_service
 
@@ -560,5 +566,57 @@ def get_fluxo_caixa(
         db,
         lambda db_: financeiro_service.get_fluxo_caixa(
             db_, usuario_token["empresa_id"], dias
+        ),
+    )
+
+
+# ===========================================================================
+# CONCILIAÇÃO
+# ===========================================================================
+
+@router.get(
+    "/conciliacao",
+    response_model=Conciliacao,
+    summary="O que a loja espera receber, agrupado por dia",
+    dependencies=[Depends(requer_modulo("FINANCEIRO_PRO"))],
+)
+def get_conciliacao(
+    inicio: date = Query(..., description="Primeiro vencimento do período (data local)"),
+    fim: date = Query(..., description="Último vencimento do período (data local)"),
+    usuario_token: dict = Depends(check_permission(required_permission=PERMISSAO_VER)),
+    db: Session = Depends(get_db),
+):
+    """Agrupado por DIA porque é assim que o dinheiro chega: a operadora não
+    deposita venda a venda, deposita o lote do dia."""
+    return _handle_db_transaction(
+        db,
+        lambda db_: financeiro_service.get_conciliacao(
+            db_, usuario_token["empresa_id"], inicio, fim
+        ),
+    )
+
+
+@router.post(
+    "/conciliacao/baixar-lote",
+    response_model=ConciliacaoResultado,
+    summary="Confere o depósito do dia e baixa o lote inteiro",
+    # GERIR, não VER: isto dá baixa em dinheiro. Quem só consulta o financeiro
+    # não conferencia depósito.
+    dependencies=[Depends(requer_modulo("FINANCEIRO_PRO"))],
+)
+def baixar_lote(
+    dados: ConciliacaoBaixaLote,
+    usuario_token: dict = Depends(check_permission(required_permission=PERMISSAO_GERIR)),
+    db: Session = Depends(get_db),
+):
+    """Rateia o depósito entre as cobranças do dia, proporcional ao previsto.
+
+    Cada uma é baixada pelo mesmo caminho da baixa manual — mesmo movimento no
+    livro, mesma trilha, mesmo estorno.
+    """
+    return _handle_db_transaction(
+        db,
+        lambda db_: financeiro_service.baixar_lote(
+            db_, usuario_token["empresa_id"], dados, usuario_token
         ),
     )

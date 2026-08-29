@@ -7,6 +7,8 @@ import {
   ContaPagarSchema,
   HistoricoFinanceiroSchema,
   PlanoContaSchema,
+  ConciliacaoSchema,
+  ConciliacaoResultadoSchema,
   FluxoCaixaSchema,
   ResumoFinanceiroSchema,
   type ContaBancaria,
@@ -23,6 +25,9 @@ import {
   type ContaReceberPayload,
   type HistoricoFinanceiro,
   type PlanoConta,
+  type Conciliacao,
+  type ConciliacaoBaixaLotePayload,
+  type ConciliacaoResultado,
   type FluxoCaixa,
   type ResumoFinanceiro,
 } from '../schemas/financeiro.schema';
@@ -222,4 +227,26 @@ export async function listarHistoricoDoRecebimento(
 export async function estornarRecebimento(id: number, motivo: string): Promise<ContaReceber> {
   const { data } = await api.post(`/financeiro/contas-receber/${id}/estornar`, { motivo });
   return safeParseResponse(ContaReceberSchema, data, 'estornarRecebimento');
+}
+
+// ===========================================================================
+// CONCILIAÇÃO
+// ===========================================================================
+
+export async function getConciliacao(inicio: string, fim: string): Promise<Conciliacao> {
+  const { data } = await api.get('/financeiro/conciliacao', { params: { inicio, fim } });
+  return safeParseResponse(ConciliacaoSchema, data, 'getConciliacao');
+}
+
+/**
+ * Confere o depósito do dia e baixa o lote inteiro.
+ *
+ * O rateio entre as cobranças é do BACKEND, de propósito: é ele que garante
+ * que a soma das baixas seja exatamente o que caiu no banco, centavo a centavo.
+ */
+export async function baixarLote(
+  payload: ConciliacaoBaixaLotePayload,
+): Promise<ConciliacaoResultado> {
+  const { data } = await api.post('/financeiro/conciliacao/baixar-lote', payload);
+  return safeParseResponse(ConciliacaoResultadoSchema, data, 'baixarLote');
 }
