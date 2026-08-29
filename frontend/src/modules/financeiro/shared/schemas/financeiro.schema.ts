@@ -109,6 +109,10 @@ export const ResumoFinanceiroSchema = z.object({
   periodo_inicio: z.string(),
   periodo_fim: z.string(),
   faturamento: z.number(),
+  // A outra leitura: o que passou pelo CAIXA (livro do dinheiro). Não é um
+  // pedaço do faturamento — inclui fiado antigo quitado agora e exclui venda
+  // fechada que ainda não foi paga.
+  entrou_caixa: z.number(),
   despesas_pagas: z.number(),
   // Pode ser NEGATIVO, e a tela precisa saber mostrar isso: um módulo que só
   // exibe resultado positivo esconde justamente o mês que o dono precisa ver.

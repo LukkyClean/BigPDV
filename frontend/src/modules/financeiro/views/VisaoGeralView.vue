@@ -33,6 +33,17 @@ const { data: resumo, isLoading } = useResumoQuery(inicio, fim);
 const resultadoNegativo = computed(() => (resumo.value?.resultado ?? 0) < 0);
 
 const maiorCategoria = computed(() => resumo.value?.despesas_por_categoria?.[0]?.total ?? 0);
+
+/**
+ * Quanto do faturado ainda não passou pelo caixa.
+ *
+ * Positivo é o caso normal de quem vende a prazo. Pode dar NEGATIVO, e isso
+ * também é certo: um mês em que entrou muito fiado antigo recebe mais dinheiro
+ * do que faturou. Por isso o texto muda de lado em vez de esconder o sinal.
+ */
+const diferencaCaixa = computed(
+  () => (resumo.value?.faturamento ?? 0) - (resumo.value?.entrou_caixa ?? 0),
+);
 </script>
 
 <template>
@@ -63,12 +74,34 @@ const maiorCategoria = computed(() => resumo.value?.despesas_por_categoria?.[0]?
       <div class="grid gap-4 sm:grid-cols-3">
         <div class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
           <div class="flex items-center gap-2 text-gray-500 text-xs font-semibold uppercase tracking-wide">
-            <TrendingUp :size="15" class="text-emerald-500" /> Entrou
+            <TrendingUp :size="15" class="text-emerald-500" /> Faturado
           </div>
           <p class="mt-2 text-2xl font-bold text-gray-800">{{ formatCurrency(resumo.faturamento) }}</p>
           <p class="mt-1 text-xs text-gray-400">
             {{ usaOrdemServico ? 'Vendas e ordens de serviço finalizadas' : 'Vendas finalizadas' }}
           </p>
+
+          <!-- A SEGUNDA LEITURA do mesmo mês, e não um pedaço da primeira.
+               "Faturado" é o que a loja vendeu; "entrou de fato" é o dinheiro
+               que passou pelo caixa, venha da venda de hoje ou do fiado do mês
+               passado. Mostrar os dois é o que impede a tela de prometer
+               dinheiro que ainda está na rua. -->
+          <div class="mt-3 border-t border-gray-100 pt-3">
+            <div class="flex items-baseline justify-between gap-2">
+              <span class="text-xs text-gray-500">Entrou de fato</span>
+              <span class="text-sm font-bold text-gray-800 tabular-nums">
+                {{ formatCurrency(resumo.entrou_caixa) }}
+              </span>
+            </div>
+            <p v-if="diferencaCaixa > 0" class="mt-1 text-xs text-amber-600">
+              {{ formatCurrency(diferencaCaixa) }} faturado ainda não passou pelo caixa
+            </p>
+            <p v-else-if="diferencaCaixa < 0" class="mt-1 text-xs text-emerald-600">
+              {{ formatCurrency(-diferencaCaixa) }} a mais que o faturado — cobrança de
+              outros meses entrando
+            </p>
+            <p v-else class="mt-1 text-xs text-gray-400">Tudo que foi faturado entrou.</p>
+          </div>
         </div>
 
         <div class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
@@ -95,6 +128,15 @@ const maiorCategoria = computed(() => resumo.value?.despesas_por_categoria?.[0]?
           </p>
         </div>
       </div>
+
+      <!-- O livro do dinheiro só passou a receber venda e OS sem caixa aberto em
+           29/08/2026. Antes disso ele é incompleto, e "entrou de fato" aparece
+           menor do que foi. Dizer isso é obrigatório enquanto houver mês antigo
+           na tela: sem o aviso, o dono conclui que sumiu dinheiro. -->
+      <p class="-mt-3 text-xs text-gray-400">
+        "Entrou de fato" vem do livro do dinheiro, que passou a registrar toda venda e OS em
+        29/08/2026. Em meses anteriores a essa data ele aparece menor do que realmente entrou.
+      </p>
 
       <!-- Em aberto dos dois lados: o que ainda não entrou e o que ainda não saiu -->
       <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

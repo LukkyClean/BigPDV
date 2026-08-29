@@ -228,3 +228,92 @@ def test_com_caixa_ligado_e_sem_turno_a_linha_nasce_sem_sessao(client, db_sessio
     assert len(movimentos) == 1
     assert movimentos[0].sessao_caixa_id is None
     assert db_session.query(SessaoCaixa).count() == 0
+
+
+# ===========================================================================
+# AS DUAS LEITURAS DO MESMO MES (Visao Geral)
+# ===========================================================================
+
+def _resumo(client, header):
+    from datetime import date as _date
+    hoje = _date.today()
+    primeiro = hoje.replace(day=1)
+    ultimo = (primeiro + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+    r = client.get(
+        f"/api/v1/financeiro/resumo?inicio={primeiro}&fim={ultimo}", headers=header
+    )
+    assert r.status_code == status.HTTP_200_OK, r.text
+    return r.json()
+
+
+def test_a_vista_as_duas_leituras_dao_o_mesmo(client, db_session):
+    """Sem prazo, faturar e receber acontecem no mesmo instante."""
+    header = _auth(client)
+    _config_caixa(db_session, controlar_caixa=False)
+    funcionario_id = _funcionario(client, header)
+    cliente_id = _cliente(client, header)
+    _os_finalizada(client, header, cliente_id, funcionario_id, valor=15000)
+
+    resumo = _resumo(client, header)
+    assert resumo["faturamento"] == 15000
+    assert resumo["entrou_caixa"] == 15000
+
+
+def test_fiado_separa_o_faturado_do_que_entrou(client, db_session):
+    """O motivo de a tela mostrar dois numeros.
+
+    A OS fechou (faturou), mas o dinheiro nao entrou. Se a Visao Geral so
+    tivesse o faturamento, ela prometeria caixa que esta na rua.
+    """
+    header = _auth(client)
+    _config_caixa(db_session, controlar_caixa=False)
+    funcionario_id = _funcionario(client, header)
+    cliente_id = _cliente(client, header)
+    _os_finalizada(client, header, cliente_id, funcionario_id, valor=15000,
+                   vencimento=date.today() + timedelta(days=20))
+
+    resumo = _resumo(client, header)
+    assert resumo["faturamento"] == 15000
+    assert resumo["entrou_caixa"] == 0, "prometido, nao recebido"
+
+    # E quando o cliente paga, o segundo numero se move sozinho.
+    conta = client.get("/api/v1/financeiro/contas-receber", headers=header).json()["itens"][0]
+    client.post(f"/api/v1/financeiro/contas-receber/{conta['id']}/receber",
+                json={}, headers=header)
+
+    depois = _resumo(client, header)
+    assert depois["faturamento"] == 15000, "faturar nao acontece duas vezes"
+    assert depois["entrou_caixa"] == 15000
+
+
+def test_troco_e_sangria_nao_sao_receita(client, db_session):
+    """Abertura e sangria mexem na gaveta, nao no que a loja recebeu.
+
+    Somar o troco inicial faria a loja "receber" o proprio dinheiro toda manha.
+    """
+    header = _auth(client)
+    _config_caixa(db_session, controlar_caixa=True)
+    _funcionario(client, header)
+    _forma(client, header)
+
+    client.post("/api/v1/caixa/abrir", json={"saldo_inicial": 20000}, headers=header)
+    client.post("/api/v1/caixa/sangria",
+                json={"valor": 5000, "motivo": "cofre"}, headers=header)
+
+    resumo = _resumo(client, header)
+    assert resumo["entrou_caixa"] == 0
+
+
+def test_estorno_devolve_o_que_entrou(client, db_session):
+    """Reabrir sem pagamento tira o dinheiro das duas leituras."""
+    header = _auth(client)
+    _config_caixa(db_session, controlar_caixa=False)
+    funcionario_id = _funcionario(client, header)
+    cliente_id = _cliente(client, header)
+    numero = _os_finalizada(client, header, cliente_id, funcionario_id, valor=15000)
+    assert _resumo(client, header)["entrou_caixa"] == 15000
+
+    client.put(f"/api/v1/ordens-servico/{numero}/reabrir",
+               json={"cliente_pagou": False}, headers=header)
+
+    assert _resumo(client, header)["entrou_caixa"] == 0, "a entrada e o estorno se anulam"

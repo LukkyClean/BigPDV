@@ -775,6 +775,17 @@ def get_resumo(db: Session, empresa_id: int, inicio: date, fim: date) -> ResumoF
 
     despesas = financeiro_crud.total_despesas_pagas(db, empresa_id, dt_inicio, dt_fim)
 
+    # A OUTRA LEITURA do que entrou: pelo livro, não pelas tabelas de venda.
+    #
+    # `faturamento` responde "quanto a loja vendeu"; este responde "quanto
+    # dinheiro passou pelo caixa". Os dois divergem por motivo legítimo (fiado
+    # vendido agora, fiado antigo quitado agora) e a tela mostra os dois em vez
+    # de escolher um -- trocar o faturamento por este apagaria da tela o mês
+    # inteiro de quem vende a prazo.
+    entrou_caixa = financeiro_crud.total_entrou_no_caixa(
+        db, empresa_id, dt_inicio, dt_fim
+    )
+
     # Em aberto ATÉ O FIM DO MÊS VISTO, sem piso de data.
     #
     # Sem o teto, este era o único número da tela que ignorava o mês: olhando
@@ -826,6 +837,7 @@ def get_resumo(db: Session, empresa_id: int, inicio: date, fim: date) -> ResumoF
         periodo_inicio=inicio,
         periodo_fim=fim,
         faturamento=faturamento,
+        entrou_caixa=entrou_caixa,
         despesas_pagas=despesas,
         resultado=faturamento - despesas,
         a_pagar_pendente=pendente,

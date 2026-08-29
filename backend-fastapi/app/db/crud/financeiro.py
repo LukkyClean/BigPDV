@@ -10,7 +10,12 @@ from typing import List, Optional, Sequence, Tuple
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session, joinedload
 
-from app.core.enum import ContaPagarStatus, ContaReceberStatus, MovimentacaoFinanceiraTipo
+from app.core.enum import (
+    ContaPagarStatus,
+    ContaReceberStatus,
+    MovimentacaoFinanceiraOrigem,
+    MovimentacaoFinanceiraTipo,
+)
 from app.db.models.conta_bancaria import ContaBancaria
 from app.db.models.conta_pagar import ContaPagar
 from app.db.models.conta_receber import ContaReceber
@@ -751,3 +756,37 @@ def documentos_de_origem(
         por_os = {pid: numero for pid, numero in linhas}
 
     return por_venda, por_os
+
+
+# Origens que representam dinheiro de CLIENTE. Abertura, sangria e suprimento
+# ficam de fora: são movimento da gaveta, não receita -- somar o troco inicial
+# faria a loja "receber" o próprio dinheiro toda manhã.
+ORIGENS_DE_RECEITA = (
+    MovimentacaoFinanceiraOrigem.VENDA.value,
+    MovimentacaoFinanceiraOrigem.ORDEM_SERVICO.value,
+    MovimentacaoFinanceiraOrigem.RECEBIMENTO.value,
+)
+
+
+def total_entrou_no_caixa(db: Session, empresa_id: int, inicio, fim) -> int:
+    """Quanto dinheiro de cliente ANDOU no período, pelo livro.
+
+    É o contraponto de `faturamento` (que sai das tabelas de venda e OS, por
+    COMPETÊNCIA): aqui só conta o que passou pelo caixa, venha da venda de hoje
+    ou do fiado do mês passado.
+
+    Desconta as SAÍDAS das mesmas origens, que são os estornos -- sem isso, uma
+    OS reaberta deixaria para trás dinheiro que voltou para o cliente.
+    """
+    def _soma(tipo: str) -> int:
+        return int(
+            _query_extrato(db, empresa_id, inicio=inicio, fim=fim, tipo=tipo)
+            .filter(MovimentacaoFinanceira.origem.in_(ORIGENS_DE_RECEITA))
+            .with_entities(func.coalesce(func.sum(MovimentacaoFinanceira.valor), 0))
+            .scalar()
+            or 0
+        )
+
+    return _soma(MovimentacaoFinanceiraTipo.ENTRADA.value) - _soma(
+        MovimentacaoFinanceiraTipo.SAIDA.value
+    )

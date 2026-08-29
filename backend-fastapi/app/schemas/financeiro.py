@@ -40,6 +40,18 @@ class ResumoFinanceiro(BaseModel):
     faturamento: int = Field(
         ..., description="Vendas + OS finalizadas no período (centavos)"
     )
+    entrou_caixa: int = Field(
+        ...,
+        description=(
+            "O que de fato PASSOU PELO CAIXA no período (centavos): venda, OS e "
+            "recebimento pelo livro do dinheiro, já descontados os estornos. "
+            "Leitura diferente de `faturamento`, não um pedaço dele -- aqui "
+            "entra o fiado do mês passado que foi quitado agora, e não entra a "
+            "venda fechada que ainda não foi paga. O livro só passou a receber "
+            "venda e OS sem caixa aberto em 29/08/2026; antes disso ele é "
+            "incompleto, e por isso este número NÃO substitui o faturamento"
+        ),
+    )
     despesas_pagas: int = Field(
         ..., description="O que saiu de fato no período (centavos)"
     )
