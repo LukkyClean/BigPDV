@@ -121,13 +121,19 @@ def _venda_finalizada(client, header, db_session, funcionario_id, produto_id, fp
 # 1. A PROVA DA INERCIA -- o teste que autoriza esta fase a ir para a loja
 # ===========================================================================
 
-def test_com_caixa_desligado_a_venda_grava_igual_e_o_livro_fica_vazio(client, db_session):
-    """Estado das tres lojas em producao: nada muda para elas.
+def test_com_caixa_desligado_a_venda_grava_igual_e_lanca_sem_turno(client, db_session):
+    """Estado das tres lojas em producao: nada muda para elas -- exceto o livro.
 
-    Com `controlar_caixa` desligado (o padrao), finalizar uma venda tem que
-    produzir exatamente o mesmo resultado de antes desta fase: numero atribuido,
-    status FINALIZADA, estoque baixado, pagamento gravado -- e NENHUMA linha no
-    livro do dinheiro.
+    Com `controlar_caixa` desligado (o padrao), finalizar uma venda produz
+    exatamente o mesmo resultado de sempre: numero atribuido, status FINALIZADA,
+    estoque baixado, pagamento gravado, NENHUM turno aberto e NENHUM carimbo de
+    sessao.
+
+    O que mudou em 29/08/2026: o livro do dinheiro passa a receber a linha, com
+    `sessao_caixa_id` NULO. Antes ficava vazio, e a loja sem gaveta abria o
+    Extrato e nao via venda nenhuma. Como todo leitor do fechamento filtra por
+    turno, linha nula nao entra em quebra de caixa de ninguem -- e e por isso
+    que isto pode ir para a loja sem mexer em quem ja usa caixa.
     """
     header = _auth(client)
     funcionario_id = _funcionario(client, header)
@@ -151,8 +157,12 @@ def test_com_caixa_desligado_a_venda_grava_igual_e_o_livro_fica_vazio(client, db
     assert pagamento is not None
     assert pagamento.sessao_caixa_id is None
 
-    # E o livro do dinheiro continua vazio. Esta e a linha que importa.
-    assert db_session.query(MovimentacaoFinanceira).count() == 0
+    # O livro REGISTRA -- e sem turno. Estas sao as linhas que importam.
+    movimentos = db_session.query(MovimentacaoFinanceira).all()
+    assert len(movimentos) == 1
+    assert movimentos[0].origem == "VENDA"
+    assert movimentos[0].valor == total
+    assert movimentos[0].sessao_caixa_id is None, "entrou, mas nao pela gaveta"
     assert db_session.query(SessaoCaixa).count() == 0
 
 

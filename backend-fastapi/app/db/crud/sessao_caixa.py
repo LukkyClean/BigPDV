@@ -250,3 +250,33 @@ def _somar_em_especie(
         .scalar()
     )
     return int(total or 0)
+
+
+def existe_movimento_do_pagamento(
+    db: Session,
+    *,
+    venda_pagamento_id: Optional[int] = None,
+    ordem_servico_pagamento_id: Optional[int] = None,
+) -> bool:
+    """Este pagamento já virou ENTRADA no livro?
+
+    É a prova de que o dinheiro chegou a entrar, e substitui o antigo atalho
+    "tem sessão, logo entrou" -- que deixou de valer quando venda e OS passaram
+    a lançar também sem caixa aberto. O estorno precisa desta resposta: devolver
+    o que nunca entrou criaria uma saída sem par no extrato.
+
+    Só ENTRADA: a linha de estorno é SAIDA e não carrega o id do pagamento, mas
+    filtrar pelo tipo deixa a intenção explícita para quem ler depois.
+    """
+    q = db.query(MovimentacaoFinanceira.id).filter(
+        MovimentacaoFinanceira.tipo == MovimentacaoFinanceiraTipo.ENTRADA.value
+    )
+    if venda_pagamento_id is not None:
+        q = q.filter(MovimentacaoFinanceira.venda_pagamento_id == venda_pagamento_id)
+    elif ordem_servico_pagamento_id is not None:
+        q = q.filter(
+            MovimentacaoFinanceira.ordem_servico_pagamento_id == ordem_servico_pagamento_id
+        )
+    else:
+        return False
+    return q.first() is not None

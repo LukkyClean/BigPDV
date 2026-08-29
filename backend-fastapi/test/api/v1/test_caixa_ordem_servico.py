@@ -139,7 +139,12 @@ def _movimentos_de_os(db_session):
 # INÉRCIA — o teste que precisa passar para a mudança poder ir para a loja
 # ===========================================================================
 
-def test_com_caixa_desligado_a_os_grava_igual_e_o_livro_fica_vazio(client, db_session):
+def test_com_caixa_desligado_a_os_grava_igual_e_lanca_sem_turno(client, db_session):
+    """Gemea da venda: sem gaveta o dinheiro da OS entra no livro do mesmo jeito.
+
+    O pagamento continua SEM carimbo de sessao -- e e isso que mantem o
+    fechamento das lojas que usam caixa exatamente como era.
+    """
     header = _auth(client)
     funcionario_id, fp_id, cliente_id = _cenario(
         client, header, db_session, caixa_ligado=False
@@ -153,8 +158,12 @@ def test_com_caixa_desligado_a_os_grava_igual_e_o_livro_fica_vazio(client, db_se
     assert pagamentos[0].valor == 15000
     assert pagamentos[0].sessao_caixa_id is None
 
-    # ...e o livro do dinheiro continua intocado.
-    assert db_session.query(MovimentacaoFinanceira).count() == 0
+    # ...e o livro do dinheiro registra a entrada, sem turno.
+    movimentos = db_session.query(MovimentacaoFinanceira).all()
+    assert len(movimentos) == 1
+    assert movimentos[0].origem == "ORDEM_SERVICO"
+    assert movimentos[0].valor == 15000
+    assert movimentos[0].sessao_caixa_id is None
 
 
 # ===========================================================================

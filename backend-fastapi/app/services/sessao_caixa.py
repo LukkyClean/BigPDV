@@ -552,8 +552,15 @@ def registrar_pagamentos_de_venda(
 ) -> None:
     """Lança no livro os pagamentos de uma venda finalizada.
 
-    NÃO FAZ NADA se o controle de caixa estiver desligado — e é essa saída
-    imediata que mantém as lojas de hoje com o comportamento de sempre.
+    LANÇA SEMPRE, com o controle de caixa ligado ou desligado. Era o contrário
+    até 29/08/2026, e a razão de mudar veio do uso: loja que trabalha sem
+    gaveta -- e é como boa parte trabalha -- ficava com o Extrato sem nenhuma
+    venda, como se o dinheiro nunca tivesse entrado. "Não uso caixa" nunca quis
+    dizer "não quero registro do meu dinheiro".
+
+    O que MUDA sem turno é só o `sessao_caixa_id`, que fica nulo. Todo leitor do
+    fechamento filtra por turno, então nada disso encosta na quebra de caixa das
+    lojas que usam gaveta.
 
     QUEM RECEBE ≠ QUEM VENDE. `operador_funcionario_id` é quem está no caixa
     finalizando; `venda.funcionario_id` é o VENDEDOR, que existe para a comissão.
@@ -569,32 +576,39 @@ def registrar_pagamentos_de_venda(
     """
     funcionario = getattr(venda, "funcionario", None)
     empresa_id = getattr(funcionario, "empresa_id", None)
-    if not empresa_id or not caixa_esta_ligado(db, empresa_id):
+    if not empresa_id:
         return
 
+    # SESSÃO É OPCIONAL. Sem turno aberto -- ou com o controle de caixa
+    # desligado, que é como boa parte das lojas trabalha -- o movimento nasce
+    # com `sessao_caixa_id` NULO: o dinheiro entrou, mas não pela gaveta.
+    #
+    # Todo leitor do fechamento filtra por `sessao_caixa_id == <turno>` (ver
+    # crud/sessao_caixa.py), então linha nula não entra em turno nenhum e a
+    # quebra de caixa continua idêntica. Quem lê estas linhas é o Extrato.
     sessao = None
     if operador_funcionario_id:
         sessao = caixa_crud.get_sessao_aberta_do_funcionario(db, operador_funcionario_id)
     if not sessao:
         sessao = caixa_crud.get_sessao_aberta_do_funcionario(db, venda.funcionario_id)
-    if not sessao:
-        return
 
     from app.core.tempo import hoje_local
 
     hoje = hoje_local()
-    venda.sessao_caixa_id = sessao.id
+    if sessao:
+        venda.sessao_caixa_id = sessao.id
 
     for pagamento in venda.pagamentos:
         if pagamento.vencimento and pagamento.vencimento > hoje:
             continue  # promessa: é conta a receber, não gaveta
-        pagamento.sessao_caixa_id = sessao.id
+        if sessao:
+            pagamento.sessao_caixa_id = sessao.id
         caixa_crud.registrar_movimento(
             db,
             tipo=MovimentacaoFinanceiraTipo.ENTRADA,
             origem=MovimentacaoFinanceiraOrigem.VENDA,
             valor=pagamento.valor,
-            sessao_caixa_id=sessao.id,
+            sessao_caixa_id=sessao.id if sessao else None,
             forma_pagamento_id=pagamento.forma_pagamento_id,
             venda_pagamento_id=pagamento.id,
             funcionario_id=venda.funcionario_id,
@@ -621,9 +635,10 @@ def registrar_pagamentos_de_os(
     inteiro: uma OS reaberta e refinalizada carrega os pagamentos antigos junto,
     e relançá-los duplicaria dinheiro que já entrou.
 
-    Mesmas duas guardas da venda, e pelas mesmas razões:
-      - caixa desligado devolve na hora, o que mantém as lojas de hoje idênticas;
-      - pagamento com vencimento futuro é promessa e não gaveta.
+    Mesma regra da venda, e pela mesma razão: lança SEMPRE, e sem turno aberto
+    o movimento nasce com `sessao_caixa_id` nulo. A única guarda que sobrou é a
+    da promessa -- pagamento com vencimento futuro é conta a receber, e o
+    movimento nasce no dia em que o cliente pagar.
 
     O ADIANTAMENTO (`valor_entrada`) NÃO entra aqui, de propósito: ele é
     recebido quando a OS é ABERTA, e lançá-lo na finalização o jogaria no turno
@@ -635,16 +650,16 @@ def registrar_pagamentos_de_os(
 
     funcionario = getattr(ordem_servico, "funcionario", None)
     empresa_id = getattr(funcionario, "empresa_id", None)
-    if not empresa_id or not caixa_esta_ligado(db, empresa_id):
+    if not empresa_id:
         return
 
+    # Sessão opcional, como na gêmea da venda: sem turno o movimento nasce com
+    # `sessao_caixa_id` nulo e não entra em fechamento nenhum.
     sessao = None
     if operador_funcionario_id:
         sessao = caixa_crud.get_sessao_aberta_do_funcionario(db, operador_funcionario_id)
     if not sessao and ordem_servico.funcionario_id:
         sessao = caixa_crud.get_sessao_aberta_do_funcionario(db, ordem_servico.funcionario_id)
-    if not sessao:
-        return
 
     from app.core.tempo import hoje_local
 
@@ -653,13 +668,14 @@ def registrar_pagamentos_de_os(
     for pagamento in pagamentos:
         if pagamento.vencimento and pagamento.vencimento > hoje:
             continue  # promessa: é conta a receber, não gaveta
-        pagamento.sessao_caixa_id = sessao.id
+        if sessao:
+            pagamento.sessao_caixa_id = sessao.id
         caixa_crud.registrar_movimento(
             db,
             tipo=MovimentacaoFinanceiraTipo.ENTRADA,
             origem=MovimentacaoFinanceiraOrigem.ORDEM_SERVICO,
             valor=pagamento.valor,
-            sessao_caixa_id=sessao.id,
+            sessao_caixa_id=sessao.id if sessao else None,
             forma_pagamento_id=pagamento.forma_pagamento_id,
             ordem_servico_pagamento_id=pagamento.id,
             funcionario_id=ordem_servico.funcionario_id,
@@ -690,7 +706,7 @@ def estornar_pagamentos_de_os(
 
     funcionario = getattr(ordem_servico, "funcionario", None)
     empresa_id = getattr(funcionario, "empresa_id", None)
-    if not empresa_id or not caixa_esta_ligado(db, empresa_id):
+    if not empresa_id:
         return
 
     sessao = None
@@ -700,8 +716,16 @@ def estornar_pagamentos_de_os(
         sessao = caixa_crud.get_sessao_aberta_do_funcionario(db, ordem_servico.funcionario_id)
 
     for pagamento in pagamentos:
-        # Só devolve o que chegou a entrar: promessa nunca virou movimento.
-        if pagamento.sessao_caixa_id is None:
+        # Só devolve o que chegou a entrar, e quem responde isso é o LIVRO.
+        #
+        # Antes a prova era `pagamento.sessao_caixa_id is None` -- "não passou
+        # por turno, logo não virou movimento". Isso valia enquanto só existia
+        # linha com turno. Agora que a venda e a OS lançam também sem caixa
+        # aberto, essa pergunta responderia "não entrou" para dinheiro que
+        # entrou, e o estorno deixaria a entrada sem a saída no extrato.
+        if not caixa_crud.existe_movimento_do_pagamento(
+            db, ordem_servico_pagamento_id=pagamento.id
+        ):
             continue
         caixa_crud.registrar_movimento(
             db,
