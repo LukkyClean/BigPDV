@@ -10,9 +10,11 @@
  * Por isso o aviso do primeiro dia negativo vem antes da lista — quem já sabe
  * a resposta não precisa ler o resto.
  *
- * As janelas param em 90 dias (o teto do backend) porque é até onde a loja tem
- * documento lançado: além disso a linha viraria uma reta, e uma projeção que
- * não tem de onde tirar número não é projeção, é palpite.
+ * As janelas vão até 360 dias, mas a projeção só é CONFIÁVEL nos primeiros ~90:
+ * conta mensal (recorrente) só nasce quando a anterior é paga, então o horizonte
+ * longo mostra as parcelas já criadas e ignora as mensais que ainda não
+ * existem. Isso faz o futuro distante parecer mais folgado do que é — e por isso
+ * a tela avisa, em vez de esconder a opção.
  */
 import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
@@ -71,7 +73,7 @@ function diaSemana(iso: string): string {
     <div class="flex flex-wrap items-center justify-between gap-3">
       <div class="flex items-center gap-2">
         <button
-          v-for="opcao in [30, 60, 90]"
+          v-for="opcao in [30, 60, 90, 180, 360]"
           :key="opcao"
           type="button"
           class="rounded-lg border px-3.5 py-1.5 text-sm font-semibold cursor-pointer"
@@ -90,6 +92,14 @@ function diaSemana(iso: string): string {
         <Wallet :size="16" class="mr-2" /> Atualizar saldo
       </BaseButton>
     </div>
+
+    <!-- Aviso e não bloqueio: o horizonte longo serve para enxergar as parcelas
+         que já existem, desde que o dono saiba o que NÃO está ali. -->
+    <p v-if="dias > 90" class="rounded-xl bg-gray-50 px-3.5 py-2.5 text-xs text-gray-500">
+      Daqui a mais de 90 dias a projeção fica incompleta: contas mensais só são criadas quando
+      você paga a anterior, então elas ainda não existem para entrar aqui. Parcelas já
+      lançadas aparecem normalmente.
+    </p>
 
     <div v-if="isLoading" class="text-sm text-gray-500">Carregando…</div>
 

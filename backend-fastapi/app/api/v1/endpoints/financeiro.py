@@ -550,8 +550,11 @@ def get_resumo(
 )
 def get_fluxo_caixa(
     dias: int = Query(
-        30, ge=1, le=90,
-        description="Tamanho da janela a partir de hoje (a tela oferece 30 e 60)",
+        30, ge=1, le=365,
+        description=(
+            "Tamanho da janela a partir de hoje (a tela oferece 30, 60, 90, 180 e 360). "
+            "Teto de um ano: além disso não há documento lançado para projetar"
+        ),
     ),
     usuario_token: dict = Depends(check_permission(required_permission=PERMISSAO_VER)),
     db: Session = Depends(get_db),
