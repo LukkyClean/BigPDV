@@ -19,6 +19,7 @@ import { formatCurrency } from '@/shared/utils/finance';
 import { formatDataPura } from '@/shared/utils/date.utils';
 
 import ContaPagarBaixaModal from '../components/ContaPagarBaixaModal.vue';
+import ContaPagarCategoriaModal from '../components/ContaPagarCategoriaModal.vue';
 import ContaPagarDetalheModal from '../components/ContaPagarDetalheModal.vue';
 import ContaPagarEstornoModal from '../components/ContaPagarEstornoModal.vue';
 import ContaPagarFormModal from '../components/ContaPagarFormModal.vue';
@@ -69,6 +70,7 @@ const contaEmEdicao = ref<ContaPagar | null>(null);
 const contaParaBaixa = ref<ContaPagar | null>(null);
 const contaParaEstorno = ref<ContaPagar | null>(null);
 const contaParaDetalhe = ref<ContaPagar | null>(null);
+const contaParaClassificar = ref<ContaPagar | null>(null);
 
 const ABAS = [
   { valor: '', rotulo: 'Todas' },
@@ -278,14 +280,26 @@ function rotuloStatus(conta: ContaPagar): string {
                     Cancelar
                   </button>
                 </template>
-                <button
-                  v-else-if="conta.status === 'PAGA'"
-                  type="button"
-                  class="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-700 cursor-pointer"
-                  @click="contaParaEstorno = conta"
-                >
-                  <Undo2 :size="13" /> Estornar
-                </button>
+                <template v-else-if="conta.status === 'PAGA'">
+                  <!-- Classificar uma conta PAGA é permitido de propósito: a
+                       categoria nunca entrou no livro do dinheiro, e sem esta
+                       ação o alerta "gastos sem categoria" não teria como sair
+                       da tela — ele conta justamente as despesas pagas. -->
+                  <button
+                    type="button"
+                    class="text-xs font-medium text-gray-600 underline-offset-2 hover:text-gray-900 hover:underline cursor-pointer"
+                    @click="contaParaClassificar = conta"
+                  >
+                    Classificar
+                  </button>
+                  <button
+                    type="button"
+                    class="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-700 cursor-pointer"
+                    @click="contaParaEstorno = conta"
+                  >
+                    <Undo2 :size="13" /> Estornar
+                  </button>
+                </template>
                 <span v-else class="text-xs text-gray-300">—</span>
               </div>
             </td>
@@ -300,6 +314,10 @@ function rotuloStatus(conta: ContaPagar): string {
       @fechar="formAberto = false"
     />
     <ContaPagarDetalheModal :conta="contaParaDetalhe" @fechar="contaParaDetalhe = null" />
+    <ContaPagarCategoriaModal
+      :conta="contaParaClassificar"
+      @fechar="contaParaClassificar = null"
+    />
     <ContaPagarBaixaModal :conta="contaParaBaixa" @fechar="contaParaBaixa = null" />
     <ContaPagarEstornoModal :conta="contaParaEstorno" @fechar="contaParaEstorno = null" />
 

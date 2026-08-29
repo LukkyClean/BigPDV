@@ -484,6 +484,18 @@ def criar_conta_pagar(
 CAMPOS_AUDITADOS = ("valor", "vencimento", "plano_conta_id", "fornecedor_id")
 
 
+# O ÚNICO campo que ainda muda depois do pagamento: a categoria.
+#
+# Ela nunca entrou no livro do dinheiro, então corrigi-la não faz documento e
+# lançamento discordarem -- e classificar despesa depois de paga é rotina em
+# qualquer escritório de contabilidade.
+#
+# A lista é curta de propósito. Fornecedor e observação também não estão no
+# livro e poderiam entrar aqui, mas nenhuma tela os edita hoje: backend que
+# aceita mais do que a interface oferece é surpresa esperando para acontecer.
+CAMPOS_LIVRES_APOS_PAGAMENTO = ("plano_conta_id",)
+
+
 def atualizar_conta_pagar(
     db: Session,
     empresa_id: int,
@@ -495,13 +507,27 @@ def atualizar_conta_pagar(
     if not conta:
         raise NotFoundException(detail="Conta não encontrada")
 
-    # Conta paga não se edita: o valor já virou lançamento no livro, e mexer no
-    # documento faria a despesa do relatório discordar do movimento. Para
-    # corrigir, estorna-se primeiro.
+    # CONTA PAGA: o dinheiro está congelado, a CLASSIFICAÇÃO não.
+    #
+    # Valor e vencimento já viraram lançamento no livro, e mexer neles faria a
+    # despesa do relatório discordar do movimento -- para isso, estorna-se
+    # primeiro. Mas categoria, fornecedor e observação nunca entraram no livro:
+    # são a leitura contábil do documento, e corrigi-las depois do pagamento é
+    # rotina em qualquer escritório.
+    #
+    # A regra larga de antes criava um laço fechado com o painel de atenção: o
+    # alerta "gastos sem categoria" conta despesa PAGA, e conta paga não podia
+    # ser classificada. O aviso não teria como sair da tela nunca.
     if conta.status == ContaPagarStatus.PAGA.value:
-        raise BadRequestException(
-            detail="Esta conta já foi paga. Estorne o pagamento antes de alterá-la."
-        )
+        mexidos = set(dados.model_dump(exclude_unset=True))
+        congelados = mexidos - set(CAMPOS_LIVRES_APOS_PAGAMENTO)
+        if congelados:
+            raise BadRequestException(
+                detail=(
+                    "Esta conta já foi paga: só a categoria ainda pode ser corrigida. "
+                    "Para mudar valor ou vencimento, estorne o pagamento antes."
+                )
+            )
 
     _validar_referencias(db, empresa_id, dados.plano_conta_id)
     func_id, func_nome = _funcionario_do_token(usuario_token)

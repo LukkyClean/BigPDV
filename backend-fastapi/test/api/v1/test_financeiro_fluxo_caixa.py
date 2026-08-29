@@ -535,3 +535,83 @@ def test_sem_recorte_a_tela_continua_sendo_do_mes(client, db_session):
 
     itens = _listar(client, header)["itens"]
     assert [i["descricao"] for i in itens] == ["Deste mes"]
+
+
+# ===========================================================================
+# CLASSIFICAR DEPOIS DE PAGO
+#
+# O laco que o uso real encontrou: o alerta "gastos sem categoria" conta
+# despesa PAGA, e conta paga nao podia ser editada. O aviso nao teria como
+# sair da tela nunca.
+#
+# A regra que desfaz o laco: depois do pagamento so a CATEGORIA muda. Ela nunca
+# entrou no livro do dinheiro; valor e vencimento entraram.
+# ===========================================================================
+
+def _categoria_id(client, header, contem="Aluguel"):
+    planos = client.get("/api/v1/financeiro/plano-contas", headers=header).json()
+    return next(p["id"] for p in planos if contem in p["nome"])
+
+
+def test_conta_paga_aceita_categoria(client, db_session):
+    header = _auth(client)
+    conta = _pagar(client, header, 30000, dias=2, descricao="Energia")
+    client.post(f"/api/v1/financeiro/contas-pagar/{conta['id']}/pagar",
+                json={}, headers=header)
+
+    plano = _categoria_id(client, header)
+    r = client.patch(f"/api/v1/financeiro/contas-pagar/{conta['id']}",
+                     json={"plano_conta_id": plano}, headers=header)
+    assert r.status_code == status.HTTP_200_OK, r.text
+    assert r.json()["plano_conta_id"] == plano
+    assert r.json()["status"] == "PAGA", "classificar nao desfaz o pagamento"
+
+
+def test_conta_paga_recusa_valor_e_vencimento(client, db_session):
+    """O dinheiro esta congelado no livro: para mexer nele, estorne antes."""
+    header = _auth(client)
+    conta = _pagar(client, header, 30000, dias=2)
+    client.post(f"/api/v1/financeiro/contas-pagar/{conta['id']}/pagar",
+                json={}, headers=header)
+
+    r = client.patch(f"/api/v1/financeiro/contas-pagar/{conta['id']}",
+                     json={"valor": 99999}, headers=header)
+    assert r.status_code == status.HTTP_400_BAD_REQUEST
+    assert "categoria" in r.json()["detail"].lower()
+
+    r = client.patch(f"/api/v1/financeiro/contas-pagar/{conta['id']}",
+                     json={"vencimento": date.today().isoformat()}, headers=header)
+    assert r.status_code == status.HTTP_400_BAD_REQUEST
+
+
+def test_classificar_faz_o_alerta_sumir(client, db_session):
+    """O laco fechado, provado ponta a ponta.
+
+    E o teste que garante que o dono consegue SAIR do aviso -- que era a
+    pergunta dele: "como eu aviso o sistema que resolvi?". Nao avisa: resolve o
+    dado, e o alerta nao volta.
+    """
+    header = _auth(client)
+    _informar_saldo(client, header, 100000)
+    conta = _pagar(client, header, 30000, dias=2, descricao="Energia")
+    client.post(f"/api/v1/financeiro/contas-pagar/{conta['id']}/pagar",
+                json={}, headers=header)
+
+    assert "DESPESA_SEM_CATEGORIA" in _alertas(client, header)
+
+    client.patch(f"/api/v1/financeiro/contas-pagar/{conta['id']}",
+                 json={"plano_conta_id": _categoria_id(client, header)}, headers=header)
+
+    assert "DESPESA_SEM_CATEGORIA" not in _alertas(client, header)
+
+
+def test_conta_pendente_continua_editavel_por_inteiro(client, db_session):
+    """A regressao: apertar a regra da PAGA nao pode travar a PENDENTE."""
+    header = _auth(client)
+    conta = _pagar(client, header, 30000, dias=5)
+
+    r = client.patch(f"/api/v1/financeiro/contas-pagar/{conta['id']}",
+                     json={"valor": 45000, "descricao": "Energia corrigida"},
+                     headers=header)
+    assert r.status_code == status.HTTP_200_OK, r.text
+    assert r.json()["valor"] == 45000
