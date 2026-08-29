@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/vue-query';
 
+import { FINANCEIRO_KEY } from '@/shared/constants/entityKeys';
 import { useToast } from '@/shared/composables/useToast';
 
 import {
@@ -18,13 +19,22 @@ import type {
 /**
  * Mutations do turno de caixa.
  *
- * Todas invalidam o prefixo `caixa` — e só ele. O resumo do turno é a única
- * coisa que muda: venda, estoque e relatório seguem seus próprios prefixos e
- * não são tocados aqui.
+ * Invalidam DOIS prefixos, e o segundo não é zelo: abertura, sangria e
+ * suprimento escrevem em `movimentacoes_financeiras`, o mesmo livro do dinheiro
+ * que o Extrato do módulo financeiro lê. Enquanto só o prefixo `caixa` era
+ * invalidado, quem fazia uma sangria e ia conferir no Extrato via o mês SEM
+ * ela, até o polling de 2 minutos passar — e concluía que o sistema tinha
+ * perdido o lançamento.
+ *
+ * Venda, estoque e relatório continuam de fora: seguem seus próprios prefixos e
+ * não leem este livro.
  */
 function useInvalidarCaixa() {
   const queryClient = useQueryClient();
-  return () => queryClient.invalidateQueries({ queryKey: caixaKeys.all });
+  return async () => {
+    await queryClient.invalidateQueries({ queryKey: caixaKeys.all });
+    await queryClient.invalidateQueries({ queryKey: [FINANCEIRO_KEY] });
+  };
 }
 
 export function useAbrirCaixaMutation() {
