@@ -766,6 +766,21 @@ def get_resumo(db: Session, empresa_id: int, inicio: date, fim: date) -> ResumoF
         db, empresa_id, hoje=hoje, fim=fim
     )
 
+    # O outro lado da rua: SEM o teto de data que o a pagar tem.
+    #
+    # Não é descuido. O teto do a pagar nasceu da recorrência (pagar a de
+    # setembro criava a de outubro, e o total não se movia), e cobrança não se
+    # reproduz na baixa. Do outro lado, fiado quase sempre vence no mês
+    # seguinte: com teto, o card mostraria zero em todo mês que o dono
+    # consegue abrir -- a Visão Geral trava o botão de avançar.
+    #
+    # Não entra no resultado: a venda fiado já está em `faturamento`, e somá-la
+    # de novo contaria o mesmo dinheiro duas vezes. O card responde outra
+    # pergunta -- quanto do que já vendi ainda não recebi.
+    a_receber, _recebido, a_receber_vencido = financeiro_crud.totais_contas_receber(
+        db, empresa_id, hoje=hoje
+    )
+
     categorias = [
         DespesaPorCategoria(
             plano_conta_id=plano_id,
@@ -792,6 +807,8 @@ def get_resumo(db: Session, empresa_id: int, inicio: date, fim: date) -> ResumoF
         resultado=faturamento - despesas,
         a_pagar_pendente=pendente,
         a_pagar_vencido=vencido,
+        a_receber_pendente=a_receber,
+        a_receber_vencido=a_receber_vencido,
         despesas_por_categoria=categorias,
         proximas_a_vencer=[_serializar_conta(c, hoje) for c in proximas],
     )

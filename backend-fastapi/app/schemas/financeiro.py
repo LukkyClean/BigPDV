@@ -59,6 +59,22 @@ class ResumoFinanceiro(BaseModel):
         ..., description="Parte do pendente que já passou do vencimento (centavos)"
     )
 
+    a_receber_pendente: int = Field(
+        ...,
+        description=(
+            "TODA cobrança em aberto, de qualquer vencimento (centavos) — a única "
+            "coisa nesta tela que não respeita o mês visto, e de propósito. O teto "
+            "do a pagar existe por causa da recorrência, que não existe aqui; e "
+            "fiado quase sempre vence no mês seguinte, então com teto o card "
+            "mostraria zero justamente quando importa (a Visão Geral nem deixa "
+            "avançar de mês). É dinheiro já contado em `faturamento` que ainda não "
+            "passou pelo caixa — por isso não entra no resultado."
+        ),
+    )
+    a_receber_vencido: int = Field(
+        ..., description="Parte do a receber que já passou do vencimento (centavos)"
+    )
+
     despesas_por_categoria: List[DespesaPorCategoria] = Field(
         default_factory=list, description="Onde o dinheiro foi, no período"
     )

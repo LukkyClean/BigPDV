@@ -854,3 +854,56 @@ def test_multa_por_atraso_continua_entrando_no_caixa(client, db_session):
 
     mov = db_session.query(MovimentacaoFinanceira).one()
     assert mov.valor == 21500, "multa por atraso e receita da loja"
+
+
+def test_resumo_soma_todo_o_a_receber_independente_do_vencimento(client, db_session):
+    """O card do receber NÃO tem o teto de data que o a pagar tem.
+
+    Fiado vendido em agosto costuma vencer em setembro, e a Visão Geral não
+    deixa avançar de mês — com teto, o dono nunca veria o dinheiro que está na
+    rua. Aqui entram os três: o deste mês, o atrasado e o do mês que vem.
+    """
+    header = _auth(client)
+    hoje = date.today()
+    primeiro = hoje.replace(day=1)
+    ultimo_dia = (primeiro + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+
+    _criar_receber(client, header, descricao="Fiado deste mes", valor=30000,
+                   vencimento=ultimo_dia.isoformat())
+    _criar_receber(client, header, descricao="Fiado atrasado", valor=12000,
+                   vencimento=(primeiro - timedelta(days=10)).isoformat())
+    _criar_receber(client, header, descricao="Fiado do mes que vem", valor=99900,
+                   vencimento=(ultimo_dia + timedelta(days=5)).isoformat())
+
+    resumo = client.get(
+        f"/api/v1/financeiro/resumo?inicio={primeiro}&fim={ultimo_dia}", headers=header
+    ).json()
+
+    assert resumo["a_receber_pendente"] == 141900, "o do mês que vem também conta"
+    assert resumo["a_receber_vencido"] == 12000
+
+
+def test_receber_baixado_sai_do_a_receber_sem_mexer_no_resultado(client, db_session):
+    """Fiado recebido não é faturamento novo — a venda já foi contada quando fechou.
+
+    Se a baixa somasse em `faturamento`, o mesmo dinheiro apareceria duas vezes:
+    uma na venda a prazo e outra no recebimento.
+    """
+    header = _auth(client)
+    hoje = date.today()
+    primeiro = hoje.replace(day=1)
+    ultimo_dia = (primeiro + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+    url = f"/api/v1/financeiro/resumo?inicio={primeiro}&fim={ultimo_dia}"
+
+    conta = _criar_receber(client, header, valor=20000,
+                           vencimento=ultimo_dia.isoformat())
+    antes = client.get(url, headers=header).json()
+    assert antes["a_receber_pendente"] == 20000
+
+    client.post(f"/api/v1/financeiro/contas-receber/{conta['id']}/receber",
+                json={}, headers=header)
+
+    depois = client.get(url, headers=header).json()
+    assert depois["a_receber_pendente"] == 0, "saiu da rua"
+    assert depois["faturamento"] == antes["faturamento"], "não é venda nova"
+    assert depois["resultado"] == antes["resultado"]

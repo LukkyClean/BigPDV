@@ -89,8 +89,29 @@ const maiorCategoria = computed(() => resumo.value?.despesas_por_categoria?.[0]?
         </div>
       </div>
 
-      <!-- Em aberto -->
-      <div class="grid gap-4 sm:grid-cols-2">
+      <!-- Em aberto dos dois lados: o que ainda não entrou e o que ainda não saiu -->
+      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+          <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">A receber em aberto</p>
+          <p class="mt-2 text-xl font-bold text-gray-800">{{ formatCurrency(resumo.a_receber_pendente) }}</p>
+          <!-- Duas coisas que o card precisa dizer: ignora o mês visto (fiado
+               vence lá na frente) e JÁ está dentro de "Entrou" — a venda
+               fechou, o que não chegou foi o pagamento. Sem a linha, é somar
+               duas vezes. -->
+          <p class="mt-1 text-xs text-gray-400">De qualquer vencimento, já contado em Entrou</p>
+        </div>
+        <div
+          class="rounded-2xl border p-5 shadow-sm"
+          :class="resumo.a_receber_vencido > 0 ? 'border-rose-200 bg-rose-50' : 'border-gray-100 bg-white'"
+        >
+          <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide"
+             :class="resumo.a_receber_vencido > 0 ? 'text-rose-600' : 'text-gray-500'">
+            <AlertTriangle v-if="resumo.a_receber_vencido > 0" :size="14" /> A receber atrasado
+          </p>
+          <p class="mt-2 text-xl font-bold" :class="resumo.a_receber_vencido > 0 ? 'text-rose-700' : 'text-gray-800'">
+            {{ formatCurrency(resumo.a_receber_vencido) }}
+          </p>
+        </div>
         <div class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
           <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">A pagar em aberto</p>
           <p class="mt-2 text-xl font-bold text-gray-800">{{ formatCurrency(resumo.a_pagar_pendente) }}</p>
@@ -99,9 +120,11 @@ const maiorCategoria = computed(() => resumo.value?.despesas_por_categoria?.[0]?
           class="rounded-2xl border p-5 shadow-sm"
           :class="resumo.a_pagar_vencido > 0 ? 'border-amber-200 bg-amber-50' : 'border-gray-100 bg-white'"
         >
+          <!-- "A pagar vencido", e não só "Vencido": com o card do receber ao
+               lado, um rótulo solto deixa de dizer de quem é a dívida. -->
           <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide"
              :class="resumo.a_pagar_vencido > 0 ? 'text-amber-700' : 'text-gray-500'">
-            <AlertTriangle v-if="resumo.a_pagar_vencido > 0" :size="14" /> Vencido
+            <AlertTriangle v-if="resumo.a_pagar_vencido > 0" :size="14" /> A pagar vencido
           </p>
           <p class="mt-2 text-xl font-bold" :class="resumo.a_pagar_vencido > 0 ? 'text-amber-800' : 'text-gray-800'">
             {{ formatCurrency(resumo.a_pagar_vencido) }}

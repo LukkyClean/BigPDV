@@ -110,6 +110,11 @@ export const ResumoFinanceiroSchema = z.object({
   resultado: z.number(),
   a_pagar_pendente: z.number(),
   a_pagar_vencido: z.number(),
+  // O que já foi vendido e ainda não entrou, de QUALQUER vencimento (é o
+  // único número da tela que ignora o mês visto). Não desconta nem soma ao
+  // resultado — o faturamento já contou essa venda.
+  a_receber_pendente: z.number(),
+  a_receber_vencido: z.number(),
   despesas_por_categoria: z.array(DespesaPorCategoriaSchema),
   proximas_a_vencer: z.array(ContaPagarSchema),
 });
