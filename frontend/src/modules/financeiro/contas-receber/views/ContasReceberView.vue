@@ -7,7 +7,8 @@
  * passou pelo sistema — o cliente que já devia antes do módulo existir.
  */
 import { computed, ref } from 'vue';
-import { ChevronLeft, ChevronRight, Plus, Undo2 } from 'lucide-vue-next';
+import { useRoute } from 'vue-router';
+import { Filter, ChevronLeft, ChevronRight, Plus, Undo2 } from 'lucide-vue-next';
 
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
 import BaseSearchInput from '@/shared/components/ui/BaseSearchInput/BaseSearchInput.vue';
@@ -38,11 +39,21 @@ const { range, rotulo, anterior, proximo } = usePeriodoMes();
 const statusFiltro = ref('');
 const busca = ref('');
 
+// Mesmo recorte vindo do painel de atenção, pela mesma razão da tela de Contas
+// a Pagar: o alerta sabe quais linhas o originaram, e `vencidas` ignora o mês.
+const route = useRoute();
+const recorte = ref<string>((route.query.filtro as string) ?? '');
+
+const ROTULO_RECORTE: Record<string, string> = {
+  vencidas: 'só as cobranças vencidas',
+};
+
 const filtros = computed(() => ({
   inicio: range.value.inicio,
   fim: range.value.fim,
   status: statusFiltro.value || undefined,
   busca: busca.value.trim() || undefined,
+  vencidas: recorte.value === 'vencidas' || undefined,
 }));
 
 const { data: listagem, isLoading } = useContasReceberQuery(filtros);
@@ -125,6 +136,27 @@ function rotuloStatus(conta: ContaReceber): string {
 
 <template>
   <div class="flex flex-col gap-5">
+    <!-- O aviso de que a lista NÃO é o mês: quem chegou pelo painel de atenção
+         está vendo um recorte, e sem dizer isso a tela parece ter esquecido
+         contas. "Mostrar tudo" devolve o comportamento normal. -->
+    <div
+      v-if="recorte"
+      class="flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800"
+    >
+      <Filter :size="13" />
+      <span>
+        Mostrando <strong>{{ ROTULO_RECORTE[recorte] ?? recorte }}</strong>, de qualquer mês —
+        veio do aviso da Visão Geral.
+      </span>
+      <button
+        type="button"
+        class="font-semibold underline underline-offset-2 cursor-pointer"
+        @click="recorte = ''"
+      >
+        Mostrar tudo
+      </button>
+    </div>
+
     <div class="flex flex-wrap items-center justify-between gap-3">
       <div class="flex items-center gap-2">
         <button type="button" @click="anterior" class="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer" aria-label="Mês anterior">

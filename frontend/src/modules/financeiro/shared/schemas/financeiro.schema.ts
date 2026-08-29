@@ -175,6 +175,11 @@ export interface ContaPagarFiltros {
   fim?: string;
   plano_conta_id?: number;
   busca?: string;
+  // Recortes do painel de atenção. `vencidas` IGNORA o período no backend:
+  // dívida vencida é de mês anterior quase sempre, e filtrar pelo mês visto
+  // esconderia justamente a conta do alerta.
+  vencidas?: boolean;
+  sem_categoria?: boolean;
 }
 
 // ===========================================================================

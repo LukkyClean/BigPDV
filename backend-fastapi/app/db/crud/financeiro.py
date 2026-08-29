@@ -145,6 +145,9 @@ def _query_contas(
     plano_conta_id: Optional[int] = None,
     fornecedor_id: Optional[int] = None,
     busca: Optional[str] = None,
+    vencidas: bool = False,
+    sem_categoria: bool = False,
+    hoje: Optional[date] = None,
 ):
     """Base compartilhada pela listagem e pelos totais.
 
@@ -170,6 +173,17 @@ def _query_contas(
         termo = f"%{busca.strip()}%"
         q = q.filter(ContaPagar.descricao.ilike(termo))
 
+    # Os dois recortes que o painel de atenção usa para levar o dono DIRETO às
+    # linhas do alerta. Sem eles, "Ver contas a pagar" abre a lista inteira e o
+    # dono procura a agulha que o sistema já sabia apontar.
+    if vencidas:
+        q = q.filter(
+            ContaPagar.status == ContaPagarStatus.PENDENTE.value,
+            ContaPagar.vencimento < (hoje or date.today()),
+        )
+    if sem_categoria:
+        q = q.filter(ContaPagar.plano_conta_id.is_(None))
+
     return q
 
 
@@ -183,6 +197,8 @@ def listar_contas_pagar(
     plano_conta_id: Optional[int] = None,
     fornecedor_id: Optional[int] = None,
     busca: Optional[str] = None,
+    vencidas: bool = False,
+    sem_categoria: bool = False,
     limit: int = 200,
     offset: int = 0,
 ) -> Tuple[Sequence[ContaPagar], int]:
@@ -190,6 +206,7 @@ def listar_contas_pagar(
     q = _query_contas(
         db, empresa_id, status=status, inicio=inicio, fim=fim,
         plano_conta_id=plano_conta_id, fornecedor_id=fornecedor_id, busca=busca,
+        vencidas=vencidas, sem_categoria=sem_categoria,
     )
     total = q.count()
 
@@ -220,6 +237,8 @@ def totais_contas_pagar(
     plano_conta_id: Optional[int] = None,
     fornecedor_id: Optional[int] = None,
     busca: Optional[str] = None,
+    vencidas: bool = False,
+    sem_categoria: bool = False,
 ) -> Tuple[int, int, int]:
     """(pendente, pago, vencido) do filtro — sem o recorte de status.
 
@@ -231,6 +250,7 @@ def totais_contas_pagar(
         q = _query_contas(
             db, empresa_id, inicio=inicio, fim=fim,
             plano_conta_id=plano_conta_id, fornecedor_id=fornecedor_id, busca=busca,
+            vencidas=vencidas, sem_categoria=sem_categoria, hoje=hoje,
         )
         for condicao in extra:
             q = q.filter(condicao)
@@ -429,6 +449,8 @@ def _query_receber(
     fim: Optional[date] = None,
     cliente_id: Optional[int] = None,
     busca: Optional[str] = None,
+    vencidas: bool = False,
+    hoje: Optional[date] = None,
 ):
     q = db.query(ContaReceber).filter(ContaReceber.empresa_id == empresa_id)
     if status:
@@ -441,6 +463,13 @@ def _query_receber(
         q = q.filter(ContaReceber.cliente_id == cliente_id)
     if busca:
         q = q.filter(ContaReceber.descricao.ilike(f"%{busca.strip()}%"))
+    # O mesmo recorte do a pagar, para o alerta de fiado atrasado cair na lista
+    # de quem realmente está devendo.
+    if vencidas:
+        q = q.filter(
+            ContaReceber.status == ContaReceberStatus.PENDENTE.value,
+            ContaReceber.vencimento < (hoje or date.today()),
+        )
     return q
 
 
@@ -453,12 +482,13 @@ def listar_contas_receber(
     fim: Optional[date] = None,
     cliente_id: Optional[int] = None,
     busca: Optional[str] = None,
+    vencidas: bool = False,
     limit: int = 200,
     offset: int = 0,
 ) -> Tuple[Sequence[ContaReceber], int]:
     q = _query_receber(
         db, empresa_id, status=status, inicio=inicio, fim=fim,
-        cliente_id=cliente_id, busca=busca,
+        cliente_id=cliente_id, busca=busca, vencidas=vencidas,
     )
     total = q.count()
     itens = (
@@ -480,11 +510,13 @@ def totais_contas_receber(
     fim: Optional[date] = None,
     cliente_id: Optional[int] = None,
     busca: Optional[str] = None,
+    vencidas: bool = False,
 ) -> Tuple[int, int, int]:
     """(pendente, recebido, vencido) — sem o recorte de status, como no pagar."""
     def _soma(coluna, *extra):
         q = _query_receber(
             db, empresa_id, inicio=inicio, fim=fim, cliente_id=cliente_id, busca=busca,
+            vencidas=vencidas, hoje=hoje,
         )
         for condicao in extra:
             q = q.filter(condicao)

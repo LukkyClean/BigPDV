@@ -325,19 +325,34 @@ def listar_contas_pagar(
     plano_conta_id: Optional[int] = None,
     fornecedor_id: Optional[int] = None,
     busca: Optional[str] = None,
+    vencidas: bool = False,
+    sem_categoria: bool = False,
     limit: int = 200,
     offset: int = 0,
 ) -> Dict[str, Any]:
     hoje = hoje_local()
 
+    # OS RECORTES DO PAINEL IGNORAM O MÊS, e essa é a parte que importa.
+    #
+    # `vencidas`: dívida vencida costuma ser de um mês que já passou.
+    #
+    # `sem_categoria`: a listagem filtra por VENCIMENTO, e o alerta nasce do que
+    # foi PAGO no mês -- eixos diferentes. A Energia Solar paga em agosto vence
+    # em setembro; com o recorte do mês, o atalho "Classificar" abriria uma
+    # lista VAZIA. Um alerta que leva a lugar nenhum é pior que alerta nenhum.
+    if vencidas or sem_categoria:
+        inicio = fim = None
+
     itens, total_itens = financeiro_crud.listar_contas_pagar(
         db, empresa_id, status=status, inicio=inicio, fim=fim,
         plano_conta_id=plano_conta_id, fornecedor_id=fornecedor_id, busca=busca,
+        vencidas=vencidas, sem_categoria=sem_categoria,
         limit=limit, offset=offset,
     )
     pendente, pago, vencido = financeiro_crud.totais_contas_pagar(
         db, empresa_id, hoje=hoje, inicio=inicio, fim=fim,
         plano_conta_id=plano_conta_id, fornecedor_id=fornecedor_id, busca=busca,
+        vencidas=vencidas, sem_categoria=sem_categoria,
     )
 
     return {
@@ -1247,17 +1262,25 @@ def listar_contas_receber(
     fim: Optional[date] = None,
     cliente_id: Optional[int] = None,
     busca: Optional[str] = None,
+    vencidas: bool = False,
     limit: int = 200,
     offset: int = 0,
 ) -> Dict[str, Any]:
     hoje = hoje_local()
+
+    # Mesma regra do a pagar: fiado atrasado é de mês anterior quase por
+    # definição, então o recorte de vencidas ignora o mês visto.
+    if vencidas:
+        inicio = fim = None
+
     itens, total_itens = financeiro_crud.listar_contas_receber(
         db, empresa_id, status=status, inicio=inicio, fim=fim,
-        cliente_id=cliente_id, busca=busca, limit=limit, offset=offset,
+        cliente_id=cliente_id, busca=busca, vencidas=vencidas,
+        limit=limit, offset=offset,
     )
     pendente, recebido, vencido = financeiro_crud.totais_contas_receber(
         db, empresa_id, hoje=hoje, inicio=inicio, fim=fim,
-        cliente_id=cliente_id, busca=busca,
+        cliente_id=cliente_id, busca=busca, vencidas=vencidas,
     )
     return {
         "itens": [_serializar_receber(c, hoje) for c in itens],

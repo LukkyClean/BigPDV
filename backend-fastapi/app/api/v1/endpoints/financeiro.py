@@ -197,6 +197,11 @@ def listar_contas_pagar(
     inicio: Optional[date] = Query(None, description="Vencimento a partir de"),
     fim: Optional[date] = Query(None, description="Vencimento até"),
     plano_conta_id: Optional[int] = Query(None),
+    # Os dois recortes do painel de atenção. `vencidas` IGNORA o período: dívida
+    # vencida é de mês anterior quase sempre, e filtrar pelo mês visto esconderia
+    # justamente a conta do alerta.
+    vencidas: bool = Query(False, description="Só pendentes com vencimento passado"),
+    sem_categoria: bool = Query(False, description="Só as sem categoria no plano de contas"),
     fornecedor_id: Optional[int] = Query(None),
     busca: Optional[str] = Query(None, description="Trecho da descrição"),
     limit: int = Query(200, ge=1, le=500),
@@ -215,6 +220,7 @@ def listar_contas_pagar(
         lambda db_: financeiro_service.listar_contas_pagar(
             db_, usuario_token["empresa_id"], status=status_filtro, inicio=inicio,
             fim=fim, plano_conta_id=plano_conta_id, fornecedor_id=fornecedor_id,
+            vencidas=vencidas, sem_categoria=sem_categoria,
             busca=busca, limit=limit, offset=offset,
         ),
     )
@@ -376,6 +382,9 @@ def listar_contas_receber(
     fim: Optional[date] = Query(None, description="Vencimento até"),
     cliente_id: Optional[int] = Query(None),
     busca: Optional[str] = Query(None, description="Trecho da descrição"),
+    # Recorte do painel de atenção, e IGNORA o período pela mesma razão do a
+    # pagar: fiado atrasado é de mês anterior quase por definição.
+    vencidas: bool = Query(False, description="Só pendentes com vencimento passado"),
     limit: int = Query(200, ge=1, le=500),
     offset: int = Query(0, ge=0),
     usuario_token: dict = Depends(check_permission(required_permission=PERMISSAO_VER)),
@@ -385,7 +394,8 @@ def listar_contas_receber(
         db,
         lambda db_: financeiro_service.listar_contas_receber(
             db_, usuario_token["empresa_id"], status=status_filtro, inicio=inicio,
-            fim=fim, cliente_id=cliente_id, busca=busca, limit=limit, offset=offset,
+            fim=fim, cliente_id=cliente_id, busca=busca, vencidas=vencidas,
+            limit=limit, offset=offset,
         ),
     )
 

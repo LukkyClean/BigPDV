@@ -7,7 +7,8 @@
  * apareceria quando a loja já tivesse contas o bastante para paginar.
  */
 import { computed, ref } from 'vue';
-import { ChevronLeft, ChevronRight, Plus, Undo2 } from 'lucide-vue-next';
+import { useRoute } from 'vue-router';
+import { Filter, ChevronLeft, ChevronRight, Plus, Undo2 } from 'lucide-vue-next';
 
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
 import BaseSearchInput from '@/shared/components/ui/BaseSearchInput/BaseSearchInput.vue';
@@ -34,11 +35,29 @@ const { range, rotulo, anterior, proximo } = usePeriodoMes();
 const statusFiltro = ref('');
 const busca = ref('');
 
+/**
+ * O recorte que o painel de atenção mandou junto na rota.
+ *
+ * Chegar aqui pelo alerta e cair na lista inteira devolveria ao dono o trabalho
+ * que o sistema já tinha feito — ele sabia QUAIS contas geraram o aviso. Com
+ * `vencidas`, o backend ignora o mês de propósito: conta vencida é de mês
+ * anterior quase sempre, e o recorte do mês esconderia justamente ela.
+ */
+const route = useRoute();
+const recorte = ref<string>((route.query.filtro as string) ?? '');
+
+const ROTULO_RECORTE: Record<string, string> = {
+  vencidas: 'só as contas vencidas',
+  'sem-categoria': 'só as contas sem categoria',
+};
+
 const filtros = computed(() => ({
   inicio: range.value.inicio,
   fim: range.value.fim,
   status: statusFiltro.value || undefined,
   busca: busca.value.trim() || undefined,
+  vencidas: recorte.value === 'vencidas' || undefined,
+  sem_categoria: recorte.value === 'sem-categoria' || undefined,
 }));
 
 const { data: listagem, isLoading } = useContasPagarQuery(filtros);
@@ -110,6 +129,27 @@ function rotuloStatus(conta: ContaPagar): string {
 
 <template>
   <div class="flex flex-col gap-5">
+    <!-- O aviso de que a lista NÃO é o mês: quem chegou pelo painel de atenção
+         está vendo um recorte, e sem dizer isso a tela parece ter esquecido
+         contas. "Mostrar tudo" devolve o comportamento normal. -->
+    <div
+      v-if="recorte"
+      class="flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800"
+    >
+      <Filter :size="13" />
+      <span>
+        Mostrando <strong>{{ ROTULO_RECORTE[recorte] ?? recorte }}</strong>, de qualquer mês —
+        veio do aviso da Visão Geral.
+      </span>
+      <button
+        type="button"
+        class="font-semibold underline underline-offset-2 cursor-pointer"
+        @click="recorte = ''"
+      >
+        Mostrar tudo
+      </button>
+    </div>
+
     <!-- Filtros -->
     <div class="flex flex-wrap items-center justify-between gap-3">
       <div class="flex items-center gap-2">

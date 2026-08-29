@@ -458,3 +458,80 @@ def test_silencio_tem_teto(client, db_session):
     r = client.post("/api/v1/financeiro/alertas/CONTAS_VENCIDAS/adiar?dias=365",
                     headers=header)
     assert r.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+
+# ===========================================================================
+# O ATERRISSAGEM DO ALERTA (drill-down)
+#
+# No NetSuite o lembrete cai numa busca JA FILTRADA. Aqui e a mesma ideia: o
+# alerta sabe quais linhas o originaram, e fazer o dono procurar de novo seria
+# devolver a ele o trabalho que o sistema ja fez.
+#
+# Os dois recortes IGNORAM O MES de proposito -- e o teste mais importante
+# deste bloco, porque foi assim que o atalho quase nasceu quebrado.
+# ===========================================================================
+
+def _pagar_pago(client, header, valor, dias_venc, descricao):
+    conta = _pagar(client, header, valor, dias=dias_venc, descricao=descricao)
+    client.post(f"/api/v1/financeiro/contas-pagar/{conta['id']}/pagar",
+                json={}, headers=header)
+    return conta
+
+
+def _listar(client, header, **params):
+    hoje = date.today()
+    primeiro = hoje.replace(day=1)
+    ultimo = (primeiro + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+    query = "&".join(f"{k}={v}" for k, v in params.items())
+    r = client.get(
+        f"/api/v1/financeiro/contas-pagar?inicio={primeiro}&fim={ultimo}&{query}",
+        headers=header,
+    )
+    assert r.status_code == status.HTTP_200_OK, r.text
+    return r.json()
+
+
+def test_recorte_de_vencidas_atravessa_o_mes(client, db_session):
+    """A conta que gerou o alerta venceu no mes passado -- e precisa aparecer.
+
+    Com o recorte do mes visto, o atalho do painel abriria uma lista onde a
+    conta do alerta nao esta. E o pior desfecho possivel para um alerta.
+    """
+    header = _auth(client)
+    _pagar(client, header, 25000, dias=-45, descricao="Fornecedor de dois meses atras")
+
+    assert _listar(client, header)["total_itens"] == 0, "nao vence neste mes"
+    assert _listar(client, header, vencidas="true")["total_itens"] == 1
+
+
+def test_recorte_sem_categoria_atravessa_o_mes(client, db_session):
+    """O alerta nasce do que foi PAGO; a lista filtra por VENCIMENTO.
+
+    Sao eixos diferentes, e foi por isso que este recorte tambem teve de
+    ignorar o mes: a conta paga em agosto pode vencer em setembro, e
+    "Classificar" abriria a tela vazia.
+    """
+    header = _auth(client)
+    _pagar_pago(client, header, 30000, dias_venc=32, descricao="Energia paga adiantada")
+
+    assert _listar(client, header)["total_itens"] == 0, "vence no mes que vem"
+    assert _listar(client, header, sem_categoria="true")["total_itens"] == 1
+
+
+def test_recorte_de_vencidas_nao_traz_o_que_foi_pago(client, db_session):
+    header = _auth(client)
+    _pagar_pago(client, header, 25000, dias_venc=-10, descricao="Ja quitada")
+    _pagar(client, header, 9000, dias=-3, descricao="Ainda devendo")
+
+    itens = _listar(client, header, vencidas="true")["itens"]
+    assert [i["descricao"] for i in itens] == ["Ainda devendo"]
+
+
+def test_sem_recorte_a_tela_continua_sendo_do_mes(client, db_session):
+    """A regressao que importa: quem NAO veio pelo alerta ve o mes de sempre."""
+    header = _auth(client)
+    _pagar(client, header, 25000, dias=-45, descricao="Antiga")
+    _pagar(client, header, 5000, dias=2, descricao="Deste mes")
+
+    itens = _listar(client, header)["itens"]
+    assert [i["descricao"] for i in itens] == ["Deste mes"]

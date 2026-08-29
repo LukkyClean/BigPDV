@@ -31,6 +31,10 @@ interface Texto {
   detalhe: string;
   acao?: string;
   rota?: string;
+  // O recorte que a tela de destino deve aplicar ao abrir. É o que separa
+  // "abri a lista" de "achei a conta": o alerta sabe quais linhas o
+  // originaram, e seria desperdício fazer o dono procurar de novo.
+  query?: Record<string, string>;
   evento?: 'informarSaldo';
 }
 
@@ -67,15 +71,17 @@ function traduzir(alerta: AlertaFinanceiro): Texto | null {
         // O TEMPO é metade da gravidade, não enfeite: R$ 80 vencidos ontem e
         // R$ 80 vencidos há três meses são problemas diferentes.
         detalhe: `A mais antiga venceu ${haQuantoTempo(alerta.quantidade)}. Quanto mais tempo, maior a multa.`,
-        acao: 'Ver contas a pagar',
+        acao: 'Ver as vencidas',
         rota: 'finance-payable',
+        query: { filtro: 'vencidas' },
       };
     case 'FIADO_ATRASADO':
       return {
         titulo: `${valor} atrasado a receber`,
         detalhe: `O mais antigo venceu ${haQuantoTempo(alerta.quantidade)}. Cobrar cedo é o que separa atraso de calote.`,
-        acao: 'Ver quem deve',
+        acao: 'Ver quem está devendo',
         rota: 'finance-receivable',
+        query: { filtro: 'vencidas' },
       };
     case 'MES_NO_VERMELHO':
       return {
@@ -102,6 +108,7 @@ function traduzir(alerta: AlertaFinanceiro): Texto | null {
         detalhe: 'Enquanto a maior fatia se chamar "Sem categoria", o resumo não diz para onde o dinheiro foi.',
         acao: 'Classificar',
         rota: 'finance-payable',
+        query: { filtro: 'sem-categoria' },
       };
     // Código desconhecido não vira linha em branco: some. Um backend mais novo
     // que este frontend não deve desenhar caixa vazia na tela do lojista.
@@ -118,7 +125,9 @@ const itens = computed(() =>
 
 function agir(item: { alerta: AlertaFinanceiro; texto: Texto }) {
   if (item.texto.evento) return emit(item.texto.evento);
-  if (item.texto.rota) router.push({ name: item.texto.rota });
+  if (item.texto.rota) {
+    router.push({ name: item.texto.rota, query: item.texto.query });
+  }
 }
 </script>
 
