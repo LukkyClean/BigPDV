@@ -204,6 +204,19 @@ const homeRoutes: RouteRecordRaw[] = [
             },
           },
           {
+            path: 'extrato',
+            name: 'finance-statement',
+            component: () =>
+              import('@/modules/financeiro/extrato/views/ExtratoView.vue'),
+            meta: {
+              title: 'Extrato',
+              subtitle: 'Todo o dinheiro que entrou e saiu, linha a linha.',
+              tabId: 'finance-statement',
+              requiresAuth: true,
+              exigeModulo: MODULOS.FINANCEIRO,
+            },
+          },
+          {
             path: 'plano-de-contas',
             name: 'finance-chart-accounts',
             component: () =>

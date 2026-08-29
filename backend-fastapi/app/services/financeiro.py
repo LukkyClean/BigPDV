@@ -54,6 +54,8 @@ from app.schemas.financeiro import (
     ConciliacaoItem,
     ConciliacaoResultado,
     DespesaPorCategoria,
+    Extrato,
+    ExtratoLinha,
     FluxoCaixa,
     FluxoDia,
     FluxoLancamento,
@@ -1543,4 +1545,89 @@ def baixar_lote(
         total_previsto=total_previsto,
         total_recebido=int(dados.valor_recebido),
         diferenca=int(dados.valor_recebido) - total_previsto,
+    )
+
+
+# ===========================================================================
+# EXTRATO (Onda 5)
+# ===========================================================================
+
+def listar_extrato(
+    db: Session,
+    empresa_id: int,
+    *,
+    inicio: Optional[date] = None,
+    fim: Optional[date] = None,
+    tipo: Optional[str] = None,
+    origem: Optional[str] = None,
+    limit: int = 200,
+    offset: int = 0,
+) -> Extrato:
+    """O livro do dinheiro linha a linha — o que JÁ aconteceu.
+
+    O Fluxo de Caixa olha para frente e só enxerga documento em aberto; conta
+    paga SAI da régua dele. Este é o outro lado: aqui nada sai nunca, porque
+    `movimentacoes_financeiras` só recebe INSERT. Estorno não apaga o
+    lançamento original, cria o contrário -- e as duas linhas ficam.
+
+    O período filtra por `criado_em` (o instante em que o dinheiro andou), e
+    não por vencimento: no extrato não existe futuro.
+    """
+    dt_inicio = inicio_do_dia_utc(inicio) if inicio else None
+    dt_fim = fim_do_dia_utc(fim) if fim else None
+
+    itens, total = financeiro_crud.listar_extrato(
+        db, empresa_id, inicio=dt_inicio, fim=dt_fim, tipo=tipo, origem=origem,
+        limit=limit, offset=offset,
+    )
+    entradas, saidas = financeiro_crud.totais_extrato(
+        db, empresa_id, inicio=dt_inicio, fim=dt_fim, tipo=tipo, origem=origem
+    )
+
+    por_venda, por_os = financeiro_crud.documentos_de_origem(
+        db,
+        venda_pagamento_ids=[m.venda_pagamento_id for m in itens if m.venda_pagamento_id],
+        os_pagamento_ids=[
+            m.ordem_servico_pagamento_id for m in itens if m.ordem_servico_pagamento_id
+        ],
+    )
+
+    def _documento(mov) -> Optional[str]:
+        if mov.venda_pagamento_id:
+            numero = por_venda.get(mov.venda_pagamento_id)
+            return f"Venda {numero}" if numero else "Venda"
+        if mov.ordem_servico_pagamento_id:
+            return por_os.get(mov.ordem_servico_pagamento_id)
+        return None
+
+    # A conta bancária é lida do relacionamento por linha e não por join com
+    # `joinedload`: nem toda linha tem conta, e o extrato de um mês cabe numa
+    # página. Se um dia a tela paginar milhares, isto vira joinedload.
+    contas = {
+        c.id: c.nome for c in financeiro_crud.listar_contas_bancarias(db, empresa_id)
+    }
+
+    return Extrato(
+        total_itens=total,
+        total_entradas=entradas,
+        total_saidas=saidas,
+        saldo=entradas - saidas,
+        itens=[
+            ExtratoLinha(
+                id=m.id,
+                criado_em=m.criado_em,
+                tipo=m.tipo,
+                origem=m.origem,
+                valor=int(m.valor or 0),
+                motivo=m.motivo,
+                funcionario_nome=m.funcionario_nome,
+                conta_bancaria_nome=contas.get(m.conta_bancaria_id),
+                forma_pagamento_nome=(
+                    m.forma_pagamento.nome if m.forma_pagamento else None
+                ),
+                sessao_caixa_id=m.sessao_caixa_id,
+                documento=_documento(m),
+            )
+            for m in itens
+        ],
     )

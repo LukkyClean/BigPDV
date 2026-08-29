@@ -13,6 +13,7 @@ import type {
   ContaPagarPayload,
   ContaReceberBaixaPayload,
   ContaReceberPayload,
+  ExtratoFiltros,
 } from '../schemas/financeiro.schema';
 
 /**
@@ -62,6 +63,14 @@ export function useFluxoCaixaQuery(dias: MaybeRef<number>) {
   return useQuery({
     queryKey: computed(() => financeiroKeys.fluxoCaixa(unref(dias))),
     queryFn: () => service.getFluxoCaixa(unref(dias)),
+  });
+}
+
+export function useExtratoQuery(filtros: MaybeRef<ExtratoFiltros>) {
+  return useQuery({
+    queryKey: computed(() => financeiroKeys.extrato(unref(filtros))),
+    queryFn: () => service.listarExtrato(unref(filtros)),
+    refetchInterval: REFETCH_CADASTROS,
   });
 }
 

@@ -311,3 +311,36 @@ export interface ConciliacaoBaixaLotePayload {
   conta_bancaria_id?: number | null;
   forma_pagamento_id?: number | null;
 }
+
+// --- Extrato (o livro do dinheiro) ---
+
+export const ExtratoLinhaSchema = z.object({
+  id: z.number(),
+  criado_em: z.string(),
+  tipo: z.string(),
+  origem: z.string(),
+  valor: z.number(),
+  motivo: z.string().nullable().optional(),
+  funcionario_nome: z.string().nullable().optional(),
+  conta_bancaria_nome: z.string().nullable().optional(),
+  forma_pagamento_nome: z.string().nullable().optional(),
+  sessao_caixa_id: z.number().nullable().optional(),
+  documento: z.string().nullable().optional(),
+});
+export type ExtratoLinha = z.infer<typeof ExtratoLinhaSchema>;
+
+export const ExtratoSchema = z.object({
+  total_itens: z.number(),
+  total_entradas: z.number(),
+  total_saidas: z.number(),
+  saldo: z.number(),
+  itens: z.array(ExtratoLinhaSchema),
+});
+export type Extrato = z.infer<typeof ExtratoSchema>;
+
+export interface ExtratoFiltros {
+  inicio?: string;
+  fim?: string;
+  tipo?: string;
+  origem?: string;
+}

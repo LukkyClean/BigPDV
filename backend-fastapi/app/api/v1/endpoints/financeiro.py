@@ -49,6 +49,7 @@ from app.schemas.financeiro import (
     Conciliacao,
     ConciliacaoBaixaLote,
     ConciliacaoResultado,
+    Extrato,
     FluxoCaixa,
     ResumoFinanceiro,
 )
@@ -621,5 +622,42 @@ def baixar_lote(
         db,
         lambda db_: financeiro_service.baixar_lote(
             db_, usuario_token["empresa_id"], dados, usuario_token
+        ),
+    )
+
+
+# ===========================================================================
+# EXTRATO
+# ===========================================================================
+
+@router.get(
+    "/extrato",
+    response_model=Extrato,
+    summary="O livro do dinheiro, linha a linha",
+)
+def listar_extrato(
+    inicio: Optional[date] = Query(None, description="Primeiro dia (data local da loja)"),
+    fim: Optional[date] = Query(None, description="Último dia (data local da loja)"),
+    tipo: Optional[str] = Query(None, description="ENTRADA ou SAIDA"),
+    origem: Optional[str] = Query(
+        None, description="VENDA, ORDEM_SERVICO, ABERTURA, SANGRIA, SUPRIMENTO, RECEBIMENTO, DESPESA"
+    ),
+    limit: int = Query(200, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    usuario_token: dict = Depends(check_permission(required_permission=PERMISSAO_VER)),
+    db: Session = Depends(get_db),
+):
+    """O que JÁ aconteceu — o oposto do Fluxo de Caixa.
+
+    FINANCEIRO e não FINANCEIRO_PRO: conferir o próprio dinheiro não é recurso
+    avançado. É a tela que responde "de onde veio e para onde foi", e toda loja
+    precisa dela para fechar o mês com o contador.
+    """
+    return _handle_db_transaction(
+        db,
+        lambda db_: financeiro_service.listar_extrato(
+            db_, usuario_token["empresa_id"],
+            inicio=inicio, fim=fim, tipo=tipo, origem=origem,
+            limit=limit, offset=offset,
         ),
     )

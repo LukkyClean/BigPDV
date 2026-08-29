@@ -20,4 +20,5 @@ export const financeiroKeys = {
   resumo: (periodo?: unknown) => [FINANCEIRO_KEY, 'resumo', periodo] as const,
   fluxoCaixa: (dias?: unknown) => [FINANCEIRO_KEY, 'fluxo-caixa', dias] as const,
   conciliacao: (periodo?: unknown) => [FINANCEIRO_KEY, 'conciliacao', periodo] as const,
+  extrato: (filtros?: unknown) => [FINANCEIRO_KEY, 'extrato', filtros] as const,
 };

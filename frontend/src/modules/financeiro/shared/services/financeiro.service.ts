@@ -8,6 +8,7 @@ import {
   HistoricoFinanceiroSchema,
   PlanoContaSchema,
   ConciliacaoSchema,
+  ExtratoSchema,
   ConciliacaoResultadoSchema,
   FluxoCaixaSchema,
   ResumoFinanceiroSchema,
@@ -26,6 +27,8 @@ import {
   type HistoricoFinanceiro,
   type PlanoConta,
   type Conciliacao,
+  type Extrato,
+  type ExtratoFiltros,
   type ConciliacaoBaixaLotePayload,
   type ConciliacaoResultado,
   type FluxoCaixa,
@@ -249,4 +252,18 @@ export async function baixarLote(
 ): Promise<ConciliacaoResultado> {
   const { data } = await api.post('/financeiro/conciliacao/baixar-lote', payload);
   return safeParseResponse(ConciliacaoResultadoSchema, data, 'baixarLote');
+}
+
+// ===========================================================================
+// EXTRATO
+// ===========================================================================
+
+export async function listarExtrato(filtros: ExtratoFiltros = {}): Promise<Extrato> {
+  // Campo vazio não vira query string: `?tipo=` faria o backend filtrar por
+  // string vazia e devolver nada. Mesma regra da listagem de contas a pagar.
+  const params = Object.fromEntries(
+    Object.entries(filtros).filter(([, valor]) => valor !== '' && valor != null),
+  );
+  const { data } = await api.get('/financeiro/extrato', { params });
+  return safeParseResponse(ExtratoSchema, data, 'listarExtrato');
 }

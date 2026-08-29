@@ -101,6 +101,17 @@ export const SIDEBAR_SECTIONS: SidebarSection[] = [
             requiredModule: MODULOS.FINANCEIRO_PRO,
           },
           {
+            id: 'finance-statement',
+            label: 'Extrato',
+            // Basta `view`, como o Contas a Receber: conferir o dinheiro que
+            // andou é o trabalho de fechar o mês, e a tela não expõe salário —
+            // mostra movimento, não o documento de RH.
+            requiredPermission: PERMISSIONS.finance,
+            // FINANCEIRO e não PRO: conferir o próprio dinheiro não é recurso
+            // avançado.
+            requiredModule: MODULOS.FINANCEIRO,
+          },
+          {
             id: 'finance-chart-accounts',
             label: 'Plano de Contas',
             requiredPermission: PERMISSIONS.manageFinance,
