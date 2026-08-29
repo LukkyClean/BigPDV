@@ -9,6 +9,7 @@ import {
   PlanoContaSchema,
   ConciliacaoSchema,
   ExtratoSchema,
+  SerieSchema,
   ConciliacaoResultadoSchema,
   FluxoCaixaSchema,
   ResumoFinanceiroSchema,
@@ -28,6 +29,7 @@ import {
   type PlanoConta,
   type Conciliacao,
   type Extrato,
+  type Serie,
   type ExtratoFiltros,
   type ConciliacaoBaixaLotePayload,
   type ConciliacaoResultado,
@@ -276,4 +278,13 @@ export async function listarExtrato(filtros: ExtratoFiltros = {}): Promise<Extra
  */
 export async function adiarAlerta(codigo: string, dias = 7): Promise<void> {
   await api.post(`/financeiro/alertas/${codigo}/adiar`, null, { params: { dias } });
+}
+
+// ===========================================================================
+// ANÁLISE — série mensal
+// ===========================================================================
+
+export async function getSerie(meses: number): Promise<Serie> {
+  const { data } = await api.get('/financeiro/serie', { params: { meses } });
+  return safeParseResponse(SerieSchema, data, 'getSerie');
 }

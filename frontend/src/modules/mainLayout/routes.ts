@@ -152,6 +152,18 @@ const homeRoutes: RouteRecordRaw[] = [
             },
           },
           {
+            path: 'analise',
+            name: 'finance-analysis',
+            component: () => import('@/modules/financeiro/analise/views/AnaliseView.vue'),
+            meta: {
+              title: 'Análise',
+              subtitle: 'Para onde o seu negócio está indo, mês a mês.',
+              tabId: 'finance-analysis',
+              requiresAuth: true,
+              exigeModulo: MODULOS.FINANCEIRO_PRO,
+            },
+          },
+          {
             path: 'contas-a-pagar',
             name: 'finance-payable',
             component: () =>

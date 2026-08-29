@@ -66,6 +66,20 @@ export function useFluxoCaixaQuery(dias: MaybeRef<number>) {
   });
 }
 
+/**
+ * A série mensal da Análise.
+ *
+ * `staleTime` alto e sem polling: a série só muda quando um MÊS FECHA. Um
+ * refetch a cada dois minutos gastaria consulta para devolver o mesmo array.
+ */
+export function useSerieQuery(meses: MaybeRef<number>) {
+  return useQuery({
+    queryKey: computed(() => financeiroKeys.serie(unref(meses))),
+    queryFn: () => service.getSerie(unref(meses)),
+    staleTime: 1000 * 60 * 30,
+  });
+}
+
 export function useExtratoQuery(filtros: MaybeRef<ExtratoFiltros>) {
   return useQuery({
     queryKey: computed(() => financeiroKeys.extrato(unref(filtros))),

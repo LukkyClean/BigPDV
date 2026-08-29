@@ -73,6 +73,15 @@ export const SIDEBAR_SECTIONS: SidebarSection[] = [
             requiredModule: MODULOS.FINANCEIRO,
           },
           {
+            id: 'finance-analysis',
+            label: 'Análise',
+            // Basta `view`: é leitura, e não expõe documento de folha nenhum.
+            requiredPermission: PERMISSIONS.finance,
+            // PRO junto com Fluxo de Caixa e Conciliação. A linha é: base
+            // guarda e controla o dinheiro; pro avisa e aconselha.
+            requiredModule: MODULOS.FINANCEIRO_PRO,
+          },
+          {
             id: 'finance-payable',
             label: 'Contas a Pagar',
             // Mostra aluguel e salário. Exige `manage` porque não existe motivo

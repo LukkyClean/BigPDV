@@ -903,3 +903,44 @@ def dispensar_alerta(
     db.add(registro)
     db.flush()
     return registro
+
+
+def prazo_medio_recebimento(db: Session, empresa_id: int, inicio, fim):
+    """Quantos dias, em média, o cliente demorou para pagar.
+
+    Média de (recebido_em - criado_em) das cobranças RECEBIDAS no período.
+
+    Escolhi este cálculo, e não o DSO clássico (recebíveis ÷ receita × dias),
+    por uma razão só: o dono precisa poder conferir. "Seus clientes demoram 23
+    dias para pagar" se prova abrindo três cobranças e contando no calendário;
+    o DSO clássico exige acreditar numa fórmula.
+
+    Feito em Python e não em SQL porque diferença de datas muda de dialeto
+    (SQLite não tem DATEDIFF), e o volume de um mês cabe na memória sem
+    esforço. Se um dia não couber, vira SQL -- não antes.
+    """
+    linhas = (
+        db.query(ContaReceber.criado_em, ContaReceber.recebido_em)
+        .filter(
+            ContaReceber.empresa_id == empresa_id,
+            ContaReceber.status == ContaReceberStatus.RECEBIDA.value,
+            ContaReceber.recebido_em.isnot(None),
+            ContaReceber.recebido_em >= inicio,
+            ContaReceber.recebido_em <= fim,
+        )
+        .all()
+    )
+    dias = [
+        (recebido - criado).days
+        for criado, recebido in linhas
+        if criado is not None and recebido is not None
+    ]
+    if not dias:
+        return None
+    # Negativo não existe aqui: recebimento lançado com data anterior à criação
+    # da cobrança é digitação, e contá-lo puxaria a média para baixo mentindo
+    # que a loja recebe rápido.
+    dias = [d for d in dias if d >= 0]
+    if not dias:
+        return None
+    return round(sum(dias) / len(dias))

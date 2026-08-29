@@ -362,6 +362,14 @@ class SerieMes(BaseModel):
     entrou_caixa: int = Field(
         ..., description="O que passou pelo caixa no mês, pelo livro do dinheiro"
     )
+    prazo_medio_recebimento: int | None = Field(
+        None,
+        description=(
+            "Dias que o cliente levou para pagar, em média, nas cobranças "
+            "recebidas no mês. NULL quando não houve recebimento -- e nulo não "
+            "é zero: zero diria que todo mundo pagou à vista"
+        ),
+    )
 
 
 class Serie(BaseModel):

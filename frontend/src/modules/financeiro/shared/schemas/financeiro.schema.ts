@@ -366,3 +366,36 @@ export interface ExtratoFiltros {
   tipo?: string;
   origem?: string;
 }
+
+// --- Série mensal (Análise) ---
+
+export const SerieOrigemSchema = z.object({
+  chave: z.string(),
+  rotulo: z.string(),
+  total: z.number(),
+});
+export type SerieOrigem = z.infer<typeof SerieOrigemSchema>;
+
+export const SerieMesSchema = z.object({
+  mes: z.string(),
+  inicio: z.string(),
+  fim: z.string(),
+  receita: z.number(),
+  // A tela NÃO conhece "venda" nem "OS": desenha o que vier, com o rótulo que
+  // vier. É o que permite um segmento novo entrar por declaração no backend.
+  origens: z.array(SerieOrigemSchema),
+  despesas_pagas: z.number(),
+  resultado: z.number(),
+  entrou_caixa: z.number(),
+  // NULL não é zero: zero diria que todo mundo pagou à vista.
+  prazo_medio_recebimento: z.number().nullable().optional(),
+});
+export type SerieMes = z.infer<typeof SerieMesSchema>;
+
+export const SerieSchema = z.object({
+  // O número que abre e fecha os portões da tela.
+  meses_disponiveis: z.number(),
+  primeiro_mes: z.string().nullable().optional(),
+  meses: z.array(SerieMesSchema),
+});
+export type Serie = z.infer<typeof SerieSchema>;

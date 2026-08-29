@@ -287,3 +287,72 @@ def test_a_serie_bate_com_o_resumo_do_mesmo_mes(client, db_session):
     assert mes["receita"] == resumo["faturamento"]
     assert mes["despesas_pagas"] == resumo["despesas_pagas"]
     assert mes["entrou_caixa"] == resumo["entrou_caixa"]
+
+
+# ===========================================================================
+# PRAZO MEDIO DE RECEBIMENTO
+#
+# Escolhido em vez do DSO classico (recebiveis / receita x dias) por uma razao
+# so: o dono precisa poder conferir. "Seus clientes demoram 23 dias" se prova
+# abrindo tres cobrancas e contando no calendario.
+# ===========================================================================
+
+def _receber_em(db_session, client, header, valor, criado_em, recebido_em):
+    """Cria uma cobranca e reescreve as duas datas -- criacao e recebimento."""
+    from app.db.models.conta_receber import ContaReceber
+
+    conta = client.post("/api/v1/financeiro/contas-receber", json={
+        "descricao": "Fiado", "valor": valor,
+        "vencimento": recebido_em.date().isoformat(),
+    }, headers=header).json()
+    client.post(f"/api/v1/financeiro/contas-receber/{conta['id']}/receber",
+                json={}, headers=header)
+
+    registro = db_session.query(ContaReceber).filter(
+        ContaReceber.id == conta["id"]
+    ).first()
+    registro.criado_em = criado_em
+    registro.recebido_em = recebido_em
+    db_session.commit()
+    return registro
+
+
+def _mes(serie, quando):
+    return next(m for m in serie["meses"] if m["mes"] == quando.strftime("%Y-%m"))
+
+
+def test_prazo_medio_e_a_media_dos_dias_ate_o_pagamento(client, db_session):
+    header = _auth(client)
+    _funcionario(client, header)
+
+    alvo = _mes_atras(1)
+    # Uma paga em 10 dias, outra em 20: a media e 15.
+    _receber_em(db_session, client, header, 10000, alvo - timedelta(days=10), alvo)
+    _receber_em(db_session, client, header, 10000, alvo - timedelta(days=20), alvo)
+
+    assert _mes(_serie(client, header), alvo)["prazo_medio_recebimento"] == 15
+
+
+def test_mes_sem_recebimento_devolve_nulo_e_nao_zero(client, db_session):
+    """Zero diria que todo mundo pagou a vista. Nulo diz que nao houve.
+
+    A tela usa essa diferenca: com nulo ela escreve "nenhuma cobranca a prazo
+    foi quitada no mes", que e a verdade.
+    """
+    header = _auth(client)
+    _funcionario(client, header)
+
+    serie = _serie(client, header)
+    assert all(m["prazo_medio_recebimento"] is None for m in serie["meses"])
+
+
+def test_recebimento_lancado_antes_da_cobranca_nao_puxa_a_media(client, db_session):
+    """Data invertida e digitacao, e contar -5 dias mentiria que a loja recebe rapido."""
+    header = _auth(client)
+    _funcionario(client, header)
+
+    alvo = _mes_atras(1)
+    _receber_em(db_session, client, header, 10000, alvo + timedelta(days=5), alvo)
+    _receber_em(db_session, client, header, 10000, alvo - timedelta(days=8), alvo)
+
+    assert _mes(_serie(client, header), alvo)["prazo_medio_recebimento"] == 8

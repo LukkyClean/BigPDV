@@ -1998,6 +1998,7 @@ def get_serie(db: Session, empresa_id: int, meses: int = 12) -> Serie:
 
         despesas = financeiro_crud.total_despesas_pagas(db, empresa_id, dt_inicio, dt_fim)
         caixa = financeiro_crud.total_entrou_no_caixa(db, empresa_id, dt_inicio, dt_fim)
+        prazo = financeiro_crud.prazo_medio_recebimento(db, empresa_id, dt_inicio, dt_fim)
         receita = sum(por_origem.values())
 
         linhas.append(
@@ -2017,6 +2018,7 @@ def get_serie(db: Session, empresa_id: int, meses: int = 12) -> Serie:
                 despesas_pagas=despesas,
                 resultado=receita - despesas,
                 entrou_caixa=caixa,
+                prazo_medio_recebimento=prazo,
             )
         )
         cursor = _mes_anterior(cursor)
