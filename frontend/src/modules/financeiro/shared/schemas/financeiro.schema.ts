@@ -31,6 +31,11 @@ export const ContaBancariaSchema = z.object({
   tipo: z.string(),
   principal: z.boolean(),
   ativo: z.boolean(),
+  // Saldo DECLARADO pelo dono, com a data em que ele declarou. O sistema não
+  // calcula esse número (ver ContaBancaria.saldo_informado no backend), e a
+  // data é o que permite avisar "informado há 12 dias".
+  saldo_informado: z.number().default(0),
+  saldo_informado_em: z.string().nullable().optional(),
   criado_em: z.string(),
 });
 export type ContaBancaria = z.infer<typeof ContaBancariaSchema>;
@@ -221,3 +226,44 @@ export interface ContaReceberBaixaPayload {
   forma_pagamento_id?: number | null;
   observacao?: string | null;
 }
+
+// --- Fluxo de Caixa (Onda 3) ---
+
+export const FluxoLancamentoSchema = z.object({
+  conta_id: z.number(),
+  tipo: z.string(),
+  descricao: z.string(),
+  valor: z.number(),
+});
+export type FluxoLancamento = z.infer<typeof FluxoLancamentoSchema>;
+
+export const FluxoDiaSchema = z.object({
+  data: z.string(),
+  entradas: z.number(),
+  saidas: z.number(),
+  saldo: z.number(),
+  lancamentos: z.array(FluxoLancamentoSchema),
+});
+export type FluxoDia = z.infer<typeof FluxoDiaSchema>;
+
+export const FluxoCaixaSchema = z.object({
+  inicio: z.string(),
+  fim: z.string(),
+  dias: z.number(),
+  saldo_inicial: z.number(),
+  // `false` NÃO significa saldo zero: significa que ninguém declarou. A tela
+  // pede o número em vez de desenhar uma linha que parte de zero.
+  saldo_declarado: z.boolean(),
+  saldo_informado_em: z.string().nullable().optional(),
+  total_entradas: z.number(),
+  total_saidas: z.number(),
+  saldo_final: z.number(),
+  primeiro_dia_negativo: z.string().nullable().optional(),
+  menor_saldo: z.number(),
+  menor_saldo_em: z.string().nullable().optional(),
+  atrasado_a_receber: z.number(),
+  atrasado_a_pagar: z.number(),
+  // Só os dias COM movimento; a régua contínua é desenhada pela tela.
+  linha: z.array(FluxoDiaSchema),
+});
+export type FluxoCaixa = z.infer<typeof FluxoCaixaSchema>;

@@ -7,6 +7,7 @@ import {
   ContaPagarSchema,
   HistoricoFinanceiroSchema,
   PlanoContaSchema,
+  FluxoCaixaSchema,
   ResumoFinanceiroSchema,
   type ContaBancaria,
   type ContaPagar,
@@ -22,6 +23,7 @@ import {
   type ContaReceberPayload,
   type HistoricoFinanceiro,
   type PlanoConta,
+  type FluxoCaixa,
   type ResumoFinanceiro,
 } from '../schemas/financeiro.schema';
 
@@ -78,6 +80,21 @@ export async function criarContaBancaria(payload: {
 }): Promise<ContaBancaria> {
   const { data } = await api.post('/financeiro/contas-bancarias', payload);
   return safeParseResponse(ContaBancariaSchema, data, 'criarContaBancaria');
+}
+
+/**
+ * Atualiza a conta. Hoje o único campo que a tela manda é o `saldo_informado`,
+ * do Fluxo de Caixa — o resto do PATCH existe no backend e ainda não tem UI.
+ *
+ * A DATA do saldo não vai no payload de propósito: quem carimba é o servidor,
+ * senão o aviso de "informado há N dias" poderia ser burlado pelo cliente.
+ */
+export async function atualizarContaBancaria(
+  id: number,
+  payload: { saldo_informado?: number; nome?: string; ativo?: boolean },
+): Promise<ContaBancaria> {
+  const { data } = await api.patch(`/financeiro/contas-bancarias/${id}`, payload);
+  return safeParseResponse(ContaBancariaSchema, data, 'atualizarContaBancaria');
 }
 
 // ===========================================================================
@@ -140,6 +157,11 @@ export async function listarHistoricoDaConta(id: number): Promise<HistoricoFinan
 // ===========================================================================
 // RESUMO
 // ===========================================================================
+
+export async function getFluxoCaixa(dias: number): Promise<FluxoCaixa> {
+  const { data } = await api.get('/financeiro/fluxo-caixa', { params: { dias } });
+  return safeParseResponse(FluxoCaixaSchema, data, 'getFluxoCaixa');
+}
 
 export async function getResumo(inicio: string, fim: string): Promise<ResumoFinanceiro> {
   const { data } = await api.get('/financeiro/resumo', { params: { inicio, fim } });

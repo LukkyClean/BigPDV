@@ -3,7 +3,7 @@
 # DESCRIÇÃO: Schemas Pydantic das contas onde o dinheiro da loja fica.
 # ---------------------------------------------------------------------------
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -29,6 +29,12 @@ class ContaBancariaUpdate(BaseModel):
     tipo: Optional[ContaBancariaTipo] = None
     principal: Optional[bool] = None
     ativo: Optional[bool] = None
+    # Sem piso: conta corrente no vermelho é saldo, não erro de digitação.
+    # Quem carimba a data é o serviço — o cliente não escolhe "quando" declarou,
+    # senão o "informado há 12 dias" da tela vira ficção.
+    saldo_informado: Optional[int] = Field(
+        None, description="Quanto a loja tem HOJE nesta conta (centavos)"
+    )
 
 
 class ContaBancariaRead(BaseModel):
@@ -39,4 +45,8 @@ class ContaBancariaRead(BaseModel):
     tipo: str
     principal: bool
     ativo: bool
+    saldo_informado: int = Field(0, description="Saldo declarado pelo dono (centavos)")
+    saldo_informado_em: Optional[date] = Field(
+        None, description="Quando foi declarado; NULL = nunca, e a tela precisa pedir"
+    )
     criado_em: datetime

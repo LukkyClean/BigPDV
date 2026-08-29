@@ -45,7 +45,13 @@ from app.schemas.conta_pagar import (
     ContaPagarEstorno,
     ContaPagarUpdate,
 )
-from app.schemas.financeiro import DespesaPorCategoria, ResumoFinanceiro
+from app.schemas.financeiro import (
+    DespesaPorCategoria,
+    FluxoCaixa,
+    FluxoDia,
+    FluxoLancamento,
+    ResumoFinanceiro,
+)
 from app.schemas.plano_conta import PlanoContaCreate, PlanoContaUpdate
 
 ENTIDADE_CONTA_PAGAR = "CONTA_PAGAR"
@@ -245,6 +251,14 @@ def atualizar_conta_bancaria(
         if dados.principal:
             financeiro_crud.limpar_principal(db, empresa_id, exceto_id=conta.id)
         conta.principal = dados.principal
+
+    if dados.saldo_informado is not None:
+        # A data é carimbada AQUI, e não recebida do cliente: ela é a prova de
+        # quando o retrato foi tirado, e o Fluxo de Caixa avisa quando envelhece.
+        # Deixar o cliente mandar a data permitiria declarar hoje um saldo
+        # "de ontem" e o aviso nunca aparecer.
+        conta.saldo_informado = dados.saldo_informado
+        conta.saldo_informado_em = hoje_local()
 
     db.flush()
     return conta
@@ -1240,3 +1254,137 @@ def listar_historico_do_recebimento(db: Session, empresa_id: int, conta_id: int)
     if not conta:
         raise NotFoundException(detail="Conta não encontrada")
     return financeiro_crud.listar_historico(db, empresa_id, ENTIDADE_CONTA_RECEBER, conta_id)
+
+
+# ===========================================================================
+# FLUXO DE CAIXA (Onda 3)
+# ===========================================================================
+
+def get_fluxo_caixa(db: Session, empresa_id: int, dias: int = 30) -> FluxoCaixa:
+    """A projeção dos próximos `dias`, a partir do saldo declarado pelo dono.
+
+    Três decisões que sustentam a tela, e o motivo de cada uma:
+
+    O SALDO DE PARTIDA É DECLARADO. Ver `ContaBancaria.saldo_informado`: o
+    livro do dinheiro só recebe venda e OS onde `controlar_caixa` está ligado,
+    então calcular o saldo daria um número falso -- e fundo negativo -- na loja
+    que não usa caixa. Enquanto ninguém declarar, `saldo_declarado` sai False e
+    a tela pede o número em vez de desenhar uma linha que parte de zero.
+
+    O ATRASADO NÃO ENTRA NA RÉGUA. Conta vencida não tem dia futuro para
+    ocupar. Empurrá-la para hoje inventaria um aperto que talvez não aconteça
+    (o fiado atrasado pode nunca chegar; o boleto vencido pode já ter sido
+    pago no banco sem alguém dar baixa aqui). Vai num balde à parte, como
+    aviso, e o dono decide.
+
+    SÓ DIAS COM MOVIMENTO. Sessenta linhas de zero escondem as cinco que
+    importam. A régua contínua é trabalho da tela, que sabe o tamanho dela.
+    """
+    hoje = hoje_local()
+    # `dias` conta a partir de HOJE inclusive: "próximos 30 dias" para o dono da
+    # loja começa hoje de manhã, não amanhã.
+    fim = hoje + timedelta(days=dias - 1)
+
+    # Só contas ATIVAS: uma conta desativada é dinheiro que a loja não usa mais,
+    # e somar o saldo dela faria a projeção inteira partir de um número alto
+    # demais.
+    contas = financeiro_crud.listar_contas_bancarias(db, empresa_id, apenas_ativas=True)
+    saldo_inicial = sum(int(c.saldo_informado or 0) for c in contas)
+    datas = [c.saldo_informado_em for c in contas if c.saldo_informado_em]
+
+    pagar, receber = financeiro_crud.pendentes_por_vencimento(
+        db, empresa_id, inicio=hoje, fim=fim
+    )
+
+    por_dia: Dict[date, Dict[str, Any]] = {}
+
+    def _bucket(dia: date) -> Dict[str, Any]:
+        return por_dia.setdefault(
+            dia, {"entradas": 0, "saidas": 0, "lancamentos": []}
+        )
+
+    for conta in receber:
+        b = _bucket(conta.vencimento)
+        b["entradas"] += int(conta.valor or 0)
+        b["lancamentos"].append(
+            FluxoLancamento(
+                conta_id=conta.id, tipo=MovimentacaoFinanceiraTipo.ENTRADA.value,
+                descricao=conta.descricao, valor=int(conta.valor or 0),
+            )
+        )
+
+    for conta in pagar:
+        b = _bucket(conta.vencimento)
+        b["saidas"] += int(conta.valor or 0)
+        b["lancamentos"].append(
+            FluxoLancamento(
+                conta_id=conta.id, tipo=MovimentacaoFinanceiraTipo.SAIDA.value,
+                descricao=conta.descricao, valor=int(conta.valor or 0),
+            )
+        )
+
+    saldo = saldo_inicial
+    # O fundo do poço começa no próprio saldo de hoje: numa loja sem nada
+    # agendado, o menor saldo do período é o que ela já tem.
+    menor_saldo, menor_saldo_em = saldo_inicial, None
+    primeiro_negativo: Optional[date] = None
+    total_entradas = total_saidas = 0
+    linha: List[FluxoDia] = []
+
+    for data_dia in sorted(por_dia):
+        dados = por_dia[data_dia]
+        saldo += dados["entradas"] - dados["saidas"]
+        total_entradas += dados["entradas"]
+        total_saidas += dados["saidas"]
+
+        if saldo < menor_saldo:
+            menor_saldo, menor_saldo_em = saldo, data_dia
+        # O PRIMEIRO dia negativo, e não o último: é a data em que o dono
+        # precisa ter feito alguma coisa, e depois dela o resto é consequência.
+        if saldo < 0 and primeiro_negativo is None:
+            primeiro_negativo = data_dia
+
+        linha.append(
+            FluxoDia(
+                data=data_dia,
+                entradas=dados["entradas"],
+                saidas=dados["saidas"],
+                saldo=saldo,
+                # Entrada antes de saída no mesmo dia: é a ordem em que o dono
+                # lê ("entrou tanto, saiu tanto"), e o saldo do dia não depende
+                # da ordem dentro dele.
+                lancamentos=sorted(
+                    dados["lancamentos"],
+                    key=lambda item: (item.tipo != MovimentacaoFinanceiraTipo.ENTRADA.value,
+                                      -item.valor),
+                ),
+            )
+        )
+
+    _p, _pg, atrasado_a_pagar = financeiro_crud.totais_contas_pagar(
+        db, empresa_id, hoje=hoje
+    )
+    _r, _rc, atrasado_a_receber = financeiro_crud.totais_contas_receber(
+        db, empresa_id, hoje=hoje
+    )
+
+    return FluxoCaixa(
+        inicio=hoje,
+        fim=fim,
+        dias=dias,
+        saldo_inicial=saldo_inicial,
+        saldo_declarado=bool(datas),
+        # A data MAIS ANTIGA entre as contas: é ela que envelhece o número. Uma
+        # loja que atualizou o Nubank hoje e esqueceu a gaveta há um mês tem um
+        # saldo de um mês atrás, não de hoje.
+        saldo_informado_em=min(datas) if datas else None,
+        total_entradas=total_entradas,
+        total_saidas=total_saidas,
+        saldo_final=saldo,
+        primeiro_dia_negativo=primeiro_negativo,
+        menor_saldo=menor_saldo,
+        menor_saldo_em=menor_saldo_em,
+        atrasado_a_receber=atrasado_a_receber,
+        atrasado_a_pagar=atrasado_a_pagar,
+        linha=linha,
+    )

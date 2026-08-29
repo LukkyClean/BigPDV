@@ -50,6 +50,20 @@ export function useContasBancariasQuery() {
   });
 }
 
+/**
+ * A projeção dos próximos `dias`.
+ *
+ * Sem `refetchInterval`: nada aqui muda sozinho de minuto a minuto — o que
+ * move a linha é alguém lançar ou dar baixa numa conta, e isso já invalida o
+ * prefixo inteiro. Um polling curto só gastaria consulta.
+ */
+export function useFluxoCaixaQuery(dias: MaybeRef<number>) {
+  return useQuery({
+    queryKey: computed(() => financeiroKeys.fluxoCaixa(unref(dias))),
+    queryFn: () => service.getFluxoCaixa(unref(dias)),
+  });
+}
+
 export function useContasPagarQuery(filtros: MaybeRef<ContaPagarFiltros>) {
   return useQuery({
     queryKey: computed(() => financeiroKeys.contasPagar(unref(filtros))),
@@ -262,6 +276,20 @@ export function useEstornarRecebimento() {
     onSuccess: () => {
       invalidar();
       toast.success('Recebimento estornado', 'A cobrança voltou para pendente.');
+    },
+  });
+}
+
+export function useAtualizarContaBancaria() {
+  const invalidar = useInvalidarFinanceiro();
+  const toast = useToast();
+
+  return useMutation({
+    mutationFn: ({ id, ...payload }: { id: number; saldo_informado?: number }) =>
+      service.atualizarContaBancaria(id, payload),
+    onSuccess: () => {
+      invalidar();
+      toast.success('Saldo atualizado');
     },
   });
 }

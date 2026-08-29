@@ -45,7 +45,7 @@ from app.schemas.conta_receber import (
     ContaReceberRead,
     ContaReceberUpdate,
 )
-from app.schemas.financeiro import ResumoFinanceiro
+from app.schemas.financeiro import FluxoCaixa, ResumoFinanceiro
 from app.schemas.plano_conta import PlanoContaCreate, PlanoContaRead, PlanoContaUpdate
 from app.services import financeiro as financeiro_service
 
@@ -525,5 +525,40 @@ def get_resumo(
         db,
         lambda db_: financeiro_service.get_resumo(
             db_, usuario_token["empresa_id"], inicio, fim
+        ),
+    )
+
+
+# ===========================================================================
+# FLUXO DE CAIXA
+# ===========================================================================
+
+@router.get(
+    "/fluxo-caixa",
+    response_model=FluxoCaixa,
+    summary="Projeção dos próximos dias",
+    # TERCEIRA trava, além das duas do topo do arquivo: esta rota é do plano
+    # PRO. O router inteiro já exige FINANCEIRO; aqui exige-se também o
+    # FINANCEIRO_PRO, do mesmo jeito que o item do menu declara.
+    dependencies=[Depends(requer_modulo("FINANCEIRO_PRO"))],
+)
+def get_fluxo_caixa(
+    dias: int = Query(
+        30, ge=1, le=90,
+        description="Tamanho da janela a partir de hoje (a tela oferece 30 e 60)",
+    ),
+    usuario_token: dict = Depends(check_permission(required_permission=PERMISSAO_VER)),
+    db: Session = Depends(get_db),
+):
+    """O que está agendado para acontecer, não o que aconteceu.
+
+    Parte do saldo DECLARADO pelo dono (ver `ContaBancaria.saldo_informado`);
+    enquanto ninguém declarar, responde `saldo_declarado=false` e a tela pede o
+    número em vez de desenhar uma linha que parte de zero fingindo ser saldo.
+    """
+    return _handle_db_transaction(
+        db,
+        lambda db_: financeiro_service.get_fluxo_caixa(
+            db_, usuario_token["empresa_id"], dias
         ),
     )

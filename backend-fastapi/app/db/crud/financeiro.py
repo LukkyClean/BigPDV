@@ -489,6 +489,31 @@ def totais_contas_receber(
     return int(pendente), int(recebido), int(vencido)
 
 
+def pendentes_por_vencimento(
+    db: Session, empresa_id: int, *, inicio: date, fim: date
+) -> Tuple[Sequence[ContaPagar], Sequence[ContaReceber]]:
+    """As duas pontas do fluxo no mesmo recorte de vencimento, já ordenadas.
+
+    Sai das MESMAS queries base da listagem e dos totais (`_query_contas` e
+    `_query_receber`): se o fluxo filtrasse por conta própria, um documento
+    poderia aparecer na tela de Contas a Pagar e sumir da projeção — e um fluxo
+    de caixa que discorda da lista não serve para decidir nada.
+    """
+    pagar = (
+        _query_contas(db, empresa_id, status=ContaPagarStatus.PENDENTE.value,
+                      inicio=inicio, fim=fim)
+        .order_by(ContaPagar.vencimento.asc(), ContaPagar.id.asc())
+        .all()
+    )
+    receber = (
+        _query_receber(db, empresa_id, status=ContaReceberStatus.PENDENTE.value,
+                       inicio=inicio, fim=fim)
+        .order_by(ContaReceber.vencimento.asc(), ContaReceber.id.asc())
+        .all()
+    )
+    return pagar, receber
+
+
 def get_conta_receber(db: Session, empresa_id: int, conta_id: int) -> Optional[ContaReceber]:
     return (
         db.query(ContaReceber)

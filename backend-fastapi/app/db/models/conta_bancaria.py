@@ -4,10 +4,12 @@
 #            Onde o dinheiro da loja fica parado.
 # ---------------------------------------------------------------------------
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint, func
+from sqlalchemy import (
+    Boolean, Date, DateTime, ForeignKey, Integer, String, UniqueConstraint, func
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.enum import ContaBancariaTipo
@@ -68,6 +70,30 @@ class ContaBancaria(Base):
     ativo: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="1",
         doc="Conta disponível para novos lançamentos",
+    )
+
+    # --- Saldo: DECLARADO pelo dono, nunca calculado ---
+    #
+    # O sistema não sabe quanto a loja tem, e é importante ser honesto sobre
+    # isso: `movimentacoes_financeiras` só recebe venda e OS quando a empresa
+    # liga `controlar_caixa` E existe turno aberto, então derivar o saldo do
+    # livro daria um número fundo negativo (só as despesas) justamente na loja
+    # que não usa controle de caixa. Perguntar ao dono é o que Conta Azul e
+    # Omie fazem, e pela mesma razão.
+    #
+    # Pode ser NEGATIVO: conta corrente no vermelho é saldo, não erro.
+    saldo_informado: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0",
+        doc="Saldo que o dono declarou para esta conta (centavos, pode ser negativo)",
+    )
+
+    # É um RETRATO COM DATA, e não um saldo que anda sozinho. A data existe para
+    # a tela poder dizer "informado há 12 dias, confira" em vez de projetar em
+    # cima de um número velho fingindo que é de hoje. NULL = nunca informado, e
+    # aí o Fluxo de Caixa pede antes de desenhar qualquer linha.
+    saldo_informado_em: Mapped[Optional[date]] = mapped_column(
+        Date, nullable=True,
+        doc="Dia (data local) em que o saldo foi declarado; NULL = nunca foi",
     )
 
     criado_em: Mapped[datetime] = mapped_column(
