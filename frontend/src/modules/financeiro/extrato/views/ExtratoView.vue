@@ -17,10 +17,13 @@ import { ChevronLeft, ChevronRight, ArrowDownLeft, ArrowUpRight } from 'lucide-v
 import { formatCurrency } from '@/shared/utils/finance';
 import { formatData } from '@/shared/utils/date.utils';
 
+import { useOrdemServico } from '@/shared/composables/useOrdemServico';
+
 import { usePeriodoMes } from '../../shared/composables/usePeriodoMes';
 import { useExtratoQuery } from '../../shared/composables/useFinanceiro';
 
 const { range, rotulo, ehMesAtual, anterior, proximo } = usePeriodoMes();
+const { usaOrdemServico } = useOrdemServico();
 
 const tipo = ref('');
 const origem = ref('');
@@ -51,10 +54,20 @@ const ROTULO_ORIGEM: Record<string, string> = {
   DESPESA: 'Pagamento de conta',
 };
 
-const OPCOES_ORIGEM = Object.entries(ROTULO_ORIGEM).map(([valor, texto]) => ({
-  valor,
-  texto,
-}));
+/**
+ * O rótulo continua existindo para TODA origem, mas a loja sem Ordem de Serviço
+ * não vê a opção no filtro: numa adega ou num mercado, "Ordem de serviço" é um
+ * filtro que nunca devolve nada.
+ *
+ * Some da ESCOLHA, não da tradução — se uma linha antiga de OS existir no
+ * livro (a loja mudou de segmento, por exemplo), ela continua legível na lista
+ * em vez de aparecer como "ORDEM_SERVICO" cru.
+ */
+const OPCOES_ORIGEM = computed(() =>
+  Object.entries(ROTULO_ORIGEM)
+    .filter(([valor]) => valor !== 'ORDEM_SERVICO' || usaOrdemServico.value)
+    .map(([valor, texto]) => ({ valor, texto })),
+);
 
 function rotuloOrigem(valor: string): string {
   return ROTULO_ORIGEM[valor] ?? valor;

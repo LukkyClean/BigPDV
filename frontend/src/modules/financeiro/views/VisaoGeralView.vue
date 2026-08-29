@@ -13,11 +13,16 @@ import { ChevronLeft, ChevronRight, TrendingDown, TrendingUp, Wallet, AlertTrian
 import { formatCurrency } from '@/shared/utils/finance';
 import { formatDataPura } from '@/shared/utils/date.utils';
 
+import { useOrdemServico } from '@/shared/composables/useOrdemServico';
+
 import { usePeriodoMes } from '../shared/composables/usePeriodoMes';
 import { useResumoQuery } from '../shared/composables/useFinanceiro';
 
 const router = useRouter();
 const { range, rotulo, ehMesAtual, anterior, proximo } = usePeriodoMes();
+// Numa loja sem OS, prometer "ordens de serviço" no card faz o dono procurar
+// um módulo que ele não tem.
+const { usaOrdemServico } = useOrdemServico();
 
 const inicio = computed(() => range.value.inicio);
 const fim = computed(() => range.value.fim);
@@ -61,7 +66,9 @@ const maiorCategoria = computed(() => resumo.value?.despesas_por_categoria?.[0]?
             <TrendingUp :size="15" class="text-emerald-500" /> Entrou
           </div>
           <p class="mt-2 text-2xl font-bold text-gray-800">{{ formatCurrency(resumo.faturamento) }}</p>
-          <p class="mt-1 text-xs text-gray-400">Vendas e ordens de serviço finalizadas</p>
+          <p class="mt-1 text-xs text-gray-400">
+            {{ usaOrdemServico ? 'Vendas e ordens de serviço finalizadas' : 'Vendas finalizadas' }}
+          </p>
         </div>
 
         <div class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
