@@ -10,6 +10,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.db.models.documento_fiscal import DocumentoFiscal
+from app.db.crud import fiscal as fiscal_crud
 from app.schemas.documento_fiscal import (
     DocumentoFiscalHistorico,
     DocumentoFiscalListRead,
@@ -59,8 +60,22 @@ def listar_documentos(
         .all()
     )
 
+    # Buscar nomes dos destinatários via camada CRUD
+    numeros_venda = [
+        item.origem_id for item in items
+        if item.origem_tipo == "VENDA" and item.origem_id is not None
+    ]
+    nomes_map = fiscal_crud.get_nomes_destinatarios_por_vendas(db, numeros_venda)
+
+    docs = []
+    for item in items:
+        doc = DocumentoFiscalRead.model_validate(item)
+        if item.origem_tipo == "VENDA" and item.origem_id:
+            doc.destinatario_nome = nomes_map.get(item.origem_id, "Consumidor Final")
+        docs.append(doc)
+
     return DocumentoFiscalListRead(
-        items=[DocumentoFiscalRead.model_validate(item) for item in items],
+        items=docs,
         total=total,
         pagina=pagina,
         paginas=total_paginas,

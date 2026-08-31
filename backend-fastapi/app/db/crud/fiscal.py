@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session, joinedload, subqueryload
 from app.db.models.empresa import Empresa
 from app.db.models.empresa_fiscal_settings import EmpresaFiscalSettings
 from app.db.models.endereco import Endereco
+from app.db.models.cliente import Cliente
 from app.db.models.venda import Venda
 from app.db.models.venda_pagamento import PagamentoVenda
 from app.db.models.venda_produto import ProdutoVenda
@@ -35,7 +36,7 @@ def get_servico_fiscal(db: Session, servico_id: int):
 
 def get_venda_completa(db: Session, venda_id: int):
     return db.query(Venda).options(
-        joinedload(Venda.cliente),
+        joinedload(Venda.cliente).subqueryload(Cliente.endereco),
         subqueryload(Venda.itens).joinedload(ProdutoVenda.produto),
         subqueryload(Venda.pagamentos).joinedload(PagamentoVenda.forma_pagamento),
     ).filter(Venda.id == venda_id).first()
@@ -68,6 +69,102 @@ def salvar_documento(db: Session, documento: DocumentoFiscal):
     db.add(documento)
     db.flush()
     return documento
+
+def get_documento_ativo_por_venda(db: Session, numero_venda: int):
+    return db.query(DocumentoFiscal).filter(
+        DocumentoFiscal.origem_tipo == "VENDA",
+        DocumentoFiscal.origem_id == numero_venda,
+        DocumentoFiscal.status.in_(["PROCESSANDO", "PENDENTE", "AUTORIZADA"]),
+    ).first()
+
+def get_documentos_ativos_por_vendas(db: Session, numeros_venda: list[int]) -> dict[int, DocumentoFiscal]:
+    """Retorna {numero_venda: DocumentoFiscal} para docs ativos (PROCESSANDO/PENDENTE/AUTORIZADA)."""
+    if not numeros_venda:
+        return {}
+    docs = db.query(DocumentoFiscal).filter(
+        DocumentoFiscal.origem_tipo == "VENDA",
+        DocumentoFiscal.origem_id.in_(numeros_venda),
+        DocumentoFiscal.status.in_(["PROCESSANDO", "PENDENTE", "AUTORIZADA"]),
+    ).all()
+    return {doc.origem_id: doc for doc in docs}
+
+def get_documentos_relevantes_por_vendas(db: Session, numeros_venda: list[int]) -> dict[int, DocumentoFiscal]:
+    """Retorna {numero_venda: DocumentoFiscal} incluindo REJEITADA/DENEGADA (tudo exceto CANCELADA)."""
+    if not numeros_venda:
+        return {}
+    docs = db.query(DocumentoFiscal).filter(
+        DocumentoFiscal.origem_tipo == "VENDA",
+        DocumentoFiscal.origem_id.in_(numeros_venda),
+        DocumentoFiscal.status.in_(["PROCESSANDO", "PENDENTE", "AUTORIZADA", "REJEITADA", "DENEGADA"]),
+    ).all()
+    # Prioridade: AUTORIZADA > PROCESSANDO/PENDENTE > REJEITADA/DENEGADA
+    resultado = {}
+    prioridade = {"AUTORIZADA": 0, "PROCESSANDO": 1, "PENDENTE": 2, "REJEITADA": 3, "DENEGADA": 4}
+    for doc in docs:
+        existente = resultado.get(doc.origem_id)
+        if not existente or prioridade.get(doc.status, 99) < prioridade.get(existente.status, 99):
+            resultado[doc.origem_id] = doc
+    return resultado
+
+def get_vendas_completas_batch(db: Session, venda_ids: list[int]) -> list[Venda]:
+    """Carrega vendas com cliente, itens e pagamentos em queries otimizadas."""
+    if not venda_ids:
+        return []
+    return db.query(Venda).options(
+        joinedload(Venda.cliente),
+        subqueryload(Venda.itens).joinedload(ProdutoVenda.produto),
+        subqueryload(Venda.pagamentos).joinedload(PagamentoVenda.forma_pagamento),
+    ).filter(Venda.id.in_(venda_ids)).all()
+
+def contar_documentos_por_venda(db: Session, numero_venda: int) -> int:
+    from sqlalchemy import func
+    return db.query(func.count(DocumentoFiscal.id)).filter(
+        DocumentoFiscal.origem_tipo == "VENDA",
+        DocumentoFiscal.origem_id == numero_venda,
+    ).scalar() or 0
+
+def get_nomes_destinatarios_por_vendas(db: Session, numeros_venda: list[int]) -> dict[int, str]:
+    """Retorna {numero_venda: nome_destinatario} para uma lista de números de venda."""
+    from app.db.models.cliente import Cliente, ClientePF, ClientePJ
+
+    if not numeros_venda:
+        return {}
+
+    rows = (
+        db.query(Venda.numero_venda, Venda.cliente_id, Cliente.tipo)
+        .outerjoin(Cliente, Venda.cliente_id == Cliente.id)
+        .filter(Venda.numero_venda.in_(numeros_venda))
+        .all()
+    )
+
+    nomes: dict[int, str] = {}
+    cliente_ids_pf: list[int] = []
+    cliente_ids_pj: list[int] = []
+    venda_por_cliente: dict[int, int] = {}
+
+    for num_venda, cliente_id, tipo in rows:
+        if not cliente_id:
+            nomes[num_venda] = "Consumidor Final"
+            continue
+        venda_por_cliente[cliente_id] = num_venda
+        if tipo and tipo.value == "PF":
+            cliente_ids_pf.append(cliente_id)
+        elif tipo and tipo.value == "PJ":
+            cliente_ids_pj.append(cliente_id)
+        else:
+            nomes[num_venda] = "Consumidor Final"
+
+    if cliente_ids_pf:
+        pf_rows = db.query(ClientePF.id, ClientePF.nome).filter(ClientePF.id.in_(cliente_ids_pf)).all()
+        for cid, nome in pf_rows:
+            nomes[venda_por_cliente[cid]] = nome or "Consumidor Final"
+
+    if cliente_ids_pj:
+        pj_rows = db.query(ClientePJ.id, ClientePJ.razao_social).filter(ClientePJ.id.in_(cliente_ids_pj)).all()
+        for cid, razao in pj_rows:
+            nomes[venda_por_cliente[cid]] = razao or "Consumidor Final"
+
+    return nomes
 
 def get_aliquota_uf(db: Session, uf: str):
     return db.query(AliquotaUF).filter(AliquotaUF.uf == uf.upper()).first()

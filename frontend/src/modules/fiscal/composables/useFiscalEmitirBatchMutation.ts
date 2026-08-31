@@ -8,17 +8,22 @@ import type { ApiError } from '@/shared/types/axios.types';
 import { fiscalService } from '../services/fiscal.service';
 import { fiscalKeys } from '../constants/fiscal.constants';
 
-export function useFiscalEmitirTesteMutation() {
+export function useFiscalEmitirBatchMutation() {
   const toast = useToast();
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: () => fiscalService.emitirTesteNfe(),
+    mutationFn: (vendaIds: number[]) => fiscalService.emitirNfeBatch(vendaIds),
     onSuccess: (data) => {
-      if (data.status === 'AUTORIZADA' || data.status === 'PROCESSANDO') {
-        toast.success(data.mensagem || 'NF-e de teste emitida com sucesso.');
+      if (data.falha === 0) {
+        toast.success(`${data.sucesso} NF-e(s) emitida(s) com sucesso.`);
+      } else if (data.sucesso > 0) {
+        toast.warning(
+          'Emissão parcial',
+          `${data.sucesso} sucesso, ${data.falha} falha(s).`,
+        );
       } else {
-        toast.error(data.mensagem || 'Erro ao emitir NF-e de teste.');
+        toast.error(`Falha ao emitir ${data.falha} NF-e(s).`);
       }
       queryClient.invalidateQueries({ queryKey: fiscalKeys.documentos() });
       queryClient.invalidateQueries({ queryKey: fiscalKeys.resumo() });

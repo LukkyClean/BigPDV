@@ -1,16 +1,18 @@
 import { REFETCH_DASHBOARD } from '@/core/config/queryIntervals';
+import type { DocumentoFiscalFilters } from '../types/fiscal.types';
 
 export const FISCAL_STALE_TIME = 1000 * 30;
 export const FISCAL_REFETCH_INTERVAL = REFETCH_DASHBOARD;
 
 export const fiscalKeys = {
-  documentos: (filters?: any, page?: number) =>
+  documentos: (filters?: DocumentoFiscalFilters, page?: number) =>
     ['fiscal', 'documentos', filters, page] as const,
   resumo: () => ['fiscal', 'resumo'] as const,
   pendencias: () => ['fiscal', 'pendencias'] as const,
   documento: (id: number) => ['fiscal', 'documento', id] as const,
   configuracao: () => ['fiscal', 'configuracao'] as const,
   historico: (id: number) => ['fiscal', 'historico', id] as const,
+  verificacaoBatch: (ids: number[]) => ['fiscal', 'verificacao-batch', ...ids] as const,
 };
 
 export const STATUS_COLORS: Record<string, { bg: string; text: string }> = {

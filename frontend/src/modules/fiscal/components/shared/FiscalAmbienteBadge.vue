@@ -2,7 +2,7 @@
 import { computed } from 'vue';
 import { FlaskConical, ShieldCheck } from 'lucide-vue-next';
 
-import type { FiscalConfiguracao } from '../types/fiscal.types';
+import type { FiscalConfiguracao } from '../../types/fiscal.types';
 
 interface Props {
   configuracao: FiscalConfiguracao | undefined;

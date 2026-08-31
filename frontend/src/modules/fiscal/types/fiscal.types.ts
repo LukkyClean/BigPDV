@@ -26,6 +26,7 @@ export interface DocumentoFiscalRead {
   data_emissao: string | null;
   data_criacao: string;
   data_atualizacao: string;
+  destinatario_nome: string | null;
 }
 
 export interface DocumentoFiscalListRead {
@@ -93,4 +94,97 @@ export interface FiscalConfiguracao {
   mock_ativo: boolean;
   certificado_configurado: boolean;
   certificado_valido: boolean;
+}
+export interface EmissaoPreviewItem {
+  numero_item: number;
+  produto_id: number | null;
+  nome: string;
+  quantidade: number;
+  valor_unitario: number;
+  valor_total: number;
+  cfop: string;
+  ncm: string;
+  cst_csosn: string;
+}
+
+export interface EmissaoPreviewPagamento {
+  nome: string;
+  codigo_sefaz: string;
+  valor: number;
+}
+export interface EmissaoPreviewTotais {
+  valor_produtos: number;
+  descontos: number;
+  frete: number;
+  valor_nota: number;
+  total_tributos: number;
+}
+export interface EmissaoPreviewDestinatario {
+  nome: string;
+  documento: string;
+}
+export interface EmissaoPreviewResponse {
+  destinatario: EmissaoPreviewDestinatario;
+  totais: EmissaoPreviewTotais;
+  itens: EmissaoPreviewItem[];
+  formas_pagamento: EmissaoPreviewPagamento[];
+}
+
+// --- Error Detail (409 Conflict) ---
+
+export interface FiscalConflictDetail {
+  codigo: string;
+  mensagem: string;
+  documento_id?: number;
+  chave_acesso?: string;
+}
+
+// --- Emissão Batch ---
+
+export interface EmissaoBatchItemResult {
+  venda_id: number;
+  documento_id: number | null;
+  status: string;
+  mensagem: string;
+}
+
+export interface EmissaoBatchResponse {
+  resultados: EmissaoBatchItemResult[];
+  total: number;
+  sucesso: number;
+  falha: number;
+}
+
+// --- Verificação Fiscal Batch ---
+
+export interface PendenciaFiscal {
+  categoria: string;
+  campo: string;
+  mensagem: string;
+  referencia_id: number | null;
+  referencia_nome: string | null;
+}
+
+export interface DocumentoAtivoResumo {
+  documento_id: number;
+  status: DocumentoFiscalStatus;
+  numero_documento: number | null;
+  serie: number | null;
+  chave_acesso: string | null;
+}
+
+export interface VerificacaoBatchItem {
+  venda_id: number;
+  numero_venda: number | null;
+  completo: boolean;
+  pendencias: PendenciaFiscal[];
+  documento_ativo: DocumentoAtivoResumo | null;
+}
+
+export interface ResultadoVerificacaoBatch {
+  resultados: VerificacaoBatchItem[];
+  total: number;
+  total_aptas: number;
+  total_com_pendencias: number;
+  total_com_documento: number;
 }

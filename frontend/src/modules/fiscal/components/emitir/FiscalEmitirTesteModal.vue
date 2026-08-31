@@ -3,7 +3,7 @@ import { FlaskConical } from 'lucide-vue-next';
 
 import BaseConfirmModal from '@/shared/components/commons/BaseConfirmModal/BaseConfirmModal.vue';
 
-import { useFiscalEmitirTesteMutation } from '../composables/useFiscalEmitirMutation';
+import { useFiscalEmitirTesteMutation } from '../../composables/useFiscalEmitirMutation';
 
 interface Props {
   isOpen: boolean;

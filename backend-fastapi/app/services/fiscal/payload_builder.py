@@ -9,6 +9,7 @@
 # O payload converte para reais (str com 2 decimais).
 # ---------------------------------------------------------------------------
 
+import re
 from typing import Optional
 
 from app.db.models.cliente import Cliente, ClientePF, ClientePJ
@@ -22,20 +23,29 @@ from .helpers import is_simples_nacional
 from .tax_engine.types import ResultadoCalculo
 
 
-def _centavos_para_reais(centavos: int) -> str:
-    """Converte centavos (int) para string com 2 decimais."""
-    return f"{centavos / 100:.2f}"
+def _sanitizar_texto_sefaz(texto: str, max_chars: int = 60) -> str:
+    """Remove caracteres inválidos para XML da SEFAZ e trunca ao limite."""
+    if not texto:
+        return ""
+    texto = re.sub(r"[&<>\"']", " ", texto)
+    texto = re.sub(r"\s+", " ", texto).strip()
+    return texto[:max_chars]
+
+
+def _centavos_para_reais(centavos: int) -> float:
+    """Converte centavos (int) para float com 2 decimais."""
+    return round(centavos / 100, 2)
 
 
 def _montar_emitente(empresa: Empresa, endereco: Endereco, fiscal_settings: EmpresaFiscalSettings) -> dict:
     return {
-        "cnpj_emitente": empresa.documento,
-        "razao_social_emitente": empresa.razao_social,
-        "nome_fantasia_emitente": empresa.nome_fantasia or empresa.razao_social,
-        "inscricao_estadual_emitente": empresa.inscricao_estadual,
-        "inscricao_municipal_emitente": empresa.inscricao_municipal,
-        "regime_tributario_emitente": empresa.regime_tributario,
-        "endereco_emitente": {
+        "cnpj": empresa.documento,
+        "razao_social": _sanitizar_texto_sefaz(empresa.razao_social),
+        "nome_fantasia": _sanitizar_texto_sefaz(empresa.nome_fantasia or empresa.razao_social),
+        "inscricao_estadual": empresa.inscricao_estadual,
+        "inscricao_municipal": empresa.inscricao_municipal,
+        "regime_tributario": empresa.regime_tributario,
+        "endereco": {
             "logradouro": endereco.logradouro,
             "numero": endereco.numero,
             "complemento": endereco.complemento or "",
@@ -51,14 +61,33 @@ def _montar_destinatario(cliente: Cliente) -> dict:
     dest: dict = {}
 
     if isinstance(cliente, ClientePJ):
-        dest["cnpj_destinatario"] = cliente.cnpj
-        dest["razao_social_destinatario"] = cliente.razao_social
-        dest["inscricao_estadual_destinatario"] = cliente.ie or ""
+        dest["cnpj"] = cliente.cnpj
+        dest["razao_social"] = _sanitizar_texto_sefaz(cliente.razao_social)
+        dest["nome"] = _sanitizar_texto_sefaz(cliente.razao_social)
+        dest["inscricao_estadual"] = cliente.ie or ""
+        # indicador_ie: 1=Contribuinte (tem IE), 9=Não contribuinte (sem IE)
+        dest["indicador_ie"] = "1" if cliente.ie else "9"
     elif isinstance(cliente, ClientePF):
-        dest["cpf_destinatario"] = cliente.cpf
-        dest["nome_destinatario"] = cliente.nome
+        dest["cpf"] = cliente.cpf
+        dest["nome"] = _sanitizar_texto_sefaz(cliente.nome)
+        dest["indicador_ie"] = "9"  # PF é sempre não contribuinte
     else:
-        dest["nome_destinatario"] = f"Cliente #{cliente.id}"
+        dest["nome"] = f"Cliente #{cliente.id}"
+        dest["indicador_ie"] = "9"
+
+    # Endereço do destinatário (primeiro endereço cadastrado)
+    enderecos = getattr(cliente, "endereco", None)
+    if enderecos and len(enderecos) > 0:
+        end = enderecos[0]
+        dest["endereco"] = {
+            "logradouro": end.logradouro,
+            "numero": end.numero,
+            "complemento": end.complemento or "",
+            "bairro": end.bairro,
+            "cidade": end.cidade,
+            "uf": end.estado.value if hasattr(end.estado, "value") else str(end.estado),
+            "cep": end.cep,
+        }
 
     return dest
 
@@ -79,7 +108,10 @@ def _montar_itens(
     for idx, item in enumerate(venda.itens, start=1):
         produto = item.produto
         if not produto:
-            continue
+            raise ValueError(
+                f"Item #{idx} é avulso (sem produto). "
+                f"Todos os itens devem ter produto vinculado para gerar payload NF-e."
+            )
 
         fiscal = produto.fiscal
 
@@ -87,7 +119,7 @@ def _montar_itens(
             "numero_item": idx,
             "codigo_produto": produto.codigo_produto or str(produto.id),
             "descricao": produto.nome,
-            "quantidade_comercial": str(item.quantidade),
+            "quantidade_comercial": float(item.quantidade),
             "valor_unitario_comercial": _centavos_para_reais(item.valor_unitario),
             "valor_bruto": _centavos_para_reais(item.subtotal),
             "unidade_comercial": produto.unidade_medida or "UN",
@@ -100,6 +132,8 @@ def _montar_itens(
             item_dict["icms_origem"] = str(fiscal.origem_mercadoria or 0)
             item_dict["unidade_tributavel"] = fiscal.unidade_tributavel or produto.unidade_medida or "UN"
             item_dict["codigo_barras_tributavel"] = fiscal.gtin_tributavel or produto.codigo_barras or "SEM GTIN"
+            if fiscal.cest:
+                item_dict["cest"] = fiscal.cest
 
             if simples_nacional:
                 item_dict["icms_situacao_tributaria"] = fiscal.csosn
@@ -111,46 +145,53 @@ def _montar_itens(
         if imp:
             item_dict.update({
                 # Rateio
-                "valor_frete": str(imp.valor_frete),
-                "valor_seguro": str(imp.valor_seguro),
-                "valor_outras_despesas_acessorias": str(imp.valor_outras_despesas),
-                "valor_desconto": str(imp.valor_desconto),
+                "valor_frete": float(imp.valor_frete),
+                "valor_seguro": float(imp.valor_seguro),
+                "valor_outras_despesas_acessorias": float(imp.valor_outras_despesas),
+                "valor_desconto": float(imp.valor_desconto),
                 # ICMS
-                "icms_origem": str(imp.icms_origem),
+                "icms_origem": imp.icms_origem,
                 "icms_situacao_tributaria": imp.icms_situacao_tributaria,
                 "icms_modalidade_base_calculo": imp.icms_modalidade_base_calculo,
-                "icms_base_calculo": str(imp.icms_base_calculo),
-                "icms_aliquota": str(imp.icms_aliquota),
-                "icms_valor": str(imp.icms_valor),
+                "icms_base_calculo": float(imp.icms_base_calculo),
+                "icms_aliquota": float(imp.icms_aliquota),
+                "icms_valor": float(imp.icms_valor),
                 # PIS
                 "pis_situacao_tributaria": imp.pis_situacao_tributaria,
-                "pis_base_calculo": str(imp.pis_base_calculo),
-                "pis_aliquota_porcentual": str(imp.pis_aliquota),
-                "pis_valor": str(imp.pis_valor),
+                "pis_base_calculo": float(imp.pis_base_calculo),
+                "pis_aliquota_porcentual": float(imp.pis_aliquota),
+                "pis_valor": float(imp.pis_valor),
                 # COFINS
                 "cofins_situacao_tributaria": imp.cofins_situacao_tributaria,
-                "cofins_base_calculo": str(imp.cofins_base_calculo),
-                "cofins_aliquota_porcentual": str(imp.cofins_aliquota),
-                "cofins_valor": str(imp.cofins_valor),
+                "cofins_base_calculo": float(imp.cofins_base_calculo),
+                "cofins_aliquota_porcentual": float(imp.cofins_aliquota),
+                "cofins_valor": float(imp.cofins_valor),
                 # IPI
                 "ipi_situacao_tributaria": imp.ipi_situacao_tributaria,
                 "ipi_codigo_enquadramento": imp.ipi_codigo_enquadramento,
             })
             # CST 20 — Redução de base + código benefício fiscal
             if imp.icms_reducao_base is not None:
-                item_dict["icms_reducao_base_calculo"] = str(imp.icms_reducao_base)
+                item_dict["icms_reducao_base_calculo"] = float(imp.icms_reducao_base)
             if imp.icms_codigo_beneficio_fiscal:
                 item_dict["icms_codigo_beneficio_fiscal_reducao_base_calculo"] = imp.icms_codigo_beneficio_fiscal
             # CSOSN 101 — Crédito do Simples Nacional
             if imp.icms_aliquota_credito_simples is not None:
-                item_dict["icms_aliquota_aplicavel_calculo_credito"] = str(imp.icms_aliquota_credito_simples)
-                item_dict["icms_valor_credito_aproveitado"] = str(imp.icms_valor_credito_simples)
+                item_dict["icms_aliquota_aplicavel_calculo_credito"] = float(imp.icms_aliquota_credito_simples)
+                item_dict["icms_valor_credito_aproveitado"] = float(imp.icms_valor_credito_simples)
         else:
             # Fallback: sem tax_engine, mantém desconto do item
             if item.desconto and item.desconto > 0:
                 item_dict["valor_desconto"] = _centavos_para_reais(item.desconto)
 
         itens.append(item_dict)
+
+    # Validar alinhamento: se tax_engine rodou, cada item deve ter imposto calculado
+    if resultado_calculo and len(impostos_por_item) != len(itens):
+        raise ValueError(
+            f"Desalinhamento: tax_engine calculou {len(impostos_por_item)} itens, "
+            f"mas payload tem {len(itens)} itens."
+        )
 
     return itens
 
@@ -162,7 +203,7 @@ def _montar_pagamentos(venda: Venda) -> list[dict]:
         forma = pag.forma_pagamento
         pag_dict = {
             "forma_pagamento": forma.codigo_sefaz or "99",
-            "valor_pagamento": _centavos_para_reais(pag.valor),
+            "valor_pagamento": _centavos_para_reais(pag.valor),  # já retorna float
         }
         pagamentos.append(pag_dict)
 
@@ -201,6 +242,37 @@ def montar_payload_nfe(
     numero = fiscal_settings.ultimo_numero_nfe + 1
     serie = fiscal_settings.serie_nfe
 
+    # --- Destinatário ---
+    if venda.cliente:
+        destinatario = _montar_destinatario(venda.cliente)
+    else:
+        destinatario = {"nome": "CONSUMIDOR FINAL"}
+
+    # --- Totais ---
+    if resultado_calculo:
+        t = resultado_calculo.totais
+        totais = {
+            "valor_produtos": float(t.valor_total_produtos),
+            "valor_frete": float(t.valor_frete),
+            "valor_seguro": float(t.valor_seguro),
+            "valor_outras_despesas": float(t.valor_outras_despesas),
+            "valor_desconto": float(t.valor_desconto),
+            "icms_base_calculo": float(t.base_calculo_icms),
+            "icms_valor_total": float(t.valor_icms),
+            "valor_total": float(t.valor_total_nota),
+        }
+    else:
+        totais = {
+            "valor_produtos": _centavos_para_reais(venda.total),
+            "valor_desconto": 0.0,
+            "valor_frete": 0.0,
+            "valor_seguro": 0.0,
+            "valor_outras_despesas": 0.0,
+            "icms_base_calculo": 0.0,
+            "icms_valor_total": 0.0,
+            "valor_total": _centavos_para_reais(venda.total),
+        }
+
     payload = {
         # --- Parâmetros da nota ---
         "natureza_operacao": natureza,
@@ -210,31 +282,17 @@ def montar_payload_nfe(
         "presenca_comprador": indicador_presenca,
         "numero": numero,
         "serie": serie,
-        # --- Emitente ---
-        **_montar_emitente(empresa, endereco_empresa, fiscal_settings),
-        # --- Destinatário ---
-        **(_montar_destinatario(venda.cliente) if venda.cliente else {}),
+        # --- Emitente (objeto aninhado) ---
+        "emitente": _montar_emitente(empresa, endereco_empresa, fiscal_settings),
+        # --- Destinatário (objeto aninhado) ---
+        "destinatario": destinatario,
         # --- Itens ---
         "items": _montar_itens(venda, simples, resultado_calculo),
         # --- Pagamentos ---
         "formas_pagamento": _montar_pagamentos(venda),
+        # --- Totais (objeto aninhado) ---
+        "totais": totais,
     }
-
-    # --- Totais ---
-    if resultado_calculo:
-        totais = resultado_calculo.totais
-        payload.update({
-            "valor_produtos": str(totais.valor_total_produtos),
-            "valor_frete": str(totais.valor_frete),
-            "valor_seguro": str(totais.valor_seguro),
-            "valor_outras_despesas": str(totais.valor_outras_despesas),
-            "valor_desconto": str(totais.valor_desconto),
-            "icms_base_calculo": str(totais.base_calculo_icms),
-            "icms_valor_total": str(totais.valor_icms),
-            "valor_total": str(totais.valor_total_nota),
-        })
-    else:
-        payload["valor_total"] = _centavos_para_reais(venda.total)
 
     return payload
 
@@ -259,9 +317,11 @@ def montar_payload_teste_nfe(
         "presenca_comprador": 1,
         "numero": numero,
         "serie": serie,
-        **_montar_emitente(empresa, endereco_empresa, fiscal_settings),
-        "cpf_destinatario": "00000000000",
-        "nome_destinatario": "NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL",
+        "emitente": _montar_emitente(empresa, endereco_empresa, fiscal_settings),
+        "destinatario": {
+            "cpf": "00000000000",
+            "nome": "NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL",
+        },
         "items": [
             {
                 "numero_item": 1,
@@ -270,9 +330,9 @@ def montar_payload_teste_nfe(
                 "ncm": "00000000",
                 "cfop": "5102",
                 "unidade_comercial": "UN",
-                "quantidade_comercial": "1.00",
-                "valor_unitario_comercial": "1.00",
-                "valor_bruto": "1.00",
+                "quantidade_comercial": 1.0,
+                "valor_unitario_comercial": 1.0,
+                "valor_bruto": 1.0,
                 "icms_origem": "0",
                 "icms_situacao_tributaria": "102",
                 "codigo_barras_comercial": "SEM GTIN",
@@ -283,8 +343,17 @@ def montar_payload_teste_nfe(
         "formas_pagamento": [
             {
                 "forma_pagamento": "01",
-                "valor_pagamento": "1.00",
+                "valor_pagamento": 1.0,
             }
         ],
-        "valor_total": "1.00",
+        "totais": {
+            "valor_produtos": 1.0,
+            "valor_desconto": 0.0,
+            "valor_frete": 0.0,
+            "valor_seguro": 0.0,
+            "valor_outras_despesas": 0.0,
+            "icms_base_calculo": 0.0,
+            "icms_valor_total": 0.0,
+            "valor_total": 1.0,
+        },
     }

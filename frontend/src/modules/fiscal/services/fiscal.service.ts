@@ -1,5 +1,5 @@
 import api from '@/api/axios';
-import type {
+import type { EmissaoPreviewResponse,
   DocumentoFiscalHistorico,
   DocumentoFiscalListRead,
   DocumentoFiscalRead,
@@ -7,8 +7,10 @@ import type {
   DocumentoFiscalFilters,
   EmissaoNFeRequest,
   EmissaoResponse,
+  EmissaoBatchResponse,
   FiscalConfiguracao,
   PendenciasGlobais,
+  ResultadoVerificacaoBatch,
 } from '../types/fiscal.types';
 
 const FISCAL_ENDPOINT = '/fiscal';
@@ -20,7 +22,7 @@ export const fiscalService = {
     filters: DocumentoFiscalFilters = {},
     pagina: number = 1,
   ): Promise<DocumentoFiscalListRead> {
-    const params: Record<string, any> = { pagina };
+    const params: Partial<DocumentoFiscalFilters & { pagina: number }> = { pagina };
     if (filters.status) params.status = filters.status;
     if (filters.tipo) params.tipo = filters.tipo;
     if (filters.origem) params.origem = filters.origem;
@@ -65,6 +67,14 @@ export const fiscalService = {
 
   // --- Novos (emissao, consulta, cancelamento) ---
 
+  async previewNfe(payload: EmissaoNFeRequest): Promise<EmissaoPreviewResponse> {
+    const { data } = await api.post<EmissaoPreviewResponse>(
+      `${FISCAL_ENDPOINT}/preview/nfe`,
+      payload,
+    );
+    return data;
+  },
+
   async emitirNfe(payload: EmissaoNFeRequest): Promise<EmissaoResponse> {
     const { data } = await api.post<EmissaoResponse>(
       `${FISCAL_ENDPOINT}/emitir/nfe`,
@@ -105,6 +115,22 @@ export const fiscalService = {
   async obterConfiguracao(): Promise<FiscalConfiguracao> {
     const { data } = await api.get<FiscalConfiguracao>(
       `${FISCAL_ENDPOINT}/configuracao`,
+    );
+    return data;
+  },
+
+  async emitirNfeBatch(vendaIds: number[]): Promise<EmissaoBatchResponse> {
+    const { data } = await api.post<EmissaoBatchResponse>(
+      `${FISCAL_ENDPOINT}/emitir/nfe/batch`,
+      { venda_ids: vendaIds },
+    );
+    return data;
+  },
+
+  async verificarFiscalBatch(vendaIds: number[]): Promise<ResultadoVerificacaoBatch> {
+    const { data } = await api.get<ResultadoVerificacaoBatch>(
+      '/vendas/verificar-fiscal-batch',
+      { params: { ids: vendaIds.join(',') } },
     );
     return data;
   },

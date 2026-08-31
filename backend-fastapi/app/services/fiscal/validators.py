@@ -1,4 +1,5 @@
 # app/services/verificacao_fiscal/validators.py
+import re
 from sqlalchemy.orm import Session
 from app.core.validators import validar_cpf, validar_cnpj
 from app.core.enum import TipoProdutoVenda, OrdemServicoItemTipo, OrdemServicoItemAprovacao
@@ -9,6 +10,10 @@ from app.db.models.ordem_servico import OrdemServico
 
 from .helpers import criar_pendencia as _p, get_nome_cliente
 from app.db.crud import fiscal as crud
+
+_RE_NCM = re.compile(r"^\d{8}$")
+_RE_CFOP = re.compile(r"^\d{4}$")
+_RE_CEST = re.compile(r"^\d{7}$")
 
 def verificar_emitente(db: Session, empresa_id: int) -> list[PendenciaFiscal]:
     pendencias = []
@@ -28,6 +33,9 @@ def verificar_emitente(db: Session, empresa_id: int) -> list[PendenciaFiscal]:
 
     if not empresa.regime_tributario:
         pendencias.append(_p("emitente", "regime_tributario", "Regime tributário não definido."))
+
+    if not empresa.indicador_ie:
+        pendencias.append(_p("emitente", "indicador_ie", "Indicador de IE não definido. Acesse Configurações da Empresa > Dados Fiscais."))
 
     if empresa.indicador_ie == "1" and not empresa.inscricao_estadual:
         pendencias.append(_p("emitente", "inscricao_estadual", "Inscrição Estadual obrigatória para IE=1."))
@@ -85,8 +93,22 @@ def verificar_produto_fiscal(db: Session, produto, pendencias: list, simples_nac
         if not getattr(fiscal, c, None):
             pendencias.append(_p("item", c, f"Produto '{produto.nome}' — {label} vazio.", produto.id, produto.nome))
 
+    # Validação de formato NCM (8 dígitos numéricos)
+    if fiscal.ncm and not _RE_NCM.match(fiscal.ncm):
+        pendencias.append(_p("item", "ncm", f"Produto '{produto.nome}' — NCM '{fiscal.ncm}' deve ter exatamente 8 dígitos numéricos.", produto.id, produto.nome))
+
+    # Validação de formato CFOP (4 dígitos numéricos)
+    if fiscal.cfop_padrao and not _RE_CFOP.match(fiscal.cfop_padrao):
+        pendencias.append(_p("item", "cfop_padrao", f"Produto '{produto.nome}' — CFOP '{fiscal.cfop_padrao}' deve ter exatamente 4 dígitos numéricos.", produto.id, produto.nome))
+
+    # Validação de formato CEST (7 dígitos numéricos, quando preenchido)
+    if fiscal.cest and not _RE_CEST.match(fiscal.cest):
+        pendencias.append(_p("item", "cest", f"Produto '{produto.nome}' — CEST '{fiscal.cest}' deve ter exatamente 7 dígitos numéricos.", produto.id, produto.nome))
+
     if fiscal.origem_mercadoria is None:
         pendencias.append(_p("item", "origem_mercadoria", f"Origem não preenchida.", produto.id, produto.nome))
+    elif fiscal.origem_mercadoria not in range(9):
+        pendencias.append(_p("item", "origem_mercadoria", f"Produto '{produto.nome}' — Origem '{fiscal.origem_mercadoria}' deve ser entre 0 e 8.", produto.id, produto.nome))
 
     if simples_nacional and not fiscal.csosn:
         pendencias.append(_p("item", "csosn", f"CSOSN não preenchido.", produto.id, produto.nome))
@@ -113,17 +135,17 @@ def verificar_produto_fiscal(db: Session, produto, pendencias: list, simples_nac
                 produto.id, produto.nome,
             ))
 
-    # CST PIS/COFINS — se ausente, será usado "01" como default
+    # CST PIS/COFINS — obrigatório para emissão
     if not fiscal.cst_pis:
         pendencias.append(_p(
             "item", "cst_pis",
-            f"Produto '{produto.nome}' — CST PIS não preenchido (será usado '01' como padrão).",
+            f"Produto '{produto.nome}' — CST PIS não preenchido.",
             produto.id, produto.nome,
         ))
     if not fiscal.cst_cofins:
         pendencias.append(_p(
             "item", "cst_cofins",
-            f"Produto '{produto.nome}' — CST COFINS não preenchido (será usado '01' como padrão).",
+            f"Produto '{produto.nome}' — CST COFINS não preenchido.",
             produto.id, produto.nome,
         ))
 

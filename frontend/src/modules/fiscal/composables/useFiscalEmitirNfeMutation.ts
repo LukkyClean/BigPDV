@@ -7,7 +7,7 @@ import type { ApiError } from '@/shared/types/axios.types';
 
 import { fiscalService } from '../services/fiscal.service';
 import { fiscalKeys } from '../constants/fiscal.constants';
-import type { EmissaoNFeRequest } from '../types/fiscal.types';
+import type { EmissaoNFeRequest, FiscalConflictDetail } from '../types/fiscal.types';
 
 export function useFiscalEmitirNfeMutation() {
   const toast = useToast();
@@ -16,12 +16,27 @@ export function useFiscalEmitirNfeMutation() {
   return useMutation({
     mutationFn: (payload: EmissaoNFeRequest) => fiscalService.emitirNfe(payload),
     onSuccess: (data) => {
-      toast.success(data.mensagem || 'NF-e emitida com sucesso.');
+      if (data.status === 'AUTORIZADA' || data.status === 'PROCESSANDO') {
+        toast.success(data.mensagem || 'NF-e emitida com sucesso.');
+      } else {
+        toast.error(data.mensagem || 'Erro ao emitir NF-e.');
+      }
       queryClient.invalidateQueries({ queryKey: fiscalKeys.documentos() });
       queryClient.invalidateQueries({ queryKey: fiscalKeys.resumo() });
     },
     onError: (error) => {
-      toast.error(getErrorMessage(error as AxiosError<ApiError>));
+      const axiosErr = error as AxiosError<ApiError>;
+
+      if (axiosErr.response?.status === 409) {
+        const detail = axiosErr.response.data?.detail as FiscalConflictDetail | undefined;
+        const msg = detail?.mensagem || 'Esta venda já possui documento fiscal ativo.';
+        toast.warning('Documento fiscal existente', msg);
+        queryClient.invalidateQueries({ queryKey: fiscalKeys.documentos() });
+        queryClient.invalidateQueries({ queryKey: fiscalKeys.resumo() });
+        return;
+      }
+
+      toast.error(getErrorMessage(axiosErr));
     },
   });
 }

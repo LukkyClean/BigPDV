@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.core.depends import check_permission, get_db, _handle_db_transaction, is_visao_gerencial, requer_modulo_fiscal
 from app.schemas.venda_nota_fiscal import VendaNotaFiscalRead, VendaNotaFiscalUpdate
-from app.schemas.verificacao_fiscal import ResultadoVerificacaoFiscal
+from app.schemas.verificacao_fiscal import ResultadoVerificacaoFiscal, ResultadoVerificacaoBatch
 from app.services import venda_nota_fiscal as venda_nota_fiscal_service
 from app.services import verificacao_fiscal as verificacao_fiscal_service
 from app.schemas.vendas import (
@@ -393,7 +393,33 @@ def upsert_nota_fiscal_venda(
 
 
 # ===========================================================================
-# VERIFICAÇÃO E EMISSÃO FISCAL
+# VERIFICAÇÃO FISCAL BATCH (path estático — antes de {venda_id})
+# ===========================================================================
+
+@router.get(
+    "/verificar-fiscal-batch",
+    response_model=ResultadoVerificacaoBatch,
+    summary="Verificação Fiscal em Lote",
+    description="Verifica completude fiscal de múltiplas vendas simultaneamente.",
+)
+def verificar_fiscal_batch(
+    user_token: dict = Depends(check_permission(required_permission=module_permission)),
+    _fiscal: dict = Depends(requer_modulo_fiscal),
+    ids: str = Query(..., description="IDs de venda separados por vírgula, máximo 50"),
+    db: Session = Depends(get_db),
+):
+    empresa_id = user_token["empresa_id"]
+    venda_ids = [int(x.strip()) for x in ids.split(",") if x.strip().isdigit()]
+    if not venda_ids or len(venda_ids) > 50:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Informe entre 1 e 50 IDs de venda.",
+        )
+    return verificacao_fiscal_service.verificar_completude_vendas_batch(db, venda_ids, empresa_id)
+
+
+# ===========================================================================
+# VERIFICAÇÃO E EMISSÃO FISCAL (rotas com {venda_id})
 # ===========================================================================
 
 @router.get(

@@ -5,7 +5,7 @@
 
 from typing import Optional
 
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class EmissaoNFeRequest(BaseModel):
@@ -57,3 +57,68 @@ class FiscalConfiguracao(BaseModel):
     mock_ativo: bool
     certificado_configurado: bool
     certificado_valido: bool
+
+
+class EmissaoPreviewItem(BaseModel):
+    numero_item: int
+    produto_id: Optional[int] = None
+    nome: str
+    quantidade: float
+    valor_unitario: float
+    valor_total: float
+    cfop: str
+    ncm: str
+    cst_csosn: str = ""
+
+
+class EmissaoPreviewTotais(BaseModel):
+    valor_produtos: float
+    descontos: float
+    frete: float
+    valor_nota: float
+    total_tributos: int
+
+
+class EmissaoPreviewDestinatario(BaseModel):
+    nome: str
+    documento: str
+
+
+class EmissaoPreviewPagamento(BaseModel):
+    nome: str
+    codigo_sefaz: str
+    valor: int
+
+
+class EmissaoPreviewResponse(BaseModel):
+    """Dados retornados para a tela de pré-visualização no frontend."""
+    destinatario: EmissaoPreviewDestinatario
+    totais: EmissaoPreviewTotais
+    itens: list[EmissaoPreviewItem]
+    formas_pagamento: list[EmissaoPreviewPagamento] = []
+
+
+# --- Batch ---
+
+class EmissaoNFeBatchRequest(BaseModel):
+    """Request para emissão em lote de NF-e."""
+    venda_ids: list[int] = Field(..., min_length=1, max_length=20)
+
+    @field_validator("venda_ids")
+    @classmethod
+    def deduplicar(cls, v: list[int]) -> list[int]:
+        return list(dict.fromkeys(v))
+
+
+class EmissaoBatchItemResult(BaseModel):
+    venda_id: int
+    documento_id: Optional[int] = None
+    status: str
+    mensagem: str
+
+
+class EmissaoBatchResponse(BaseModel):
+    resultados: list[EmissaoBatchItemResult]
+    total: int
+    sucesso: int
+    falha: int

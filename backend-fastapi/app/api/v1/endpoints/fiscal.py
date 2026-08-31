@@ -9,7 +9,7 @@
 from datetime import date, datetime
 from typing import Optional
 
-from fastapi import APIRouter, Body, Depends, Path, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -24,6 +24,8 @@ from app.schemas.documento_fiscal import (
 )
 from app.schemas.emissao_fiscal import (
     CancelamentoRequest,
+    EmissaoBatchResponse,
+    EmissaoNFeBatchRequest,
     EmissaoNFeRequest,
     EmissaoResponse,
     FiscalConfiguracao,
@@ -162,6 +164,25 @@ def reemitir_documento(
 # ===========================================================================
 
 from fastapi import BackgroundTasks
+from app.schemas.emissao_fiscal import EmissaoPreviewResponse
+
+@router.post(
+    "/preview/nfe",
+    response_model=EmissaoPreviewResponse,
+    summary="Pré-visualizar NF-e",
+    description="Gera um resumo da NF-e para visualização e verificação antes da emissão.",
+)
+def preview_nfe(
+    user_token: dict = Depends(requer_modulo_fiscal),
+    *,
+    db: Session = Depends(get_db),
+    payload: EmissaoNFeRequest = Body(...),
+):
+    from app.services.fiscal.emissao import preview_nfe_venda
+    # FIXME: no futuro deve suportar preview_nfe_os também
+    if payload.venda_id:
+        return preview_nfe_venda(db, payload.venda_id, user_token["empresa_id"])
+    raise HTTPException(status_code=400, detail="Somente pre-visualização de vendas está implementada")
 
 @router.post(
     "/emitir/nfe",
@@ -185,7 +206,6 @@ def emitir_nfe(
             db, emitir_nfe_venda, payload.venda_id, empresa_id,
         )
     else:
-        from fastapi import HTTPException
         raise HTTPException(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
             detail="Emissão de NF-e para OS será implementada em fase futura.",
@@ -200,6 +220,37 @@ def emitir_nfe(
         status=doc.status,
         mensagem=doc.mensagem_sefaz or f"NF-e {doc.status.lower()}.",
         ambiente=doc.ambiente_emissao or 2,
+    )
+
+
+@router.post(
+    "/emitir/nfe/batch",
+    response_model=EmissaoBatchResponse,
+    summary="Emitir NF-e em Lote",
+    description="Emite NF-e para múltiplas vendas sequencialmente. Máximo 20 vendas por lote.",
+)
+def emitir_nfe_batch(
+    background_tasks: BackgroundTasks,
+    user_token: dict = Depends(requer_modulo_fiscal),
+    *,
+    db: Session = Depends(get_db),
+    payload: EmissaoNFeBatchRequest = Body(...),
+):
+    from app.services.fiscal.emissao import emitir_nfe_batch as _emitir_batch, poll_nfe_status_async
+
+    empresa_id = user_token["empresa_id"]
+    resultados = _emitir_batch(db, payload.venda_ids, empresa_id)
+
+    for r in resultados:
+        if r["status"] == "PROCESSANDO" and r["documento_id"]:
+            background_tasks.add_task(poll_nfe_status_async, r["documento_id"], empresa_id)
+
+    sucesso = sum(1 for r in resultados if r["status"] not in ("ERRO", "REJEITADA"))
+    return EmissaoBatchResponse(
+        resultados=resultados,
+        total=len(resultados),
+        sucesso=sucesso,
+        falha=len(resultados) - sucesso,
     )
 
 

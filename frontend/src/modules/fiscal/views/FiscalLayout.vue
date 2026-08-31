@@ -5,13 +5,12 @@ import { Lock, Sparkles, Check } from 'lucide-vue-next';
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
 import { recursoDisponivel, PLANO_ATUAL } from '@/shared/config/planos';
 
-import FiscalAmbienteBadge from '../components/FiscalAmbienteBadge.vue';
 import { useFiscalConfiguracaoQuery } from '../composables/useFiscalConfiguracaoQuery';
 
 const nfeDisponivel = recursoDisponivel('nfe');
 const upgradeSolicitado = ref(false);
 
-const { data: configuracao, isLoading: isConfigLoading } = useFiscalConfiguracaoQuery();
+const { data: configuracao } = useFiscalConfiguracaoQuery();
 
 const isHomologacao = ref(true);
 
@@ -75,11 +74,6 @@ function solicitarUpgrade() {
 
     <!-- Centro Fiscal (layout shell) -->
     <div v-else class="flex flex-col gap-6 flex-1 min-h-0">
-      <!-- Header com badge de ambiente -->
-      <div class="flex items-center gap-3">
-        <FiscalAmbienteBadge :configuracao="configuracao" :is-loading="isConfigLoading" />
-      </div>
-
       <!-- Child route content -->
       <router-view :is-homologacao="isHomologacao" />
     </div>

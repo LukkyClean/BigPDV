@@ -35,6 +35,7 @@ class DocumentoFiscalRead(BaseModel):
     data_emissao: Optional[datetime] = None
     data_criacao: datetime
     data_atualizacao: datetime
+    destinatario_nome: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

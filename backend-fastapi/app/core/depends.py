@@ -7,6 +7,7 @@ import logging
 from typing import Callable, Dict, Any
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -273,13 +274,11 @@ def requer_modulo_fiscal(
         .first()
     )
     if not fiscal_settings:
-        # Auto-create com valores padrão (homologação, mock ativo)
-        fiscal_settings = EmpresaFiscalSettings(
-            empresa_id=empresa_id,
-            ambiente_emissao=2,  # Homologação
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Módulo fiscal não configurado para esta empresa. "
+                   "Acesse Configurações > Dados Fiscais para ativar.",
         )
-        db.add(fiscal_settings)
-        db.commit()
 
     return usuario_token
 
@@ -328,8 +327,16 @@ def _handle_db_transaction(db: Session, func: Callable, *args, **kwargs):
             status_code=status.HTTP_409_CONFLICT,
             detail=str(e)
         )
+    except IntegrityError as e:
+        # 5. Trata violações de integridade (unique, FK, etc.)
+        logger.warning("Violação de integridade: %s", e.orig)
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Registro duplicado ou violação de integridade: {str(e.orig)[:200]}"
+        )
     except Exception as e:
-        # 5. Trata erros inesperados (internos)
+        # 6. Trata erros inesperados (internos)
         logger.exception("Erro inesperado: %s", e)
         db.rollback()
         raise HTTPException(

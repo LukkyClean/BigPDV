@@ -24,7 +24,14 @@ from app.db.models.produto_fiscal import ProdutoFiscal
 from app.db.models.servico_fiscal import ServicoFiscal
 from app.db.models.cliente import Cliente, ClientePF, ClientePJ
 from app.core.enum import EntityType, TipoProdutoVenda, OrdemServicoItemTipo, OrdemServicoItemAprovacao
-from app.schemas.verificacao_fiscal import PendenciaFiscal, ResultadoVerificacaoFiscal
+from app.schemas.verificacao_fiscal import (
+    PendenciaFiscal,
+    ResultadoVerificacaoFiscal,
+    DocumentoAtivoResumo,
+    VerificacaoBatchItem,
+    ResultadoVerificacaoBatch,
+)
+from app.db.crud import fiscal as fiscal_crud
 
 
 # ---------------------------------------------------------------------------
@@ -75,6 +82,13 @@ def _verificar_emitente(db: Session, empresa_id: int) -> list[PendenciaFiscal]:
     if not empresa.regime_tributario:
         pendencias.append(_p("emitente", "regime_tributario", "Regime tributário da empresa não está definido."))
 
+    # Indicador de IE (obrigatório para emissão)
+    if not empresa.indicador_ie:
+        pendencias.append(_p(
+            "emitente", "indicador_ie",
+            "Indicador de IE não definido. Acesse Configurações da Empresa > Dados Fiscais."
+        ))
+
     # Inscrição Estadual (obrigatória se contribuinte ICMS)
     if empresa.indicador_ie == "1" and not empresa.inscricao_estadual:
         pendencias.append(_p(
@@ -115,16 +129,10 @@ def _verificar_emitente(db: Session, empresa_id: int) -> list[PendenciaFiscal]:
             "Configurações fiscais da empresa não estão cadastradas."
         ))
     else:
-        # Certificado digital
-        tem_certificado = bool(
-            fiscal_settings.certificado_digital_path
-            or fiscal_settings.certificado_thumbprint
-        )
-        if not tem_certificado:
-            pendencias.append(_p(
-                "emitente", "certificado",
-                "Certificado digital não está configurado nas configurações fiscais."
-            ))
+        # Certificado digital — desabilitado temporariamente.
+        # A API Online usa Bearer token (licença), não certificado local.
+        # Reativar quando integração direta com SEFAZ for implementada.
+        pass
 
     return pendencias
 
@@ -545,4 +553,74 @@ def verificar_completude_os(
     return ResultadoVerificacaoFiscal(
         completo=len(pendencias) == 0,
         pendencias=pendencias,
+    )
+
+
+# ---------------------------------------------------------------------------
+# API Pública: Verificação em Lote (Batch)
+# ---------------------------------------------------------------------------
+
+def verificar_completude_vendas_batch(
+    db: Session, venda_ids: list[int], empresa_id: int
+) -> ResultadoVerificacaoBatch:
+    """Verifica completude fiscal de múltiplas vendas em uma única chamada otimizada."""
+
+    # 1. Emitente — verificado UMA vez para todo o lote
+    pendencias_emitente = _verificar_emitente(db, empresa_id)
+
+    empresa = db.query(Empresa).filter(Empresa.id == empresa_id).first()
+    simples = _is_simples_nacional(empresa.regime_tributario if empresa else None)
+
+    # 2. Carregar vendas com relacionamentos (query única)
+    vendas = fiscal_crud.get_vendas_completas_batch(db, venda_ids)
+
+    # 3. Carregar documentos ativos em lote (query única)
+    numeros_venda = [v.numero_venda for v in vendas if v.numero_venda is not None]
+    docs_map = fiscal_crud.get_documentos_relevantes_por_vendas(db, numeros_venda)
+
+    # 4. Montar resultado por venda
+    resultados: list[VerificacaoBatchItem] = []
+    total_aptas = 0
+    total_com_pendencias = 0
+    total_com_documento = 0
+
+    for venda in vendas:
+        pendencias: list[PendenciaFiscal] = list(pendencias_emitente)  # cópia
+        pendencias.extend(_verificar_destinatario_venda(venda))
+        pendencias.extend(_verificar_itens_venda(db, venda, simples))
+        pendencias.extend(_verificar_pagamentos(venda.pagamentos))
+
+        completo = len(pendencias) == 0
+
+        # Documento ativo existente?
+        doc_ativo = docs_map.get(venda.numero_venda) if venda.numero_venda else None
+        documento_ativo = None
+        if doc_ativo:
+            documento_ativo = DocumentoAtivoResumo(
+                documento_id=doc_ativo.id,
+                status=doc_ativo.status,
+                numero_documento=doc_ativo.numero_documento,
+                serie=doc_ativo.serie,
+                chave_acesso=doc_ativo.chave_acesso,
+            )
+            total_com_documento += 1
+        elif completo:
+            total_aptas += 1
+        else:
+            total_com_pendencias += 1
+
+        resultados.append(VerificacaoBatchItem(
+            venda_id=venda.id,
+            numero_venda=venda.numero_venda,
+            completo=completo,
+            pendencias=pendencias,
+            documento_ativo=documento_ativo,
+        ))
+
+    return ResultadoVerificacaoBatch(
+        resultados=resultados,
+        total=len(resultados),
+        total_aptas=total_aptas,
+        total_com_pendencias=total_com_pendencias,
+        total_com_documento=total_com_documento,
     )
