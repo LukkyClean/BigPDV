@@ -137,6 +137,10 @@ const vencimentoFormatado = computed(
 function falarComSuporte() {
   openUrl(LINKS.whatsapp);
 }
+
+function verPlanos() {
+  openUrl(LINKS.planos);
+}
 </script>
 
 <template>
@@ -163,7 +167,17 @@ function falarComSuporte() {
       <p v-if="motivoIndisponivel" class="text-xs text-zinc-400 max-w-xs">
         {{ motivoIndisponivel }}
       </p>
-      <BaseButton variant="secondary" size="md" class="mt-1" @click="falarComSuporte">
+      <!--
+        A página de planos é o caminho que funciona HOJE: ela está no ar, aceita
+        cartão e resolve a renovação enquanto a cobrança pelo sistema não sobe.
+        Sem este botão o modal vira um aviso sem saída — o cliente abriu a tela
+        justamente para pagar.
+      -->
+      <BaseButton variant="primary" size="md" class="mt-1 w-full" @click="verPlanos">
+        <ExternalLink :size="16" class="mr-2" />
+        Renovar no site
+      </BaseButton>
+      <BaseButton variant="ghost" size="md" class="w-full" @click="falarComSuporte">
         Falar com o suporte
       </BaseButton>
     </div>

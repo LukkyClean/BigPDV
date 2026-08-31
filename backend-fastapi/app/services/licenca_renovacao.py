@@ -39,7 +39,7 @@ from app.schemas.licenca import (
     ValidarPayload,
     ValidarResponse,
 )
-from app.services.licenca import decriptar_valor
+from app.services.licenca import _limpar_bloqueio, decriptar_valor
 
 logger = logging.getLogger(__name__)
 
@@ -446,6 +446,9 @@ def revalidar_agora(db: Session) -> bool:
     # travar a loja dentro dos dias de folga que o servidor concedeu.
     licenca.em_carencia = validada.emCarencia
     licenca.data_limite_carencia = validada.dataLimiteCarencia
+    # Quem acabou de pagar nao pode continuar preso no bloqueio que a
+    # inadimplencia deixou ligado -- e ele nao se apaga sozinho.
+    _limpar_bloqueio(licenca)
 
     licenca_crud.update_licenca(db, licenca)
     db.commit()

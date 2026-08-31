@@ -16,20 +16,33 @@
  * é repassado). Sem ele, a badge cai nos estados de licença paga.
  *
  * DESTINOS:
- *  - trial     → página de planos. Quem está testando ainda vai ESCOLHER um plano.
- *  - renovar   → planos TAMBÉM, mas só provisoriamente. O destino certo do
- *                cliente pagante é o link de pagamento (Stripe) gerado na hora,
- *                porque ele renova o que já tem em vez de escolher plano de
- *                novo — fluxo ainda a desenhar. Ver TODO(renovacao) abaixo.
+ *  - trial     → página de planos no navegador. Quem está testando ainda vai
+ *                ESCOLHER um plano, e essa escolha mora no site.
+ *  - renovar   → a tela de renovação DENTRO do sistema (a mesma que o menu de
+ *                Configurações abre). O cliente pagante não vai escolher plano
+ *                de novo: ele renova o que já tem, e isso se resolve aqui, sem
+ *                sair para o navegador.
+ *
+ *                Só para o master: a assinatura é a conta dele, e o backend
+ *                recusa a cobrança de quem não é. Funcionário continua indo
+ *                para a página de planos — ver o preço não faz mal a ninguém,
+ *                e abrir um modal que vai responder 403 sim.
  */
 
 import { computed } from 'vue';
 import { Zap, AlertTriangle, Clock } from 'lucide-vue-next';
 import { openUrl } from '@tauri-apps/plugin-opener';
+import { storeToRefs } from 'pinia';
 import { useLicencaStatusQuery } from '@/shared/composables/useLicencaStatusQuery';
+import { useAuthStore } from '@/shared/stores/auth.store';
+import { useLayoutStore } from '../../store/layout.store';
 import { LINKS } from '@/shared/config/links';
 
 const { data, isLoading, isError } = useLicencaStatusQuery();
+const layoutStore = useLayoutStore();
+const { userData } = storeToRefs(useAuthStore());
+
+const isMaster = computed(() => userData.value?.is_master === true);
 
 type BadgeEstado = 'trial' | 'trial-urgente' | 'renovar' | 'renovar-urgente' | 'ativo';
 
@@ -76,7 +89,7 @@ const config = computed(() => {
         icon: AlertTriangle,
         classes: 'bg-yellow-50 text-yellow-700 hover:bg-yellow-100',
         destino: 'renovacao' as Destino,
-        titulo: 'Renovar assinatura em startbig.com.br',
+        titulo: 'Renovar assinatura',
       };
     case 'renovar-urgente':
       return {
@@ -84,7 +97,7 @@ const config = computed(() => {
         icon: AlertTriangle,
         classes: 'bg-red-50 text-red-600 hover:bg-red-100 animate-pulse',
         destino: 'renovacao' as Destino,
-        titulo: 'Sua assinatura está vencendo — renovar em startbig.com.br',
+        titulo: 'Sua assinatura está vencendo — renovar agora',
       };
     case 'ativo':
       return {
@@ -105,11 +118,14 @@ function handleClick() {
       openUrl(LINKS.planos);
       break;
     case 'renovacao':
-      // TODO(renovacao): trocar pelo fluxo de renovação — gerar o link de
-      // pagamento (Stripe) na hora e abrir o checkout direto, sem passar pela
-      // tabela de planos. Até lá, o site resolve: a página de planos já está
-      // no ar e funcionando.
-      openUrl(LINKS.planos);
+      // A renovação acontece aqui dentro. O modal já sabe se virar quando a
+      // cobrança pelo sistema ainda não estiver no ar: nesse caso ele mesmo
+      // oferece "Renovar no site".
+      if (isMaster.value) {
+        layoutStore.openRenovarAssinatura();
+      } else {
+        openUrl(LINKS.planos);
+      }
       break;
   }
 }
