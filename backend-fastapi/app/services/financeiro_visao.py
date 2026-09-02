@@ -30,6 +30,7 @@ from app.core.enum import (
 from app.core.tempo import agora_utc, fim_do_dia_utc, hoje_local, inicio_do_dia_utc
 from app.db.crud import dashboard as dashboard_crud
 from app.db.crud import financeiro as financeiro_crud
+from app.db.crud import financeiro_receber as receber_crud
 from app.db.crud import sessao_caixa as caixa_crud
 from app.db.models.conta_receber import ContaReceber
 from app.helpers.exceptions import BadRequestException, NotFoundException
@@ -132,7 +133,7 @@ def saldo_atual_das_contas(db: Session, empresa_id: int) -> SaldoDasContas:
         corte = _corte(conta) or corte_da_loja
         if corte is None:
             continue  # a loja inteira nunca declarou nada
-        conta_entrou, conta_saiu = financeiro_crud.entradas_e_saidas_desde(
+        conta_entrou, conta_saiu = receber_crud.entradas_e_saidas_desde(
             db,
             empresa_id,
             conta_id=conta.id,
@@ -226,7 +227,7 @@ def _montar_alertas(
     )
 
     def _dias_de_atraso(*, receber: bool) -> int:
-        mais_antigo = financeiro_crud.vencimento_mais_antigo_pendente(
+        mais_antigo = receber_crud.vencimento_mais_antigo_pendente(
             db, empresa_id, hoje=hoje, receber=receber
         )
         return (hoje - mais_antigo).days if mais_antigo else 0
@@ -342,7 +343,7 @@ def _montar_alertas(
     # calculado de qualquer jeito e só então some da lista. Assim, quando o
     # prazo expira, ele volta com o número de HOJE -- e não com o de quando foi
     # silenciado.
-    calados = financeiro_crud.codigos_dispensados(db, empresa_id, hoje)
+    calados = receber_crud.codigos_dispensados(db, empresa_id, hoje)
     alertas = [a for a in alertas if a.codigo not in calados]
 
     # Crítico antes de atenção, preservando a ordem de urgência dentro de cada
@@ -383,7 +384,7 @@ def adiar_alerta(
 
     func_id, func_nome = _funcionario_do_token(usuario_token)
     ate = hoje_local() + timedelta(days=dias)
-    registro = financeiro_crud.dispensar_alerta(
+    registro = receber_crud.dispensar_alerta(
         db, empresa_id, codigo=codigo, ate=ate,
         funcionario_id=func_id, funcionario_nome=func_nome,
     )
@@ -432,7 +433,7 @@ def get_resumo(
         db, dt_inicio, dt_fim, empresa_id
     )
 
-    saiu_caixa = financeiro_crud.total_saiu_do_caixa(db, empresa_id, dt_inicio, dt_fim)
+    saiu_caixa = receber_crud.total_saiu_do_caixa(db, empresa_id, dt_inicio, dt_fim)
 
     # A OUTRA LEITURA do que entrou: pelo livro, não pelas tabelas de venda.
     #
@@ -441,7 +442,7 @@ def get_resumo(
     # vendido agora, fiado antigo quitado agora) e a tela mostra os dois em vez
     # de escolher um -- trocar o faturamento por este apagaria da tela o mês
     # inteiro de quem vende a prazo.
-    entrou_caixa = financeiro_crud.total_entrou_no_caixa(
+    entrou_caixa = receber_crud.total_entrou_no_caixa(
         db, empresa_id, dt_inicio, dt_fim
     )
 
@@ -470,7 +471,7 @@ def get_resumo(
     # Não entra no resultado: a venda fiado já está em `faturamento`, e somá-la
     # de novo contaria o mesmo dinheiro duas vezes. O card responde outra
     # pergunta -- quanto do que já vendi ainda não recebi.
-    a_receber, _recebido, a_receber_vencido = financeiro_crud.totais_contas_receber(
+    a_receber, _recebido, a_receber_vencido = receber_crud.totais_contas_receber(
         db, empresa_id, hoje=hoje
     )
 
@@ -556,7 +557,7 @@ def get_fluxo_caixa(db: Session, empresa_id: int, dias: int = 30) -> FluxoCaixa:
     atual = saldo_atual_das_contas(db, empresa_id)
     saldo_inicial = atual.saldo
 
-    pagar, receber = financeiro_crud.pendentes_por_vencimento(
+    pagar, receber = receber_crud.pendentes_por_vencimento(
         db, empresa_id, inicio=hoje, fim=fim
     )
 
@@ -633,7 +634,7 @@ def get_fluxo_caixa(db: Session, empresa_id: int, dias: int = 30) -> FluxoCaixa:
     _p, _pg, atrasado_a_pagar = financeiro_crud.totais_contas_pagar(
         db, empresa_id, hoje=hoje
     )
-    _r, _rc, atrasado_a_receber = financeiro_crud.totais_contas_receber(
+    _r, _rc, atrasado_a_receber = receber_crud.totais_contas_receber(
         db, empresa_id, hoje=hoje
     )
 
@@ -690,15 +691,15 @@ def listar_extrato(
     dt_inicio = inicio_do_dia_utc(inicio) if inicio else None
     dt_fim = fim_do_dia_utc(fim) if fim else None
 
-    itens, total = financeiro_crud.listar_extrato(
+    itens, total = receber_crud.listar_extrato(
         db, empresa_id, inicio=dt_inicio, fim=dt_fim, tipo=tipo, origem=origem,
         limit=limit, offset=offset,
     )
-    entradas, saidas = financeiro_crud.totais_extrato(
+    entradas, saidas = receber_crud.totais_extrato(
         db, empresa_id, inicio=dt_inicio, fim=dt_fim, tipo=tipo, origem=origem
     )
 
-    por_venda, por_os = financeiro_crud.documentos_de_origem(
+    por_venda, por_os = receber_crud.documentos_de_origem(
         db,
         venda_pagamento_ids=[m.venda_pagamento_id for m in itens if m.venda_pagamento_id],
         os_pagamento_ids=[

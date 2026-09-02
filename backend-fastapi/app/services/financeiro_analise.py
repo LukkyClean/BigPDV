@@ -38,6 +38,7 @@ from sqlalchemy.orm import Session
 from app.core.tempo import fim_do_dia_utc, hoje_local, inicio_do_dia_utc
 from app.db.crud import dashboard as dashboard_crud
 from app.db.crud import financeiro as financeiro_crud
+from app.db.crud import financeiro_receber as receber_crud
 from app.services import custo_mercadoria
 from app.schemas.financeiro import (
     AlertaFinanceiro,
@@ -139,8 +140,8 @@ def get_serie(db: Session, empresa_id: int, meses: int = 12) -> Serie:
         custo, _sem_registro = custo_mercadoria.calcular_cmv(
             db, dt_inicio, dt_fim, empresa_id
         )
-        caixa = financeiro_crud.total_entrou_no_caixa(db, empresa_id, dt_inicio, dt_fim)
-        prazo = financeiro_crud.prazo_medio_recebimento(db, empresa_id, dt_inicio, dt_fim)
+        caixa = receber_crud.total_entrou_no_caixa(db, empresa_id, dt_inicio, dt_fim)
+        prazo = receber_crud.prazo_medio_recebimento(db, empresa_id, dt_inicio, dt_fim)
         receita = sum(por_origem.values())
 
         linhas.append(

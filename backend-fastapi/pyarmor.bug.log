@@ -1,7 +1,7 @@
 [BUG]: out of license
 
 ## Command Line
-C:\Users\BigTec\Desktop\start-big-master\backend-fastapi\.venv\Scripts\pyarmor gen -O dist -r app
+C:\Users\BigTec\Desktop\start-big-master\backend-fastapi\.venv\Scripts\pyarmor gen -O c:/Users/BigTec/AppData/Local/Temp/claude/c--Users-BigTec-Desktop-start-big-master/5b8bd27d-6ab4-4e5f-a260-c9b2545e6db7/scratchpad/pa/out app/db/crud/financeiro.py
 
 ## Environments
 Python 3.13.7

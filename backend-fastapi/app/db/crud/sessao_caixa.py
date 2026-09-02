@@ -142,7 +142,7 @@ def registrar_movimento(
 
     Continua opcional, e NULO é resposta legítima em dois casos: a abertura e a
     sangria, que mexem na gaveta e não no total da loja (ver `ORIGENS_DE_SALDO`
-    em crud/financeiro.py), e a loja que ainda não tem conta cadastrada.
+    em crud/financeiro_receber.py), e a loja que ainda não tem conta cadastrada.
     """
     movimento = MovimentacaoFinanceira(
         tipo=tipo.value,

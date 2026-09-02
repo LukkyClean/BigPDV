@@ -30,6 +30,7 @@ from app.core.enum import (
 from app.core.tempo import agora_utc, fim_do_dia_utc, hoje_local, inicio_do_dia_utc
 from app.db.crud import dashboard as dashboard_crud
 from app.db.crud import financeiro as financeiro_crud
+from app.db.crud import financeiro_receber as receber_crud
 from app.db.crud import sessao_caixa as caixa_crud
 from app.db.models.conta_receber import ContaReceber
 from app.helpers.exceptions import BadRequestException, NotFoundException
@@ -120,7 +121,7 @@ def _criar_promessa(
     mesmo caminho, e só a primeira pode entrar sozinha no vencimento: o dono
     declarou que a operadora deposita em D+n. Cliente não paga por agendamento.
     """
-    if financeiro_crud.get_receber_do_pagamento(
+    if receber_crud.get_receber_do_pagamento(
         db,
         empresa_id,
         venda_pagamento_id=venda_pagamento_id,
@@ -128,7 +129,7 @@ def _criar_promessa(
     ):
         return None
 
-    return financeiro_crud.criar_conta_receber(
+    return receber_crud.criar_conta_receber(
         db,
         ContaReceber(
             empresa_id=empresa_id,
@@ -274,12 +275,12 @@ def listar_contas_receber(
     if vencidas:
         inicio = fim = None
 
-    itens, total_itens = financeiro_crud.listar_contas_receber(
+    itens, total_itens = receber_crud.listar_contas_receber(
         db, empresa_id, status=status, inicio=inicio, fim=fim,
         cliente_id=cliente_id, busca=busca, vencidas=vencidas,
         limit=limit, offset=offset,
     )
-    pendente, recebido, vencido = financeiro_crud.totais_contas_receber(
+    pendente, recebido, vencido = receber_crud.totais_contas_receber(
         db, empresa_id, hoje=hoje, inicio=inicio, fim=fim,
         cliente_id=cliente_id, busca=busca, vencidas=vencidas,
     )
@@ -293,7 +294,7 @@ def listar_contas_receber(
 
 
 def get_conta_receber(db: Session, empresa_id: int, conta_id: int) -> Dict[str, Any]:
-    conta = financeiro_crud.get_conta_receber(db, empresa_id, conta_id)
+    conta = receber_crud.get_conta_receber(db, empresa_id, conta_id)
     if not conta:
         raise NotFoundException(detail="Conta não encontrada")
     return _serializar_receber(conta, hoje_local())
@@ -308,7 +309,7 @@ def criar_conta_receber(
     para o cliente que já devia antes do módulo existir, ou para um acerto
     combinado fora do balcão.
     """
-    conta = financeiro_crud.criar_conta_receber(
+    conta = receber_crud.criar_conta_receber(
         db,
         ContaReceber(
             empresa_id=empresa_id,
@@ -337,7 +338,7 @@ CAMPOS_AUDITADOS_RECEBER = ("valor", "vencimento", "cliente_id", "taxa")
 def atualizar_conta_receber(
     db: Session, empresa_id: int, conta_id: int, dados, usuario_token: Dict[str, Any]
 ) -> Dict[str, Any]:
-    conta = financeiro_crud.get_conta_receber(db, empresa_id, conta_id)
+    conta = receber_crud.get_conta_receber(db, empresa_id, conta_id)
     if not conta:
         raise NotFoundException(detail="Conta não encontrada")
     if conta.status == ContaReceberStatus.RECEBIDA.value:
@@ -369,7 +370,7 @@ def cancelar_conta_receber(
     db: Session, empresa_id: int, conta_id: int, usuario_token: Dict[str, Any]
 ) -> Dict[str, Any]:
     """Cancela em vez de excluir. Dívida perdoada continua sendo história."""
-    conta = financeiro_crud.get_conta_receber(db, empresa_id, conta_id)
+    conta = receber_crud.get_conta_receber(db, empresa_id, conta_id)
     if not conta:
         raise NotFoundException(detail="Conta não encontrada")
     if conta.status == ContaReceberStatus.RECEBIDA.value:
@@ -403,7 +404,7 @@ def receber_conta(
     dívida antiga não é venda no PDV. Se o dinheiro entrou na gaveta, o operador
     lança um suprimento -- contar as duas coisas faria a gaveta fechar com sobra.
     """
-    conta = financeiro_crud.get_conta_receber(db, empresa_id, conta_id)
+    conta = receber_crud.get_conta_receber(db, empresa_id, conta_id)
     if not conta:
         raise NotFoundException(detail="Conta não encontrada")
     if conta.status == ContaReceberStatus.RECEBIDA.value:
@@ -485,7 +486,7 @@ def estornar_recebimento(
     db: Session, empresa_id: int, conta_id: int, dados, usuario_token: Dict[str, Any]
 ) -> Dict[str, Any]:
     """Desfaz a baixa sem apagar o lançamento. Ver o gêmeo em contas a pagar."""
-    conta = financeiro_crud.get_conta_receber(db, empresa_id, conta_id)
+    conta = receber_crud.get_conta_receber(db, empresa_id, conta_id)
     if not conta:
         raise NotFoundException(detail="Conta não encontrada")
     if conta.status != ContaReceberStatus.RECEBIDA.value:
@@ -538,7 +539,7 @@ def estornar_recebimento(
 
 
 def listar_historico_do_recebimento(db: Session, empresa_id: int, conta_id: int):
-    conta = financeiro_crud.get_conta_receber(db, empresa_id, conta_id)
+    conta = receber_crud.get_conta_receber(db, empresa_id, conta_id)
     if not conta:
         raise NotFoundException(detail="Conta não encontrada")
     return financeiro_crud.listar_historico(db, empresa_id, ENTIDADE_CONTA_RECEBER, conta_id)
@@ -576,11 +577,11 @@ def baixar_automaticas(db: Session, hoje: Optional[date] = None) -> int:
     de uma linha ruim.
     """
     hoje = hoje or hoje_local()
-    pendentes = financeiro_crud.listar_baixas_automaticas_vencidas(db, hoje=hoje)
+    pendentes = receber_crud.listar_baixas_automaticas_vencidas(db, hoje=hoje)
     if not pendentes:
         return 0
 
-    formas = financeiro_crud.formas_de_origem_completas(
+    formas = receber_crud.formas_de_origem_completas(
         db,
         venda_pagamento_ids=[c.venda_pagamento_id for c in pendentes if c.venda_pagamento_id],
         os_pagamento_ids=[
@@ -627,7 +628,7 @@ def baixar_automaticas(db: Session, hoje: Optional[date] = None) -> int:
 
 def _formas_de_origem(db: Session, contas: Sequence[ContaReceber]) -> Dict[int, Optional[str]]:
     """Mapa conta_id -> nome da forma que originou a cobrança."""
-    por_venda, por_os = financeiro_crud.formas_de_origem(
+    por_venda, por_os = receber_crud.formas_de_origem(
         db,
         venda_pagamento_ids=[c.venda_pagamento_id for c in contas if c.venda_pagamento_id],
         os_pagamento_ids=[
@@ -658,7 +659,7 @@ def get_conciliacao(
 
     Só PENDENTES: o que já foi recebido saiu da fila de conferência.
     """
-    itens, _total = financeiro_crud.listar_contas_receber(
+    itens, _total = receber_crud.listar_contas_receber(
         db, empresa_id, status=ContaReceberStatus.PENDENTE.value,
         inicio=inicio, fim=fim, limit=1000,
     )
@@ -717,7 +718,7 @@ def baixar_lote(
     que garante que o lote gere o mesmo movimento, a mesma trilha de auditoria
     e o mesmo estorno que a baixa feita à mão.
     """
-    itens, _total = financeiro_crud.listar_contas_receber(
+    itens, _total = receber_crud.listar_contas_receber(
         db, empresa_id, status=ContaReceberStatus.PENDENTE.value,
         inicio=dados.data, fim=dados.data, limit=1000,
     )
