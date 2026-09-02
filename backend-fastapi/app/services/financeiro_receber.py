@@ -40,6 +40,7 @@ from app.schemas.financeiro import (
     ConciliacaoResultado,
 )
 from app.services.financeiro import (
+    _conta_padrao_id,
     _funcionario_do_token,
 )
 
@@ -380,11 +381,17 @@ def receber_conta(
 
     func_id, func_nome = _funcionario_do_token(usuario_token)
 
+    # A conta escolhida, ou a principal da loja. NUNCA nenhuma: desde que o saldo
+    # passou a ser derivado do livro, movimento sem conta é dinheiro que entrou e
+    # não aparece em saldo nenhum.
+    conta_destino_id = dados.conta_bancaria_id or _conta_padrao_id(db, empresa_id)
+
     movimento = caixa_crud.registrar_movimento(
         db,
         tipo=MovimentacaoFinanceiraTipo.ENTRADA,
         origem=MovimentacaoFinanceiraOrigem.RECEBIMENTO,
         valor=valor_para_a_loja,
+        conta_bancaria_id=conta_destino_id,
         forma_pagamento_id=dados.forma_pagamento_id,
         funcionario_id=func_id,
         funcionario_nome=func_nome,
@@ -393,7 +400,6 @@ def receber_conta(
             + (f" (juros de {juros} retido pela operadora)" if destino == "OPERADORA" else "")
         ),
     )
-    movimento.conta_bancaria_id = dados.conta_bancaria_id
 
     conta.status = ContaReceberStatus.RECEBIDA.value
     # `valor_recebido` é o que o CLIENTE desembolsou; o livro guarda o que
@@ -403,7 +409,8 @@ def receber_conta(
     conta.juros = juros
     conta.juros_destino = destino
     conta.recebido_em = inicio_do_dia_utc(dia)
-    conta.conta_bancaria_id = dados.conta_bancaria_id
+    # A conta RESOLVIDA, pela mesma razao do gemeo em contas a pagar.
+    conta.conta_bancaria_id = conta_destino_id
     conta.forma_pagamento_id = dados.forma_pagamento_id
     conta.movimentacao_financeira_id = movimento.id
     if dados.observacao:
@@ -444,6 +451,10 @@ def estornar_recebimento(
         tipo=MovimentacaoFinanceiraTipo.SAIDA,
         origem=MovimentacaoFinanceiraOrigem.RECEBIMENTO,
         valor=valor,
+        # A MESMA conta da baixa: devolver noutra deixaria uma com sobra e a
+        # outra com falta, e a soma até fecharia -- o erro só apareceria no dia
+        # em que o dono conferisse conta por conta.
+        conta_bancaria_id=conta.conta_bancaria_id or _conta_padrao_id(db, empresa_id),
         forma_pagamento_id=conta.forma_pagamento_id,
         funcionario_id=func_id,
         funcionario_nome=func_nome,

@@ -72,28 +72,52 @@ class ContaBancaria(Base):
         doc="Conta disponível para novos lançamentos",
     )
 
-    # --- Saldo: DECLARADO pelo dono, nunca calculado ---
+    # --- Saldo: DECLARADO uma vez, e daí em diante ANDA com o livro ---
     #
-    # O sistema não sabe quanto a loja tem, e é importante ser honesto sobre
-    # isso: `movimentacoes_financeiras` só recebe venda e OS quando a empresa
-    # liga `controlar_caixa` E existe turno aberto, então derivar o saldo do
-    # livro daria um número fundo negativo (só as despesas) justamente na loja
-    # que não usa controle de caixa. Perguntar ao dono é o que Conta Azul e
-    # Omie fazem, e pela mesma razão.
+    # Este número é a ÂNCORA, não o saldo. É o mesmo desenho do "saldo inicial"
+    # do Conta Azul e do Omie: o dono diz quanto tem no dia em que começa a usar
+    # o sistema, e a partir dali quem move o saldo são os lançamentos. O saldo
+    # de hoje é calculado (ver `financeiro_visao.saldo_atual_das_contas`), e
+    # nunca é lido direto daqui.
+    #
+    # ERA UMA FOTO PARADA ATÉ 02/09/2026, e o motivo original morreu: dizia-se
+    # que derivar o saldo daria um número fundo negativo porque o livro só
+    # recebia venda e OS com `controlar_caixa` ligado E turno aberto. Desde
+    # 29/08/2026 `registrar_pagamentos_de_venda` e a gêmea da OS lançam SEMPRE
+    # (com `sessao_caixa_id` nulo quando não há turno), então a receita inteira
+    # está no livro e a objeção caiu junto. O sintoma que sobrou era o dono
+    # vendendo o dia todo e vendo o Fluxo de Caixa parado no mesmo número.
     #
     # Pode ser NEGATIVO: conta corrente no vermelho é saldo, não erro.
     saldo_informado: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0",
-        doc="Saldo que o dono declarou para esta conta (centavos, pode ser negativo)",
+        doc="Âncora declarada pelo dono (centavos, pode ser negativa)",
     )
 
-    # É um RETRATO COM DATA, e não um saldo que anda sozinho. A data existe para
-    # a tela poder dizer "informado há 12 dias, confira" em vez de projetar em
-    # cima de um número velho fingindo que é de hoje. NULL = nunca informado, e
-    # aí o Fluxo de Caixa pede antes de desenhar qualquer linha.
+    # O DIA da declaração, para a tela dizer "informado há 12 dias, confira".
+    # NULL = nunca informado, e aí o Fluxo de Caixa pede antes de desenhar
+    # qualquer linha.
     saldo_informado_em: Mapped[Optional[date]] = mapped_column(
         Date, nullable=True,
-        doc="Dia (data local) em que o saldo foi declarado; NULL = nunca foi",
+        doc="Dia (data local) em que a âncora foi declarada; NULL = nunca foi",
+    )
+
+    # O INSTANTE da declaração, que é o corte de verdade: só entra no saldo o
+    # movimento posterior a ele.
+    #
+    # POR QUE NÃO BASTA O DIA. O dono declara "tenho R$ 500" às 15h, depois de
+    # ter vendido R$ 200 de manhã. Contando o dia inteiro, esses R$ 200 entram
+    # duas vezes -- já estavam dentro dos R$ 500 que ele contou na gaveta. O
+    # Conta Azul contorna isso pedindo o saldo de ONTEM; aqui o dono digita o
+    # saldo de AGORA (é o que ele tem na mão) e o instante resolve, com a
+    # vantagem de a venda das 16h já aparecer hoje mesmo.
+    #
+    # NULL nas contas declaradas antes desta coluna existir: aí o corte cai no
+    # fim do dia declarado, que é a convenção conservadora do Conta Azul --
+    # perde-se o movimento daquele dia, mas nunca se conta nada duas vezes.
+    saldo_informado_instante: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True,
+        doc="Instante UTC da declaração; é o corte do que entra no saldo derivado",
     )
 
     criado_em: Mapped[datetime] = mapped_column(

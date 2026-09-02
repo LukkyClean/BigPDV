@@ -45,11 +45,90 @@ from app.schemas.financeiro import (
     FluxoLancamento,
     ResumoFinanceiro,
 )
+from app.services import custo_mercadoria
 from app.services import financeiro_analise as analise_service
 from app.services.financeiro import (
     _funcionario_do_token,
     _serializar_conta,
 )
+
+
+# ===========================================================================
+# SALDO — quanto a loja tem AGORA
+# ===========================================================================
+
+class SaldoDasContas:
+    """O saldo de hoje, e as duas metades que o formam.
+
+    Guardar as metades separadas não é enfeite de tela: é o que permite o dono
+    conferir. "Você declarou R$ 500 no dia 29 e desde então entrou R$ 740 e saiu
+    R$ 90" é auditável na hora; "você tem R$ 1.150" só dá para acreditar ou não.
+    """
+
+    __slots__ = ("saldo", "ancora", "movimentado", "declarado", "informado_em")
+
+    def __init__(self, saldo, ancora, movimentado, declarado, informado_em):
+        self.saldo = saldo
+        self.ancora = ancora
+        self.movimentado = movimentado
+        self.declarado = declarado
+        self.informado_em = informado_em
+
+
+def saldo_atual_das_contas(db: Session, empresa_id: int) -> SaldoDasContas:
+    """Âncora declarada + tudo que o livro moveu depois dela.
+
+    ESTE É O NÚMERO QUE FALTAVA. Até 02/09/2026 o Fluxo de Caixa partia do
+    `saldo_informado` puro, e o resultado era o dono vendendo o dia inteiro e
+    vendo o saldo parado no mesmo valor -- só mudava quando ele digitava outro à
+    mão. É o desenho do "saldo inicial" do Conta Azul e do Omie: declara-se uma
+    vez, e daí em diante quem move o saldo são os lançamentos.
+
+    CONTA SEM ÂNCORA NÃO ENTRA, nem com o movimento dela. Sem ponto de partida,
+    somar movimento daria "o quanto mudou", que não é saldo -- e uma conta nova
+    apareceria com saldo negativo no primeiro boleto pago por ela.
+
+    SÓ CONTAS ATIVAS. Uma conta desativada é dinheiro que a loja não usa mais, e
+    somá-la faria toda a projeção partir de um número alto demais.
+
+    O corte de cada conta é o INSTANTE da declaração; nas contas declaradas
+    antes de a coluna existir, o fim daquele dia (a convenção conservadora do
+    Conta Azul: perde-se o movimento do próprio dia, mas nada é contado duas
+    vezes).
+    """
+    contas = financeiro_crud.listar_contas_bancarias(db, empresa_id, apenas_ativas=True)
+    principal = financeiro_crud.get_conta_principal(db, empresa_id)
+    principal_id = principal.id if principal else None
+
+    ancora = sum(int(c.saldo_informado or 0) for c in contas)
+    datas = [c.saldo_informado_em for c in contas if c.saldo_informado_em]
+
+    movimentado = 0
+    for conta in contas:
+        if not conta.saldo_informado_em:
+            continue
+        corte = conta.saldo_informado_instante or fim_do_dia_utc(conta.saldo_informado_em)
+        movimentado += financeiro_crud.movimentado_desde(
+            db,
+            empresa_id,
+            conta_id=conta.id,
+            desde=corte,
+            # As linhas órfãs (antigas, ou de uma conta apagada) caem na
+            # principal -- que é para onde os lançamentos novos vão. Jogá-las
+            # fora faria o saldo derivado ficar abaixo do real.
+            incluir_sem_conta=(conta.id == principal_id),
+        )
+
+    return SaldoDasContas(
+        saldo=ancora + movimentado,
+        ancora=ancora,
+        movimentado=movimentado,
+        declarado=bool(datas),
+        # A data MAIS ANTIGA entre as contas: é ela que envelhece o número. Uma
+        # loja que atualizou o Nubank hoje e esqueceu a gaveta há um mês tem uma
+        # âncora de um mês atrás.
+        informado_em=min(datas) if datas else None,
+    )
 
 
 # ===========================================================================
@@ -301,7 +380,32 @@ def get_resumo(
     stats = dashboard_crud.get_stats_agregados(db, dt_inicio, dt_fim, empresa_id)
     faturamento = int(stats.vendas_total or 0) + int(stats.os_soma or 0)
 
+    # DESPESA, e não "tudo que saiu": compra de mercadoria fica de fora (ela é
+    # categoria de tipo CUSTO no plano de contas). O dinheiro dela saiu do caixa
+    # e aparece no Fluxo, mas não sai do lucro no dia da compra -- vira estoque,
+    # e entra no lucro como CMV no dia em que a peça é vendida.
     despesas = financeiro_crud.total_despesas_pagas(db, empresa_id, dt_inicio, dt_fim)
+    compras_estoque = financeiro_crud.total_compras_estoque(
+        db, empresa_id, dt_inicio, dt_fim
+    )
+
+    # O CUSTO DO QUE FOI VENDIDO. A conta mora em services/custo_mercadoria.py,
+    # compartilhada com o módulo de Relatórios -- duas cópias e as duas telas
+    # mostrariam lucros diferentes para o mesmo mês.
+    #
+    # Ficou de fora do resultado até 02/09/2026, e a justificativa de então
+    # ("a compra do fornecedor já está em despesas_pagas, descontar o CMV
+    # contaria duas vezes") era verdadeira -- mas resolvia a dupla contagem
+    # apagando o custo de quem NÃO lança a compra como conta a pagar, que é a
+    # maioria. O caso que abriu isto foi uma OS de R$ 160 com uma peça de R$ 60
+    # comprada na hora: o custo não existia em lugar nenhum e a tela mostrava
+    # R$ 160 de lucro. A dupla contagem agora é resolvida na origem, pelo tipo
+    # da categoria.
+    custo_mercadorias, custo_sem_registro = custo_mercadoria.calcular_cmv(
+        db, dt_inicio, dt_fim, empresa_id
+    )
+
+    saiu_caixa = financeiro_crud.total_saiu_do_caixa(db, empresa_id, dt_inicio, dt_fim)
 
     # A OUTRA LEITURA do que entrou: pelo livro, não pelas tabelas de venda.
     #
@@ -366,8 +470,14 @@ def get_resumo(
         periodo_fim=fim,
         faturamento=faturamento,
         entrou_caixa=entrou_caixa,
+        saiu_caixa=saiu_caixa,
+        sobrou_caixa=entrou_caixa - saiu_caixa,
         despesas_pagas=despesas,
-        resultado=faturamento - despesas,
+        compras_estoque=compras_estoque,
+        custo_mercadorias=custo_mercadorias,
+        custo_sem_registro=custo_sem_registro,
+        lucro_bruto=faturamento - custo_mercadorias,
+        resultado=faturamento - custo_mercadorias - despesas,
         a_pagar_pendente=pendente,
         a_pagar_vencido=vencido,
         a_receber_pendente=a_receber,
@@ -377,7 +487,7 @@ def get_resumo(
         alertas=_montar_alertas(
             db, empresa_id,
             faturamento=faturamento,
-            resultado=faturamento - despesas,
+            resultado=faturamento - custo_mercadorias - despesas,
             a_pagar_vencido=vencido,
             a_receber_vencido=a_receber_vencido,
             categorias=categorias,
@@ -395,11 +505,12 @@ def get_fluxo_caixa(db: Session, empresa_id: int, dias: int = 30) -> FluxoCaixa:
 
     Três decisões que sustentam a tela, e o motivo de cada uma:
 
-    O SALDO DE PARTIDA É DECLARADO. Ver `ContaBancaria.saldo_informado`: o
-    livro do dinheiro só recebe venda e OS onde `controlar_caixa` está ligado,
-    então calcular o saldo daria um número falso -- e fundo negativo -- na loja
-    que não usa caixa. Enquanto ninguém declarar, `saldo_declarado` sai False e
-    a tela pede o número em vez de desenhar uma linha que parte de zero.
+    O SALDO DE PARTIDA É O DE HOJE, DERIVADO. É a âncora que o dono declarou
+    mais tudo que o livro registrou depois dela (ver `saldo_atual_das_contas`).
+    Era o `saldo_informado` puro até 02/09/2026, e essa foto parada é o defeito
+    que fez o dono relatar "não sobe conforme vou vendendo". Enquanto ninguém
+    declarar a âncora, `saldo_declarado` sai False e a tela pede o número em vez
+    de desenhar uma linha que parte de zero.
 
     O ATRASADO NÃO ENTRA NA RÉGUA. Conta vencida não tem dia futuro para
     ocupar. Empurrá-la para hoje inventaria um aperto que talvez não aconteça
@@ -415,12 +526,8 @@ def get_fluxo_caixa(db: Session, empresa_id: int, dias: int = 30) -> FluxoCaixa:
     # loja começa hoje de manhã, não amanhã.
     fim = hoje + timedelta(days=dias - 1)
 
-    # Só contas ATIVAS: uma conta desativada é dinheiro que a loja não usa mais,
-    # e somar o saldo dela faria a projeção inteira partir de um número alto
-    # demais.
-    contas = financeiro_crud.listar_contas_bancarias(db, empresa_id, apenas_ativas=True)
-    saldo_inicial = sum(int(c.saldo_informado or 0) for c in contas)
-    datas = [c.saldo_informado_em for c in contas if c.saldo_informado_em]
+    atual = saldo_atual_das_contas(db, empresa_id)
+    saldo_inicial = atual.saldo
 
     pagar, receber = financeiro_crud.pendentes_por_vencimento(
         db, empresa_id, inicio=hoje, fim=fim
@@ -503,11 +610,12 @@ def get_fluxo_caixa(db: Session, empresa_id: int, dias: int = 30) -> FluxoCaixa:
         fim=fim,
         dias=dias,
         saldo_inicial=saldo_inicial,
-        saldo_declarado=bool(datas),
-        # A data MAIS ANTIGA entre as contas: é ela que envelhece o número. Uma
-        # loja que atualizou o Nubank hoje e esqueceu a gaveta há um mês tem um
-        # saldo de um mês atrás, não de hoje.
-        saldo_informado_em=min(datas) if datas else None,
+        saldo_declarado=atual.declarado,
+        # As duas metades do saldo, para a tela poder mostrar a conta em vez de
+        # pedir fé num total: "declarou X no dia tal, e desde então moveu Y".
+        saldo_ancora=atual.ancora,
+        saldo_movimentado=atual.movimentado,
+        saldo_informado_em=atual.informado_em,
         total_entradas=total_entradas,
         total_saidas=total_saidas,
         saldo_final=saldo,

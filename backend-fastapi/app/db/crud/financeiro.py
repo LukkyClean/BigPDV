@@ -4,7 +4,7 @@
 #            bancárias, contas a pagar e a trilha de auditoria.
 # ---------------------------------------------------------------------------
 
-from datetime import date
+from datetime import date, datetime
 from typing import List, Optional, Sequence, Tuple
 
 from sqlalchemy import and_, func, or_
@@ -15,6 +15,7 @@ from app.core.enum import (
     ContaReceberStatus,
     MovimentacaoFinanceiraOrigem,
     MovimentacaoFinanceiraTipo,
+    PlanoContaTipo,
 )
 from app.db.models.alerta_dispensado import AlertaDispensado
 from app.db.models.conta_bancaria import ContaBancaria
@@ -98,6 +99,30 @@ def listar_contas_bancarias(
     if apenas_ativas:
         q = q.filter(ContaBancaria.ativo.is_(True))
     return q.order_by(ContaBancaria.principal.desc(), ContaBancaria.nome.asc()).all()
+
+
+def get_conta_principal(db: Session, empresa_id: int) -> Optional[ContaBancaria]:
+    """A conta para onde o dinheiro vai quando ninguém escolheu uma.
+
+    Venda e OS não perguntam em que conta o dinheiro caiu -- e não devem
+    perguntar: ninguém vai responder isso no balcão, com o cliente esperando. O
+    lançamento precisa de um endereço mesmo assim, senão o saldo derivado
+    ignora a venda inteira.
+
+    A marcada como principal; na falta dela, a primeira ativa (a listagem já
+    ordena com a principal na frente). NULL só numa empresa sem conta nenhuma,
+    e isso não acontece na prática: `_semear_conta_padrao` cria 'Caixa da loja'
+    na primeira listagem.
+    """
+    return (
+        db.query(ContaBancaria)
+        .filter(
+            ContaBancaria.empresa_id == empresa_id,
+            ContaBancaria.ativo.is_(True),
+        )
+        .order_by(ContaBancaria.principal.desc(), ContaBancaria.id.asc())
+        .first()
+    )
 
 
 def get_conta_bancaria(
@@ -371,18 +396,43 @@ def despesas_por_categoria(
     return [(linha[0], linha[1], int(linha[2] or 0)) for linha in linhas]
 
 
-def total_despesas_pagas(db: Session, empresa_id: int, inicio, fim) -> int:
-    total = (
+def _total_pago(db: Session, empresa_id: int, inicio, fim, *, mercadoria: bool) -> int:
+    """Soma das contas PAGAS no período, separadas por natureza da categoria.
+
+    A separação é a regra contábil que o módulo passou a respeitar em
+    02/09/2026: comprar mercadoria não é despesa, é o dinheiro virando estoque.
+    Ela sai do CAIXA (e continua no Fluxo de Caixa e no gráfico de para onde o
+    dinheiro foi), mas só sai do LUCRO no dia em que a peça é vendida, pelo CMV.
+    Sem isso a mesma peça era descontada duas vezes.
+
+    CONTA SEM CATEGORIA CONTA COMO DESPESA. É o lado seguro do erro: uma compra
+    de mercadoria não classificada some do lucro no mês da compra, o que
+    subestima o lucro; classificá-la como custo por engano inventaria lucro que
+    não existe. Melhor o dono ver lucro menor e ir categorizar.
+    """
+    q = (
         db.query(func.coalesce(func.sum(ContaPagar.valor_pago), 0))
+        .outerjoin(PlanoConta, PlanoConta.id == ContaPagar.plano_conta_id)
         .filter(
             ContaPagar.empresa_id == empresa_id,
             ContaPagar.status == ContaPagarStatus.PAGA.value,
             ContaPagar.pago_em >= inicio,
             ContaPagar.pago_em <= fim,
         )
-        .scalar()
     )
-    return int(total or 0)
+    e_custo = PlanoConta.tipo == PlanoContaTipo.CUSTO.value
+    q = q.filter(e_custo if mercadoria else or_(~e_custo, PlanoConta.id.is_(None)))
+    return int(q.scalar() or 0)
+
+
+def total_despesas_pagas(db: Session, empresa_id: int, inicio, fim) -> int:
+    """O que saiu e É despesa: tudo menos compra de mercadoria."""
+    return _total_pago(db, empresa_id, inicio, fim, mercadoria=False)
+
+
+def total_compras_estoque(db: Session, empresa_id: int, inicio, fim) -> int:
+    """O que saiu para COMPRAR mercadoria — dinheiro que virou estoque."""
+    return _total_pago(db, empresa_id, inicio, fim, mercadoria=True)
 
 
 # ===========================================================================
@@ -800,6 +850,66 @@ ORIGENS_DE_RECEITA = (
     MovimentacaoFinanceiraOrigem.RECEBIMENTO.value,
 )
 
+# As origens que MUDAM QUANTO A LOJA TEM. É a receita mais a despesa paga.
+#
+# O QUE FICA DE FORA, e é a regra inteira desta lista: ABERTURA, SANGRIA e
+# SUPRIMENTO são TRANSFERÊNCIA, não dinheiro entrando ou saindo da loja. O troco
+# da abertura já estava no cofre ontem; a sangria tira da gaveta e põe no cofre.
+# Somá-los ao saldo criaria dinheiro do nada todo dia em que o caixa abre, e o
+# erro cresceria sem parar -- porque o troco de abertura entra de novo amanhã.
+#
+# E é pior no caso da sangria feita para pagar um boleto: o pagamento já sai
+# como DESPESA, então contar a sangria também tiraria o mesmo dinheiro duas
+# vezes. É a mesma razão pela qual `pagar_conta` deixa `sessao_caixa_id` nulo de
+# propósito -- "pagar fornecedor não é sangria".
+ORIGENS_DE_SALDO = ORIGENS_DE_RECEITA + (MovimentacaoFinanceiraOrigem.DESPESA.value,)
+
+
+def movimentado_desde(
+    db: Session,
+    empresa_id: int,
+    *,
+    conta_id: int,
+    desde: datetime,
+    incluir_sem_conta: bool = False,
+) -> int:
+    """Quanto o livro moveu nesta conta DEPOIS de `desde` (centavos, com sinal).
+
+    É a segunda metade do saldo: a primeira é a âncora que o dono declarou, e
+    esta é tudo que aconteceu desde então. Entrada soma, saída subtrai.
+
+    `incluir_sem_conta` recolhe as linhas com `conta_bancaria_id` NULO. Elas
+    existem por dois motivos e nenhum deles é dinheiro de mentira: as antigas,
+    lançadas quando `registrar_movimento` nem aceitava conta, e as de uma loja
+    que apagou a conta para onde apontavam (a FK é SET NULL, para linha de
+    dinheiro nunca sumir). Descartá-las faria o saldo derivado ficar ABAIXO do
+    real, que é justamente o defeito que este código veio corrigir -- então elas
+    caem na conta PRINCIPAL, que é para onde os lançamentos novos vão.
+
+    O corte é EXCLUSIVO (`>`), não inclusivo: o movimento do mesmo instante da
+    declaração já está dentro do número que o dono contou na gaveta.
+    """
+    alvo = MovimentacaoFinanceira.conta_bancaria_id == conta_id
+    if incluir_sem_conta:
+        alvo = or_(alvo, MovimentacaoFinanceira.conta_bancaria_id.is_(None))
+
+    def _soma(tipo: str) -> int:
+        return int(
+            db.query(func.coalesce(func.sum(MovimentacaoFinanceira.valor), 0))
+            .filter(
+                alvo,
+                MovimentacaoFinanceira.criado_em > desde,
+                MovimentacaoFinanceira.tipo == tipo,
+                MovimentacaoFinanceira.origem.in_(ORIGENS_DE_SALDO),
+            )
+            .scalar()
+            or 0
+        )
+
+    return _soma(MovimentacaoFinanceiraTipo.ENTRADA.value) - _soma(
+        MovimentacaoFinanceiraTipo.SAIDA.value
+    )
+
 
 def total_entrou_no_caixa(db: Session, empresa_id: int, inicio, fim) -> int:
     """Quanto dinheiro de cliente ANDOU no período, pelo livro.
@@ -822,6 +932,34 @@ def total_entrou_no_caixa(db: Session, empresa_id: int, inicio, fim) -> int:
 
     return _soma(MovimentacaoFinanceiraTipo.ENTRADA.value) - _soma(
         MovimentacaoFinanceiraTipo.SAIDA.value
+    )
+
+
+def total_saiu_do_caixa(db: Session, empresa_id: int, inicio, fim) -> int:
+    """Quanto dinheiro SAIU da loja no período, pelo livro.
+
+    O espelho de `total_entrou_no_caixa`, e lido do livro pelo mesmo motivo:
+    somar `contas_pagar.valor_pago` responderia quase igual, mas erraria no
+    estorno -- o pagamento desfeito continuaria contado como saída até alguém
+    reparar. Aqui a saída volta sozinha, porque o estorno é uma ENTRADA com a
+    mesma origem.
+
+    Sangria fica de fora: ver `ORIGENS_DE_SALDO`.
+    """
+    def _soma(tipo: str) -> int:
+        return int(
+            _query_extrato(db, empresa_id, inicio=inicio, fim=fim, tipo=tipo)
+            .filter(
+                MovimentacaoFinanceira.origem
+                == MovimentacaoFinanceiraOrigem.DESPESA.value
+            )
+            .with_entities(func.coalesce(func.sum(MovimentacaoFinanceira.valor), 0))
+            .scalar()
+            or 0
+        )
+
+    return _soma(MovimentacaoFinanceiraTipo.SAIDA.value) - _soma(
+        MovimentacaoFinanceiraTipo.ENTRADA.value
     )
 
 

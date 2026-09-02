@@ -3,6 +3,11 @@
  * O Fluxo de Caixa: o que está AGENDADO para acontecer.
  *
  * Não é o extrato do que passou — isso é a Visão Geral. Aqui cada linha nasce
+ * O saldo de partida é o de HOJE: a âncora que o dono declarou uma vez mais tudo
+ * que o livro do dinheiro registrou depois dela. Era a âncora pura até
+ * 02/09/2026, e o sintoma era o dono vendendo o dia inteiro e vendo o saldo
+ * parado no mesmo número.
+ *
  * de um documento em aberto, no dia do vencimento, e a régua acumula o saldo
  * dia a dia a partir do que o dono declarou ter hoje.
  *
@@ -115,9 +120,9 @@ function diaSemana(iso: string): string {
           <AlertTriangle :size="16" /> Falta dizer quanto você tem hoje
         </p>
         <p class="mt-1.5 text-sm text-amber-700">
-          A projeção soma e subtrai a partir do seu saldo de hoje, e esse número só você tem —
-          o sistema não consegue calculá-lo sozinho. Enquanto não informar, a linha abaixo
-          mostra só o movimento previsto.
+          Informe uma vez quanto você tem na gaveta e no banco. Daí em diante o saldo anda
+          sozinho: cada venda, OS e conta paga entra nele. Sem esse ponto de partida a linha
+          abaixo mostra só o movimento previsto, que não é o seu dinheiro.
         </p>
         <BaseButton variant="primary" class="mt-3 px-4" @click="modalSaldo = true">
           Informar saldo
@@ -151,11 +156,28 @@ function diaSemana(iso: string): string {
           <p class="mt-2 text-xl font-bold text-gray-800">
             {{ formatCurrency(fluxo.saldo_inicial) }}
           </p>
-          <p v-if="fluxo.saldo_declarado" class="mt-1 text-xs" :class="saldoVelho ? 'text-amber-600 font-semibold' : 'text-gray-400'">
-            <template v-if="diasDesdeSaldo === 0">Informado hoje</template>
-            <template v-else-if="diasDesdeSaldo === 1">Informado ontem</template>
-            <template v-else>Informado há {{ diasDesdeSaldo }} dias — confira</template>
-          </p>
+          <!-- AS DUAS METADES DO SALDO. O total sozinho o dono só pode aceitar
+               ou rejeitar; com a conta aberta ele confere. E a segunda linha é
+               a prova de que o número anda: até 02/09/2026 o saldo era a
+               declaração pura e ficava parado por semanas, até alguém digitar
+               outro à mão. -->
+          <template v-if="fluxo.saldo_declarado">
+            <p class="mt-2 text-xs text-gray-500">
+              Você declarou
+              <strong class="tabular-nums text-gray-700">{{ formatCurrency(fluxo.saldo_ancora) }}</strong>
+              <template v-if="diasDesdeSaldo === 0"> hoje</template>
+              <template v-else-if="diasDesdeSaldo === 1"> ontem</template>
+              <template v-else-if="diasDesdeSaldo !== null"> há {{ diasDesdeSaldo }} dias</template>
+            </p>
+            <p class="text-xs" :class="fluxo.saldo_movimentado < 0 ? 'text-rose-600' : 'text-emerald-600'">
+              {{ fluxo.saldo_movimentado < 0 ? '−' : '+' }}
+              <strong class="tabular-nums">{{ formatCurrency(Math.abs(fluxo.saldo_movimentado)) }}</strong>
+              em vendas, OS e contas pagas desde então
+            </p>
+            <p v-if="saldoVelho" class="mt-1 text-xs font-semibold text-amber-600">
+              A declaração é de {{ diasDesdeSaldo }} dias atrás — confira a gaveta e atualize.
+            </p>
+          </template>
           <p v-else class="mt-1 text-xs text-amber-600 font-semibold">Você ainda não informou</p>
         </div>
 
@@ -319,8 +341,9 @@ function diaSemana(iso: string): string {
         </ul>
 
         <p v-if="fluxo.linha.length && !fluxo.saldo_declarado" class="mt-3 text-xs text-gray-400">
-          Sem saldo informado, a coluna da direita soma só o movimento a partir de zero — não
-          é o seu dinheiro. Informe o saldo para ela virar o saldo previsto de cada dia.
+          Sem o ponto de partida, a coluna da direita soma só o movimento a partir de zero —
+          não é o seu dinheiro. Informe o saldo uma vez para ela virar o saldo previsto de
+          cada dia.
         </p>
       </section>
     </template>

@@ -14,6 +14,21 @@ import { z } from 'zod';
  *   o fuso da loja na exibição.
  */
 
+/**
+ * A natureza da categoria — e a conta do lucro depende dela.
+ *
+ *   DESPESA  gasto para a loja existir (aluguel, luz, salário). Sai do lucro
+ *            no mês em que é paga.
+ *   CUSTO    compra de mercadoria ou peça para revender. Sai do caixa, mas só
+ *            sai do lucro quando a peça é VENDIDA — até lá virou estoque.
+ *   RECEITA  entrada classificada.
+ *
+ * `z.string()` e não enum de propósito no schema de leitura: um backend mais
+ * novo que este frontend pode mandar um tipo que a tela ainda não conhece, e
+ * derrubar a listagem inteira por causa disso seria pior que exibi-lo cru.
+ */
+export type PlanoContaTipo = 'DESPESA' | 'CUSTO' | 'RECEITA';
+
 export const PlanoContaSchema = z.object({
   id: z.number(),
   nome: z.string(),
@@ -125,7 +140,26 @@ export const ResumoFinanceiroSchema = z.object({
   // pedaço do faturamento — inclui fiado antigo quitado agora e exclui venda
   // fechada que ainda não foi paga.
   entrou_caixa: z.number(),
+  // O espelho: o que SAIU do caixa, já descontados os estornos. Inclui a compra
+  // de mercadoria, que é dinheiro saindo mesmo não sendo despesa.
+  // `.default(0)` em todo campo novo porque um backend mais antigo que este
+  // frontend não os manda — e a tela não pode quebrar por causa disso.
+  saiu_caixa: z.number().default(0),
+  sobrou_caixa: z.number().default(0),
+  // Só o que É despesa. Compra de mercadoria saiu daqui em 02/09/2026: ela é
+  // categoria de tipo CUSTO e entra no lucro pelo CMV, no dia da venda.
   despesas_pagas: z.number(),
+  compras_estoque: z.number().default(0),
+  // O custo do que foi VENDIDO no período — a peça, o produto. É o que faltava
+  // para um serviço de R$ 160 com peça de R$ 60 não aparecer como R$ 160 de
+  // lucro.
+  custo_mercadorias: z.number().default(0),
+  // Quantas saídas de estoque não tinham custo conhecido. NÃO é dinheiro: é a
+  // confiança do CMV. Diferente de zero, a tela avisa — custo subestimado em
+  // silêncio vira lucro inventado.
+  custo_sem_registro: z.number().default(0),
+  lucro_bruto: z.number().default(0),
+  // O LUCRO: faturamento - custo das mercadorias - despesas pagas.
   // Pode ser NEGATIVO, e a tela precisa saber mostrar isso: um módulo que só
   // exibe resultado positivo esconde justamente o mês que o dono precisa ver.
   resultado: z.number(),
@@ -275,7 +309,12 @@ export const FluxoCaixaSchema = z.object({
   inicio: z.string(),
   fim: z.string(),
   dias: z.number(),
+  // O saldo de HOJE: a âncora declarada mais tudo que o livro moveu depois
+  // dela. Até 02/09/2026 era só a âncora, e por isso não andava com as vendas.
   saldo_inicial: z.number(),
+  // As duas metades, para a tela mostrar a conta em vez de pedir fé no total.
+  saldo_ancora: z.number().default(0),
+  saldo_movimentado: z.number().default(0),
   // `false` NÃO significa saldo zero: significa que ninguém declarou. A tela
   // pede o número em vez de desenhar uma linha que parte de zero.
   saldo_declarado: z.boolean(),
@@ -388,6 +427,10 @@ export const SerieMesSchema = z.object({
   // vier. É o que permite um segmento novo entrar por declaração no backend.
   origens: z.array(SerieOrigemSchema),
   despesas_pagas: z.number(),
+  custo_mercadorias: z.number().default(0),
+  // MESMA fórmula do card da Visão Geral, de propósito: a Análise existe para
+  // comparar meses, e uma série que somasse diferente faria o dono ver queda
+  // onde não houve.
   resultado: z.number(),
   entrou_caixa: z.number(),
   // NULL não é zero: zero diria que todo mundo pagou à vista.

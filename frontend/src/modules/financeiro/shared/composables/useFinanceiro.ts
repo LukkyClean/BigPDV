@@ -14,6 +14,7 @@ import type {
   ContaReceberBaixaPayload,
   ContaReceberPayload,
   ExtratoFiltros,
+  PlanoContaTipo,
 } from '../schemas/financeiro.schema';
 
 /**
@@ -225,7 +226,8 @@ export function useCriarPlanoConta() {
   const toast = useToast();
 
   return useMutation({
-    mutationFn: (nome: string) => service.criarPlanoConta(nome),
+    mutationFn: ({ nome, tipo }: { nome: string; tipo: PlanoContaTipo }) =>
+      service.criarPlanoConta(nome, tipo),
     onSuccess: () => {
       invalidar();
       toast.success('Categoria criada');
@@ -238,10 +240,19 @@ export function useAtualizarPlanoConta() {
   const toast = useToast();
 
   return useMutation({
-    mutationFn: ({ id, dados }: { id: number; dados: { nome?: string; ativo?: boolean } }) =>
-      service.atualizarPlanoConta(id, dados),
+    mutationFn: ({
+      id,
+      dados,
+    }: {
+      id: number;
+      dados: { nome?: string; ativo?: boolean; tipo?: PlanoContaTipo };
+    }) => service.atualizarPlanoConta(id, dados),
     onSuccess: () => invalidar(),
-    onError: () => toast.error('Não foi possível salvar a categoria'),
+    // O backend recusa trocar para/de RECEITA numa categoria já lançada, com
+    // uma mensagem que explica o porquê. Mostrar a dele diz QUAL foi o
+    // problema; a genérica só diz que deu errado.
+    onError: (e: any) =>
+      toast.error(e?.response?.data?.detail ?? 'Não foi possível salvar a categoria'),
   });
 }
 

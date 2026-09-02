@@ -38,6 +38,7 @@ from sqlalchemy.orm import Session
 from app.core.tempo import fim_do_dia_utc, hoje_local, inicio_do_dia_utc
 from app.db.crud import dashboard as dashboard_crud
 from app.db.crud import financeiro as financeiro_crud
+from app.services import custo_mercadoria
 from app.schemas.financeiro import (
     AlertaFinanceiro,
     Projecao,
@@ -132,6 +133,12 @@ def get_serie(db: Session, empresa_id: int, meses: int = 12) -> Serie:
             por_origem["ORDEM_SERVICO"] = int(stats.os_soma or 0)
 
         despesas = financeiro_crud.total_despesas_pagas(db, empresa_id, dt_inicio, dt_fim)
+        # O CMV entra aqui pela MESMA razão de entrar na Visão Geral, e com a
+        # mesma função: se a série somasse diferente do card, o dono veria queda
+        # de resultado onde não houve -- só porque duas telas discordam.
+        custo, _sem_registro = custo_mercadoria.calcular_cmv(
+            db, dt_inicio, dt_fim, empresa_id
+        )
         caixa = financeiro_crud.total_entrou_no_caixa(db, empresa_id, dt_inicio, dt_fim)
         prazo = financeiro_crud.prazo_medio_recebimento(db, empresa_id, dt_inicio, dt_fim)
         receita = sum(por_origem.values())
@@ -151,7 +158,8 @@ def get_serie(db: Session, empresa_id: int, meses: int = 12) -> Serie:
                     for chave, total in por_origem.items()
                 ],
                 despesas_pagas=despesas,
-                resultado=receita - despesas,
+                custo_mercadorias=custo,
+                resultado=receita - custo - despesas,
                 entrou_caixa=caixa,
                 prazo_medio_recebimento=prazo,
             )

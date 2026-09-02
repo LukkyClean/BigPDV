@@ -53,18 +53,28 @@ class AlertaFinanceiro(BaseModel):
 
 
 class ResumoFinanceiro(BaseModel):
-    """O resultado do mês, em regime de CAIXA.
+    """O mês em dois blocos: o LUCRO e o CAIXA. Não é DRE.
 
-    NÃO é DRE, e o nome importa: DRE é regime de competência, e um contador que
-    comparasse os dois números acharia diferença legítima e abriria chamado. Aqui
-    a pergunta é a que o dono de loja faz — "entrou quanto, saiu quanto, sobrou
-    quanto" — e a resposta considera o dinheiro que ANDOU no período.
+    O nome importa: DRE é peça contábil de regime de competência, e um contador
+    que comparasse os dois números acharia diferença legítima e abriria chamado.
+    Mas as duas perguntas do dono são diferentes e as duas precisam de resposta,
+    e por isso são dois blocos e não um número só:
 
-    O custo da mercadoria NÃO é subtraído à parte, de propósito: a compra do
-    fornecedor entra como conta a pagar e já está em `despesas_pagas`. Descontar
-    o CMV por cima contaria a mesma mercadoria duas vezes. Lucro por regime de
-    competência é assunto do módulo de Relatórios, que tem o custo congelado no
-    livro de estoque.
+      LUCRO   faturamento - custo das mercadorias - despesas pagas.
+              Responde "eu ganhei dinheiro este mês?".
+      CAIXA   entrou_caixa - saiu_caixa.
+              Responde "sobrou dinheiro na gaveta este mês?".
+
+    Eles divergem por motivo legítimo -- a venda fiado de hoje está no lucro e
+    não no caixa; o boleto de estoque pago hoje está no caixa e não no lucro --
+    e é exatamente por isso que mostrar só um deles não serve.
+
+    O CUSTO PASSOU A ENTRAR EM 02/09/2026. Antes, `resultado` era faturamento
+    menos despesa paga, e um serviço de R$ 160 com peça de R$ 60 comprada na
+    hora aparecia como R$ 160 de lucro. A objeção de então era a dupla contagem
+    (a compra do fornecedor já estaria em `despesas_pagas`), e ela foi resolvida
+    na origem: compra de mercadoria é categoria de tipo CUSTO no plano de contas
+    e sai do lucro -- ver PlanoContaTipo.
     """
 
     periodo_inicio: date
@@ -85,11 +95,62 @@ class ResumoFinanceiro(BaseModel):
             "incompleto, e por isso este número NÃO substitui o faturamento"
         ),
     )
+    saiu_caixa: int = Field(
+        0,
+        description=(
+            "O que de fato SAIU do caixa no período (centavos), pelo livro, já "
+            "descontados os estornos. Inclui a compra de mercadoria, que é "
+            "dinheiro saindo mesmo não sendo despesa"
+        ),
+    )
+    sobrou_caixa: int = Field(
+        0,
+        description=(
+            "entrou_caixa - saiu_caixa (centavos). A pergunta da gaveta, não a "
+            "do lucro: pode ser negativo num mês de boa venda fiado"
+        ),
+    )
+
     despesas_pagas: int = Field(
-        ..., description="O que saiu de fato no período (centavos)"
+        ...,
+        description=(
+            "Contas pagas no período que SÃO despesa (centavos) — tudo menos "
+            "compra de mercadoria. Conta sem categoria entra aqui, que é o lado "
+            "seguro do erro"
+        ),
+    )
+    compras_estoque: int = Field(
+        0,
+        description=(
+            "Contas pagas no período em categoria de tipo CUSTO (centavos): "
+            "dinheiro que virou estoque. Sai do caixa, não sai do lucro"
+        ),
+    )
+    custo_mercadorias: int = Field(
+        0,
+        description=(
+            "CMV do período (centavos): o que custou à loja aquilo que ela "
+            "vendeu. Custo congelado no livro de estoque, mais o custo declarado "
+            "à mão na OS e no item avulso da venda"
+        ),
+    )
+    custo_sem_registro: int = Field(
+        0,
+        description=(
+            "Quantas saídas de estoque não tinham custo conhecido. Não é "
+            "dinheiro: é a medida da confiança do CMV, e a tela avisa quando "
+            "não é zero — um custo subestimado em silêncio vira lucro inventado"
+        ),
+    )
+    lucro_bruto: int = Field(
+        0, description="faturamento - custo_mercadorias (centavos)"
     )
     resultado: int = Field(
-        ..., description="faturamento - despesas_pagas (centavos). Pode ser negativo"
+        ...,
+        description=(
+            "O LUCRO: faturamento - custo_mercadorias - despesas_pagas "
+            "(centavos). Pode ser negativo"
+        ),
     )
 
     a_pagar_pendente: int = Field(
@@ -167,10 +228,11 @@ class FluxoCaixa(BaseModel):
     Cada linha nasce de um documento em aberto (conta a pagar ou a receber) na
     data do vencimento, e a régua acumula o saldo dia a dia.
 
-    O saldo de partida é declarado, nunca calculado: ver o comentário em
-    `ContaBancaria.saldo_informado`. Enquanto ninguém declarar, a projeção sai
-    com `saldo_declarado=False` e a tela pede o número antes de desenhar — uma
-    linha que parte de zero fingindo ser saldo é pior que nenhuma linha.
+    O saldo de partida é o de HOJE: a âncora que o dono declarou mais tudo que o
+    livro registrou depois dela (ver `financeiro_visao.saldo_atual_das_contas`).
+    Enquanto ninguém declarar a âncora, a projeção sai com
+    `saldo_declarado=False` e a tela pede o número antes de desenhar — uma linha
+    que parte de zero fingindo ser saldo é pior que nenhuma linha.
 
     O ATRASADO fica FORA da régua, num balde só dele. Conta vencida não tem
     data futura para ocupar, e empurrá-la para hoje inventaria um dia de aperto
@@ -183,7 +245,23 @@ class FluxoCaixa(BaseModel):
     dias: int
 
     saldo_inicial: int = Field(
-        ..., description="Soma do saldo declarado nas contas ATIVAS (centavos)"
+        ...,
+        description=(
+            "O saldo de HOJE nas contas ativas (centavos): a âncora declarada "
+            "mais tudo que o livro moveu depois dela. Era a âncora pura até "
+            "02/09/2026, e por isso não andava com as vendas"
+        ),
+    )
+    saldo_ancora: int = Field(
+        0, description="A parte DECLARADA do saldo (centavos)"
+    )
+    saldo_movimentado: int = Field(
+        0,
+        description=(
+            "O que o livro moveu desde a declaração (centavos, com sinal). "
+            "Mostrado ao lado da âncora para o dono poder conferir a conta em "
+            "vez de acreditar num total"
+        ),
     )
     saldo_declarado: bool = Field(
         ..., description="Se alguma conta já teve saldo informado alguma vez"
@@ -365,8 +443,21 @@ class SerieMes(BaseModel):
     receita: int = Field(..., description="Soma das origens (centavos), por competência")
     origens: List[SerieOrigem] = Field(default_factory=list)
 
-    despesas_pagas: int
-    resultado: int = Field(..., description="receita - despesas_pagas (pode ser negativo)")
+    despesas_pagas: int = Field(
+        ..., description="Contas pagas que são despesa — sem a compra de mercadoria"
+    )
+    custo_mercadorias: int = Field(
+        0, description="CMV do mês (centavos): o custo do que foi vendido"
+    )
+    resultado: int = Field(
+        ...,
+        description=(
+            "receita - custo_mercadorias - despesas_pagas (pode ser negativo). "
+            "MESMA fórmula do resultado da Visão Geral, de propósito: a Análise "
+            "existe para comparar meses, e uma série que somasse diferente do "
+            "card faria o dono ver queda onde não houve"
+        ),
+    )
     entrou_caixa: int = Field(
         ..., description="O que passou pelo caixa no mês, pelo livro do dinheiro"
     )

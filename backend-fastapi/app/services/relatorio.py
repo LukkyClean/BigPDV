@@ -8,12 +8,13 @@ from datetime import date, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
-from app.core.enum import SituacaoEquipamento, MovimentacaoTipo
+from app.core.enum import SituacaoEquipamento
 from app.core.tempo import intervalo_utc
 from app.helpers.exceptions import NotFoundException
 from app.db.crud import dashboard as dashboard_crud
 from app.db.crud import relatorio as relatorio_crud
 from app.db.crud import funcionario as funcionario_crud
+from app.services import custo_mercadoria
 from app.schemas.relatorio import (
     RelatorioFaturamento,
     FaturamentoDiaItem,
@@ -147,27 +148,12 @@ def get_faturamento(db: Session, inicio: date, fim: date, empresa_id: int) -> Re
     faturamento_liquido = faturamento_total - juros_repassado - juros_absorvido
 
     # CMV: o custo das pecas que sairam, congelado no livro de estoque no dia em
-    # que sairam. Saida soma, entrada (estorno) subtrai — assim uma venda
-    # cancelada ou uma OS reaberta devolve o custo sozinha, sem ninguem caçar
-    # estorno na mao.
-    cmv = 0
-    saidas_sem_custo = 0
-    for linhas in (
-        relatorio_crud.get_cmv_vendas(db, dt_inicio, dt_fim, empresa_id),
-        relatorio_crud.get_cmv_os(db, dt_inicio, dt_fim, empresa_id),
-    ):
-        for linha in linhas:
-            valor = linha.total or 0
-            cmv += valor if linha.tipo == MovimentacaoTipo.SAIDA else -valor
-            saidas_sem_custo += linha.sem_custo or 0
-
-    # Gasto declarado a mao, nos dois fluxos que nao passam pelo livro de estoque:
-    #   OS    -> o servico e lancado sem cadastrar a peca (o normal na oficina)
-    #   Venda -> item AVULSO, digitado na hora, fora do catalogo
-    # Sem estes dois, a receita entrava e o custo nao, inflando o lucro.
-    cmv += relatorio_crud.get_custo_manual_os(db, dt_inicio, dt_fim, empresa_id)
-    cmv += relatorio_crud.get_custo_manual_vendas(db, dt_inicio, dt_fim, empresa_id)
-    cmv = max(0, cmv)
+    # que sairam. A conta inteira mora em services/custo_mercadoria.py desde que
+    # o Financeiro passou a descontar o custo do lucro dele — duas copias da
+    # mesma soma e as duas telas mostrariam lucros diferentes para o mesmo mes.
+    cmv, saidas_sem_custo = custo_mercadoria.calcular_cmv(
+        db, dt_inicio, dt_fim, empresa_id
+    )
 
     lucro_bruto = faturamento_liquido - cmv
     margem_percentual = (lucro_bruto / faturamento_total * 100) if faturamento_total else 0.0

@@ -1,14 +1,31 @@
 <script setup lang="ts">
 /**
- * O resultado do mês em regime de CAIXA.
+ * O mês em dois blocos: o LUCRO e o CAIXA.
  *
- * Chama-se "Resultado", nunca DRE: DRE é regime de competência, e um contador
- * que comparasse os dois acharia diferença legítima e abriria chamado. Aqui a
- * pergunta é a que o dono faz — entrou quanto, saiu quanto, sobrou quanto.
+ * Nunca se chama DRE: DRE é regime de competência, e um contador que comparasse
+ * os dois acharia diferença legítima e abriria chamado.
+ *
+ * São dois blocos porque são duas perguntas, e as duas são do dono:
+ *   "ganhei dinheiro?"     faturado − custo do que vendeu − despesas
+ *   "sobrou na gaveta?"    entrou no caixa − saiu do caixa
+ *
+ * Elas divergem por motivo legítimo (fiado entra no lucro e não no caixa;
+ * compra de estoque sai do caixa e não do lucro), e mostrar só uma delas foi
+ * exatamente o defeito que esta tela tinha: até 02/09/2026 o custo da peça não
+ * aparecia em lugar nenhum, e um serviço de R$ 160 com peça de R$ 60 comprada
+ * na hora saía como R$ 160 de lucro.
  */
 import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { ChevronLeft, ChevronRight, TrendingDown, TrendingUp, Wallet, AlertTriangle } from 'lucide-vue-next';
+import {
+  ChevronLeft,
+  ChevronRight,
+  Package,
+  TrendingDown,
+  TrendingUp,
+  Wallet,
+  AlertTriangle,
+} from 'lucide-vue-next';
 
 import { formatCurrency } from '@/shared/utils/finance';
 import { formatDataPura } from '@/shared/utils/date.utils';
@@ -80,8 +97,8 @@ const diferencaCaixa = computed(
       <!-- Antes dos números, de propósito: quem abre a tela com um problema
            precisa ver o problema, não descobrir sozinho lendo seis cards. -->
       <PainelAtencao :alertas="resumo.alertas" @informar-saldo="modalSaldo = true" />
-      <!-- Entrou / saiu / sobrou -->
-      <div class="grid gap-4 sm:grid-cols-3">
+      <!-- Faturado / custo / despesas / lucro -->
+      <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <div class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
           <div class="flex items-center gap-2 text-gray-500 text-xs font-semibold uppercase tracking-wide">
             <TrendingUp :size="15" class="text-emerald-500" /> Faturado
@@ -114,12 +131,45 @@ const diferencaCaixa = computed(
           </div>
         </div>
 
+        <!-- O CUSTO DO QUE FOI VENDIDO. Card próprio, e não uma linha escondida
+             dentro de "Saiu": é o gasto que o dono mais sente e o que menos
+             aparecia — até 02/09/2026 ele não estava em lugar nenhum desta
+             tela, e um serviço de R$ 160 com peça de R$ 60 saía como R$ 160 de
+             lucro. -->
         <div class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
           <div class="flex items-center gap-2 text-gray-500 text-xs font-semibold uppercase tracking-wide">
-            <TrendingDown :size="15" class="text-rose-500" /> Saiu
+            <Package :size="15" class="text-amber-500" /> Custo do que vendeu
+          </div>
+          <p class="mt-2 text-2xl font-bold text-gray-800">
+            {{ formatCurrency(resumo.custo_mercadorias) }}
+          </p>
+          <p class="mt-1 text-xs text-gray-400">
+            {{ usaOrdemServico ? 'Peças e produtos que saíram nas vendas e OS' : 'Produtos que saíram nas vendas' }}
+          </p>
+          <!-- A confiança do número, não o número. Saída de estoque sem custo
+               conhecido faz o CMV sair menor do que foi, e um custo subestimado
+               em silêncio vira lucro inventado. -->
+          <p v-if="resumo.custo_sem_registro > 0" class="mt-2 text-xs text-amber-600">
+            {{ resumo.custo_sem_registro }}
+            {{ resumo.custo_sem_registro === 1 ? 'saída saiu' : 'saídas saíram' }} sem custo
+            cadastrado — o custo real é maior que este.
+          </p>
+        </div>
+
+        <div class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+          <div class="flex items-center gap-2 text-gray-500 text-xs font-semibold uppercase tracking-wide">
+            <TrendingDown :size="15" class="text-rose-500" /> Despesas
           </div>
           <p class="mt-2 text-2xl font-bold text-gray-800">{{ formatCurrency(resumo.despesas_pagas) }}</p>
-          <p class="mt-1 text-xs text-gray-400">Contas efetivamente pagas no mês</p>
+          <p class="mt-1 text-xs text-gray-400">Contas pagas no mês: aluguel, luz, salário…</p>
+          <!-- Compra de mercadoria saiu do caixa mas NÃO é despesa: virou
+               estoque. Ela precisa aparecer (o dinheiro saiu mesmo) sem entrar
+               na conta do lucro, senão a mesma peça é descontada duas vezes —
+               uma aqui e outra no card do custo. -->
+          <p v-if="resumo.compras_estoque > 0" class="mt-2 text-xs text-gray-500">
+            + {{ formatCurrency(resumo.compras_estoque) }} em compra de mercadoria, que virou
+            estoque e só entra no lucro quando for vendida.
+          </p>
         </div>
 
         <div
@@ -128,15 +178,48 @@ const diferencaCaixa = computed(
         >
           <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide"
                :class="resultadoNegativo ? 'text-rose-600' : 'text-emerald-700'">
-            <Wallet :size="15" /> Sobrou
+            <Wallet :size="15" /> Lucro
           </div>
           <p class="mt-2 text-2xl font-bold" :class="resultadoNegativo ? 'text-rose-700' : 'text-emerald-800'">
             {{ formatCurrency(resumo.resultado) }}
           </p>
+          <!-- A conta escrita por extenso. O dono precisa poder refazê-la de
+               cabeça: um número de lucro que ninguém consegue conferir é um
+               número em que ninguém confia. -->
           <p class="mt-1 text-xs" :class="resultadoNegativo ? 'text-rose-500' : 'text-emerald-600'">
-            {{ resultadoNegativo ? 'O mês fechou no vermelho' : 'Resultado do mês, em caixa' }}
+            Faturado − custo do que vendeu − despesas
+          </p>
+          <p v-if="resultadoNegativo" class="mt-1 text-xs font-semibold text-rose-500">
+            O mês fechou no vermelho
           </p>
         </div>
+      </div>
+
+      <!-- A OUTRA PERGUNTA, e por isso uma faixa à parte e não um quarto card:
+           "ganhei dinheiro?" e "sobrou dinheiro na gaveta?" são coisas
+           diferentes, e num mês de muito fiado elas discordam de propósito. -->
+      <div class="rounded-2xl border border-gray-100 bg-white px-5 py-4 shadow-sm">
+        <div class="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
+          <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">
+            No caixa, neste mês
+          </p>
+          <div class="flex flex-wrap items-baseline gap-x-6 gap-y-1 text-sm">
+            <span class="text-gray-500">
+              Entrou <strong class="text-gray-800 tabular-nums">{{ formatCurrency(resumo.entrou_caixa) }}</strong>
+            </span>
+            <span class="text-gray-500">
+              Saiu <strong class="text-gray-800 tabular-nums">{{ formatCurrency(resumo.saiu_caixa) }}</strong>
+            </span>
+            <span :class="resumo.sobrou_caixa < 0 ? 'text-rose-600' : 'text-emerald-700'">
+              Sobrou
+              <strong class="tabular-nums">{{ formatCurrency(resumo.sobrou_caixa) }}</strong>
+            </span>
+          </div>
+        </div>
+        <p class="mt-1.5 text-xs text-gray-400">
+          Dinheiro que andou, não lucro: a venda fiado de hoje entra no lucro e não aqui, e a
+          compra de estoque sai daqui e não do lucro.
+        </p>
       </div>
 
       <!-- O livro do dinheiro só passou a receber venda e OS sem caixa aberto em

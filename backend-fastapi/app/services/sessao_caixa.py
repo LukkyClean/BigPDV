@@ -26,6 +26,7 @@ from app.core.tempo import fim_do_dia_utc, inicio_do_dia_utc
 from app.helpers.exceptions import BadRequestException, NotFoundException
 from app.db.crud import configuracao_seguranca as config_seg_crud
 from app.db.crud import configuracao_vendas as config_vendas_crud
+from app.db.crud import financeiro as financeiro_crud
 from app.db.crud import sessao_caixa as caixa_crud
 from app.db.models.forma_pagamento import FormaPagamento
 from app.db.models.sessao_caixa import SessaoCaixa
@@ -598,6 +599,8 @@ def registrar_pagamentos_de_venda(
     if sessao:
         venda.sessao_caixa_id = sessao.id
 
+    conta_id = _conta_do_dinheiro(db, empresa_id)
+
     for pagamento in venda.pagamentos:
         if pagamento.vencimento and pagamento.vencimento > hoje:
             continue  # promessa: é conta a receber, não gaveta
@@ -609,11 +612,37 @@ def registrar_pagamentos_de_venda(
             origem=MovimentacaoFinanceiraOrigem.VENDA,
             valor=pagamento.valor,
             sessao_caixa_id=sessao.id if sessao else None,
+            conta_bancaria_id=conta_id,
             forma_pagamento_id=pagamento.forma_pagamento_id,
             venda_pagamento_id=pagamento.id,
             funcionario_id=venda.funcionario_id,
             funcionario_nome=getattr(funcionario, "nome", None),
         )
+
+
+def _conta_do_dinheiro(db: Session, empresa_id: int) -> Optional[int]:
+    """Em que conta cai o dinheiro de uma venda ou OS.
+
+    A principal da loja, sempre. NÃO se pergunta ao operador: no balcão, com o
+    cliente esperando, ninguém escolhe conta bancária -- e uma pergunta a mais
+    na finalização é a diferença entre o sistema ser usado e ser contornado.
+
+    Se um dia a loja precisar separar "cartão cai no banco, dinheiro fica na
+    gaveta", o lugar é aqui, olhando a forma de pagamento. Hoje seria adivinhar:
+    `formas_pagamento` não guarda para onde o dinheiro daquela forma vai.
+
+    SEMEIA A GAVETA se a loja não tiver conta nenhuma -- e ela não tem enquanto
+    ninguém abrir o módulo Financeiro, porque a semeadura mora na listagem de
+    contas. Sem isto, a loja que só vende (e nunca abriu o Financeiro) gravaria
+    todas as vendas sem endereço, e o saldo do primeiro dia em que ela olhasse a
+    tela nasceria sem elas.
+
+    Import local para não amarrar o módulo do caixa ao do financeiro no topo:
+    a dependência aqui é pontual, e o arquivo já usa esse recurso.
+    """
+    from app.services.financeiro import _conta_padrao_id
+
+    return _conta_padrao_id(db, empresa_id)
 
 
 def registrar_pagamentos_de_os(
@@ -664,6 +693,7 @@ def registrar_pagamentos_de_os(
     from app.core.tempo import hoje_local
 
     hoje = hoje_local()
+    conta_id = _conta_do_dinheiro(db, empresa_id)
 
     for pagamento in pagamentos:
         if pagamento.vencimento and pagamento.vencimento > hoje:
@@ -676,6 +706,7 @@ def registrar_pagamentos_de_os(
             origem=MovimentacaoFinanceiraOrigem.ORDEM_SERVICO,
             valor=pagamento.valor,
             sessao_caixa_id=sessao.id if sessao else None,
+            conta_bancaria_id=conta_id,
             forma_pagamento_id=pagamento.forma_pagamento_id,
             ordem_servico_pagamento_id=pagamento.id,
             funcionario_id=ordem_servico.funcionario_id,
@@ -733,6 +764,9 @@ def estornar_pagamentos_de_os(
             origem=MovimentacaoFinanceiraOrigem.ORDEM_SERVICO,
             valor=pagamento.valor,
             sessao_caixa_id=sessao.id if sessao else None,
+            # A MESMA conta em que a entrada caiu. Devolver noutro lugar deixaria
+            # o saldo derivado com sobra numa conta e falta na outra.
+            conta_bancaria_id=_conta_do_dinheiro(db, empresa_id),
             forma_pagamento_id=pagamento.forma_pagamento_id,
             funcionario_id=ordem_servico.funcionario_id,
             funcionario_nome=getattr(funcionario, "nome", None),

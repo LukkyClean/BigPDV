@@ -28,6 +28,7 @@ import {
   type ContaReceberPayload,
   type HistoricoFinanceiro,
   type PlanoConta,
+  type PlanoContaTipo,
   type Conciliacao,
   type Extrato,
   type Serie,
@@ -61,14 +62,17 @@ export async function listarPlanoContas(apenasAtivos = false): Promise<PlanoCont
   return safeParseResponse(z.array(PlanoContaSchema), data, 'listarPlanoContas');
 }
 
-export async function criarPlanoConta(nome: string): Promise<PlanoConta> {
-  const { data } = await api.post('/financeiro/plano-contas', { nome });
+export async function criarPlanoConta(
+  nome: string,
+  tipo: PlanoContaTipo = 'DESPESA',
+): Promise<PlanoConta> {
+  const { data } = await api.post('/financeiro/plano-contas', { nome, tipo });
   return safeParseResponse(PlanoContaSchema, data, 'criarPlanoConta');
 }
 
 export async function atualizarPlanoConta(
   id: number,
-  dados: { nome?: string; ativo?: boolean },
+  dados: { nome?: string; ativo?: boolean; tipo?: PlanoContaTipo },
 ): Promise<PlanoConta> {
   const { data } = await api.patch(`/financeiro/plano-contas/${id}`, dados);
   return safeParseResponse(PlanoContaSchema, data, 'atualizarPlanoConta');

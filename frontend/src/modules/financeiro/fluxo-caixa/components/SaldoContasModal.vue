@@ -1,12 +1,16 @@
 <script setup lang="ts">
 /**
- * "Quanto você tem hoje?" — a única pergunta que o sistema não sabe responder
- * sozinho.
+ * "Quanto você tem hoje?" — o PONTO DE PARTIDA, não o saldo.
  *
- * O livro do dinheiro só recebe venda e OS onde `controlar_caixa` está ligado,
- * então calcular o saldo daria um número falso na loja que não usa caixa. Aqui
- * o dono declara, conta por conta, e o servidor carimba a data — é o que
- * permite a tela avisar depois que o retrato envelheceu.
+ * O sistema sabe tudo que entrou e saiu desde que começou a ser usado, mas não
+ * sabe o que já havia na gaveta antes disso. Essa é a única coisa que se
+ * pergunta ao dono — e uma vez só: dali em diante cada venda, OS e conta paga
+ * entra no saldo sozinha. É o mesmo desenho do "saldo inicial" do Conta Azul e
+ * do Omie.
+ *
+ * O servidor carimba a data E o instante da declaração. O instante é o que
+ * impede a venda da manhã de ser contada duas vezes quando o dono confere a
+ * gaveta à tarde: ela já está dentro do número que ele acabou de contar.
  *
  * Uma conta por linha, e não um campo só com o total: a projeção soma as
  * contas ATIVAS, e o dono precisa enxergar de onde cada pedaço veio para
@@ -64,8 +68,8 @@ async function salvar() {
   <BaseModal :is-open="aberto" title="Saldo de hoje" size="sm" overlay @close="emit('fechar')">
     <div class="flex flex-col gap-4">
       <p class="text-sm text-gray-500">
-        Informe quanto há em cada conta <strong>agora</strong>. É daqui que a projeção parte —
-        o sistema não tem como saber esse número sozinho.
+        Informe quanto há em cada conta <strong>agora</strong>. É o ponto de partida: o
+        sistema não sabe o que já havia aí antes de ele existir.
       </p>
 
       <div v-for="conta in contas ?? []" :key="conta.id" class="flex flex-col gap-1">
@@ -79,8 +83,9 @@ async function salvar() {
       </div>
 
       <p class="rounded-xl bg-gray-50 px-3.5 py-2.5 text-xs text-gray-500">
-        O saldo não anda sozinho: ele não muda quando você dá baixa numa conta. Volte aqui e
-        atualize sempre que quiser conferir a projeção com a realidade.
+        Daqui em diante o saldo anda sozinho: cada venda, OS e conta paga entra nele. Você só
+        precisa voltar aqui se conferir a gaveta e o número não bater — aí o que você digitar
+        vira o novo ponto de partida.
       </p>
     </div>
 

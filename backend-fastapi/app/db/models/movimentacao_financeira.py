@@ -11,6 +11,7 @@ from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.enum import MovimentacaoFinanceiraOrigem, MovimentacaoFinanceiraTipo
+from app.core.tempo import agora_utc
 from app.db.base import Base
 
 
@@ -136,8 +137,20 @@ class MovimentacaoFinanceira(Base):
         doc="Motivo declarado (obrigatório em sangria e suprimento)",
     )
 
+    # HORA CARIMBADA PELO PYTHON, e nao pelo banco. O `server_default` fica como
+    # rede de seguranca para INSERT que nao passe pelo ORM (nao existe nenhum
+    # hoje), mas quem manda e o `default`.
+    #
+    # A razao e precisao, e ela e a diferenca entre o saldo estar certo e estar
+    # errado: o CURRENT_TIMESTAMP do SQLite tem granularidade de SEGUNDO. Como o
+    # saldo derivado corta pelo instante em que o dono declarou a ancora
+    # (`ContaBancaria.saldo_informado_instante`, com microssegundos), todo
+    # movimento gravado no MESMO segundo da declaracao caia fora da soma --
+    # dinheiro que entrou e nao aparecia em saldo nenhum. Com as duas pontas na
+    # mesma precisao, a comparacao passa a ser exata.
     criado_em: Mapped[datetime] = mapped_column(
         DateTime,
+        default=agora_utc,
         server_default=func.now(),
         nullable=False,
         index=True,

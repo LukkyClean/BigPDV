@@ -79,8 +79,13 @@ ENTIDADE_CONTA_PAGAR = "CONTA_PAGAR"
 # lojista abre Contas a Pagar, vê que precisa de categoria, vai criar categoria,
 # e desiste no meio. Ele pode apagar as que não usa; ver a lista e cortar é
 # muito mais fácil do que encarar o branco.
+# A PRIMEIRA É CUSTO, e não despesa: comprar mercadoria não empobrece a loja,
+# converte dinheiro em estoque. Ela sai do caixa no dia da compra e só sai do
+# LUCRO no dia em que a peça é vendida, pelo CMV -- classificá-la como despesa
+# descontava a mesma peça duas vezes. Ver PlanoContaTipo e a migration
+# f4a5b6c7d8e9, que reclassificou as lojas que já existiam.
 PLANO_CONTAS_PADRAO: List[tuple[str, PlanoContaTipo]] = [
-    ("Fornecedores / Mercadoria", PlanoContaTipo.DESPESA),
+    ("Fornecedores / Mercadoria", PlanoContaTipo.CUSTO),
     ("Aluguel", PlanoContaTipo.DESPESA),
     ("Água, luz e internet", PlanoContaTipo.DESPESA),
     ("Salários e encargos", PlanoContaTipo.DESPESA),
@@ -179,6 +184,27 @@ def atualizar_plano_conta(
             raise BadRequestException(detail=f"Já existe uma categoria chamada '{nome}'.")
         plano.nome = nome
 
+    if dados.tipo is not None and dados.tipo.value != plano.tipo:
+        # DESPESA <-> CUSTO é correção de classificação: as duas são saída, e o
+        # que muda é QUANDO o gasto sai do lucro (no dia da compra ou no dia da
+        # venda, pelo CMV). Recalcular meses passados com a regra certa é o
+        # ponto, não um efeito colateral.
+        #
+        # Envolver RECEITA numa categoria já lançada é outra coisa: inverte o
+        # sinal do dinheiro e transformaria despesa em receita no relatório sem
+        # ninguém ter tocado numa conta.
+        vira_receita = PlanoContaTipo.RECEITA.value in (dados.tipo.value, plano.tipo)
+        if vira_receita and plano.id in financeiro_crud.ids_de_planos_em_uso(
+            db, empresa_id
+        ):
+            raise BadRequestException(
+                detail=(
+                    "Esta categoria já tem contas lançadas e não pode virar (ou "
+                    "deixar de ser) receita. Crie uma categoria nova."
+                )
+            )
+        plano.tipo = dados.tipo.value
+
     if dados.ativo is not None:
         plano.ativo = dados.ativo
 
@@ -212,6 +238,22 @@ def _semear_conta_padrao(db: Session, empresa_id: int) -> None:
             principal=True,
         ),
     )
+
+
+def _conta_padrao_id(db: Session, empresa_id: int) -> Optional[int]:
+    """A conta que recebe o dinheiro quando o lançamento não escolheu uma.
+
+    Existe porque o saldo deixou de ser declarado e passou a ser derivado do
+    livro: linha sem conta é dinheiro que entrou ou saiu e não aparece em saldo
+    nenhum. Antes disso o campo era só um detalhe de auditoria e ficar nulo não
+    custava nada.
+
+    Semeia 'Caixa da loja' se não houver nenhuma, pela mesma razão de sempre --
+    o lojista que só trabalha com dinheiro nunca vai cadastrar banco.
+    """
+    _semear_conta_padrao(db, empresa_id)
+    conta = financeiro_crud.get_conta_principal(db, empresa_id)
+    return conta.id if conta else None
 
 
 def listar_contas_bancarias(
@@ -269,6 +311,11 @@ def atualizar_conta_bancaria(
         # "de ontem" e o aviso nunca aparecer.
         conta.saldo_informado = dados.saldo_informado
         conta.saldo_informado_em = hoje_local()
+        # E o INSTANTE, que é o corte de verdade do saldo derivado: só entra no
+        # saldo o movimento posterior a ele. Sem isto, quem declara o saldo às
+        # 15h veria a venda das 10h somada de novo -- ela já estava dentro do
+        # número que ele contou na gaveta.
+        conta.saldo_informado_instante = agora_utc()
 
     db.flush()
     return conta
@@ -664,24 +711,29 @@ def pagar_conta(
     # pagar fornecedor não é sangria. Se o dinheiro saiu fisicamente da gaveta, a
     # sangria é lançada à parte pelo operador, e contar as duas coisas faria a
     # gaveta fechar com falta.
+    conta_origem_id = dados.conta_bancaria_id or _conta_padrao_id(db, empresa_id)
+
     movimento = caixa_crud.registrar_movimento(
         db,
         tipo=MovimentacaoFinanceiraTipo.SAIDA,
         origem=MovimentacaoFinanceiraOrigem.DESPESA,
         valor=valor_pago,
+        conta_bancaria_id=conta_origem_id,
         forma_pagamento_id=dados.forma_pagamento_id,
         funcionario_id=func_id,
         funcionario_nome=func_nome,
         motivo=f"Pagamento: {conta.descricao}",
     )
-    movimento.conta_bancaria_id = dados.conta_bancaria_id
 
     conta.status = ContaPagarStatus.PAGA.value
     conta.valor_pago = valor_pago
     # Guardado como início do dia em UTC: é timestamp de evento e converte
     # (ver core/tempo.py), diferente de `vencimento`, que é data pura.
     conta.pago_em = inicio_do_dia_utc(dia_pagamento)
-    conta.conta_bancaria_id = dados.conta_bancaria_id
+    # A conta RESOLVIDA, e nao a escolha crua do usuario: o movimento caiu
+    # nela, e deixar aqui um NULL faria o estorno procurar de onde o dinheiro
+    # saiu e nao achar.
+    conta.conta_bancaria_id = conta_origem_id
     conta.forma_pagamento_id = dados.forma_pagamento_id
     conta.movimentacao_financeira_id = movimento.id
     if dados.observacao:
@@ -755,6 +807,10 @@ def estornar_pagamento(
         tipo=MovimentacaoFinanceiraTipo.ENTRADA,
         origem=MovimentacaoFinanceiraOrigem.DESPESA,
         valor=valor_estornado,
+        # A MESMA conta de onde o dinheiro saiu -- lido ANTES de a baixa ser
+        # limpa, mais abaixo. Devolver noutra conta deixaria uma com sobra e a
+        # outra com falta, e a soma esconderia o erro.
+        conta_bancaria_id=conta.conta_bancaria_id or _conta_padrao_id(db, empresa_id),
         forma_pagamento_id=conta.forma_pagamento_id,
         funcionario_id=func_id,
         funcionario_nome=func_nome,

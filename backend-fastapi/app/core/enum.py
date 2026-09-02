@@ -231,9 +231,27 @@ class PlanoContaTipo(str, enum.Enum):
     É o que permite ao resultado do mês dizer ONDE o dinheiro foi, e não só
     quanto saiu. Sem isso, "gastei R$ 12 mil" não separa aluguel de mercadoria,
     e a conversa sobre onde cortar não acontece.
+
+    SÃO TRÊS GRUPOS, e não dois. Plano de contas gerencial separa receita, CUSTO
+    e despesa -- e a diferença entre os dois últimos não é academicismo, é a
+    conta do lucro:
+
+      DESPESA  o que a loja gasta para existir (aluguel, internet, salário).
+               Sai do caixa e sai do lucro, no mês em que foi paga.
+      CUSTO    compra de mercadoria ou peça para revender. Sai do caixa, mas
+               NÃO sai do lucro: o dinheiro virou estoque, não sumiu. Ele entra
+               no lucro quando a peça SAI numa venda ou OS, pelo CMV (custo
+               congelado no livro de estoque).
+      RECEITA  entrada classificada, do lado oposto.
+
+    O CUSTO nasceu de um defeito real: sem ele, a compra da peça era descontada
+    duas vezes -- uma como despesa paga, outra como CMV no dia da venda. É o
+    mesmo desenho do QuickBooks e do Xero, onde comprar estoque debita ATIVO e
+    só a venda debita CMV.
     """
     DESPESA = "DESPESA"
     RECEITA = "RECEITA"
+    CUSTO = "CUSTO"
 
 
 class ContaBancariaTipo(str, enum.Enum):

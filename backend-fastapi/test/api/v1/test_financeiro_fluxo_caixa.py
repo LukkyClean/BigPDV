@@ -200,19 +200,38 @@ def test_hoje_entra_na_janela(client, db_session):
     assert fluxo["linha"][0]["data"] == date.today().isoformat()
 
 
-def test_baixa_tira_o_documento_da_projecao(client, db_session):
-    """Projeção é do que está EM ABERTO — pagou, sai da régua."""
+def test_baixa_tira_o_documento_da_regua_e_o_dinheiro_do_saldo(client, db_session):
+    """Pagar move o dinheiro de LUGAR na tela, sem criá-lo nem destruí-lo.
+
+    Antes da baixa os R$ 400 estão na régua, como saída prevista para dali a
+    seis dias. Depois da baixa saem da régua (a projeção só enxerga documento em
+    aberto) e passam a estar descontados do SALDO, porque o dinheiro saiu de
+    verdade. Nos dois momentos a sobra prevista é a mesma: R$ 600.
+
+    ESTE TESTE JÁ EXIGIU O CONTRÁRIO. Até 02/09/2026 ele terminava afirmando "o
+    saldo declarado não anda sozinho" e esperava R$ 1.000 de volta -- a conta
+    era paga e o saldo do dono continuava o mesmo, como se o dinheiro não
+    tivesse saído. Era o comportamento que o uso real derrubou: o dono vendia e
+    pagava o dia inteiro e o Fluxo de Caixa ficava parado.
+    """
     header = _auth(client)
     _informar_saldo(client, header, 100000)
     conta = _pagar(client, header, 40000, dias=6)
-    assert _fluxo(client, header)["saldo_final"] == 60000
+
+    antes = _fluxo(client, header)
+    assert antes["saldo_inicial"] == 100000
+    assert antes["total_saidas"] == 40000
+    assert antes["saldo_final"] == 60000
 
     client.post(f"/api/v1/financeiro/contas-pagar/{conta['id']}/pagar",
                 json={}, headers=header)
 
-    fluxo = _fluxo(client, header)
-    assert fluxo["linha"] == []
-    assert fluxo["saldo_final"] == 100000, "o saldo declarado não anda sozinho"
+    depois = _fluxo(client, header)
+    assert depois["linha"] == [], "conta paga sai da régua do que está por vir"
+    assert depois["saldo_inicial"] == 60000, "o dinheiro saiu: o saldo de hoje caiu"
+    assert depois["saldo_ancora"] == 100000, "a âncora declarada continua a mesma"
+    assert depois["saldo_movimentado"] == -40000
+    assert depois["saldo_final"] == 60000, "a sobra prevista não mudou"
 
 
 # ===========================================================================

@@ -120,6 +120,7 @@ def registrar_movimento(
     origem: MovimentacaoFinanceiraOrigem,
     valor: int,
     sessao_caixa_id: Optional[int] = None,
+    conta_bancaria_id: Optional[int] = None,
     forma_pagamento_id: Optional[int] = None,
     venda_pagamento_id: Optional[int] = None,
     ordem_servico_pagamento_id: Optional[int] = None,
@@ -132,12 +133,23 @@ def registrar_movimento(
     Mesmo papel do `registrar_movimentacao()` no estoque: concentrar a escrita
     num ponto só é o que impede uma linha de dinheiro nascer sem origem ou sem
     dono, e é o que permite auditar depois.
+
+    `conta_bancaria_id` chegou em 02/09/2026, quando o saldo da conta deixou de
+    ser foto declarada e passou a ser derivado do livro. Antes disso o parâmetro
+    não existia e só `pagar_conta` preenchia a coluna à mão, depois de gravar --
+    ou seja, TODA venda e TODA OS nasciam sem endereço, e um saldo derivado
+    dessas linhas ignoraria a receita inteira.
+
+    Continua opcional, e NULO é resposta legítima em dois casos: a abertura e a
+    sangria, que mexem na gaveta e não no total da loja (ver `ORIGENS_DE_SALDO`
+    em crud/financeiro.py), e a loja que ainda não tem conta cadastrada.
     """
     movimento = MovimentacaoFinanceira(
         tipo=tipo.value,
         origem=origem.value,
         valor=valor,
         sessao_caixa_id=sessao_caixa_id,
+        conta_bancaria_id=conta_bancaria_id,
         forma_pagamento_id=forma_pagamento_id,
         venda_pagamento_id=venda_pagamento_id,
         ordem_servico_pagamento_id=ordem_servico_pagamento_id,
