@@ -293,6 +293,94 @@ def test_conta_desativada_sai_do_saldo(client, db_session):
     assert _fluxo(client, header)["saldo_inicial"] == 0
 
 
+def test_conta_declarada_nao_engole_o_movimento_das_outras(client, db_session):
+    """O defeito que o dono achou no dia seguinte a correcao do saldo.
+
+    Ele declarou o saldo da CONTA DA EMPRESA e deixou a gaveta em branco.
+    Recebeu uma OS, viu a entrada no Extrato -- e o Fluxo de Caixa nao se mexeu.
+    O dinheiro da OS cai na conta PRINCIPAL (a gaveta), que nao tinha ancora
+    propria, e a regra de entao mandava pular a conta inteira.
+
+    Uma conta sem ancora propria herda o corte mais antigo da loja e parte de
+    zero: no dia em que o dono declarou o que tinha, o que ele nao declarou
+    valia zero.
+    """
+    header = _auth(client)
+
+    # A gaveta e a conta semeada, e ela e a PRINCIPAL -- e para onde a OS vai.
+    r = client.post("/api/v1/financeiro/contas-bancarias",
+                    json={"nome": "Conta da empresa", "tipo": "BANCO"}, headers=header)
+    assert r.status_code in (200, 201), r.text
+    conta_empresa_id = r.json()["id"]
+
+    r = client.patch(f"/api/v1/financeiro/contas-bancarias/{conta_empresa_id}",
+                     json={"saldo_informado": 35500}, headers=header)
+    assert r.status_code == status.HTTP_200_OK, r.text
+
+    funcionario_id = _funcionario(client, header)
+    cliente_id = _cliente(client, header)
+    _os_finalizada(client, header, cliente_id, funcionario_id, valor=46886)
+
+    fluxo = _fluxo(client, header)
+    assert fluxo["saldo_ancora"] == 35500
+    assert fluxo["saldo_entrou"] == 46886, "a OS entrou no livro e tem que entrar no saldo"
+    assert fluxo["saldo_inicial"] == 35500 + 46886
+
+
+def test_o_card_do_saldo_separa_o_que_entrou_do_que_saiu(client, db_session):
+    """Liquido zero nao e a mesma coisa que dia parado.
+
+    "Entraram 500 e sairam 500" e "nao aconteceu nada" dao o mesmo liquido e
+    pedem reacoes opostas. Foi olhando um card que so mostrava o liquido que o
+    dono perguntou onde estava o dinheiro da OS.
+    """
+    header = _auth(client)
+    _informar_saldo(client, header, 50000)
+
+    funcionario_id = _funcionario(client, header)
+    cliente_id = _cliente(client, header)
+    _os_finalizada(client, header, cliente_id, funcionario_id, valor=20000)
+    _criar_e_pagar(client, header, valor=20000, descricao="Fornecedor")
+
+    fluxo = _fluxo(client, header)
+    assert fluxo["saldo_movimentado"] == 0
+    assert fluxo["saldo_entrou"] == 20000
+    assert fluxo["saldo_saiu"] == 20000
+    assert fluxo["saldo_inicial"] == 50000
+
+
+def test_a_conta_que_se_repete_vem_marcada_na_regua(client, db_session):
+    """Pagar a de setembro faz a de outubro nascer -- e a tela precisa dizer isso.
+
+    Sem a marca, o dono paga a internet, ve outra internet aparecer na regua e
+    conclui que o pagamento nao foi registrado. Foi exatamente o que aconteceu.
+    """
+    header = _auth(client)
+    _informar_saldo(client, header, 50000)
+
+    r = client.post("/api/v1/financeiro/contas-pagar", json={
+        "descricao": "Internet - BrisaNet", "valor": 8990,
+        "vencimento": (date.today() + timedelta(days=3)).isoformat(),
+        "recorrente": True,
+    }, headers=header)
+    assert r.status_code == status.HTTP_201_CREATED, r.text
+    conta_id = r.json()["id"]
+
+    r = client.post(f"/api/v1/financeiro/contas-pagar/{conta_id}/pagar", json={},
+                    headers=header)
+    assert r.status_code == status.HTTP_200_OK, r.text
+
+    # A proxima ocorrencia nasceu da baixa, e vem marcada.
+    fluxo = _fluxo(client, header, dias=60)
+    lancamentos = [l for dia in fluxo["linha"] for l in dia["lancamentos"]]
+    assert lancamentos, "a recorrencia gerou a ocorrencia do mes seguinte"
+    assert all(l["recorrente"] for l in lancamentos)
+
+    # E o dinheiro da que FOI paga saiu do saldo, que era a outra metade da duvida.
+    assert fluxo["saldo_saiu"] == 8990
+    assert fluxo["saldo_inicial"] == 50000 - 8990
+
+
 # ===========================================================================
 # O LUCRO DESCONTA O CUSTO
 # ===========================================================================

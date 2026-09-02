@@ -205,6 +205,15 @@ class FluxoLancamento(BaseModel):
     tipo: str = Field(..., description="ENTRADA (a receber) ou SAIDA (a pagar)")
     descricao: str
     valor: int = Field(..., description="Sempre positivo (centavos); o sinal é o `tipo`")
+    recorrente: bool = Field(
+        False,
+        description=(
+            "A conta se repete todo mês. A tela marca porque a próxima "
+            "ocorrência nasce da BAIXA da anterior: quem paga a internet de "
+            "setembro vê a de outubro aparecer aqui na mesma hora, e sem a "
+            "marca isso se lê como 'o pagamento não foi registrado'"
+        ),
+    )
 
 
 class FluxoDia(BaseModel):
@@ -262,6 +271,17 @@ class FluxoCaixa(BaseModel):
             "Mostrado ao lado da âncora para o dono poder conferir a conta em "
             "vez de acreditar num total"
         ),
+    )
+    saldo_entrou: int = Field(
+        0,
+        description=(
+            "As entradas do livro desde a declaração (centavos, positivo). "
+            "Separado do líquido porque zero líquido pode ser 'nada aconteceu' "
+            "ou 'entraram 500 e saíram 500'"
+        ),
+    )
+    saldo_saiu: int = Field(
+        0, description="As saídas do livro desde a declaração (centavos, positivo)"
     )
     saldo_declarado: bool = Field(
         ..., description="Se alguma conta já teve saldo informado alguma vez"

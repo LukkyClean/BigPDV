@@ -65,12 +65,16 @@ class SaldoDasContas:
     R$ 90" é auditável na hora; "você tem R$ 1.150" só dá para acreditar ou não.
     """
 
-    __slots__ = ("saldo", "ancora", "movimentado", "declarado", "informado_em")
+    __slots__ = (
+        "saldo", "ancora", "movimentado", "entrou", "saiu", "declarado", "informado_em",
+    )
 
-    def __init__(self, saldo, ancora, movimentado, declarado, informado_em):
+    def __init__(self, saldo, ancora, entrou, saiu, declarado, informado_em):
         self.saldo = saldo
         self.ancora = ancora
-        self.movimentado = movimentado
+        self.entrou = entrou
+        self.saiu = saiu
+        self.movimentado = entrou - saiu
         self.declarado = declarado
         self.informado_em = informado_em
 
@@ -84,9 +88,21 @@ def saldo_atual_das_contas(db: Session, empresa_id: int) -> SaldoDasContas:
     mão. É o desenho do "saldo inicial" do Conta Azul e do Omie: declara-se uma
     vez, e daí em diante quem move o saldo são os lançamentos.
 
-    CONTA SEM ÂNCORA NÃO ENTRA, nem com o movimento dela. Sem ponto de partida,
-    somar movimento daria "o quanto mudou", que não é saldo -- e uma conta nova
-    apareceria com saldo negativo no primeiro boleto pago por ela.
+    ENQUANTO A LOJA NÃO DECLARAR NADA, não há saldo. Sem ponto de partida, somar
+    movimento daria "o quanto mudou", que não é saldo -- e a loja apareceria com
+    saldo negativo no primeiro boleto que pagasse.
+
+    MAS BASTA UMA CONTA DECLARADA para todas passarem a contar, e isso foi um
+    defeito real: a regra era "conta sem âncora própria não entra, nem com o
+    movimento dela", e o resultado era dinheiro sumindo em silêncio. A loja que
+    declarou a conta do banco e deixou a gaveta em branco via o dinheiro da OS
+    cair na gaveta (que é a conta principal) e desaparecer do saldo -- o Extrato
+    mostrava a entrada, o Fluxo de Caixa não se mexia.
+
+    A conta não declarada herda o corte MAIS ANTIGO da loja e parte de zero. É o
+    que o dono quis dizer: no dia em que ele declarou o que tinha, o que ele não
+    declarou valia zero. Herdar o corte mais antigo (e não o mais recente) é o
+    que garante que nenhum movimento fique de fora.
 
     SÓ CONTAS ATIVAS. Uma conta desativada é dinheiro que a loja não usa mais, e
     somá-la faria toda a projeção partir de um número alto demais.
@@ -103,12 +119,20 @@ def saldo_atual_das_contas(db: Session, empresa_id: int) -> SaldoDasContas:
     ancora = sum(int(c.saldo_informado or 0) for c in contas)
     datas = [c.saldo_informado_em for c in contas if c.saldo_informado_em]
 
-    movimentado = 0
-    for conta in contas:
+    def _corte(conta) -> Optional[datetime]:
         if not conta.saldo_informado_em:
-            continue
-        corte = conta.saldo_informado_instante or fim_do_dia_utc(conta.saldo_informado_em)
-        movimentado += financeiro_crud.movimentado_desde(
+            return None
+        return conta.saldo_informado_instante or fim_do_dia_utc(conta.saldo_informado_em)
+
+    cortes = [c for c in (_corte(conta) for conta in contas) if c is not None]
+    corte_da_loja = min(cortes) if cortes else None
+
+    entrou = saiu = 0
+    for conta in contas:
+        corte = _corte(conta) or corte_da_loja
+        if corte is None:
+            continue  # a loja inteira nunca declarou nada
+        conta_entrou, conta_saiu = financeiro_crud.entradas_e_saidas_desde(
             db,
             empresa_id,
             conta_id=conta.id,
@@ -118,11 +142,14 @@ def saldo_atual_das_contas(db: Session, empresa_id: int) -> SaldoDasContas:
             # fora faria o saldo derivado ficar abaixo do real.
             incluir_sem_conta=(conta.id == principal_id),
         )
+        entrou += conta_entrou
+        saiu += conta_saiu
 
     return SaldoDasContas(
-        saldo=ancora + movimentado,
+        saldo=ancora + entrou - saiu,
         ancora=ancora,
-        movimentado=movimentado,
+        entrou=entrou,
+        saiu=saiu,
         declarado=bool(datas),
         # A data MAIS ANTIGA entre as contas: é ela que envelhece o número. Uma
         # loja que atualizou o Nubank hoje e esqueceu a gaveta há um mês tem uma
@@ -557,6 +584,11 @@ def get_fluxo_caixa(db: Session, empresa_id: int, dias: int = 30) -> FluxoCaixa:
             FluxoLancamento(
                 conta_id=conta.id, tipo=MovimentacaoFinanceiraTipo.SAIDA.value,
                 descricao=conta.descricao, valor=int(conta.valor or 0),
+                # A tela marca as que se repetem. Sem isso, pagar a internet de
+                # setembro fazia a de outubro aparecer na régua e o dono ler que
+                # o pagamento não tinha sido registrado -- foi o primeiro
+                # estranhamento relatado depois que o saldo passou a andar.
+                recorrente=bool(conta.recorrente),
             )
         )
 
@@ -615,6 +647,8 @@ def get_fluxo_caixa(db: Session, empresa_id: int, dias: int = 30) -> FluxoCaixa:
         # pedir fé num total: "declarou X no dia tal, e desde então moveu Y".
         saldo_ancora=atual.ancora,
         saldo_movimentado=atual.movimentado,
+        saldo_entrou=atual.entrou,
+        saldo_saiu=atual.saiu,
         saldo_informado_em=atual.informado_em,
         total_entradas=total_entradas,
         total_saidas=total_saidas,

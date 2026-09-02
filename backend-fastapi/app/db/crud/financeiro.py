@@ -865,15 +865,21 @@ ORIGENS_DE_RECEITA = (
 ORIGENS_DE_SALDO = ORIGENS_DE_RECEITA + (MovimentacaoFinanceiraOrigem.DESPESA.value,)
 
 
-def movimentado_desde(
+def entradas_e_saidas_desde(
     db: Session,
     empresa_id: int,
     *,
     conta_id: int,
     desde: datetime,
     incluir_sem_conta: bool = False,
-) -> int:
-    """Quanto o livro moveu nesta conta DEPOIS de `desde` (centavos, com sinal).
+) -> Tuple[int, int]:
+    """(entrou, saiu) nesta conta DEPOIS de `desde`. Os dois positivos.
+
+    DEVOLVE AS DUAS METADES, e nao o liquido, porque a tela mostra as duas: o
+    dono perguntou "cade o dinheiro que entrou?" olhando um card que so dizia
+    quanto o saldo tinha mudado no total. Um numero liquido de zero pode ser
+    "nada aconteceu" ou "entraram 500 e sairam 500", e as duas leituras exigem
+    reacoes opostas.
 
     É a segunda metade do saldo: a primeira é a âncora que o dono declarou, e
     esta é tudo que aconteceu desde então. Entrada soma, saída subtrai.
@@ -906,8 +912,9 @@ def movimentado_desde(
             or 0
         )
 
-    return _soma(MovimentacaoFinanceiraTipo.ENTRADA.value) - _soma(
-        MovimentacaoFinanceiraTipo.SAIDA.value
+    return (
+        _soma(MovimentacaoFinanceiraTipo.ENTRADA.value),
+        _soma(MovimentacaoFinanceiraTipo.SAIDA.value),
     )
 
 

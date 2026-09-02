@@ -289,6 +289,10 @@ export interface ContaReceberBaixaPayload {
 // --- Fluxo de Caixa (Onda 3) ---
 
 export const FluxoLancamentoSchema = z.object({
+  // A conta se repete todo mês. A tela marca porque a próxima ocorrência nasce
+  // da BAIXA da anterior: quem paga a de setembro vê a de outubro aparecer na
+  // régua na mesma hora, e sem a marca isso se lê como "não registrou".
+  recorrente: z.boolean().default(false),
   conta_id: z.number(),
   tipo: z.string(),
   descricao: z.string(),
@@ -312,9 +316,13 @@ export const FluxoCaixaSchema = z.object({
   // O saldo de HOJE: a âncora declarada mais tudo que o livro moveu depois
   // dela. Até 02/09/2026 era só a âncora, e por isso não andava com as vendas.
   saldo_inicial: z.number(),
-  // As duas metades, para a tela mostrar a conta em vez de pedir fé no total.
+  // As metades, para a tela mostrar a conta em vez de pedir fé no total.
   saldo_ancora: z.number().default(0),
   saldo_movimentado: z.number().default(0),
+  // Entrou e saiu SEPARADOS: um líquido de zero pode ser "nada aconteceu" ou
+  // "entraram 500 e saíram 500", e as duas leituras pedem reações opostas.
+  saldo_entrou: z.number().default(0),
+  saldo_saiu: z.number().default(0),
   // `false` NÃO significa saldo zero: significa que ninguém declarou. A tela
   // pede o número em vez de desenhar uma linha que parte de zero.
   saldo_declarado: z.boolean(),

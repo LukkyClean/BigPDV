@@ -169,10 +169,24 @@ function diaSemana(iso: string): string {
               <template v-else-if="diasDesdeSaldo === 1"> ontem</template>
               <template v-else-if="diasDesdeSaldo !== null"> há {{ diasDesdeSaldo }} dias</template>
             </p>
-            <p class="text-xs" :class="fluxo.saldo_movimentado < 0 ? 'text-rose-600' : 'text-emerald-600'">
-              {{ fluxo.saldo_movimentado < 0 ? '−' : '+' }}
-              <strong class="tabular-nums">{{ formatCurrency(Math.abs(fluxo.saldo_movimentado)) }}</strong>
-              em vendas, OS e contas pagas desde então
+            <!-- ENTROU E SAIU SEPARADOS, e não o líquido. O dono perguntou "cadê
+                 o dinheiro da OS que entrou?" olhando um card que só dizia o
+                 total movido -- e um total de zero pode ser "nada aconteceu" ou
+                 "entraram 468 e saíram 468". As duas coisas pedem reações
+                 opostas, então a tela mostra as duas. -->
+            <p v-if="fluxo.saldo_entrou > 0" class="text-xs text-emerald-600">
+              + <strong class="tabular-nums">{{ formatCurrency(fluxo.saldo_entrou) }}</strong>
+              que entrou (vendas, OS e fiado recebido)
+            </p>
+            <p v-if="fluxo.saldo_saiu > 0" class="text-xs text-rose-600">
+              − <strong class="tabular-nums">{{ formatCurrency(fluxo.saldo_saiu) }}</strong>
+              que saiu (contas pagas)
+            </p>
+            <p
+              v-if="!fluxo.saldo_entrou && !fluxo.saldo_saiu"
+              class="text-xs text-gray-400"
+            >
+              Nada entrou nem saiu desde então.
             </p>
             <p v-if="saldoVelho" class="mt-1 text-xs font-semibold text-amber-600">
               A declaração é de {{ diasDesdeSaldo }} dias atrás — confira a gaveta e atualize.
@@ -331,7 +345,18 @@ function diaSemana(iso: string): string {
                 :key="`${lancamento.tipo}-${lancamento.conta_id}`"
                 class="flex items-baseline justify-between gap-3 text-xs text-gray-500"
               >
-                <span class="truncate">{{ lancamento.descricao }}</span>
+                <span class="flex min-w-0 items-baseline gap-2">
+                  <span class="truncate">{{ lancamento.descricao }}</span>
+                  <!-- Sem esta marca, pagar a internet de setembro faz a de
+                       outubro aparecer aqui na mesma hora, e o dono lê que o
+                       pagamento não foi registrado. -->
+                  <span
+                    v-if="lancamento.recorrente"
+                    class="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-500"
+                  >
+                    repete todo mês
+                  </span>
+                </span>
                 <span class="shrink-0 tabular-nums">
                   {{ lancamento.tipo === 'ENTRADA' ? '+' : '−' }}{{ formatCurrency(lancamento.valor) }}
                 </span>
