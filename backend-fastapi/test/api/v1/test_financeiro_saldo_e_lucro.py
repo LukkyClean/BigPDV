@@ -483,6 +483,52 @@ def test_categoria_em_uso_nao_pode_virar_receita(client, db_session):
     assert r.status_code == status.HTTP_400_BAD_REQUEST, r.text
 
 
+def test_a_conta_que_o_dono_fez_na_mao_o_sistema_faz_sozinho(client, db_session):
+    """Os dois numeros do dono, saindo dos mesmos lancamentos.
+
+    O que ele descreveu: tinha R$ 135 na conta, recebeu uma OS de R$ 468,86 e
+    calculou R$ 220 de lucro (a peca custou R$ 248,86). Como o saldo nao andava,
+    ele DIGITOU 355 -- que e 135 + 220, a conta feita de cabeca.
+
+    Com a peca lancada em Contas a Pagar numa categoria de compra de mercadoria,
+    os dois numeros nascem sozinhos e cada um no seu lugar:
+
+      SALDO   135 + 468,86 (entrou) - 248,86 (saiu) = 355,00
+      LUCRO   468,86 - 248,86 (CMV) = 220,00
+
+    E NAO HA DUPLA CONTAGEM, que era a objecao historica: a peca sai do LUCRO
+    uma vez so, pelo CMV, porque a categoria e de tipo CUSTO e nao entra em
+    `despesas_pagas`. Do CAIXA ela sai porque o dinheiro saiu mesmo.
+
+    Este teste existe para travar as duas contas juntas. Separadas, cada uma
+    pode ficar certa enquanto a outra erra -- e foi assim que o defeito passou.
+    """
+    header = _auth(client)
+    _informar_saldo(client, header, 13500)
+
+    funcionario_id = _funcionario(client, header)
+    cliente_id = _cliente(client, header)
+    _os_finalizada(client, header, cliente_id, funcionario_id,
+                   valor=46886, custo_unitario=24886)
+
+    planos = client.get("/api/v1/financeiro/plano-contas", headers=header).json()
+    mercadoria = next(p for p in planos if p["tipo"] == "CUSTO")
+    _criar_e_pagar(client, header, valor=24886, descricao="Peca da OS",
+                   plano_conta_id=mercadoria["id"])
+
+    fluxo = _fluxo(client, header)
+    assert fluxo["saldo_ancora"] == 13500
+    assert fluxo["saldo_entrou"] == 46886
+    assert fluxo["saldo_saiu"] == 24886
+    assert fluxo["saldo_inicial"] == 35500, "os R$ 355 que ele digitou na mao"
+
+    resumo = _resumo(client, header)
+    assert resumo["custo_mercadorias"] == 24886
+    assert resumo["despesas_pagas"] == 0, "compra de mercadoria nao e despesa"
+    assert resumo["compras_estoque"] == 24886
+    assert resumo["resultado"] == 22000, "os R$ 220 de lucro que ele calculou"
+
+
 # ===========================================================================
 # O ENDERECO DO DINHEIRO
 # ===========================================================================
