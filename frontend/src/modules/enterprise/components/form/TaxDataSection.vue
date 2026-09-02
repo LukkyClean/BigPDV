@@ -64,7 +64,7 @@ function isentarIeIm() {
         >
           <LucideIcon :icon="Landmark"/>
         </div>
-        <h3 class="text-lg font-semibold text-zinc-800">{{ SECTION_LABELS.dadosFiscais }}</h3>
+        <h3 class="text-lg font-semibold text-zinc-800">Dados Fiscais da PJ</h3>
       </div>
 
       <BaseButton

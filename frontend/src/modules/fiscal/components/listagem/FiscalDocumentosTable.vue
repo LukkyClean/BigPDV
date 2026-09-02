@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
-import { FileText, FileCode, RefreshCw, Search, Ban, AlertCircle, X } from 'lucide-vue-next';
+import { FileText, FileCode, RefreshCw, Search, Ban, AlertCircle, X, Ellipsis } from 'lucide-vue-next';
 import { useMutation, useQueryClient } from '@tanstack/vue-query';
 
 import BaseTableContainer from '@/shared/components/commons/BaseTableContainer/BaseTableContainer.vue';
@@ -221,9 +221,9 @@ async function reemitirLote() {
       />
     </template>
 
-    <table class="w-full text-sm">
+    <table class="w-full text-left min-w-200">
       <thead>
-        <tr class="border-b border-zinc-100 text-left text-xs font-semibold uppercase text-zinc-400">
+        <tr class="bg-zinc-50/50 text-[10px] uppercase tracking-wider text-zinc-500 font-bold border-b border-zinc-100">
           <th class="pl-4 pr-2 py-3 md:pl-6 md:pr-3 w-12">
             <input
               type="checkbox"
@@ -232,19 +232,19 @@ async function reemitirLote() {
               @change="toggleSelectAll"
             />
           </th>
-          <th class="px-4 py-3 md:px-6">Nº</th>
-          <th class="px-4 py-3 md:px-6">Destinatário</th>
-          <th class="px-4 py-3 md:px-6 text-right">Valor</th>
-          <th class="px-4 py-3 md:px-6">Status</th>
-          <th class="px-4 py-3 md:px-6">Data</th>
-          <th class="px-4 py-3 md:px-6 text-right">Ações</th>
+          <th class="px-4 md:px-6 py-3 md:py-4">Nº</th>
+          <th class="px-4 md:px-6 py-3 md:py-4">Destinatário</th>
+          <th class="px-4 md:px-6 py-3 md:py-4 text-right">Valor</th>
+          <th class="px-4 md:px-6 py-3 md:py-4">Status</th>
+          <th class="px-4 md:px-6 py-3 md:py-4">Data</th>
+          <th class="px-4 md:px-6 py-3 md:py-4 text-right min-w-36">Ações Rápidas</th>
         </tr>
       </thead>
-      <tbody>
+      <tbody class="divide-y divide-zinc-100">
         <tr
           v-for="doc in items"
           :key="doc.id"
-          class="border-b border-zinc-50 hover:bg-zinc-50/50 transition-colors cursor-pointer group"
+          class="hover:bg-zinc-50/50 transition-colors cursor-pointer group"
           @click="$emit('abrir-detalhes', doc.id)"
         >
           <!-- Checkbox -->
@@ -257,22 +257,22 @@ async function reemitirLote() {
             />
           </td>
           <!-- Moldura N/Série -->
-          <td class="px-4 py-3 md:px-6">
-            <div class="w-14 h-14 bg-brand-primary/10 rounded-xl flex flex-col items-center justify-center text-brand-primary">
-              <span class="text-[9px] opacity-70 font-semibold leading-none tracking-wide">NF-E</span>
-              <span class="text-base font-bold leading-none mt-0.5">{{ doc.numero_documento ?? '-' }}</span>
-              <span class="text-[10px] opacity-60 font-semibold leading-none mt-1">S{{ doc.serie ?? '-' }}</span>
+          <td class="px-4 md:px-6 py-3 md:py-4">
+            <div class="w-10 h-10 bg-brand-primary/10 rounded-xl flex flex-col items-center justify-center text-brand-primary">
+              <span class="text-[7px] opacity-70 font-bold leading-none">NF-E</span>
+              <span class="text-sm font-black leading-none mt-0.5">{{ doc.numero_documento ?? '-' }}</span>
+              <span class="text-[8px] opacity-70 font-semibold leading-none mt-0.5">S{{ doc.serie ?? '-' }}</span>
             </div>
           </td>
           <!-- Destinatário -->
-          <td class="px-4 py-3 md:px-6">
-            <div class="min-w-0">
-              <p class="text-sm font-medium text-zinc-900 truncate group-hover:text-brand-primary transition-colors">
+          <td class="px-4 md:px-6 py-3 md:py-4">
+            <div class="flex flex-col">
+              <span class="text-sm font-semibold text-zinc-900 group-hover:text-brand-primary transition-colors truncate max-w-xs">
                 {{ doc.destinatario_nome || 'Consumidor Final' }}
-              </p>
-              <p class="text-xs text-zinc-400 truncate">
+              </span>
+              <span class="text-[10px] text-zinc-400 mt-0.5 truncate">
                 {{ origemLabel(doc.origem_tipo, doc.origem_id, doc.origem_numero_os) }}
-              </p>
+              </span>
               <div
                 v-if="doc.status === 'REJEITADA' && (doc.motivo_rejeicao || doc.mensagem_sefaz)"
                 class="flex items-center gap-1 mt-1 text-[11px] text-red-600 truncate max-w-xs"
@@ -283,63 +283,76 @@ async function reemitirLote() {
               </div>
             </div>
           </td>
-          <td class="px-4 py-3 md:px-6 text-right font-semibold text-zinc-800 whitespace-nowrap">
+          <td class="px-4 md:px-6 py-3 md:py-4 text-xs md:text-sm font-medium text-zinc-600 group-hover:text-brand-primary transition-colors text-right whitespace-nowrap">
             {{ doc.valor_total != null ? formatCurrency(doc.valor_total) : '-' }}
           </td>
-          <td class="px-4 py-3 md:px-6">
+          <td class="px-4 md:px-6 py-3 md:py-4">
             <span
-              :class="['inline-block px-2 py-0.5 rounded-full text-xs font-semibold', statusClasses(doc.status)]"
+              :class="[
+                'px-2 md:px-3 py-1 rounded-full text-[10px] md:text-[11px] font-bold whitespace-nowrap inline-block',
+                statusFilterConfig[doc.status]?.class || statusClasses(doc.status)
+              ]"
             >
-              {{ doc.status }}
+              {{ statusFilterConfig[doc.status]?.label || doc.status }}
             </span>
           </td>
-          <td class="px-4 py-3 md:px-6 text-zinc-500 whitespace-nowrap text-xs">
+          <td class="px-4 md:px-6 py-3 md:py-4 text-xs md:text-sm font-medium text-zinc-600 group-hover:text-brand-primary transition-colors whitespace-nowrap">
             {{ formatarData(doc.data_emissao ?? doc.data_criacao) }}
           </td>
-          <td class="px-4 py-3 md:px-6">
-            <div class="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-              <button
-                v-if="doc.url_pdf"
-                class="p-1.5 rounded-lg text-zinc-400 hover:text-brand-primary hover:bg-brand-primary/10 transition-colors"
-                title="Abrir PDF"
-                @click.stop="abrirArquivo(doc.url_pdf!)"
-              >
-                <FileText :size="16" />
-              </button>
-              <button
-                v-if="doc.url_xml"
-                class="p-1.5 rounded-lg text-zinc-400 hover:text-brand-primary hover:bg-brand-primary/10 transition-colors"
-                title="Abrir XML"
-                @click.stop="abrirArquivo(doc.url_xml!)"
-              >
-                <FileCode :size="16" />
-              </button>
-              <button
-                v-if="podeConsultar(doc.status)"
-                class="p-1.5 rounded-lg text-zinc-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                title="Consultar status"
-                :disabled="consultarMutation.isPending.value"
-                @click.stop="consultarMutation.mutate(doc.id)"
-              >
-                <Search :size="16" />
-              </button>
-              <button
-                v-if="podeReemitir(doc.status)"
-                class="p-1.5 rounded-lg text-zinc-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
-                title="Reemitir"
-                :disabled="reemitirMutation.isPending.value"
-                @click.stop="reemitirMutation.mutate(doc.id)"
-              >
-                <RefreshCw :size="16" />
-              </button>
-              <button
-                v-if="podeCancelar(doc.status)"
-                class="p-1.5 rounded-lg text-zinc-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                title="Cancelar documento"
-                @click.stop="abrirCancelarModal(doc.id)"
-              >
-                <Ban :size="16" />
-              </button>
+          <td class="px-4 md:px-6 py-3 md:py-4 text-right">
+            <div class="flex items-center justify-end h-full">
+              <div class="hidden group-hover:flex items-center justify-end gap-1">
+                <button
+                  v-if="doc.url_pdf"
+                  type="button"
+                  class="p-2 rounded-lg text-zinc-400 hover:text-brand-primary hover:bg-brand-primary/10 transition-colors cursor-pointer"
+                  title="Abrir PDF"
+                  @click.stop="abrirArquivo(doc.url_pdf!)"
+                >
+                  <FileText :size="18" />
+                </button>
+                <button
+                  v-if="doc.url_xml"
+                  type="button"
+                  class="p-2 rounded-lg text-zinc-400 hover:text-brand-primary hover:bg-brand-primary/10 transition-colors cursor-pointer"
+                  title="Abrir XML"
+                  @click.stop="abrirArquivo(doc.url_xml!)"
+                >
+                  <FileCode :size="18" />
+                </button>
+                <button
+                  v-if="podeConsultar(doc.status)"
+                  type="button"
+                  class="p-2 rounded-lg text-zinc-400 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer"
+                  title="Consultar status"
+                  :disabled="consultarMutation.isPending.value"
+                  @click.stop="consultarMutation.mutate(doc.id)"
+                >
+                  <Search :size="18" />
+                </button>
+                <button
+                  v-if="podeReemitir(doc.status)"
+                  type="button"
+                  class="p-2 rounded-lg text-zinc-400 hover:text-amber-600 hover:bg-amber-50 transition-colors cursor-pointer"
+                  title="Reemitir"
+                  :disabled="reemitirMutation.isPending.value"
+                  @click.stop="reemitirMutation.mutate(doc.id)"
+                >
+                  <RefreshCw :size="18" />
+                </button>
+                <button
+                  v-if="podeCancelar(doc.status)"
+                  type="button"
+                  class="p-2 rounded-lg text-zinc-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+                  title="Cancelar documento"
+                  @click.stop="abrirCancelarModal(doc.id)"
+                >
+                  <Ban :size="18" />
+                </button>
+              </div>
+              <div class="p-2 text-zinc-400 group-hover:hidden cursor-pointer">
+                <Ellipsis :size="20" />
+              </div>
             </div>
           </td>
         </tr>

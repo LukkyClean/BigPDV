@@ -30,6 +30,11 @@ function toggle() {
   isExpanded.value = !isExpanded.value;
 }
 
+function handleParentClick() {
+  isExpanded.value = true;
+  router.push({ name: props.id });
+}
+
 function navigateTo(childId: string) {
   router.push({ name: childId });
 }
@@ -37,26 +42,34 @@ function navigateTo(childId: string) {
 
 <template>
   <div>
-    <!-- Item pai (toggle expand) -->
-    <button
-      @click="toggle"
+    <!-- Item pai (navega para a rota pai e expande) -->
+    <div
+      @click="handleParentClick"
       class="w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 group cursor-pointer"
       :class="[
-        isGroupActive
-          ? 'bg-brand-primary/10 text-white'
-          : 'text-zinc-400 hover:bg-zinc-800 hover:text-white',
+        activeTab === id
+          ? 'bg-brand-primary text-white shadow-lg shadow-brand-primary/15'
+          : isGroupActive
+            ? 'bg-brand-primary/10 text-white'
+            : 'text-zinc-400 hover:bg-zinc-800 hover:text-white',
       ]"
     >
       <div class="flex items-center space-x-3">
         <component :is="icon" :size="20" />
         <span class="font-medium text-sm">{{ label }}</span>
       </div>
-      <ChevronDown
-        :size="16"
-        class="transition-transform duration-200"
-        :class="isExpanded ? 'rotate-180' : ''"
-      />
-    </button>
+      <button
+        type="button"
+        @click.stop="toggle"
+        class="p-1 -mr-1 rounded hover:bg-white/10 transition-colors"
+      >
+        <ChevronDown
+          :size="16"
+          class="transition-transform duration-200"
+          :class="isExpanded ? 'rotate-180' : ''"
+        />
+      </button>
+    </div>
 
     <!-- Children (sub-items) -->
     <Transition name="expand">

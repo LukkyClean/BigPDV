@@ -125,6 +125,14 @@ export interface FiscalConfiguracao {
   mock_ativo: boolean;
   certificado_configurado: boolean;
   certificado_valido: boolean;
+  certificado_status?: string | null;
+  certificado_cnpj?: string | null;
+  serie_nfe?: number;
+  ultimo_numero_nfe?: number;
+  serie_nfce?: number;
+  ultimo_numero_nfce?: number;
+  csc_token?: string | null;
+  csc_id?: string | null;
 }
 export interface EmissaoPreviewItem {
   numero_item: number;

@@ -57,6 +57,14 @@ class FiscalConfiguracao(BaseModel):
     mock_ativo: bool
     certificado_configurado: bool
     certificado_valido: bool
+    certificado_status: Optional[str] = None
+    certificado_cnpj: Optional[str] = None
+    serie_nfe: Optional[int] = 1
+    ultimo_numero_nfe: Optional[int] = 0
+    serie_nfce: Optional[int] = 1
+    ultimo_numero_nfce: Optional[int] = 0
+    csc_token: Optional[str] = None
+    csc_id: Optional[str] = None
 
 
 class EmissaoPreviewItem(BaseModel):

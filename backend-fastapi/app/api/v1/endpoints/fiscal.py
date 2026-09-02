@@ -378,10 +378,10 @@ def obter_configuracao(
 
     ambiente = fs.ambiente_emissao if fs else 2
     cert_configurado = bool(
-        fs and (fs.certificado_digital_path or fs.certificado_thumbprint)
+        fs and (fs.certificado_digital_path or fs.certificado_thumbprint or fs.tipo_certificado == "NUVEM" or fs.certificado_status == "CONECTADO_NUVEM")
     )
     cert_valido = bool(
-        cert_configurado and fs.certificado_validade and fs.certificado_validade > datetime.now()
+        cert_configurado and fs.certificado_validade and fs.certificado_validade.replace(tzinfo=None) > datetime.now()
     )
 
     return FiscalConfiguracao(
@@ -390,4 +390,71 @@ def obter_configuracao(
         mock_ativo=settings.FISCAL_MOCK_ENABLED or ambiente == 2,
         certificado_configurado=cert_configurado,
         certificado_valido=cert_valido,
+        certificado_status=fs.certificado_status if fs else None,
+        certificado_cnpj=fs.certificado_cnpj if fs else None,
+        serie_nfe=fs.serie_nfe if fs else 1,
+        ultimo_numero_nfe=fs.ultimo_numero_nfe if fs else 0,
+        serie_nfce=fs.serie_nfce if fs else 1,
+        ultimo_numero_nfce=fs.ultimo_numero_nfce if fs else 0,
+        csc_token=fs.csc_token if fs else None,
+        csc_id=fs.csc_id if fs else None,
     )
+
+from app.schemas.empresa import FiscalSettingsUpdate
+from app.services.empresa import update_fiscal_settings, upload_certificado_focus
+from fastapi import UploadFile, File, Form
+
+@router.put(
+    "/configuracao",
+    response_model=FiscalConfiguracao,
+    summary="Atualizar Configuração Fiscal",
+    description="Atualiza configurações fiscais da empresa.",
+)
+def atualizar_configuracao(
+    user_token: dict = Depends(requer_modulo_fiscal),
+    *,
+    db: Session = Depends(get_db),
+    payload: FiscalSettingsUpdate = Body(...)
+):
+    empresa_id = user_token["empresa_id"]
+    fs = update_fiscal_settings(db, empresa_id, payload)
+    
+    ambiente = fs.ambiente_emissao if fs else 2
+    cert_configurado = bool(
+        fs and (fs.certificado_digital_path or fs.certificado_thumbprint or fs.tipo_certificado == "NUVEM" or fs.certificado_status == "CONECTADO_NUVEM")
+    )
+    cert_valido = bool(
+        cert_configurado and fs.certificado_validade and fs.certificado_validade.replace(tzinfo=None) > datetime.now()
+    )
+
+    return FiscalConfiguracao(
+        ambiente=ambiente,
+        ambiente_label="Homologação" if ambiente == 2 else "Produção",
+        mock_ativo=settings.FISCAL_MOCK_ENABLED or ambiente == 2,
+        certificado_configurado=cert_configurado,
+        certificado_valido=cert_valido,
+        certificado_status=fs.certificado_status if fs else None,
+        certificado_cnpj=fs.certificado_cnpj if fs else None,
+        serie_nfe=fs.serie_nfe if fs else 1,
+        ultimo_numero_nfe=fs.ultimo_numero_nfe if fs else 0,
+        serie_nfce=fs.serie_nfce if fs else 1,
+        ultimo_numero_nfce=fs.ultimo_numero_nfce if fs else 0,
+        csc_token=fs.csc_token if fs else None,
+        csc_id=fs.csc_id if fs else None,
+    )
+
+@router.post(
+    "/certificado/upload-focus",
+    summary="Upload de Certificado para a Nuvem",
+    description="Envia o certificado para a API da Focus NFe (simulado) e atualiza o status."
+)
+def upload_certificado_focus_endpoint(
+    user_token: dict = Depends(requer_modulo_fiscal),
+    *,
+    db: Session = Depends(get_db),
+    file: UploadFile = File(...),
+    senha: str = Form(...)
+):
+    empresa_id = user_token["empresa_id"]
+    upload_certificado_focus(db, empresa_id, file, senha)
+    return {"message": "Certificado enviado e configurado com sucesso."}

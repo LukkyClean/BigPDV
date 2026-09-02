@@ -81,7 +81,19 @@ const homeRoutes: RouteRecordRaw[] = [
         children: [
           {
             path: '',
-            redirect: { name: 'fiscal-nfe' },
+            name: 'fiscal',
+            component: () => import('@/modules/fiscal/views/FiscalConfiguracoesView.vue'),
+            meta: {
+              title: 'Centro Fiscal',
+              subtitle: 'Certificado e Ambientes de Emissão',
+              tabId: 'fiscal',
+              requiresAuth: true,
+            },
+          },
+          {
+            path: 'configuracoes',
+            name: 'fiscal-configuracoes',
+            redirect: { name: 'fiscal' },
           },
           {
             path: 'nfe',

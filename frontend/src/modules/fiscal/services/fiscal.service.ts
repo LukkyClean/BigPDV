@@ -119,6 +119,14 @@ export const fiscalService = {
     return data;
   },
 
+  async atualizarConfiguracao(payload: Partial<FiscalConfiguracao>): Promise<FiscalConfiguracao> {
+    const { data } = await api.put<FiscalConfiguracao>(
+      `${FISCAL_ENDPOINT}/configuracao`,
+      payload,
+    );
+    return data;
+  },
+
   async emitirNfeBatch(vendaIds: number[]): Promise<EmissaoBatchResponse> {
     const { data } = await api.post<EmissaoBatchResponse>(
       `${FISCAL_ENDPOINT}/emitir/nfe/batch`,

@@ -154,6 +154,16 @@ class EmpresaFiscalSettings(Base):
         nullable=True,
         doc="Senha do certificado digital A1 (Criptografada com Fernet)"
     )
+    certificado_status: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        doc="Status da conexão do certificado. Ex: CONECTADO_NUVEM, ERRO, etc."
+    )
+    certificado_cnpj: Mapped[Optional[str]] = mapped_column(
+        String(14),
+        nullable=True,
+        doc="CNPJ extraído do certificado (somente números)"
+    )
 
     # --- Metadados ---
     data_criacao: Mapped[datetime] = mapped_column(
