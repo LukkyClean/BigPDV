@@ -48,6 +48,43 @@ ATRASO_INICIAL_SYNC_SEGUNDOS = 300
 INTERVALO_SYNC_SEGUNDOS = 3600
 
 
+# De hora em hora. Nao precisa ser mais rapido: o dinheiro cai na conta em D+n,
+# e uma hora de atraso num deposito de ontem nao muda decisao nenhuma. Mais
+# lento perderia a virada do dia numa loja que fica aberta ate tarde.
+INTERVALO_BAIXA_AUTOMATICA_SEGUNDOS = 3600
+
+
+async def _loop_baixa_automatica():
+    """Entra o dinheiro das cobrancas que o dono declarou que caem sozinhas.
+
+    RODA ANTES DO PRIMEIRO SLEEP, de proposito: e no boot que ela recupera o
+    que passou. Loja fecha na sexta e abre na segunda -- as cobrancas de sabado
+    e domingo entram todas no boot de segunda, porque a consulta e por
+    "vencimento <= hoje" e nao "vencimento = hoje".
+
+    So alcanca o que nasceu marcado, que e cartao com prazo declarado na forma
+    de pagamento. Fiado nunca entra sozinho: cliente nao paga por agendamento.
+    """
+    from app.services import financeiro_receber as receber_service
+
+    while True:
+        try:
+            db = SessionLocal()
+            try:
+                quantidade = receber_service.baixar_automaticas(db)
+                if quantidade:
+                    logger.info(
+                        "Baixa automatica: %d cobranca(s) entraram no caixa.",
+                        quantidade,
+                    )
+            finally:
+                db.close()
+        except Exception:
+            logger.exception("Erro na baixa automatica de recebimentos")
+
+        await asyncio.sleep(INTERVALO_BAIXA_AUTOMATICA_SEGUNDOS)
+
+
 async def _loop_limpeza_temporal():
     """Loop em segundo plano que executa a limpeza periodicamente."""
     while True:
@@ -278,6 +315,9 @@ async def lifespan(app: FastAPI):
     aplicar_migracoes()
     _seed_formas_pagamento()
     _seed_contador_venda()
+    print("Iniciando tarefa de baixa automatica de recebimentos...")
+    tarefa_baixa_automatica = asyncio.create_task(_loop_baixa_automatica())
+
     print("Iniciando tarefa de limpeza automatica temporal...")
     tarefa_limpeza = asyncio.create_task(_loop_limpeza_temporal())
 
@@ -306,12 +346,14 @@ async def lifespan(app: FastAPI):
     await asyncio.to_thread(stop_discovery)
     
     print("Encerrando tarefas em segundo plano...")
+    tarefa_baixa_automatica.cancel()
     tarefa_limpeza.cancel()
     tarefa_backup.cancel()
     tarefa_cloud_sync.cancel()
     tarefa_heartbeat.cancel()
     tarefa_renovacao.cancel()
-    for tarefa in (tarefa_limpeza, tarefa_backup, tarefa_cloud_sync, tarefa_heartbeat, tarefa_renovacao):
+    for tarefa in (tarefa_baixa_automatica, tarefa_limpeza, tarefa_backup,
+                   tarefa_cloud_sync, tarefa_heartbeat, tarefa_renovacao):
         try:
             await tarefa
         except asyncio.CancelledError:

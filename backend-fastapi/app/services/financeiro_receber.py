@@ -15,6 +15,7 @@ acima de ~55 KB, quebrando a geração do sidecar. O corte seguiu as seções qu
 já existiam no arquivo — nenhuma regra mudou de lugar dentro delas.
 """
 
+import logging
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -44,6 +45,8 @@ from app.services.financeiro import (
     _funcionario_do_token,
 )
 
+logger = logging.getLogger(__name__)
+
 
 # ===========================================================================
 # CONTAS A RECEBER — geração a partir da promessa
@@ -56,6 +59,45 @@ def _nome_do_cliente(cliente) -> Optional[str]:
     return getattr(cliente, "nome", None) if cliente else None
 
 
+def _prazo_da_forma(pagamento) -> int:
+    forma = getattr(pagamento, "forma_pagamento", None)
+    return int(getattr(forma, "dias_para_receber", 0) or 0)
+
+
+def aplicar_prazo_de_recebimento(db: Session, pagamentos) -> None:
+    """Carimba no pagamento o vencimento que a FORMA declarou.
+
+    Dinheiro de cartao nao esta na conta no dia da venda -- a maquininha
+    deposita depois. Quem sabe em quantos dias e o dono, e ele declara isso uma
+    vez na forma de pagamento em vez de digitar a data em toda venda.
+
+    RODA ANTES de tudo que lanca, e e por isso que ela existe como passo
+    separado: `registrar_pagamentos_de_*` e `registrar_promessas_de_*` ja sabem
+    ler `pagamento.vencimento` ("promessa: e conta a receber, nao gaveta"), e as
+    duas continuam sem saber que prazo existe. O carimbo so preenche a data que
+    o operador nao digitou.
+
+    NAO SOBRESCREVE DATA DIGITADA. Se alguem combinou um vencimento especifico
+    com o cliente, quem manda e ele -- a forma so diz o padrao.
+
+    Prazo zero (o padrao de toda forma) nao carimba nada, e nada muda: o
+    dinheiro entra na hora, como sempre entrou.
+    """
+    hoje = hoje_local()
+    carimbou = False
+    for pagamento in pagamentos or []:
+        if pagamento.vencimento:
+            continue
+        dias = _prazo_da_forma(pagamento)
+        if dias <= 0:
+            continue
+        pagamento.vencimento = hoje + timedelta(days=dias)
+        carimbou = True
+
+    if carimbou:
+        db.flush()
+
+
 def _criar_promessa(
     db: Session,
     empresa_id: int,
@@ -66,12 +108,17 @@ def _criar_promessa(
     vencimento: date,
     venda_pagamento_id: Optional[int] = None,
     ordem_servico_pagamento_id: Optional[int] = None,
+    baixa_automatica: bool = False,
 ) -> Optional[ContaReceber]:
     """Cria a conta a receber de UM pagamento prometido.
 
     IDEMPOTENTE. Uma OS reaberta e refinalizada passa de novo pelos mesmos
     pagamentos; sem a checagem, a dívida do cliente dobraria a cada
     refinalização. Mesma lição do `gerada_por_id` na recorrência.
+
+    `baixa_automatica` separa o CARTAO do FIADO. As duas coisas chegam aqui pelo
+    mesmo caminho, e só a primeira pode entrar sozinha no vencimento: o dono
+    declarou que a operadora deposita em D+n. Cliente não paga por agendamento.
     """
     if financeiro_crud.get_receber_do_pagamento(
         db,
@@ -92,6 +139,7 @@ def _criar_promessa(
             status=ContaReceberStatus.PENDENTE.value,
             venda_pagamento_id=venda_pagamento_id,
             ordem_servico_pagamento_id=ordem_servico_pagamento_id,
+            baixa_automatica=baixa_automatica,
         ),
     )
 
@@ -129,6 +177,10 @@ def registrar_promessas_de_venda(db: Session, venda) -> None:
             valor=pagamento.valor,
             vencimento=pagamento.vencimento,
             venda_pagamento_id=pagamento.id,
+            # Prazo declarado na forma = dinheiro de operadora, que cai sozinho.
+            # Sem prazo, a data veio de um acordo com o cliente: é fiado, e
+            # fiado nunca entra sem alguém confirmar.
+            baixa_automatica=_prazo_da_forma(pagamento) > 0,
         )
 
 
@@ -160,6 +212,7 @@ def registrar_promessas_de_os(db: Session, ordem_servico, pagamentos) -> None:
             valor=pagamento.valor,
             vencimento=pagamento.vencimento,
             ordem_servico_pagamento_id=pagamento.id,
+            baixa_automatica=_prazo_da_forma(pagamento) > 0,
         )
 
 
@@ -494,6 +547,83 @@ def listar_historico_do_recebimento(db: Session, empresa_id: int, conta_id: int)
 # ===========================================================================
 # CONCILIAÇÃO (Onda 4)
 # ===========================================================================
+
+# ===========================================================================
+# BAIXA AUTOMÁTICA — o dinheiro da maquininha entrando no dia
+# ===========================================================================
+
+def baixar_automaticas(db: Session, hoje: Optional[date] = None) -> int:
+    """Dá baixa nas cobranças que o dono declarou que caem sozinhas. Devolve quantas.
+
+    SÓ ALCANÇA O QUE NASCEU MARCADO (`baixa_automatica`), e a marca só é posta
+    quando a FORMA de pagamento tem prazo declarado -- ou seja, dinheiro de
+    operadora. Fiado nunca entra aqui, e essa é a linha que separa "o dono
+    declarou que a maquininha deposita em D+1" de "inventar que o cliente
+    pagou".
+
+    VENCIMENTO <= HOJE, e não "= hoje". É o que faz a tarefa se recuperar
+    sozinha: a loja fecha na sexta e só abre na segunda, e as trêss cobranças do
+    fim de semana entram todas de uma vez no boot de segunda. Uma tarefa que
+    olhasse só o dia de hoje perderia todo dia em que a máquina ficou desligada
+    -- que é o defeito clássico de agendamento em máquina de loja.
+
+    IDEMPOTENTE por construção: a baixa muda o status para RECEBIDA e a consulta
+    só pega PENDENTE. Rodar duas vezes no mesmo minuto não duplica nada.
+
+    UMA FALHA NÃO DERRUBA AS OUTRAS. Cada cobrança é uma transação: se a
+    terceira tiver um problema, a primeira e a segunda já entraram e a quarta
+    ainda entra. O contrário deixaria o caixa do dia inteiro travado por causa
+    de uma linha ruim.
+    """
+    hoje = hoje or hoje_local()
+    pendentes = financeiro_crud.listar_baixas_automaticas_vencidas(db, hoje=hoje)
+    if not pendentes:
+        return 0
+
+    formas = financeiro_crud.formas_de_origem_completas(
+        db,
+        venda_pagamento_ids=[c.venda_pagamento_id for c in pendentes if c.venda_pagamento_id],
+        os_pagamento_ids=[
+            c.ordem_servico_pagamento_id for c in pendentes if c.ordem_servico_pagamento_id
+        ],
+    )
+
+    baixadas = 0
+    for conta in pendentes:
+        forma = formas.get(
+            conta.venda_pagamento_id or -1
+        ) or formas.get(conta.ordem_servico_pagamento_id or -1)
+        try:
+            receber_conta(
+                db,
+                conta.empresa_id,
+                conta.id,
+                ContaReceberBaixa(
+                    # O valor PREVISTO, sem juros. A taxa da maquininha só se
+                    # conhece no extrato, e inventá-la aqui seria pior que
+                    # deixar o dono acertar na Conciliação -- que existe
+                    # exatamente para isso e já rateia a diferença.
+                    valor_recebido=int(conta.valor or 0),
+                    recebido_em=conta.vencimento,
+                    forma_pagamento_id=getattr(forma, "id", None),
+                    # A conta que a forma declarou; NULL cai na principal.
+                    conta_bancaria_id=getattr(forma, "conta_bancaria_id", None),
+                    observacao="Baixa automática: prazo declarado na forma de pagamento.",
+                ),
+                # Sem funcionário: não houve gente. O rastro fica na observação
+                # e no histórico, e um nome inventado aqui seria pior que o vazio.
+                {},
+            )
+            db.commit()
+            baixadas += 1
+        except Exception:
+            db.rollback()
+            logger.exception(
+                "Falha na baixa automática da cobrança %s", conta.id
+            )
+
+    return baixadas
+
 
 def _formas_de_origem(db: Session, contas: Sequence[ContaReceber]) -> Dict[int, Optional[str]]:
     """Mapa conta_id -> nome da forma que originou a cobrança."""

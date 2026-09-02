@@ -609,6 +609,74 @@ def pendentes_por_vencimento(
     return pagar, receber
 
 
+def listar_baixas_automaticas_vencidas(
+    db: Session, *, hoje: date, limite: int = 500
+) -> Sequence[ContaReceber]:
+    """Cobrancas marcadas para entrar sozinhas cujo dia ja chegou.
+
+    `<= hoje` e nao `== hoje`: e o que permite a tarefa se recuperar sozinha
+    depois de um fim de semana com a maquina desligada. Ver
+    `financeiro_receber.baixar_automaticas`.
+
+    ORDENADAS PELO VENCIMENTO, da mais antiga para a mais nova, para o extrato
+    contar a historia na ordem em que ela aconteceu.
+
+    O limite existe para o primeiro boot depois de a loja declarar um prazo: se
+    houver represa, ela escoa em levas em vez de uma transacao gigante.
+    """
+    return (
+        db.query(ContaReceber)
+        .filter(
+            ContaReceber.status == ContaReceberStatus.PENDENTE.value,
+            ContaReceber.baixa_automatica.is_(True),
+            ContaReceber.vencimento <= hoje,
+        )
+        .order_by(ContaReceber.vencimento.asc(), ContaReceber.id.asc())
+        .limit(limite)
+        .all()
+    )
+
+
+def formas_de_origem_completas(
+    db: Session, *, venda_pagamento_ids: Sequence[int], os_pagamento_ids: Sequence[int]
+) -> dict:
+    """pagamento_id -> a FormaPagamento inteira (nao so o nome).
+
+    A gemea `formas_de_origem` devolve o nome, que e o que a tela mostra. A
+    baixa automatica precisa do OBJETO: e nele que estao `conta_bancaria_id` (em
+    que conta o dinheiro cai) e o proprio id, para o movimento nascer sabendo
+    como o cliente pagou.
+
+    Chave unica para os dois lados porque ids de pagamento de venda e de OS
+    vivem em tabelas diferentes e podem colidir -- quem chama sabe qual dos dois
+    a cobranca tem, e so um deles e nao-nulo em cada linha.
+    """
+    mapa: dict = {}
+
+    if venda_pagamento_ids:
+        linhas = (
+            db.query(PagamentoVenda.id, FormaPagamento)
+            .join(FormaPagamento, FormaPagamento.id == PagamentoVenda.forma_pagamento_id)
+            .filter(PagamentoVenda.id.in_(venda_pagamento_ids))
+            .all()
+        )
+        mapa.update({pid: forma for pid, forma in linhas})
+
+    if os_pagamento_ids:
+        linhas = (
+            db.query(OrdemServicoPagamento.id, FormaPagamento)
+            .join(
+                FormaPagamento,
+                FormaPagamento.id == OrdemServicoPagamento.forma_pagamento_id,
+            )
+            .filter(OrdemServicoPagamento.id.in_(os_pagamento_ids))
+            .all()
+        )
+        mapa.update({pid: forma for pid, forma in linhas})
+
+    return mapa
+
+
 def formas_de_origem(
     db: Session, *, venda_pagamento_ids: Sequence[int], os_pagamento_ids: Sequence[int]
 ) -> Tuple[dict, dict]:

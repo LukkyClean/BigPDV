@@ -15,6 +15,7 @@ import {
   HardDrive,
   Headphones,
   ShieldCheck,
+  Wallet,
 } from 'lucide-vue-next'
 
 import BaseModal from '@/shared/components/commons/BaseModal/BaseModal.vue'
@@ -42,6 +43,7 @@ import { useConfiguracoesStore } from '@/shared/stores/configuracoes.store'
 import { useImpressaoStore } from '@/shared/stores/impressao.store'
 
 import RegrasDeVendas from './sections/regras-de-vendas/components/RegrasDeVendas.vue'
+import GestaoFinanceira from './sections/gestao-financeira/components/GestaoFinanceira.vue'
 import Seguranca from './sections/seguranca/components/Seguranca.vue'
 import ProdutosEstoque from './sections/produtos-estoque/components/ProdutosEstoque.vue'
 import OrdensDeServico from './sections/ordens-de-servico/components/OrdensDeServico.vue'
@@ -274,6 +276,7 @@ async function salvar(): Promise<void> {
 const secoes: SecaoConfiguracao[] = [
   { id: 'seguranca',         label: 'Segurança',             icone: ShieldCheck },
   { id: 'regras-de-vendas',  label: 'Regras de Vendas',      icone: Tag },
+  { id: 'gestao-financeira', label: 'Gestão Financeira',      icone: Wallet },
   { id: 'produtos-estoque',  label: 'Produtos e Estoque',    icone: Package },
   { id: 'ordens-de-servico', label: 'Ordens de Serviço',     icone: ClipboardList },
   { id: 'clientes-cadastro', label: 'Clientes e Cadastro',   icone: Users },
@@ -288,6 +291,7 @@ const secoes: SecaoConfiguracao[] = [
 const componenteMap: Record<SecaoId, Component> = {
   'seguranca':         Seguranca,
   'regras-de-vendas':  RegrasDeVendas,
+  'gestao-financeira': GestaoFinanceira,
   'produtos-estoque':  ProdutosEstoque,
   'ordens-de-servico': OrdensDeServico,
   'clientes-cadastro': ClientesCadastro,

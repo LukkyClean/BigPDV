@@ -437,13 +437,20 @@ def finish_sale(
     # Precisa vir DEPOIS do flush dos pagamentos, senao eles ainda nao teriam id
     # para o movimento apontar.
     db.flush()
+
+    # ANTES de qualquer coisa lancar: carimba o vencimento que a FORMA declarou.
+    # Cartao com prazo declarado nao entra na gaveta hoje -- a maquininha
+    # deposita em D+n, e a partir daqui as duas funcoes abaixo ja sabem tratar
+    # isso como promessa, sem saber que prazo existe.
+    from app.services import financeiro_receber as financeiro_receber_service
+    financeiro_receber_service.aplicar_prazo_de_recebimento(db, sale_in_db.pagamentos)
+
     caixa_service.registrar_pagamentos_de_venda(db, sale_in_db, operador_funcionario_id)
 
     # O outro lado da mesma frase. `registrar_pagamentos_de_venda` PULA o
     # pagamento com vencimento futuro, porque "promessa: e conta a receber, nao
     # gaveta" -- e ate agora nada criava essa conta a receber. Roda com o caixa
     # ligado ou desligado: fiado e fiado em qualquer loja.
-    from app.services import financeiro_receber as financeiro_receber_service
     financeiro_receber_service.registrar_promessas_de_venda(db, sale_in_db)
 
     return venda_crud.update_sale(db, sale_in_db)

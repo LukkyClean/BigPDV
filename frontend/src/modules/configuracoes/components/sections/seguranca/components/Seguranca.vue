@@ -25,6 +25,7 @@ const {
 // (Segurança é sempre protegida quando há PIN; Suporte nunca é)
 const SECOES_PROTEGIVEIS = [
   { id: 'regras-de-vendas', label: 'Regras de Vendas' },
+  { id: 'gestao-financeira', label: 'Gestão Financeira' },
   { id: 'produtos-estoque', label: 'Produtos e Estoque' },
   { id: 'ordens-de-servico', label: 'Ordens de Serviço' },
   { id: 'clientes-cadastro', label: 'Clientes e Cadastro' },

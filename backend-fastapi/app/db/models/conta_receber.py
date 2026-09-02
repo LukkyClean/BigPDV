@@ -8,7 +8,7 @@ from datetime import date, datetime
 from typing import TYPE_CHECKING, Optional
 
 from sqlalchemy import (
-    CheckConstraint, Date, DateTime, ForeignKey, Integer, String, Text, func,
+    Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, String, Text, func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -62,6 +62,22 @@ class ContaReceber(Base):
     )
 
     # --- O que é ---
+    # A MARCA QUE SEPARA O CARTAO DO FIADO, e por isso mora na cobranca e nao e
+    # deduzida da forma de pagamento na hora da baixa.
+    #
+    # As duas viram conta a receber pelo mesmo caminho. O cartao com prazo
+    # declarado PODE entrar sozinho no dia (o dono ja disse que cai amanha); o
+    # fiado NAO PODE NUNCA -- cliente nao paga por agendamento, e uma baixa
+    # automatica ali inventaria dinheiro que nunca chegou.
+    #
+    # Gravada aqui, a distincao vale para sempre o que valia no dia da venda.
+    # Deduzi-la depois deixaria a baixa dependendo de ninguem ter editado a
+    # forma de pagamento no meio do caminho.
+    baixa_automatica: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0",
+        doc="O dinheiro entra sozinho no vencimento (cartao com prazo declarado)",
+    )
+
     descricao: Mapped[str] = mapped_column(
         String(255), nullable=False, doc="Ex.: 'Venda 42 — João da Silva'"
     )

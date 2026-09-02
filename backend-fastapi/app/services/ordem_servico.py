@@ -1106,6 +1106,11 @@ def finalizar_ordem_servico(
     # motivo: é neste instante que a OS fecha. Sem isto o fechamento de caixa
     # somava a origem ORDEM_SERVICO que ninguém escrevia, e a gaveta de uma loja
     # com caixa ligado fechava com sobra todo dia.
+    # ANTES de lancar: o vencimento que a FORMA declarou. Cartao com prazo nao
+    # entra na gaveta hoje -- so em D+n, quando a operadora deposita.
+    from app.services import financeiro_receber as financeiro_receber_service
+    financeiro_receber_service.aplicar_prazo_de_recebimento(db, pagamentos_criados)
+
     from app.services import sessao_caixa as caixa_service
     caixa_service.registrar_pagamentos_de_os(
         db,
@@ -1116,7 +1121,6 @@ def finalizar_ordem_servico(
 
     # E o que NÃO entrou na gaveta por ser promessa vira conta a receber. Roda
     # com o caixa ligado ou desligado — fiado é fiado em qualquer loja.
-    from app.services import financeiro_receber as financeiro_receber_service
     financeiro_receber_service.registrar_promessas_de_os(db, os_in_db, pagamentos_criados)
 
     # Aplica finalização
