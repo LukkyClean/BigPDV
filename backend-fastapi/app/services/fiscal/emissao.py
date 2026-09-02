@@ -12,9 +12,6 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
-# Fuso horário de Brasília (UTC-3) sem depender do pacote tzdata
-BRT = timezone(timedelta(hours=-3))
-
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -39,7 +36,7 @@ def _aplicar_resultado(doc: DocumentoFiscal, resultado: EmissaoResultado) -> Non
 
     if status_api == "autorizado":
         doc.status = "AUTORIZADA"
-        doc.data_autorizacao = datetime.now(BRT)
+        doc.data_autorizacao = datetime.now(timezone.utc)
     elif status_api == "processando":
         doc.status = "PROCESSANDO"
     elif status_api == "cancelado":
@@ -262,7 +259,7 @@ def emitir_nfe_venda(db: Session, venda_id: int, empresa_id: int) -> DocumentoFi
         ref_api=ref,
         ambiente_emissao=fiscal_settings.ambiente_emissao,
         valor_total=venda.total,
-        data_emissao=datetime.now(BRT),
+        data_emissao=datetime.now(timezone.utc),
     )
     # 5. Incrementar numeração (atômico na mesma transação)
     fiscal_settings.ultimo_numero_nfe = numero
@@ -431,7 +428,7 @@ def reemitir_documento(db: Session, documento_id: int, empresa_id: int) -> Docum
         ambiente_emissao=fiscal_settings.ambiente_emissao,
         valor_total=doc_anterior.valor_total,
         tentativa_anterior_id=doc_anterior.id,
-        data_emissao=datetime.now(BRT),
+        data_emissao=datetime.now(timezone.utc),
     )
     crud.salvar_documento(db, novo_doc)
 
@@ -474,7 +471,7 @@ def emitir_teste_nfe(db: Session, empresa_id: int) -> DocumentoFiscal:
         ref_api=ref,
         ambiente_emissao=2,
         valor_total=100,  # R$ 1,00 em centavos
-        data_emissao=datetime.now(BRT),
+        data_emissao=datetime.now(timezone.utc),
     )
     
     fiscal_settings.ultimo_numero_nfe = numero

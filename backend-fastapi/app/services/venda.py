@@ -5,8 +5,11 @@ from app.db.models.venda import Venda
 from app.db.models.venda_produto import ProdutoVenda
 from app.db.models.venda_pagamento import PagamentoVenda
 from app.db.models.contador_venda import ContadorVenda
-from app.schemas.vendas import VendaCreate, VendaSearchFilters, VendaStatusSummary, VendaUpdate, ProdutoVendaCreate, ProdutoVendaUpdate, PagamentoVendaCreate, VendaRead
-
+from app.schemas.venda_correcao_fiscal import VendaCorrecaoFiscalPayload
+from app.schemas.venda_nota_fiscal import VendaNotaFiscalUpdate
+from app.services import venda_nota_fiscal as venda_nota_fiscal_service
+from fastapi import HTTPException, status
+from app.db.models.documento_fiscal import DocumentoFiscal
 from app.services.cliente import cliente_exists
 from app.services.funcionario import funcionario_exists
 from app.services import produto as produto_service
@@ -389,3 +392,60 @@ def get_sales(db: Session, filters: VendaSearchFilters, page: int, limit: int = 
 
 def get_sales_status(db: Session, funcionario_id: int | None = None) -> Sequence[VendaStatusSummary]:
     return venda_crud.get_sales_status(db, funcionario_id=funcionario_id)
+
+
+def corrigir_dados_venda_fiscal(
+    db: Session, venda_id: int, payload: VendaCorrecaoFiscalPayload
+) -> Venda:
+    """
+    Atualiza dados de cliente, observações e parâmetros fiscais de uma venda.
+    Permite atualização mesmo se status for FINALIZADA ou ATIVA,
+    garantindo a invariância de valores financeiros e movimentações de estoque.
+    """
+    sale_in_db = get_sale_by_id(db, sale_id=venda_id)
+
+    # Bloqueio de segurança: não permitir alteração se já houver NF-e autorizada
+    doc_autorizado = (
+        db.query(DocumentoFiscal)
+        .filter(
+            DocumentoFiscal.origem_tipo == "VENDA",
+            (DocumentoFiscal.origem_id == sale_in_db.numero_venda) | (DocumentoFiscal.origem_id == sale_in_db.id),
+            DocumentoFiscal.status == "AUTORIZADA",
+        )
+        .first()
+    )
+    if doc_autorizado:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Não é possível alterar dados fiscais de uma venda com Nota Fiscal já autorizada pela SEFAZ.",
+        )
+
+    # 1. Validação e atualização de cliente
+    if payload.cliente_id is not None:
+        customer_in_db = cliente_exists(db, payload.cliente_id)
+        sale_in_db.cliente_id = customer_in_db.id
+    elif "cliente_id" in payload.model_fields_set and payload.cliente_id is None:
+        sale_in_db.cliente_id = None
+
+    # 2. Atualização de observações da venda
+    if payload.observacao is not None:
+        sale_in_db.observacao = payload.observacao
+    if payload.observacao_interna is not None:
+        sale_in_db.observacao_interna = payload.observacao_interna
+
+    # 3. Atualização de dados fiscais (VendaNotaFiscal) caso informados
+    campos_fiscais = ["natureza_operacao", "consumidor_final", "indicador_presenca", "finalidade_emissao"]
+    fiscal_present = any(getattr(payload, f) is not None for f in campos_fiscais)
+    if fiscal_present:
+        venda_nota_fiscal_service.upsert_dados_fiscais(
+            db,
+            venda_id,
+            VendaNotaFiscalUpdate(
+                natureza_operacao=payload.natureza_operacao,
+                consumidor_final=payload.consumidor_final,
+                indicador_presenca=payload.indicador_presenca,
+                finalidade_emissao=payload.finalidade_emissao,
+            ),
+        )
+
+    return venda_crud.update_sale(db, sale_in_db)

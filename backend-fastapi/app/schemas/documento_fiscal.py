@@ -4,9 +4,25 @@
 # ---------------------------------------------------------------------------
 
 from datetime import datetime
-from typing import Optional
-
+from typing import Optional, List
 from pydantic import BaseModel, ConfigDict
+
+
+class DocumentoItemResumo(BaseModel):
+    """Resumo de item da nota/venda para conferência fiscal."""
+
+    id: Optional[int] = None
+    produto_id: Optional[int] = None
+    nome: str
+    codigo_barras: Optional[str] = None
+    quantidade: int
+    valor_unitario: int
+    subtotal: int
+    desconto: int = 0
+    ncm: Optional[str] = None
+    cfop: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class DocumentoFiscalRead(BaseModel):
@@ -35,7 +51,15 @@ class DocumentoFiscalRead(BaseModel):
     data_emissao: Optional[datetime] = None
     data_criacao: datetime
     data_atualizacao: datetime
+    
+    # Metadados enriquecidos para o Drawer & Gestão Fiscal
+    venda_id: Optional[int] = None
+    destinatario_id: Optional[int] = None
     destinatario_nome: Optional[str] = None
+    destinatario_documento: Optional[str] = None
+    destinatario_uf: Optional[str] = None
+    destinatario_municipio: Optional[str] = None
+    itens_resumo: Optional[List[DocumentoItemResumo]] = None
 
     model_config = ConfigDict(from_attributes=True)
 

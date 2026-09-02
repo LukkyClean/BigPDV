@@ -133,6 +133,13 @@ def get_produto_by_search(
     """Intermediário para busca de produtos via CRUD."""
     return produto_crud.get_produto_by_search(db, search=produto_search, limite=limite)
 
+def get_produto_by_id(db: Session, produto_id: int) -> ProdutoModel:
+    """Busca um produto específico pelo ID."""
+    produto_in_db = produto_crud.get_produto_by_id(db, produto_id=produto_id)
+    if not produto_in_db:
+        raise not_found_exce
+    return produto_in_db
+
 def get_produto_simple_by_search(
     db: Session,
     search: str | None,

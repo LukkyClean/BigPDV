@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.core.depends import check_permission, get_db, _handle_db_transaction, is_visao_gerencial, requer_modulo_fiscal
 from app.schemas.venda_nota_fiscal import VendaNotaFiscalRead, VendaNotaFiscalUpdate
+from app.schemas.venda_correcao_fiscal import VendaCorrecaoFiscalPayload, VendaCorrecaoFiscalRead
 from app.schemas.verificacao_fiscal import ResultadoVerificacaoFiscal, ResultadoVerificacaoBatch
 from app.services import venda_nota_fiscal as venda_nota_fiscal_service
 from app.services import verificacao_fiscal as verificacao_fiscal_service
@@ -389,6 +390,32 @@ def upsert_nota_fiscal_venda(
         venda_nota_fiscal_service.upsert_dados_fiscais,
         venda_id,
         dados,
+    )
+
+
+@router.patch(
+    "/{venda_id}/correcao-fiscal",
+    response_model=VendaRead,
+    status_code=status.HTTP_200_OK,
+    summary="Correção Cadastral e Fiscal da Venda",
+    description=(
+        "Permite atualizar o cliente vinculado, observações e dados fiscais de uma venda "
+        "(inclusive no status FINALIZADA) para fins de emissão de NF-e, garantindo a "
+        "invariância dos valores financeiros e do estoque."
+    ),
+)
+def corrigir_venda_fiscal(
+    user_token: dict = Depends(check_permission(required_permission=module_permission)),
+    *,
+    venda_id: int = Path(..., ge=1, description="ID da venda"),
+    payload: VendaCorrecaoFiscalPayload,
+    db: Session = Depends(get_db),
+):
+    return _handle_db_transaction(
+        db,
+        venda_service.corrigir_dados_venda_fiscal,
+        venda_id,
+        payload,
     )
 
 

@@ -134,4 +134,9 @@ export const fiscalService = {
     );
     return data;
   },
+
+  async corrigirVendaFiscal(vendaId: number, payload: VendaCorrecaoFiscalPayload): Promise<unknown> {
+    const { data } = await api.patch(`/vendas/${vendaId}/correcao-fiscal`, payload);
+    return data;
+  },
 };

@@ -34,6 +34,14 @@ export async function getProdutos(buscar?: string, limite?: number): Promise<Pro
 }
 
 /**
+ * Obtém um produto específico pelo seu ID
+ */
+export async function getProdutoById(id: number): Promise<ProdutoRead> {
+  const { data } = await api.get<ProdutoRead>(`${BASE_URL}/${id}`);
+  return data;
+}
+
+/**
  * Cria um novo produto com estoque inicial
  * @param produto - Dados do produto
  */

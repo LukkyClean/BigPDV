@@ -10,6 +10,7 @@ import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
 import { useToast } from '@/shared/composables/useToast';
 import { getErrorMessage } from '@/shared/utils/error.utils';
 import { formatCurrency } from '@/shared/utils/finance';
+import { formatDataHora } from '@/shared/utils/date.utils';
 import type { AxiosError } from 'axios';
 import type { ApiError } from '@/shared/types/axios.types';
 
@@ -112,13 +113,7 @@ function podeConsultar(status: string): boolean {
 
 function formatarData(iso: string | null): string {
   if (!iso) return '-';
-  return new Date(iso).toLocaleDateString('pt-BR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return formatDataHora(iso);
 }
 
 function origemLabel(tipo: string, id: number | null, numeroOs: string | null): string {

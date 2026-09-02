@@ -190,6 +190,8 @@ const healthTextColor = computed(() => {
     <FiscalDocumentoDetailsDrawer
       v-model:is-open="showDetalhesDrawer"
       :documento-id="detalhesDocumentoId"
+      @reemitir="(id) => { detalhesDocumentoId = id; }"
+      @abrir-resolucao-produtos="handleAbrirResolucao"
     />
 
     <!-- Drawer de Resolução de Pendências -->

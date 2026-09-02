@@ -2,6 +2,19 @@ export type DocumentoFiscalStatus = 'PENDENTE' | 'PROCESSANDO' | 'AUTORIZADA' | 
 export type DocumentoFiscalTipo = 'NFE' | 'NFCE' | 'NFSE';
 export type DocumentoFiscalOrigem = 'VENDA' | 'ORDEM_SERVICO';
 
+export interface DocumentoItemResumo {
+  id?: number | null;
+  produto_id?: number | null;
+  nome: string;
+  codigo_barras?: string | null;
+  quantidade: number;
+  valor_unitario: number;
+  subtotal: number;
+  desconto?: number;
+  ncm?: string | null;
+  cfop?: string | null;
+}
+
 export interface DocumentoFiscalRead {
   id: number;
   tipo_documento: DocumentoFiscalTipo;
@@ -26,7 +39,25 @@ export interface DocumentoFiscalRead {
   data_emissao: string | null;
   data_criacao: string;
   data_atualizacao: string;
-  destinatario_nome: string | null;
+  
+  // Metadados enriquecidos
+  venda_id?: number | null;
+  destinatario_id?: number | null;
+  destinatario_nome?: string | null;
+  destinatario_documento?: string | null;
+  destinatario_uf?: string | null;
+  destinatario_municipio?: string | null;
+  itens_resumo?: DocumentoItemResumo[] | null;
+}
+
+export interface VendaCorrecaoFiscalPayload {
+  cliente_id?: number | null;
+  observacao?: string | null;
+  observacao_interna?: string | null;
+  natureza_operacao?: string | null;
+  consumidor_final?: boolean | null;
+  indicador_presenca?: number | null;
+  finalidade_emissao?: number | null;
 }
 
 export interface DocumentoFiscalListRead {

@@ -17,6 +17,7 @@ import { useFiscalVerificacaoBatchQuery } from '../../composables/useFiscalVerif
 import { useToast } from '@/shared/composables/useToast';
 import { formatCurrency } from '@/shared/utils/finance';
 import { formatCPF, formatCNPJ } from '@/shared/utils/document.utils';
+import { formatDataHora } from '@/shared/utils/date.utils';
 
 import type { SaleSimpleRead } from '@/modules/sales/schemas/sale.schema';
 import type { EmissaoPreviewResponse, VerificacaoBatchItem, EmissaoBatchResponse } from '../../types/fiscal.types';
@@ -39,6 +40,9 @@ const modoLote = ref(false);
 const vendasSelecionadasLote = ref<Set<number>>(new Set());
 const batchResultado = ref<EmissaoBatchResponse | null>(null);
 
+import FiscalEditarVendaModal from '../detalhes/FiscalEditarVendaModal.vue';
+import { UserPlus, UserX } from 'lucide-vue-next';
+
 // Lista de Vendas p/ emissão
 const { data, isLoading } = useSalesListQuery(
   computed(() => props.isOpen && step.value === 1 ? {
@@ -48,12 +52,21 @@ const { data, isLoading } = useSalesListQuery(
 );
 
 const todasVendas = computed(() => data.value?.vendas ?? []);
-const vendas = computed(() => todasVendas.value.filter(v => v.cliente));
-const temVendasSemCliente = computed(() => todasVendas.value.length > 0 && vendas.value.length === 0);
+const vendas = computed(() => todasVendas.value);
+const temVendasSemCliente = computed(() => todasVendas.value.some(v => !v.cliente));
 
 const vendaSelecionada = ref<SaleSimpleRead | null>(null);
 const vendaSelecionadaId = ref<number | null>(null);
 const previewData = ref<EmissaoPreviewResponse | null>(null);
+
+// Modal de edição / vinculação de cliente na venda
+const modalEditarVendaOpen = ref(false);
+const vendaParaEditar = ref<SaleSimpleRead | null>(null);
+
+function abrirVincularCliente(venda: SaleSimpleRead) {
+  vendaParaEditar.value = venda;
+  modalEditarVendaOpen.value = true;
+}
 
 const router = useRouter();
 const toast = useToast();
@@ -65,10 +78,11 @@ const previewMutation = useFiscalPreviewMutation();
 const { data: pendenciasData } = useFiscalPendenciasQuery();
 const emitenteIncompleto = computed(() => pendenciasData.value ? !pendenciasData.value.emitente_completo : false);
 
-// Verificação fiscal batch — dispara quando vendas carregam
-const vendaIds = computed(() =>
-  vendas.value.length > 0 ? vendas.value.map(v => v.id) : null,
-);
+// Verificação fiscal batch — dispara quando vendas com cliente carregam
+const vendaIds = computed(() => {
+  const comCliente = vendas.value.filter(v => v.cliente);
+  return comCliente.length > 0 ? comCliente.map(v => v.id) : null;
+});
 const { data: verificacaoBatch, isLoading: isLoadingVerificacao } = useFiscalVerificacaoBatchQuery(vendaIds);
 
 const verificacaoMap = computed(() => {
@@ -76,10 +90,11 @@ const verificacaoMap = computed(() => {
   return new Map(verificacaoBatch.value.resultados.map(r => [r.venda_id, r]));
 });
 
-type StatusVenda = 'carregando' | 'emitida' | 'processando' | 'incompleta' | 'apta' | 'rejeitada';
+type StatusVenda = 'carregando' | 'emitida' | 'processando' | 'incompleta' | 'apta' | 'rejeitada' | 'sem_cliente';
 
-function getStatusVenda(vendaId: number): StatusVenda {
-  const item = verificacaoMap.value.get(vendaId);
+function getStatusVenda(venda: SaleSimpleRead): StatusVenda {
+  if (!venda.cliente) return 'sem_cliente';
+  const item = verificacaoMap.value.get(venda.id);
   if (!item) return 'carregando';
   if (item.documento_ativo) {
     if (item.documento_ativo.status === 'AUTORIZADA') return 'emitida';
@@ -91,7 +106,7 @@ function getStatusVenda(vendaId: number): StatusVenda {
 }
 
 // --- Modo Lote helpers ---
-const vendasAptas = computed(() => vendas.value.filter(v => getStatusVenda(v.id) === 'apta'));
+const vendasAptas = computed(() => vendas.value.filter(v => getStatusVenda(v) === 'apta'));
 
 function toggleModoLote() {
   modoLote.value = !modoLote.value;
@@ -137,9 +152,13 @@ async function confirmarEmissaoLote() {
 }
 
 function handleClickVenda(venda: SaleSimpleRead) {
-  const status = getStatusVenda(venda.id);
+  const status = getStatusVenda(venda);
   const item = verificacaoMap.value.get(venda.id);
 
+  if (status === 'sem_cliente') {
+    abrirVincularCliente(venda);
+    return;
+  }
   if (status === 'emitida') {
     toast.info(
       'NF-e já emitida',
@@ -270,13 +289,8 @@ function getDocumentoCliente(venda: SaleSimpleRead): string {
 }
 
 function formatarData(iso: string): string {
-  return new Date(iso).toLocaleDateString('pt-BR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  if (!iso) return '-';
+  return formatDataHora(iso);
 }
 
 function formatDocumento(doc: string): string {
@@ -363,15 +377,16 @@ function formatDocumento(doc: string): string {
             type="button"
             class="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-left transition-all cursor-pointer disabled:cursor-default group"
             :class="{
-              'hover:bg-zinc-50': getStatusVenda(venda.id) === 'apta' && vendaSelecionadaId !== venda.id && !vendasSelecionadasLote.has(venda.id),
+              'hover:bg-zinc-50': getStatusVenda(venda) === 'apta' && vendaSelecionadaId !== venda.id && !vendasSelecionadasLote.has(venda.id),
               'bg-blue-50/70 ring-1 ring-brand-primary shadow-sm': !modoLote && vendaSelecionadaId === venda.id,
               'bg-brand-primary/5 ring-1 ring-brand-primary/40': modoLote && vendasSelecionadasLote.has(venda.id),
-              'opacity-60': getStatusVenda(venda.id) === 'emitida' || getStatusVenda(venda.id) === 'processando' || getStatusVenda(venda.id) === 'rejeitada',
-              'opacity-75': getStatusVenda(venda.id) === 'incompleta',
-              'opacity-50': getStatusVenda(venda.id) === 'carregando',
+              'opacity-60': getStatusVenda(venda) === 'emitida' || getStatusVenda(venda) === 'processando' || getStatusVenda(venda) === 'rejeitada',
+              'opacity-75': getStatusVenda(venda) === 'incompleta',
+              'bg-zinc-50/60 border border-dashed border-zinc-200': getStatusVenda(venda) === 'sem_cliente',
+              'opacity-50': getStatusVenda(venda) === 'carregando',
             }"
             :disabled="previewMutation.isPending.value || emitenteIncompleto || isLoadingVerificacao"
-            @click="modoLote && getStatusVenda(venda.id) === 'apta' ? toggleLoteVenda(venda.id) : handleClickVenda(venda)"
+            @click="modoLote && getStatusVenda(venda) === 'apta' ? toggleLoteVenda(venda.id) : handleClickVenda(venda)"
           >
             <!-- Checkbox no modo lote -->
             <div v-if="modoLote" class="shrink-0">
@@ -379,17 +394,22 @@ function formatDocumento(doc: string): string {
                 class="w-5 h-5 rounded border-2 flex items-center justify-center transition-colors"
                 :class="vendasSelecionadasLote.has(venda.id)
                   ? 'bg-brand-primary border-brand-primary'
-                  : getStatusVenda(venda.id) === 'apta'
+                  : getStatusVenda(venda) === 'apta'
                     ? 'border-zinc-300'
-                    : 'border-zinc-200 bg-zinc-50'"
+                    : 'border-zinc-200 bg-zinc-50 cursor-not-allowed'"
               >
                 <svg v-if="vendasSelecionadasLote.has(venda.id)" class="w-3 h-3 text-white" viewBox="0 0 12 12" fill="none">
                   <path d="M2.5 6L5 8.5L9.5 3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
               </div>
             </div>
-            <div v-else class="w-9 h-9 rounded-full bg-brand-primary/10 flex items-center justify-center shrink-0">
-              <User :size="16" class="text-brand-primary" />
+            <div
+              v-else
+              class="w-9 h-9 rounded-full flex items-center justify-center shrink-0"
+              :class="getStatusVenda(venda) === 'sem_cliente' ? 'bg-amber-100/80 text-amber-700' : 'bg-brand-primary/10 text-brand-primary'"
+            >
+              <UserX v-if="getStatusVenda(venda) === 'sem_cliente'" :size="16" />
+              <User v-else :size="16" />
             </div>
             <div class="flex-1 min-w-0">
               <div class="flex items-center justify-between gap-2">
@@ -399,29 +419,48 @@ function formatDocumento(doc: string): string {
                   </p>
                   <!-- Badge de status fiscal -->
                   <span
-                    v-if="getStatusVenda(venda.id) === 'emitida'"
+                    v-if="getStatusVenda(venda) === 'sem_cliente'"
+                    class="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold whitespace-nowrap shrink-0"
+                  >
+                    Consumidor Balcão
+                  </span>
+                  <span
+                    v-else-if="getStatusVenda(venda) === 'emitida'"
                     class="text-[10px] px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 font-medium whitespace-nowrap shrink-0"
                   >NF-e Emitida</span>
                   <span
-                    v-else-if="getStatusVenda(venda.id) === 'processando'"
+                    v-else-if="getStatusVenda(venda) === 'processando'"
                     class="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium whitespace-nowrap shrink-0"
                   >Processando</span>
                   <span
-                    v-else-if="getStatusVenda(venda.id) === 'rejeitada'"
+                    v-else-if="getStatusVenda(venda) === 'rejeitada'"
                     class="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 font-medium whitespace-nowrap shrink-0"
                   >Rejeitada</span>
                   <span
-                    v-else-if="getStatusVenda(venda.id) === 'incompleta'"
+                    v-else-if="getStatusVenda(venda) === 'incompleta'"
                     class="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium whitespace-nowrap shrink-0"
                   >{{ verificacaoMap.get(venda.id)?.pendencias.length }} pendência(s)</span>
                 </div>
-                <span class="text-sm font-bold text-zinc-800 whitespace-nowrap group-hover:text-brand-primary transition-colors">
-                  {{ formatCurrency(venda.total) }}
-                </span>
+
+                <div class="flex items-center gap-2 shrink-0">
+                  <button
+                    v-if="getStatusVenda(venda) === 'sem_cliente'"
+                    type="button"
+                    @click.stop="abrirVincularCliente(venda)"
+                    class="text-[11px] font-semibold text-brand-primary bg-blue-50 border border-blue-200 hover:bg-blue-100 rounded-lg px-2.5 py-1 flex items-center gap-1 transition-colors cursor-pointer"
+                  >
+                    <UserPlus class="h-3.5 w-3.5" />
+                    Vincular Cliente
+                  </button>
+                  <span class="text-sm font-bold text-zinc-800 whitespace-nowrap group-hover:text-brand-primary transition-colors">
+                    {{ formatCurrency(venda.total) }}
+                  </span>
+                </div>
               </div>
               <p class="text-xs text-zinc-400 truncate mt-0.5">
                 Venda #{{ venda.numero_venda ?? venda.id }}
                 <template v-if="getDocumentoCliente(venda)"> · {{ getDocumentoCliente(venda) }}</template>
+                <template v-else-if="getStatusVenda(venda) === 'sem_cliente'"> · Sem cliente cadastrado (exige cliente p/ NF-e)</template>
                 · {{ formatarData(venda.criado_em) }}
               </p>
             </div>
@@ -429,14 +468,7 @@ function formatDocumento(doc: string): string {
         </template>
         <template v-else>
           <div class="py-12 text-center text-sm text-zinc-500">
-            <template v-if="temVendasSemCliente">
-              <AlertTriangle :size="20" class="mx-auto mb-2 text-amber-400" />
-              <p>Todas as vendas encontradas estão <strong>sem cliente vinculado</strong>.</p>
-              <p class="text-xs text-zinc-400 mt-1">Para emitir NF-e, a venda precisa ter um destinatário (cliente PF ou PJ).</p>
-            </template>
-            <template v-else>
-              Nenhuma venda encontrada para os filtros.
-            </template>
+            Nenhuma venda encontrada para os filtros.
           </div>
         </template>
       </div>
@@ -768,4 +800,18 @@ function formatDocumento(doc: string): string {
       </div>
     </template>
   </BaseModal>
+
+  <!-- Modal de Edição / Vinculação de Cliente -->
+  <FiscalEditarVendaModal
+    v-if="vendaParaEditar"
+    :is-open="modalEditarVendaOpen"
+    :venda-id="vendaParaEditar.id"
+    :numero-venda="vendaParaEditar.numero_venda ?? vendaParaEditar.id"
+    :cliente-atual-id="vendaParaEditar.cliente?.id ?? null"
+    @close="modalEditarVendaOpen = false"
+    @saved="() => {
+      modalEditarVendaOpen = false;
+      toast.success('Cliente vinculado à venda com sucesso!');
+    }"
+  />
 </template>

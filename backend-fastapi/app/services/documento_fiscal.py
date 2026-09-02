@@ -3,20 +3,95 @@
 # DESCRIÇÃO: CRUD e consultas para documentos fiscais do Centro Fiscal.
 # ---------------------------------------------------------------------------
 
-from typing import Optional
-
+from typing import Optional, List
 from fastapi import HTTPException, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.db.models.documento_fiscal import DocumentoFiscal
+from app.db.models.venda import Venda
+from app.db.models.cliente import Cliente, ClientePF, ClientePJ
 from app.db.crud import fiscal as fiscal_crud
 from app.schemas.documento_fiscal import (
     DocumentoFiscalHistorico,
     DocumentoFiscalListRead,
     DocumentoFiscalRead,
     DocumentoFiscalResumo,
+    DocumentoItemResumo,
 )
+
+
+def _hidratar_documento_com_venda(db: Session, doc: DocumentoFiscal) -> DocumentoFiscalRead:
+    """Hidrata DocumentoFiscalRead com dados enriquecidos de venda, cliente e itens."""
+    doc_read = DocumentoFiscalRead.model_validate(doc)
+
+    if doc.origem_tipo == "VENDA" and doc.origem_id is not None:
+        venda = (
+            db.query(Venda)
+            .filter(Venda.numero_venda == doc.origem_id)
+            .first()
+        )
+        if not venda:
+            venda = db.query(Venda).filter(Venda.id == doc.origem_id).first()
+
+        if venda:
+            doc_read.venda_id = venda.id
+            if venda.cliente_id:
+                doc_read.destinatario_id = venda.cliente_id
+                cliente = db.query(Cliente).filter(Cliente.id == venda.cliente_id).first()
+                if cliente:
+                    if cliente.tipo and cliente.tipo.value == "PF":
+                        pf = db.query(ClientePF).filter(ClientePF.id == cliente.id).first()
+                        if pf:
+                            doc_read.destinatario_nome = pf.nome
+                            doc_read.destinatario_documento = pf.cpf
+                    elif cliente.tipo and cliente.tipo.value == "PJ":
+                        pj = db.query(ClientePJ).filter(ClientePJ.id == cliente.id).first()
+                        if pj:
+                            doc_read.destinatario_nome = pj.razao_social or pj.nome_fantasia
+                            doc_read.destinatario_documento = pj.cnpj
+
+                    end = cliente.endereco[0] if isinstance(cliente.endereco, list) and cliente.endereco else (cliente.endereco if hasattr(cliente.endereco, "estado") else None)
+                    if end:
+                        doc_read.destinatario_uf = (
+                            end.estado.value
+                            if hasattr(end.estado, "value")
+                            else str(end.estado)
+                        )
+                        doc_read.destinatario_municipio = end.cidade
+            else:
+                doc_read.destinatario_nome = "Consumidor Final"
+
+            # Itens da venda para conferência fiscal
+            itens_list = []
+            for item in venda.itens:
+                ncm = None
+                cfop = None
+                cod_barras = None
+                nome_prod = item.descricao_avulsa or (item.produto.nome if item.produto else "Item")
+                if item.produto:
+                    cod_barras = item.produto.codigo_barras
+                    if item.produto.fiscal:
+                        ncm = item.produto.fiscal.ncm
+                        cfop = item.produto.fiscal.cfop_padrao
+
+                itens_list.append(
+                    DocumentoItemResumo(
+                        id=item.id,
+                        produto_id=item.produto_id,
+                        nome=nome_prod,
+                        codigo_barras=cod_barras,
+                        quantidade=item.quantidade,
+                        valor_unitario=item.valor_unitario,
+                        subtotal=item.subtotal,
+                        desconto=item.desconto or 0,
+                        ncm=ncm,
+                        cfop=cfop,
+                    )
+                )
+            doc_read.itens_resumo = itens_list
+
+    return doc_read
 
 
 def listar_documentos(
@@ -60,19 +135,7 @@ def listar_documentos(
         .all()
     )
 
-    # Buscar nomes dos destinatários via camada CRUD
-    numeros_venda = [
-        item.origem_id for item in items
-        if item.origem_tipo == "VENDA" and item.origem_id is not None
-    ]
-    nomes_map = fiscal_crud.get_nomes_destinatarios_por_vendas(db, numeros_venda)
-
-    docs = []
-    for item in items:
-        doc = DocumentoFiscalRead.model_validate(item)
-        if item.origem_tipo == "VENDA" and item.origem_id:
-            doc.destinatario_nome = nomes_map.get(item.origem_id, "Consumidor Final")
-        docs.append(doc)
+    docs = [_hidratar_documento_com_venda(db, item) for item in items]
 
     return DocumentoFiscalListRead(
         items=docs,
@@ -82,14 +145,14 @@ def listar_documentos(
     )
 
 
-def obter_documento(db: Session, documento_id: int) -> DocumentoFiscal:
+def obter_documento(db: Session, documento_id: int) -> DocumentoFiscalRead:
     doc = db.query(DocumentoFiscal).filter(DocumentoFiscal.id == documento_id).first()
     if not doc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Documento fiscal não encontrado.",
         )
-    return doc
+    return _hidratar_documento_com_venda(db, doc)
 
 
 def obter_resumo(db: Session) -> DocumentoFiscalResumo:
@@ -110,9 +173,13 @@ def obter_resumo(db: Session) -> DocumentoFiscalResumo:
 
 
 def reemitir_documento(db: Session, documento_id: int) -> DocumentoFiscal:
-    """Mantido para retrocompatibilidade — delega para emissao.reemitir_documento."""
-    from app.services.fiscal.emissao import reemitir_documento as _reemitir
-    doc = obter_documento(db, documento_id)
+    """Cria nova tentativa de emissão encadeada para um documento rejeitado/denegado."""
+    doc = db.query(DocumentoFiscal).filter(DocumentoFiscal.id == documento_id).first()
+    if not doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Documento fiscal não encontrado.",
+        )
 
     if doc.status not in ("REJEITADA", "DENEGADA"):
         raise HTTPException(
@@ -120,11 +187,7 @@ def reemitir_documento(db: Session, documento_id: int) -> DocumentoFiscal:
             detail="Apenas documentos rejeitados ou denegados podem ser reemitidos.",
         )
 
-    # Extrair empresa_id do contexto (o caller já validou via requer_modulo_fiscal)
-    # Como não temos empresa_id aqui, criamos a nova tentativa manualmente
-    from app.db.models.empresa_fiscal_settings import EmpresaFiscalSettings
     import uuid
-
     novo_doc = DocumentoFiscal(
         tipo_documento=doc.tipo_documento,
         origem_tipo=doc.origem_tipo,
@@ -145,11 +208,11 @@ def reemitir_documento(db: Session, documento_id: int) -> DocumentoFiscal:
 
 
 def obter_historico_tentativas(db: Session, documento_id: int) -> DocumentoFiscalHistorico:
-    """Retorna cadeia completa de tentativas (do mais recente ao mais antigo)."""
+    """Retorna cadeia completa de tentativas (do mais recente ao mais antigo) hidratada."""
     from app.services.fiscal.emissao import obter_historico_tentativas as _historico
 
     tentativas_models = _historico(db, documento_id)
-    tentativas = [DocumentoFiscalRead.model_validate(t) for t in tentativas_models]
+    tentativas = [_hidratar_documento_com_venda(db, t) for t in tentativas_models]
 
     return DocumentoFiscalHistorico(
         tentativas=tentativas,

@@ -121,7 +121,25 @@ def get_produto_simple_by_search(
         produto_service.get_produto_simple_by_search,
         search,
         limite
+    )
+
+@router.get(
+    "/{produto_id}",
+    response_model=ProdutoRead,
+    status_code=status.HTTP_200_OK,
+    summary="Obter Produto por ID",
+    description="Retorna os dados cadastrais e de estoque de um produto específico."
 )
+def get_produto_by_id(
+    user_token: dict = Depends(check_permission(required_permission="produto")),
+    produto_id: int = Path(..., description="ID do produto", ge=1),
+    db: Session = Depends(get_db)
+):
+    return _handle_db_transaction(
+        db,
+        produto_service.get_produto_by_id,
+        produto_id
+    )
 
 # ===========================================================================
 # ROTAS DE ATUALIZAÇÃO (PUT)
