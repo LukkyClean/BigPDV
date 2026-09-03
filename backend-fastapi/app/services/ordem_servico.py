@@ -18,6 +18,7 @@ from datetime import datetime, date
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.tempo import agora_utc
 from app.schemas.ordem_servico import (
     OrdemServicoCreate,
     OrdemServicoUpdate,
@@ -933,7 +934,7 @@ def finalizar_ordem_servico(
     # (UTC-3), uma OS finalizada depois das 21h caía no dia seguinte pela régua
     # do relatório — e desde que o faturamento passou a ancorar em
     # data_finalizacao, isso virou dinheiro no dia errado.
-    os_in_db.data_finalizacao = datetime.utcnow()
+    os_in_db.data_finalizacao = agora_utc()
 
     if data.observacoes:
         os_in_db.observacoes = data.observacoes

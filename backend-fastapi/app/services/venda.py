@@ -379,12 +379,11 @@ def finish_sale(db: Session, sale_id: int, payments: Sequence[PagamentoVendaCrea
             sale_in_db = _aplly_discount(sale_in_db=sale_in_db, discount=0)
             sale_in_db = _recalc_total_sale(db, sale_in_db)
 
-    # Atribui número sequencial oficial
-    contador = db.query(ContadorVenda).filter(ContadorVenda.id == 1).with_for_update().first()
-    if not contador:
+    # Atribui número sequencial oficial (reserva atômica — ver o crud)
+    numero_reservado = venda_crud.reservar_proximo_numero_venda(db)
+    if numero_reservado is None:
         raise InternalServerException(detail="Contador de vendas não inicializado. Contate o suporte.")
-    sale_in_db.numero_venda = contador.proximo_numero
-    contador.proximo_numero += 1
+    sale_in_db.numero_venda = numero_reservado
 
     products_in_db = sale_in_db.itens
 

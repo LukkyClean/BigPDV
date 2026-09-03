@@ -9,6 +9,9 @@ from calendar import monthrange
 
 from sqlalchemy.orm import Session
 
+from app.core.tempo import (
+    agora_utc, fim_do_dia_utc, hoje_local, inicio_do_dia_utc,
+)
 from app.db.crud import dashboard as dashboard_crud
 from app.db.crud import relatorio as relatorio_crud
 from app.schemas.dashboard import (
@@ -48,27 +51,32 @@ from app.schemas.dashboard import (
 def _calcular_periodo(periodo: str) -> tuple[datetime, datetime, datetime, datetime]:
     """
     Retorna (inicio_atual, fim_atual, inicio_anterior, fim_anterior) em UTC.
-    O SQLite armazena timestamps via func.now() em UTC, entao todas as
-    comparacoes devem usar UTC para evitar divergencias de fuso horario.
+
+    Os limites nascem do calendario LOCAL da loja e sao convertidos para UTC,
+    que e como o banco grava. Definir o dia pelo calendario UTC fazia o painel
+    virar de dia as 21h no horario de Brasilia: o card "hoje" passava a mostrar
+    apenas os minutos decorridos desde 00h UTC, e o movimento acumulado do dia
+    migrava para o card do dia anterior.
     """
-    agora = datetime.utcnow()
-    hoje = agora.date()
+    agora = agora_utc()
+    hoje = hoje_local()
 
     if periodo == "hoje":
-        inicio = datetime.combine(hoje, datetime.min.time())
+        inicio = inicio_do_dia_utc(hoje)
         fim = agora
         ontem = hoje - timedelta(days=1)
-        inicio_ant = datetime.combine(ontem, datetime.min.time())
-        fim_ant = datetime.combine(ontem, datetime.max.time())
+        inicio_ant = inicio_do_dia_utc(ontem)
+        fim_ant = fim_do_dia_utc(ontem)
 
     elif periodo == "semana":
-        inicio = datetime.combine(hoje - timedelta(days=hoje.weekday()), datetime.min.time())
+        primeiro_dia = hoje - timedelta(days=hoje.weekday())
+        inicio = inicio_do_dia_utc(primeiro_dia)
         fim = agora
-        inicio_ant = inicio - timedelta(days=7)
-        fim_ant = datetime.combine(inicio.date() - timedelta(days=1), datetime.max.time())
+        inicio_ant = inicio_do_dia_utc(primeiro_dia - timedelta(days=7))
+        fim_ant = fim_do_dia_utc(primeiro_dia - timedelta(days=1))
 
     else:  # mes
-        inicio = datetime.combine(hoje.replace(day=1), datetime.min.time())
+        inicio = inicio_do_dia_utc(hoje.replace(day=1))
         fim = agora
         if hoje.month == 1:
             mes_ant = 12
@@ -77,8 +85,8 @@ def _calcular_periodo(periodo: str) -> tuple[datetime, datetime, datetime, datet
             mes_ant = hoje.month - 1
             ano_ant = hoje.year
         ultimo_dia_ant = monthrange(ano_ant, mes_ant)[1]
-        inicio_ant = datetime.combine(date(ano_ant, mes_ant, 1), datetime.min.time())
-        fim_ant = datetime.combine(date(ano_ant, mes_ant, ultimo_dia_ant), datetime.max.time())
+        inicio_ant = inicio_do_dia_utc(date(ano_ant, mes_ant, 1))
+        fim_ant = fim_do_dia_utc(date(ano_ant, mes_ant, ultimo_dia_ant))
 
     return inicio, fim, inicio_ant, fim_ant
 

@@ -10,6 +10,7 @@ from typing import Sequence, NamedTuple
 from sqlalchemy.orm import Session, aliased
 from sqlalchemy import select, func, or_, and_, case, literal
 
+from app.core.tempo import hoje_local, inicio_do_dia_utc
 from app.db.models.venda import Venda
 from app.db.models.ordem_servico import OrdemServico as OSModel
 from app.db.models.objeto_servico import ObjetoServico as OSEquipamentoModel
@@ -400,7 +401,7 @@ def get_minhas_os_atrasadas(db: Session, funcionario_id: int, limit: int = 10):
     """OS com data_previsao anterior a hoje (atrasadas)."""
     client_pf = aliased(ClientePF)
     client_pj = aliased(ClientePJ)
-    hoje_inicio = datetime.combine(datetime.utcnow().date(), datetime.min.time())
+    hoje_inicio = inicio_do_dia_utc(hoje_local())
 
     stmt = (
         select(
@@ -458,7 +459,7 @@ def get_minhas_vendas_hoje(db: Session, funcionario_id: int):
     """Vendas do funcionario criadas hoje."""
     client_pf = aliased(ClientePF)
     client_pj = aliased(ClientePJ)
-    hoje_inicio = datetime.combine(datetime.utcnow().date(), datetime.min.time())
+    hoje_inicio = inicio_do_dia_utc(hoje_local())
 
     stmt = (
         select(
@@ -487,7 +488,7 @@ def get_minhas_os_hoje(db: Session, funcionario_id: int):
     """OS do funcionario criadas hoje."""
     client_pf = aliased(ClientePF)
     client_pj = aliased(ClientePJ)
-    hoje_inicio = datetime.combine(datetime.utcnow().date(), datetime.min.time())
+    hoje_inicio = inicio_do_dia_utc(hoje_local())
 
     stmt = (
         select(
@@ -698,7 +699,7 @@ def get_os_atrasadas_empresa(db: Session, empresa_id: int, limit: int = 15) -> S
     """OS com prazo vencido de toda a empresa, com nome do responsavel."""
     client_pf = aliased(ClientePF)
     client_pj = aliased(ClientePJ)
-    hoje_inicio = datetime.combine(datetime.utcnow().date(), datetime.min.time())
+    hoje_inicio = inicio_do_dia_utc(hoje_local())
 
     stmt = (
         select(

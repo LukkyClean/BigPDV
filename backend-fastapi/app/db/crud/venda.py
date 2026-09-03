@@ -2,6 +2,9 @@ from sqlalchemy.orm import Session, aliased, joinedload
 from sqlalchemy import select, func, cast, String, extract, nullslast
 from datetime import datetime
 
+from calendar import monthrange
+
+from app.core.tempo import hoje_local, intervalo_utc
 from app.db.models.venda import Venda
 from app.db.models.venda_produto import ProdutoVenda
 from app.db.models.venda_pagamento import PagamentoVenda
@@ -141,11 +144,18 @@ def get_sales_status(db: Session, funcionario_id: int | None = None) -> VendaSta
     )
 
     if funcionario_id:
-        agora_utc = datetime.utcnow()
+        # Mes corrente pelo calendario LOCAL da loja, convertido para os
+        # limites UTC da coluna. Extrair mes/ano direto da coluna jogaria as
+        # vendas do fim do ultimo dia do mes para o mes seguinte.
+        hoje = hoje_local()
+        ultimo_dia = monthrange(hoje.year, hoje.month)[1]
+        inicio_mes, fim_mes = intervalo_utc(
+            hoje.replace(day=1), hoje.replace(day=ultimo_dia),
+        )
         stmt = stmt.where(
             Venda.funcionario_id == funcionario_id,
-            extract('month', Venda.criado_em) == agora_utc.month,
-            extract('year', Venda.criado_em) == agora_utc.year,
+            Venda.criado_em >= inicio_mes,
+            Venda.criado_em <= fim_mes,
         )
 
     result = db.execute(stmt).first()
@@ -159,3 +169,38 @@ def get_sales_status(db: Session, funcionario_id: int | None = None) -> VendaSta
         ticket_medio=int(round(ticket_medio)),
     )
  
+
+def reservar_proximo_numero_venda(db: Session) -> int:
+    """
+    Reserva atomicamente o próximo número de venda e o devolve.
+
+    Um único UPDATE ... RETURNING: não existe janela entre ler o contador e
+    gravá-lo, então dois caixas finalizando ao mesmo tempo nunca disputam o
+    mesmo número.
+
+    Por que não `with_for_update()`: o dialeto SQLite do SQLAlchemy aceita a
+    chamada e não emite FOR UPDATE nenhum — o lock fica decorativo. Como o
+    banco do StartBig é SQLite embarcado, a corrida permanecia aberta, e o
+    segundo terminal só descobria pela violação de unicidade de numero_venda,
+    justamente no fechamento da venda.
+    """
+    from sqlalchemy import text
+
+    linha = db.execute(
+        text(
+            "UPDATE contador_venda "
+            "SET proximo_numero = proximo_numero + 1 "
+            "WHERE id = 1 "
+            "RETURNING proximo_numero - 1"
+        )
+    ).fetchone()
+
+    if linha is None:
+        return None
+
+    from app.db.models.contador_venda import ContadorVenda
+    contador = db.get(ContadorVenda, 1)
+    if contador is not None:
+        db.expire(contador, ["proximo_numero"])
+
+    return int(linha[0])
