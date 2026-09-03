@@ -175,7 +175,11 @@ def _calcular_csosn(
     if csosn in CSOSN_COM_CREDITO:
         valor_credito = (base * item.aliquota_icms / CEM).quantize(PRECISAO, ROUND_MODE)
         return ResultadoICMS(
-            base_calculo=base,
+            # O grupo ICMSSN101 do XML admite apenas pCredSN e vCredICMSSN —
+            # não existe vBC nele. Devolver a base aqui a faria entrar no vBC
+            # do cabeçalho pelo consolidador, destacando base de ICMS numa nota
+            # do Simples Nacional. O crédito viaja em valor_credito_simples.
+            base_calculo=ZERO,
             aliquota=ZERO,
             valor=ZERO,
             situacao_tributaria=csosn,

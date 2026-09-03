@@ -21,7 +21,7 @@ from app.schemas.documento_fiscal import DocumentoFiscalRead
 
 from app.db.crud import fiscal as crud
 from .core import verificar_completude_venda
-from .helpers import is_simples_nacional
+from .helpers import obter_crt, usa_csosn
 from .http import get_fiscal_client, EmissaoResultado
 from .payload_builder import montar_payload_nfe, montar_payload_teste_nfe
 from .tax_engine import calcular_impostos
@@ -42,6 +42,8 @@ def _aplicar_resultado(doc: DocumentoFiscal, resultado: EmissaoResultado) -> Non
     elif status_api == "cancelado":
         doc.status = "CANCELADA"
     else:
+        # A SEFAZ respondeu "não". Isso é diferente de não sabermos a resposta
+        # — falha de comunicação vira INDETERMINADA, nunca REJEITADA.
         doc.status = "REJEITADA"
 
     doc.chave_acesso = resultado.get("chave_acesso")
@@ -96,7 +98,7 @@ def _preparar_dados_emissao(db: Session, venda_id: int, empresa_id: int):
         raise HTTPException(status_code=404, detail="Venda não encontrada.")
 
     uf_emitente = endereco.estado.value if hasattr(endereco.estado, "value") else str(endereco.estado)
-    simples = is_simples_nacional(empresa.regime_tributario)
+    simples = usa_csosn(obter_crt(empresa))
 
     try:
         itens_entrada, dados_nota = resolver_aliquotas_venda(
@@ -227,6 +229,19 @@ def emitir_nfe_venda(db: Session, venda_id: int, empresa_id: int) -> DocumentoFi
                     "chave_acesso": doc_ativo.chave_acesso,
                 },
             )
+        elif doc_ativo.status == "INDETERMINADA":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "codigo": "NF_INDETERMINADA",
+                    "mensagem": (
+                        "A emissão anterior desta venda não teve retorno confirmado da "
+                        "SEFAZ. A nota pode estar autorizada. Consulte o documento antes "
+                        "de emitir novamente para não gerar nota duplicada."
+                    ),
+                    "documento_id": doc_ativo.id,
+                },
+            )
         else:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -237,17 +252,23 @@ def emitir_nfe_venda(db: Session, venda_id: int, empresa_id: int) -> DocumentoFi
                 },
             )
 
-    # 3. Montar payload (com tributos calculados)
+    # 3. Reservar o número de forma atômica.
+    #    Feito só agora, depois de todas as validações que podem recusar a
+    #    emissão, para não queimar número à toa. A partir daqui o número é
+    #    definitivo — ver passo 7.
+    numero_venda = venda.numero_venda
+    numero = crud.reservar_proximo_numero_nfe(db, empresa_id)
+
+    # 4. Montar payload (com tributos calculados e o número já reservado)
     payload = montar_payload_nfe(
         empresa, endereco, fiscal_settings, venda, nota_fiscal,
         resultado_calculo=resultado_calculo,
+        numero=numero,
     )
 
-    # 4. Criar documento fiscal (ref única por tentativa)
-    numero_venda = venda.numero_venda
+    # 5. Criar documento fiscal (ref e chave de idempotência únicas por tentativa)
     tentativas_existentes = crud.contar_documentos_por_venda(db, numero_venda)
     ref = f"venda-{numero_venda}" if tentativas_existentes == 0 else f"venda-{numero_venda}-{tentativas_existentes + 1}"
-    numero = fiscal_settings.ultimo_numero_nfe + 1
 
     doc = DocumentoFiscal(
         tipo_documento="NFE",
@@ -257,12 +278,11 @@ def emitir_nfe_venda(db: Session, venda_id: int, empresa_id: int) -> DocumentoFi
         numero_documento=numero,
         serie=fiscal_settings.serie_nfe,
         ref_api=ref,
+        idempotency_key=str(uuid.uuid4()),
         ambiente_emissao=fiscal_settings.ambiente_emissao,
         valor_total=venda.total,
         data_emissao=datetime.now(timezone.utc),
     )
-    # 5. Incrementar numeração (atômico na mesma transação)
-    fiscal_settings.ultimo_numero_nfe = numero
     crud.salvar_documento(db, doc)
 
     # 6. Chamar client fiscal
@@ -270,19 +290,28 @@ def emitir_nfe_venda(db: Session, venda_id: int, empresa_id: int) -> DocumentoFi
     client = get_fiscal_client(fiscal_settings.ambiente_emissao, token)
 
     try:
-        resultado = client.emitir_nfe(ref, payload)
+        resultado = client.emitir_nfe(ref, payload, idempotency_key=doc.idempotency_key)
         _aplicar_resultado(doc, resultado)
     except NotImplementedError as e:
+        # Client sem implementação: nada foi transmitido, é recusa local.
         doc.status = "REJEITADA"
         doc.mensagem_sefaz = str(e)
     except Exception as e:
-        logger.error("[FISCAL] Erro ao emitir NF-e ref=%s: %s", ref, e)
-        doc.status = "REJEITADA"
-        doc.mensagem_sefaz = f"Erro de comunicação: {str(e)[:400]}"
+        # Falha de comunicação NÃO é rejeição: a nota pode estar autorizada na
+        # SEFAZ. Marcar REJEITADA aqui libera a venda para nova emissão e gera
+        # nota duplicada. O documento fica INDETERMINADA até ser reconciliado.
+        logger.error("[FISCAL] Falha de comunicação ao emitir NF-e ref=%s: %s", ref, e)
+        doc.status = "INDETERMINADA"
+        doc.mensagem_sefaz = (
+            f"Não foi possível confirmar o resultado junto à SEFAZ: {str(e)[:300]}. "
+            f"O documento será reconsultado automaticamente."
+        )
 
-    # 7. Reverter numeração se emissão falhou (evita gaps na sequência)
-    if doc.status == "REJEITADA":
-        fiscal_settings.ultimo_numero_nfe = numero - 1
+    # 7. O contador NÃO é revertido.
+    #    Reverter parecia evitar buracos na sequência, mas depois que o payload
+    #    já foi transmitido o número pode estar consumido na SEFAZ — reusá-lo
+    #    causa Rejeição 204 e trava a sequência de vez. Buraco se resolve com
+    #    inutilização; duplicidade, não.
 
     return doc
 
@@ -299,7 +328,7 @@ def consultar_documento(db: Session, documento_id: int, empresa_id: int) -> Docu
             detail="Documento não possui referência de API para consulta.",
         )
 
-    if doc.status not in ("PROCESSANDO", "PENDENTE"):
+    if doc.status not in ("PROCESSANDO", "PENDENTE", "INDETERMINADA"):
         return doc
 
     fiscal_settings = _obter_fiscal_settings(db, empresa_id)
@@ -333,7 +362,7 @@ async def poll_nfe_status_async(documento_id: int, empresa_id: int):
         try:
             doc = consultar_documento(db, documento_id, empresa_id)
             db.commit()
-            if doc.status not in ("PROCESSANDO", "PENDENTE"):
+            if doc.status not in ("PROCESSANDO", "PENDENTE", "INDETERMINADA"):
                 break
         except Exception as e:
             db.rollback()
@@ -342,10 +371,49 @@ async def poll_nfe_status_async(documento_id: int, empresa_id: int):
             db.close()
 
 
+# Prazo legal para cancelamento, contado da autorização.
+# NF-e modelo 55: 24 horas. (NFC-e modelo 65 tem 30 minutos, mas ainda não é
+# emitida por este caminho — ver o backlog de NFC-e.)
+JANELA_CANCELAMENTO_NFE = timedelta(hours=24)
+
+
+def _assert_dentro_da_janela_de_cancelamento(doc: DocumentoFiscal) -> None:
+    """
+    Barra cancelamento fora do prazo da SEFAZ.
+
+    Sem isso o operador tenta cancelar, a SEFAZ recusa — e ele já devolveu o
+    dinheiro ao cliente. Melhor recusar aqui e orientar a emitir devolução.
+    """
+    if not doc.data_autorizacao:
+        return
+
+    autorizacao = doc.data_autorizacao
+    if autorizacao.tzinfo is None:
+        autorizacao = autorizacao.replace(tzinfo=timezone.utc)
+
+    decorrido = datetime.now(timezone.utc) - autorizacao
+    if decorrido <= JANELA_CANCELAMENTO_NFE:
+        return
+
+    horas = int(decorrido.total_seconds() // 3600)
+    raise HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail={
+            "codigo": "PRAZO_CANCELAMENTO_EXPIRADO",
+            "mensagem": (
+                f"O prazo de 24 horas para cancelar esta NF-e expirou "
+                f"(autorizada há {horas} horas). Emita uma NF-e de devolução "
+                f"para reverter a operação."
+            ),
+            "documento_id": doc.id,
+        },
+    )
+
+
 def cancelar_documento(
     db: Session, documento_id: int, empresa_id: int, justificativa: str
 ) -> DocumentoFiscal:
-    """Cancela documento fiscal autorizado."""
+    """Cancela documento fiscal autorizado, dentro do prazo legal."""
     doc = crud.get_documento_fiscal(db, documento_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Documento fiscal não encontrado.")
@@ -355,6 +423,8 @@ def cancelar_documento(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Apenas documentos autorizados podem ser cancelados.",
         )
+
+    _assert_dentro_da_janela_de_cancelamento(doc)
 
     if not doc.ref_api:
         raise HTTPException(
@@ -422,9 +492,12 @@ def reemitir_documento(db: Session, documento_id: int, empresa_id: int) -> Docum
         origem_id=doc_anterior.origem_id,
         origem_numero_os=doc_anterior.origem_numero_os,
         status="PENDENTE",
-        numero_documento=doc_anterior.numero_documento,
+        # O número NÃO é herdado: o da tentativa anterior pode ter sido
+        # consumido na SEFAZ. Uma nova reserva acontece na emissão.
+        numero_documento=None,
         serie=doc_anterior.serie,
         ref_api=ref,
+        idempotency_key=str(uuid.uuid4()),
         ambiente_emissao=fiscal_settings.ambiente_emissao,
         valor_total=doc_anterior.valor_total,
         tentativa_anterior_id=doc_anterior.id,

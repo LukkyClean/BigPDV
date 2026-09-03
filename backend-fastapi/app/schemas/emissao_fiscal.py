@@ -3,9 +3,10 @@
 # DESCRIÇÃO: Schemas Pydantic para emissão de NF-e (request/response).
 # ---------------------------------------------------------------------------
 
+from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class EmissaoNFeRequest(BaseModel):
@@ -130,3 +131,52 @@ class EmissaoBatchResponse(BaseModel):
     total: int
     sucesso: int
     falha: int
+
+
+# ===========================================================================
+# INUTILIZAÇÃO DE NUMERAÇÃO
+# ===========================================================================
+
+class GapNumeracao(BaseModel):
+    """Faixa de numeração reservada que nunca virou nota autorizada."""
+
+    serie: int
+    numero_inicial: int
+    numero_final: int
+    quantidade: int
+
+
+class InutilizacaoRequest(BaseModel):
+    """Pedido de inutilização de uma faixa de numeração."""
+
+    serie: int = Field(..., ge=0, description="Série da NF-e")
+    numero_inicial: int = Field(..., ge=1)
+    numero_final: int = Field(..., ge=1)
+    justificativa: str = Field(..., description="Motivo declarado à SEFAZ")
+
+    @field_validator("justificativa")
+    @classmethod
+    def validar_justificativa(cls, v: str) -> str:
+        v = (v or "").strip()
+        if len(v) < 15:
+            raise ValueError("A justificativa deve ter ao menos 15 caracteres.")
+        return v
+
+
+class InutilizacaoRead(BaseModel):
+    """Registro de inutilização já solicitado."""
+
+    id: int
+    serie: int
+    ano: int
+    numero_inicial: int
+    numero_final: int
+    justificativa: str
+    status: str
+    protocolo: Optional[str] = None
+    mensagem_sefaz: Optional[str] = None
+    url_xml: Optional[str] = None
+    data_solicitacao: Optional[datetime] = None
+    data_homologacao: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)

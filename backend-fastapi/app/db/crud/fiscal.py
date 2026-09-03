@@ -28,6 +28,47 @@ def get_fiscal_settings(db: Session, empresa_id: int):
         EmpresaFiscalSettings.empresa_id == empresa_id
     ).first()
 
+def reservar_proximo_numero_nfe(db: Session, empresa_id: int) -> int:
+    """
+    Reserva atomicamente o próximo número de NF-e e o devolve.
+
+    Um único UPDATE ... RETURNING: não existe janela entre ler o contador e
+    gravá-lo, então dois caixas emitindo ao mesmo tempo nunca recebem o mesmo
+    número (Rejeição 204 — Duplicidade de NF-e).
+
+    Por que não `with_for_update()`: o dialeto SQLite do SQLAlchemy não emite
+    FOR UPDATE — a chamada é aceita e ignorada. Como o banco do StartBig é
+    SQLite embarcado, o lock pessimista seria decorativo. O UPDATE atômico
+    pega o lock de escrita do SQLite e continua correto em Postgres/MySQL.
+
+    O número reservado é definitivo: mesmo que a transmissão falhe, ele NÃO
+    volta para o contador. Ver `emitir_nfe_venda`.
+    """
+    from sqlalchemy import text
+
+    linha = db.execute(
+        text(
+            "UPDATE empresa_fiscal_settings "
+            "SET ultimo_numero_nfe = ultimo_numero_nfe + 1 "
+            "WHERE empresa_id = :empresa_id "
+            "RETURNING ultimo_numero_nfe"
+        ),
+        {"empresa_id": empresa_id},
+    ).fetchone()
+
+    if linha is None:
+        raise ValueError(
+            f"Configurações fiscais da empresa {empresa_id} não encontradas — "
+            f"impossível reservar número de NF-e."
+        )
+
+    # A instância ORM em memória ficou com o valor antigo; força releitura.
+    fs = get_fiscal_settings(db, empresa_id)
+    if fs is not None:
+        db.expire(fs, ["ultimo_numero_nfe"])
+
+    return int(linha[0])
+
 def get_produto_fiscal(db: Session, produto_id: int):
     return db.query(ProdutoFiscal).filter(ProdutoFiscal.produto_id == produto_id).first()
 
@@ -74,17 +115,17 @@ def get_documento_ativo_por_venda(db: Session, numero_venda: int):
     return db.query(DocumentoFiscal).filter(
         DocumentoFiscal.origem_tipo == "VENDA",
         DocumentoFiscal.origem_id == numero_venda,
-        DocumentoFiscal.status.in_(["PROCESSANDO", "PENDENTE", "AUTORIZADA"]),
+        DocumentoFiscal.status.in_(["PROCESSANDO", "PENDENTE", "AUTORIZADA", "INDETERMINADA"]),
     ).first()
 
 def get_documentos_ativos_por_vendas(db: Session, numeros_venda: list[int]) -> dict[int, DocumentoFiscal]:
-    """Retorna {numero_venda: DocumentoFiscal} para docs ativos (PROCESSANDO/PENDENTE/AUTORIZADA)."""
+    """Retorna {numero_venda: DocumentoFiscal} para docs ativos (bloqueiam nova emissão)."""
     if not numeros_venda:
         return {}
     docs = db.query(DocumentoFiscal).filter(
         DocumentoFiscal.origem_tipo == "VENDA",
         DocumentoFiscal.origem_id.in_(numeros_venda),
-        DocumentoFiscal.status.in_(["PROCESSANDO", "PENDENTE", "AUTORIZADA"]),
+        DocumentoFiscal.status.in_(["PROCESSANDO", "PENDENTE", "AUTORIZADA", "INDETERMINADA"]),
     ).all()
     return {doc.origem_id: doc for doc in docs}
 
@@ -95,11 +136,11 @@ def get_documentos_relevantes_por_vendas(db: Session, numeros_venda: list[int]) 
     docs = db.query(DocumentoFiscal).filter(
         DocumentoFiscal.origem_tipo == "VENDA",
         DocumentoFiscal.origem_id.in_(numeros_venda),
-        DocumentoFiscal.status.in_(["PROCESSANDO", "PENDENTE", "AUTORIZADA", "REJEITADA", "DENEGADA"]),
+        DocumentoFiscal.status.in_(["PROCESSANDO", "PENDENTE", "AUTORIZADA", "INDETERMINADA", "REJEITADA", "DENEGADA"]),
     ).all()
     # Prioridade: AUTORIZADA > PROCESSANDO/PENDENTE > REJEITADA/DENEGADA
     resultado = {}
-    prioridade = {"AUTORIZADA": 0, "PROCESSANDO": 1, "PENDENTE": 2, "REJEITADA": 3, "DENEGADA": 4}
+    prioridade = {"AUTORIZADA": 0, "INDETERMINADA": 1, "PROCESSANDO": 2, "PENDENTE": 3, "REJEITADA": 4, "DENEGADA": 5}
     for doc in docs:
         existente = resultado.get(doc.origem_id)
         if not existente or prioridade.get(doc.status, 99) < prioridade.get(existente.status, 99):

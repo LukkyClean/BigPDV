@@ -19,7 +19,7 @@ from app.db.models.endereco import Endereco
 from app.db.models.venda import Venda
 from app.db.models.venda_nota_fiscal import VendaNotaFiscal
 
-from .helpers import is_simples_nacional
+from .helpers import obter_crt, usa_csosn
 from .tax_engine.types import ResultadoCalculo
 
 
@@ -37,6 +37,51 @@ def _centavos_para_reais(centavos: int) -> float:
     return round(centavos / 100, 2)
 
 
+SEM_GTIN = "SEM GTIN"
+
+
+def _sanitizar_ncm(ncm: Optional[str]) -> Optional[str]:
+    """
+    Remove pontuação do NCM. '8471.30.12' → '84713012'.
+
+    O gate já recusa NCM fora do formato, mas quem cadastrou com pontos recebia
+    uma pendência sem entender o motivo. Sanitizar aqui fecha o caminho para a
+    SEFAZ mesmo que algum cadastro escape do gate.
+    """
+    if not ncm:
+        return None
+    return re.sub(r"\D", "", ncm) or None
+
+
+def _gtin_valido(codigo: Optional[str]) -> bool:
+    """
+    Confere se o código é um GTIN GS1 legítimo (8, 12, 13 ou 14 dígitos com
+    dígito verificador correto).
+
+    Códigos internos de loja não são GTIN. Enviá-los em cEAN gera Rejeição 611.
+    """
+    if not codigo:
+        return False
+
+    digitos = codigo.strip()
+    if not digitos.isdigit() or len(digitos) not in (8, 12, 13, 14):
+        return False
+
+    # Checksum GS1: pesos 3 e 1 alternados da direita para a esquerda,
+    # ignorando o próprio dígito verificador.
+    corpo, verificador = digitos[:-1], int(digitos[-1])
+    soma = 0
+    for posicao, caractere in enumerate(reversed(corpo)):
+        soma += int(caractere) * (3 if posicao % 2 == 0 else 1)
+
+    return (10 - soma % 10) % 10 == verificador
+
+
+def _codigo_barras_para_sefaz(codigo: Optional[str]) -> str:
+    """Devolve o GTIN quando válido; senão o literal exigido pela SEFAZ."""
+    return codigo.strip() if _gtin_valido(codigo) else SEM_GTIN
+
+
 def _montar_emitente(empresa: Empresa, endereco: Endereco, fiscal_settings: EmpresaFiscalSettings) -> dict:
     return {
         "cnpj": empresa.documento,
@@ -44,6 +89,9 @@ def _montar_emitente(empresa: Empresa, endereco: Endereco, fiscal_settings: Empr
         "nome_fantasia": _sanitizar_texto_sefaz(empresa.nome_fantasia or empresa.razao_social),
         "inscricao_estadual": empresa.inscricao_estadual,
         "inscricao_municipal": empresa.inscricao_municipal,
+        # A SEFAZ espera o CRT numérico (1..4). O texto vai junto só como
+        # rótulo — nunca é ele que decide a tributação.
+        "codigo_regime_tributario": obter_crt(empresa),
         "regime_tributario": empresa.regime_tributario,
         "endereco": {
             "logradouro": endereco.logradouro,
@@ -75,21 +123,40 @@ def _montar_destinatario(cliente: Cliente) -> dict:
         dest["nome"] = f"Cliente #{cliente.id}"
         dest["indicador_ie"] = "9"
 
-    # Endereço do destinatário (primeiro endereço cadastrado)
+    # Endereço do destinatário (primeiro endereço cadastrado).
+    # Grupo incompleto é rejeitado pela SEFAZ; melhor omitir do que enviar com
+    # campos vazios. O gate valida o endereço do emitente, nunca o do cliente.
     enderecos = getattr(cliente, "endereco", None)
     if enderecos and len(enderecos) > 0:
-        end = enderecos[0]
-        dest["endereco"] = {
-            "logradouro": end.logradouro,
-            "numero": end.numero,
-            "complemento": end.complemento or "",
-            "bairro": end.bairro,
-            "cidade": end.cidade,
-            "uf": end.estado.value if hasattr(end.estado, "value") else str(end.estado),
-            "cep": end.cep,
-        }
+        endereco = _montar_endereco_destinatario(enderecos[0])
+        if endereco:
+            dest["endereco"] = endereco
 
     return dest
+
+
+# Campos sem os quais o grupo enderDest não é aceito pela SEFAZ.
+_CAMPOS_ENDERECO_OBRIGATORIOS = ("logradouro", "numero", "bairro", "cidade", "cep")
+
+
+def _montar_endereco_destinatario(end: Endereco) -> Optional[dict]:
+    """Monta o endereço do destinatário, ou None se estiver incompleto."""
+    if any(not getattr(end, campo, None) for campo in _CAMPOS_ENDERECO_OBRIGATORIOS):
+        return None
+
+    uf = end.estado.value if hasattr(end.estado, "value") else str(end.estado or "")
+    if not uf:
+        return None
+
+    return {
+        "logradouro": end.logradouro,
+        "numero": end.numero,
+        "complemento": end.complemento or "",
+        "bairro": end.bairro,
+        "cidade": end.cidade,
+        "uf": uf,
+        "cep": end.cep,
+    }
 
 
 def _montar_itens(
@@ -123,15 +190,17 @@ def _montar_itens(
             "valor_unitario_comercial": _centavos_para_reais(item.valor_unitario),
             "valor_bruto": _centavos_para_reais(item.subtotal),
             "unidade_comercial": produto.unidade_medida or "UN",
-            "codigo_barras_comercial": produto.codigo_barras or "SEM GTIN",
+            "codigo_barras_comercial": _codigo_barras_para_sefaz(produto.codigo_barras),
         }
 
         if fiscal:
-            item_dict["ncm"] = fiscal.ncm
+            item_dict["ncm"] = _sanitizar_ncm(fiscal.ncm)
             item_dict["cfop"] = fiscal.cfop_padrao
             item_dict["icms_origem"] = str(fiscal.origem_mercadoria or 0)
             item_dict["unidade_tributavel"] = fiscal.unidade_tributavel or produto.unidade_medida or "UN"
-            item_dict["codigo_barras_tributavel"] = fiscal.gtin_tributavel or produto.codigo_barras or "SEM GTIN"
+            item_dict["codigo_barras_tributavel"] = _codigo_barras_para_sefaz(
+                fiscal.gtin_tributavel or produto.codigo_barras
+            )
             if fiscal.cest:
                 item_dict["cest"] = fiscal.cest
 
@@ -210,6 +279,26 @@ def _montar_pagamentos(venda: Venda) -> list[dict]:
     return pagamentos
 
 
+def _validar_fechamento_pagamentos(
+    pagamentos: list[dict], valor_troco: float, valor_total_nota: float
+) -> None:
+    """
+    Confere a regra do grupo <pag>: soma dos pagamentos − troco == total da nota.
+
+    A SEFAZ audita isso (Rejeição 767). Falhar aqui é barato; descobrir na
+    transmissão custa o número da nota e uma inutilização.
+    """
+    soma_pagamentos = round(sum(p["valor_pagamento"] for p in pagamentos), 2)
+    liquido = round(soma_pagamentos - valor_troco, 2)
+
+    if liquido != round(valor_total_nota, 2):
+        raise ValueError(
+            f"Pagamentos não fecham com o total da nota: "
+            f"soma dos pagamentos R$ {soma_pagamentos:.2f} − troco R$ {valor_troco:.2f} "
+            f"= R$ {liquido:.2f}, mas o total da nota é R$ {valor_total_nota:.2f}."
+        )
+
+
 def montar_payload_nfe(
     empresa: Empresa,
     endereco_empresa: Endereco,
@@ -217,6 +306,7 @@ def montar_payload_nfe(
     venda: Venda,
     nota_fiscal: Optional[VendaNotaFiscal],
     resultado_calculo: Optional[ResultadoCalculo] = None,
+    numero: Optional[int] = None,
 ) -> dict:
     """
     Monta payload completo para emissão de NF-e a partir de uma venda.
@@ -224,9 +314,14 @@ def montar_payload_nfe(
     Quando resultado_calculo é fornecido, enriquece itens e header com
     dados tributários calculados pelo FiscalTaxEngine.
 
+    `numero` é o número já reservado por `crud.reservar_proximo_numero_nfe`.
+    Quando omitido (preview, testes), deriva de `ultimo_numero_nfe + 1` — que
+    é só uma previsão, NÃO uma reserva: não use esse caminho para emitir.
+
     Retorna dict no formato esperado pela API (referência Focus NFe).
     """
-    simples = is_simples_nacional(empresa.regime_tributario)
+    crt = obter_crt(empresa)
+    simples = usa_csosn(crt)
 
     natureza = "Venda de Mercadoria"
     finalidade = 1
@@ -239,7 +334,8 @@ def montar_payload_nfe(
         consumidor_final = nota_fiscal.consumidor_final if nota_fiscal.consumidor_final is not None else consumidor_final
         indicador_presenca = nota_fiscal.indicador_presenca or indicador_presenca
 
-    numero = fiscal_settings.ultimo_numero_nfe + 1
+    if numero is None:
+        numero = fiscal_settings.ultimo_numero_nfe + 1
     serie = fiscal_settings.serie_nfe
 
     # --- Destinatário ---
@@ -273,10 +369,27 @@ def montar_payload_nfe(
             "valor_total": _centavos_para_reais(venda.total),
         }
 
+    # --- Pagamentos e troco ---
+    # O troco é derivado (soma dos pagamentos − total da venda). A SEFAZ exige
+    # a tag explícita quando há pagamento em dinheiro acima do total (Rej. 391).
+    formas_pagamento = _montar_pagamentos(venda)
+    valor_troco = _centavos_para_reais(venda.troco or 0)
+
+    _validar_fechamento_pagamentos(formas_pagamento, valor_troco, totais["valor_total"])
+
     payload = {
         # --- Parâmetros da nota ---
+        # modelo 55 = NF-e. Sem este campo a API intermediária teria que
+        # adivinhar; NFC-e (65) ainda não é emitida por este caminho.
+        "modelo": 55,
         "natureza_operacao": natureza,
         "tipo_documento": 1,  # 1 = saída
+        # idDest 1 = operação interna. O motor bloqueia operação interestadual
+        # (DIFAL/FCP não implementado), então aqui é sempre interna.
+        "local_destino": 1,
+        # modFrete 9 = sem transporte. Obrigatório mesmo sem frete; quando há
+        # valor de entrega ele é por conta do emitente (0).
+        "modalidade_frete": 0 if venda.entrega else 9,
         "finalidade_emissao": finalidade,
         "consumidor_final": 1 if consumidor_final else 0,
         "presenca_comprador": indicador_presenca,
@@ -289,7 +402,8 @@ def montar_payload_nfe(
         # --- Itens ---
         "items": _montar_itens(venda, simples, resultado_calculo),
         # --- Pagamentos ---
-        "formas_pagamento": _montar_pagamentos(venda),
+        "formas_pagamento": formas_pagamento,
+        "valor_troco": valor_troco,
         # --- Totais (objeto aninhado) ---
         "totais": totais,
     }

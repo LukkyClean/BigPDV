@@ -125,7 +125,7 @@ class FornecedorCreate(BaseModel):
             "example": {
                 "tipo": "produto",
                 "nome": "Distribuidora de Componentes LTDA",
-                "cnpj": "72345734000132",
+                "cnpj": "72345734000113",
                 "nome_fantasia": "BigTech Componentes",
                 "ie": "123456789012",
                 "telefone": "8535667788",

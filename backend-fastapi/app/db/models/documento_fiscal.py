@@ -70,6 +70,14 @@ class DocumentoFiscal(Base):
         Integer, nullable=True,
         doc="Ambiente em que foi emitido: 1=Produção, 2=Homologação"
     )
+    idempotency_key: Mapped[Optional[str]] = mapped_column(
+        String(36), unique=True, index=True, nullable=True,
+        doc=(
+            "UUID gerado e persistido ANTES do disparo HTTP. Reenviado em "
+            "X-Idempotency-Key para que a retentativa de rede após timeout "
+            "não vire uma segunda nota na API intermediária."
+        )
+    )
 
     # --- Cadeia de tentativas (linked list) ---
     tentativa_anterior_id: Mapped[Optional[int]] = mapped_column(

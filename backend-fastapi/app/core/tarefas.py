@@ -248,6 +248,16 @@ async def lifespan(app: FastAPI):
         db.close()
     _seed_formas_pagamento()
     _seed_contador_venda()
+
+    # Documentos fiscais sem resposta definitiva bloqueiam nova emissão da
+    # venda. O polling da emissão não sobrevive a um restart, então quem
+    # destrava é esta varredura de boot.
+    try:
+        from app.services.fiscal.reconciliacao import reconciliar_no_startup
+        await asyncio.to_thread(reconciliar_no_startup)
+    except Exception as e:
+        logger.error("Erro na reconciliação fiscal de boot: %s", e)
+
     print("Iniciando tarefa de limpeza automatica temporal...")
     tarefa_limpeza = asyncio.create_task(_loop_limpeza_temporal())
     

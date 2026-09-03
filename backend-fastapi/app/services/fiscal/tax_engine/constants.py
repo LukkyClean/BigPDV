@@ -27,6 +27,10 @@ CSOSN_SUPORTADOS = CSOSN_COM_CREDITO | CSOSN_SEM_CREDITO | CSOSN_ST
 CST_PIS_COFINS_TRIBUTADO = frozenset({"01", "02"})  # Alíquota normal / diferenciada
 CST_PIS_COFINS_ISENTO = frozenset({"04", "05", "06", "07", "08", "09"})
 
+# Saída do Simples Nacional: os tributos vão na guia única, não na nota.
+# 49 = Outras Operações de Saída, com base e alíquota zeradas.
+CST_PIS_COFINS_SIMPLES = "49"
+
 # --- IPI (comércio/serviços — não calculado) ---
 CST_IPI_NAO_TRIBUTADO = "53"
 IPI_CODIGO_ENQUADRAMENTO = "999"

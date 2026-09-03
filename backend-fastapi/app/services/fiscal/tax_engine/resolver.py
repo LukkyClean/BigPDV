@@ -19,7 +19,7 @@ from app.db.models.aliquota_uf import AliquotaUF
 from app.db.models.produto_fiscal import ProdutoFiscal
 from app.db.models.venda import Venda
 
-from .constants import COFINS_PADRAO, PIS_PADRAO
+from .constants import COFINS_PADRAO, CST_PIS_COFINS_SIMPLES, PIS_PADRAO
 from .exceptions import (
     AliquotaNaoEncontradaError,
     DadosFiscaisAusentesError,
@@ -44,6 +44,25 @@ def _centesimos_para_decimal(valor: Optional[int], padrao: Decimal) -> Decimal:
 def _centavos_para_reais(centavos: int) -> Decimal:
     """Converte centavos (int) para Decimal em reais."""
     return Decimal(centavos) / Decimal("100")
+
+
+# indPres da NF-e: 1 = operação presencial. Os demais (2=internet,
+# 3=teleatendimento, 4=NFC-e entrega, 9=outros não presenciais) implicam
+# circulação da mercadoria e podem ser interestaduais de verdade.
+INDPRES_PRESENCIAL = 1
+
+
+def _operacao_presencial(venda: Venda) -> bool:
+    """
+    Se a venda é de balcão.
+
+    Sem dados fiscais preenchidos assume presencial — é o caso do PDV, que é
+    o uso dominante do sistema.
+    """
+    nota_fiscal = getattr(venda, "nota_fiscal", None)
+    if not nota_fiscal or nota_fiscal.indicador_presenca is None:
+        return True
+    return nota_fiscal.indicador_presenca == INDPRES_PRESENCIAL
 
 
 def _obter_uf_cliente(venda: Venda) -> Optional[str]:
@@ -89,14 +108,25 @@ def resolver_aliquotas_venda(
         DadosFiscaisAusentesError: se produto não tem ProdutoFiscal.
     """
     # 0. Trava interestadual
-    uf_cliente = _obter_uf_cliente(venda)
-    if uf_cliente and uf_cliente.upper() != uf_emitente.upper():
-        raise OperacaoInterestadualError(
-            f"Operação interestadual detectada (emitente: {uf_emitente}, "
-            f"destinatário: {uf_cliente}). O motor fiscal atual suporta "
-            f"apenas operações internas (mesma UF). DIFAL/FCP não implementado.",
-            campo="uf_destinatario",
-        )
+    #
+    # O critério é a operação, não o endereço cadastrado do cliente. Numa venda
+    # presencial a mercadoria sai pelo balcão e não cruza fronteira — é interna
+    # mesmo que o comprador more em outra UF. Travar por endereço impedia
+    # faturar para qualquer cliente de fora, sem irregularidade alguma.
+    #
+    # A trava continua valendo para operação não presencial (entrega, internet,
+    # teleatendimento), onde a mercadoria realmente circula entre estados e
+    # DIFAL/FCP seriam devidos — e não estão implementados.
+    if not _operacao_presencial(venda):
+        uf_cliente = _obter_uf_cliente(venda)
+        if uf_cliente and uf_cliente.upper() != uf_emitente.upper():
+            raise OperacaoInterestadualError(
+                f"Operação interestadual não presencial detectada (emitente: "
+                f"{uf_emitente}, destinatário: {uf_cliente}). O motor fiscal "
+                f"atual suporta apenas operações internas. DIFAL/FCP não "
+                f"implementado.",
+                campo="uf_destinatario",
+            )
 
     # 1. Carregar defaults da UF
     from app.db.crud import fiscal as crud
@@ -142,14 +172,26 @@ def resolver_aliquotas_venda(
         reducao = _centesimos_para_decimal(
             fiscal.reducao_base_icms if fiscal else None, ZERO,
         )
-        aliq_pis = _centesimos_para_decimal(
-            fiscal.aliquota_pis if fiscal else None, pis_padrao,
-        )
-        aliq_cofins = _centesimos_para_decimal(
-            fiscal.aliquota_cofins if fiscal else None, cofins_padrao,
-        )
-        cst_pis = fiscal.cst_pis if fiscal and fiscal.cst_pis else "01"
-        cst_cofins = fiscal.cst_cofins if fiscal and fiscal.cst_cofins else "01"
+        if simples_nacional:
+            # No Simples Nacional o PIS/COFINS já está embutido na guia única.
+            # Destacar alíquota na nota gera bitributação aparente e diverge da
+            # apuração. Saída sai como CST 49 (Outras Operações), zerada.
+            #
+            # Vale para CRT 1 e 4. O CRT 2 (excesso de sublimite) NÃO passa por
+            # aqui: `simples_nacional` vem de usa_csosn(), que o exclui.
+            cst_pis = CST_PIS_COFINS_SIMPLES
+            cst_cofins = CST_PIS_COFINS_SIMPLES
+            aliq_pis = ZERO
+            aliq_cofins = ZERO
+        else:
+            aliq_pis = _centesimos_para_decimal(
+                fiscal.aliquota_pis if fiscal else None, pis_padrao,
+            )
+            aliq_cofins = _centesimos_para_decimal(
+                fiscal.aliquota_cofins if fiscal else None, cofins_padrao,
+            )
+            cst_pis = fiscal.cst_pis if fiscal and fiscal.cst_pis else "01"
+            cst_cofins = fiscal.cst_cofins if fiscal and fiscal.cst_cofins else "01"
 
         itens_entrada.append(ItemEntrada(
             numero_item=idx,
@@ -179,7 +221,11 @@ def resolver_aliquotas_venda(
         simples_nacional=simples_nacional,
         frete=_centavos_para_reais(venda.entrega),
         seguro=ZERO,              # Venda não tem campo seguro ainda
-        outras_despesas=ZERO,     # Venda não tem campo outras_despesas ainda
+        # O acréscimo (juros de cartão do checkout) entra em Venda.total e no
+        # valor dos pagamentos. Sem ele aqui, o total da nota fica menor que a
+        # soma dos vPag e a SEFAZ rejeita (767). Mapeado para vOutro — despesa
+        # acessória rateada entre os itens, compondo a base de ICMS.
+        outras_despesas=_centavos_para_reais(venda.acrescimo or 0),
         desconto_nota=ZERO,       # Descontos são por item no modelo atual
         excluir_icms_base_pis_cofins=excluir_icms_base_pis_cofins,
     )

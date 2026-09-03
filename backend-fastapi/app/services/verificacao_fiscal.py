@@ -49,10 +49,8 @@ def _p(categoria: str, campo: str, mensagem: str,
     )
 
 
-def _is_simples_nacional(regime: Optional[str]) -> bool:
-    if not regime:
-        return False
-    return "simples" in regime.lower()
+# Cópia local removida: a regra de CRT vive em services/fiscal/helpers.py.
+from app.services.fiscal.helpers import obter_crt, usa_csosn
 
 
 # ---------------------------------------------------------------------------
@@ -485,9 +483,7 @@ def verificar_completude_venda(
         raise HTTPException(status_code=404, detail="Venda não encontrada.")
 
     empresa = db.query(Empresa).filter(Empresa.id == empresa_id).first()
-    simples_nacional = _is_simples_nacional(
-        empresa.regime_tributario if empresa else None
-    )
+    simples_nacional = usa_csosn(obter_crt(empresa))
 
     pendencias: list[PendenciaFiscal] = []
     pendencias.extend(_verificar_emitente(db, empresa_id))
@@ -527,9 +523,7 @@ def verificar_completude_os(
         raise HTTPException(status_code=404, detail="Ordem de Serviço não encontrada.")
 
     empresa = db.query(Empresa).filter(Empresa.id == empresa_id).first()
-    simples_nacional = _is_simples_nacional(
-        empresa.regime_tributario if empresa else None
-    )
+    simples_nacional = usa_csosn(obter_crt(empresa))
 
     # Determinar quais documentos emitir
     nota_fiscal = os_obj.nota_fiscal
@@ -569,7 +563,7 @@ def verificar_completude_vendas_batch(
     pendencias_emitente = _verificar_emitente(db, empresa_id)
 
     empresa = db.query(Empresa).filter(Empresa.id == empresa_id).first()
-    simples = _is_simples_nacional(empresa.regime_tributario if empresa else None)
+    simples = usa_csosn(obter_crt(empresa))
 
     # 2. Carregar vendas com relacionamentos (query única)
     vendas = fiscal_crud.get_vendas_completas_batch(db, venda_ids)

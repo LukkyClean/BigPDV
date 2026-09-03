@@ -11,9 +11,27 @@ from app.db.models.ordem_servico import OrdemServico
 from .helpers import criar_pendencia as _p, get_nome_cliente
 from app.db.crud import fiscal as crud
 
+from app.services.fiscal.tax_engine.constants import (
+    CSOSN_SUPORTADOS,
+    CST_ICMS_SUPORTADOS,
+)
+
 _RE_NCM = re.compile(r"^\d{8}$")
 _RE_CFOP = re.compile(r"^\d{4}$")
 _RE_CEST = re.compile(r"^\d{7}$")
+
+# Códigos que caracterizam substituição tributária e, por isso, exigem CEST.
+_CST_COM_ST = frozenset({"10", "30", "60", "70", "90"})
+_CSOSN_COM_ST = frozenset({"201", "202", "203", "500", "900"})
+
+
+def _exige_cest(fiscal, simples_nacional: bool) -> bool:
+    """CEST é obrigatório para item em regime de ICMS-ST."""
+    codigo = fiscal.csosn if simples_nacional else fiscal.cst_icms
+    if not codigo:
+        return False
+    conjunto = _CSOSN_COM_ST if simples_nacional else _CST_COM_ST
+    return codigo in conjunto
 
 def verificar_emitente(db: Session, empresa_id: int) -> list[PendenciaFiscal]:
     pendencias = []
@@ -105,6 +123,17 @@ def verificar_produto_fiscal(db: Session, produto, pendencias: list, simples_nac
     if fiscal.cest and not _RE_CEST.match(fiscal.cest):
         pendencias.append(_p("item", "cest", f"Produto '{produto.nome}' — CEST '{fiscal.cest}' deve ter exatamente 7 dígitos numéricos.", produto.id, produto.nome))
 
+    # CEST é obrigatório sob substituição tributária. Validar só o formato
+    # deixava passar o produto sem CEST, que só era recusado pela SEFAZ.
+    if _exige_cest(fiscal, simples_nacional) and not fiscal.cest:
+        codigo = fiscal.csosn if simples_nacional else fiscal.cst_icms
+        pendencias.append(_p(
+            "item", "cest",
+            f"Produto '{produto.nome}' — CEST obrigatório: o código {codigo} "
+            f"indica substituição tributária.",
+            produto.id, produto.nome,
+        ))
+
     if fiscal.origem_mercadoria is None:
         pendencias.append(_p("item", "origem_mercadoria", f"Origem não preenchida.", produto.id, produto.nome))
     elif fiscal.origem_mercadoria not in range(9):
@@ -115,16 +144,26 @@ def verificar_produto_fiscal(db: Session, produto, pendencias: list, simples_nac
     elif not simples_nacional and not fiscal.cst_icms:
         pendencias.append(_p("item", "cst_icms", f"CST ICMS não preenchido.", produto.id, produto.nome))
 
-    # --- Validações de alíquota (FiscalTaxEngine) ---
-
-    # CSTs que exigem alíquota ICMS (00=Tributada, 20=Reduzida)
-    cst_exige_aliquota = {"00", "000", "20"}
-    cst_atual = fiscal.cst_icms if not simples_nacional else None
-
-    if cst_atual and cst_atual.lstrip("0") in {"0", "00", "20"} or cst_atual in cst_exige_aliquota:
-        # Verifica se há alíquota no produto (a UF default cobre se não houver,
-        # mas se ambos estiverem ausentes o engine vai usar zero)
-        pass  # UF default resolve — o resolver.py trata fallback
+    # --- Cobertura do FiscalTaxEngine ---
+    # O gate existe para o usuário descobrir o problema no cadastro, não com um
+    # 422 genérico ao clicar em Emitir. Se o código não está implementado no
+    # motor, avisa aqui com o nome do produto e a lista do que é aceito.
+    if simples_nacional and fiscal.csosn and fiscal.csosn not in CSOSN_SUPORTADOS:
+        pendencias.append(_p(
+            "item", "csosn",
+            f"Produto '{produto.nome}' — CSOSN '{fiscal.csosn}' ainda não é "
+            f"calculado pelo sistema. Suportados: "
+            f"{', '.join(sorted(CSOSN_SUPORTADOS))}.",
+            produto.id, produto.nome,
+        ))
+    elif not simples_nacional and fiscal.cst_icms and fiscal.cst_icms not in CST_ICMS_SUPORTADOS:
+        pendencias.append(_p(
+            "item", "cst_icms",
+            f"Produto '{produto.nome}' — CST ICMS '{fiscal.cst_icms}' ainda não é "
+            f"calculado pelo sistema. Suportados: "
+            f"{', '.join(sorted(CST_ICMS_SUPORTADOS))}.",
+            produto.id, produto.nome,
+        ))
 
     # CST 20 — redução de base obrigatória
     if not simples_nacional and fiscal.cst_icms in {"20"}:

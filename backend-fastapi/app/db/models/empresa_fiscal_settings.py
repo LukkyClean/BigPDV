@@ -19,8 +19,9 @@ class EmpresaFiscalSettings(Base):
     Configurações fiscais da empresa para emissão de documentos eletrônicos.
     Relacionamento 1:1 com Empresa.
 
-    IMPORTANTE: A senha do certificado A1 NUNCA é persistida nesta tabela.
-    Ela trafega apenas no momento do upload para validação.
+    A senha do certificado A1 (`certificado_senha`) É persistida, criptografada
+    com Fernet — a emissão precisa dela a cada chamada. A docstring anterior
+    afirmava o contrário e contradizia o próprio modelo.
     """
     __tablename__ = "empresa_fiscal_settings"
 

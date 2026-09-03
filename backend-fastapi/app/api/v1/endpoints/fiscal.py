@@ -23,6 +23,9 @@ from app.schemas.documento_fiscal import (
     PendenciasGlobais,
 )
 from app.schemas.emissao_fiscal import (
+    GapNumeracao,
+    InutilizacaoRead,
+    InutilizacaoRequest,
     CancelamentoRequest,
     EmissaoBatchResponse,
     EmissaoNFeBatchRequest,
@@ -458,3 +461,70 @@ def upload_certificado_focus_endpoint(
     empresa_id = user_token["empresa_id"]
     upload_certificado_focus(db, empresa_id, file, senha)
     return {"message": "Certificado enviado e configurado com sucesso."}
+
+
+# ===========================================================================
+# INUTILIZAÇÃO DE NUMERAÇÃO
+# ===========================================================================
+
+@router.get(
+    "/numeracao/gaps",
+    response_model=list[GapNumeracao],
+    summary="Buracos na Numeração",
+    description=(
+        "Lista faixas de numeração que foram reservadas mas nunca viraram nota "
+        "autorizada. Esses números precisam ser inutilizados junto à SEFAZ."
+    ),
+)
+def listar_gaps_numeracao(
+    user_token: dict = Depends(requer_modulo_fiscal),
+    *,
+    db: Session = Depends(get_db),
+):
+    from app.services.fiscal.inutilizacao import listar_gaps_numeracao as _gaps
+
+    return _gaps(db, user_token["empresa_id"])
+
+
+@router.get(
+    "/numeracao/inutilizacoes",
+    response_model=list[InutilizacaoRead],
+    summary="Inutilizações Solicitadas",
+    description="Histórico de pedidos de inutilização de faixa de numeração.",
+)
+def listar_inutilizacoes(
+    user_token: dict = Depends(requer_modulo_fiscal),
+    *,
+    db: Session = Depends(get_db),
+):
+    from app.services.fiscal.inutilizacao import listar_inutilizacoes as _listar
+
+    return _listar(db, user_token["empresa_id"])
+
+
+@router.post(
+    "/numeracao/inutilizar",
+    response_model=InutilizacaoRead,
+    summary="Inutilizar Faixa de Numeração",
+    description=(
+        "Declara à SEFAZ que uma faixa de numeração não foi utilizada. "
+        "A justificativa precisa de no mínimo 15 caracteres."
+    ),
+)
+def inutilizar_numeracao(
+    user_token: dict = Depends(requer_modulo_fiscal),
+    *,
+    db: Session = Depends(get_db),
+    payload: InutilizacaoRequest = Body(...),
+):
+    from app.services.fiscal.inutilizacao import solicitar_inutilizacao
+
+    return _handle_db_transaction(
+        db,
+        solicitar_inutilizacao,
+        user_token["empresa_id"],
+        payload.serie,
+        payload.numero_inicial,
+        payload.numero_final,
+        payload.justificativa,
+    )

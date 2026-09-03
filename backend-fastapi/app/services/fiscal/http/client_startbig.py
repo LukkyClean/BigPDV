@@ -11,6 +11,47 @@ from .client import EmissaoResultado
 
 logger = logging.getLogger(__name__)
 
+# Chaves cujo valor nunca pode ir para o log em disco do cliente.
+_CHAVES_SENSIVEIS = (
+    "password", "senha", "token", "secret", "certificado", "csc",
+    "authorization", "cpf", "cnpj", "chave_pix",
+)
+
+
+def _ofuscar(valor, _nivel: int = 0):
+    """
+    Remove valores sensíveis antes de registrar em disco.
+
+    O log fica na máquina do cliente, sem proteção. Um corpo de resposta da
+    API costuma ecoar o documento inteiro — CPF, endereço e valores do
+    destinatário — e às vezes credenciais.
+    """
+    if _nivel > 6:
+        return "..."
+    if isinstance(valor, dict):
+        return {
+            chave: (
+                "***"
+                if any(s in str(chave).lower() for s in _CHAVES_SENSIVEIS)
+                else _ofuscar(item, _nivel + 1)
+            )
+            for chave, item in valor.items()
+        }
+    if isinstance(valor, (list, tuple)):
+        return [_ofuscar(item, _nivel + 1) for item in valor[:20]]
+    if isinstance(valor, str) and len(valor) > 200:
+        return valor[:200] + "…"
+    return valor
+
+
+def _resposta_para_log(response) -> str:
+    """Corpo da resposta pronto para log — ofuscado quando for JSON."""
+    try:
+        return str(_ofuscar(response.json()))[:600]
+    except Exception:
+        return f"<corpo nao-JSON, {len(response.content or b'')} bytes>"
+
+
 class FiscalClientStartBig:
     """
     Client que se comunica com a API Online StartBig para emissão fiscal.
@@ -50,20 +91,26 @@ class FiscalClientStartBig:
             "mensagem_sefaz": mensagem
         }
 
-    def emitir_nfe(self, ref: str, payload: dict) -> EmissaoResultado:
+    def emitir_nfe(
+        self, ref: str, payload: dict, idempotency_key: Optional[str] = None
+    ) -> EmissaoResultado:
         url = f"{self.base_url}/erp/fiscal/nfe/emitir"
         body = {
             "ref": ref,
             "payload": payload
         }
-        
+        headers = dict(self.headers)
+        if idempotency_key:
+            headers["X-Idempotency-Key"] = idempotency_key
+
         try:
             with httpx.Client(timeout=30.0) as client:
-                response = client.post(url, json=body, headers=self.headers)
+                response = client.post(url, json=body, headers=headers)
                 response.raise_for_status()
                 return self._parse_response(response.json())
         except httpx.HTTPStatusError as exc:
-            logger.error("[FISCAL] Erro HTTP ao emitir NF-e: %s - %s", exc.response.status_code, exc.response.text)
+            logger.error("[FISCAL] Erro HTTP ao emitir NF-e: %s - %s",
+                         exc.response.status_code, _resposta_para_log(exc.response))
             try:
                 data = exc.response.json()
                 return self._parse_response(data)
@@ -113,3 +160,24 @@ class FiscalClientStartBig:
         except Exception as exc:
             logger.error("[FISCAL] Falha na requisição de cancelamento: %s", exc)
             return {"status": "erro", "mensagem_sefaz": str(exc)}
+
+    def inutilizar_numeracao(
+        self, ref: str, payload: dict, idempotency_key: Optional[str] = None
+    ) -> EmissaoResultado:
+        url = f"{self.base_url}/erp/fiscal/nfe/inutilizar"
+        body = {"ref": ref, "payload": payload}
+        headers = dict(self.headers)
+        if idempotency_key:
+            headers["X-Idempotency-Key"] = idempotency_key
+
+        try:
+            with httpx.Client(timeout=30.0) as client:
+                response = client.post(url, json=body, headers=headers)
+                response.raise_for_status()
+                return self._parse_response(response.json())
+        except httpx.HTTPStatusError as exc:
+            logger.error("[FISCAL] Erro HTTP ao inutilizar numeracao: %s", exc.response.status_code)
+            try:
+                return self._parse_response(exc.response.json())
+            except Exception:
+                return {"status": "erro", "mensagem_sefaz": f"Erro {exc.response.status_code} da API"}

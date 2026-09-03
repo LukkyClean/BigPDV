@@ -25,8 +25,16 @@ class EmissaoResultado(TypedDict):
 class FiscalClientProtocol(Protocol):
     """Contrato que todo client de emissão fiscal deve implementar."""
 
-    def emitir_nfe(self, ref: str, payload: dict) -> EmissaoResultado:
-        """Envia NF-e para emissão. Retorna resultado imediato ou 'processando'."""
+    def emitir_nfe(
+        self, ref: str, payload: dict, idempotency_key: Optional[str] = None
+    ) -> EmissaoResultado:
+        """
+        Envia NF-e para emissão. Retorna resultado imediato ou 'processando'.
+
+        `idempotency_key` viaja em X-Idempotency-Key: a retentativa após
+        timeout reusa a chave e a API intermediária reconhece a mesma emissão
+        em vez de criar uma segunda nota.
+        """
         ...
 
     def consultar_nfe(self, ref: str) -> EmissaoResultado:
@@ -35,4 +43,15 @@ class FiscalClientProtocol(Protocol):
 
     def cancelar_nfe(self, ref: str, justificativa: str) -> EmissaoResultado:
         """Solicita cancelamento de NF-e autorizada."""
+        ...
+
+    def inutilizar_numeracao(
+        self, ref: str, payload: dict, idempotency_key: Optional[str] = None
+    ) -> EmissaoResultado:
+        """
+        Declara à SEFAZ que uma faixa de numeração não foi usada.
+
+        Necessário sempre que um número é reservado e a nota não chega a ser
+        autorizada — ver services/fiscal/inutilizacao.py.
+        """
         ...

@@ -57,6 +57,13 @@ router.include_router(cliente.router, prefix="/clientes", tags=["Clientes"])
 # Inclui o roteador de fornecedores sob o prefixo /fornecedores
 router.include_router(fornecedor.router, prefix="/fornecedores", tags=["Fornecedores"])
 
+# Inclui o roteador de movimentações de estoque sob o prefixo /produtos
+# Contém sub-recursos: registrar movimentação e listar movimentações
+# IMPORTANTE: precisa vir ANTES de produto.router. O caminho literal
+# /produtos/movimentacoes seria capturado por /produtos/{produto_id} e o
+# FastAPI tentaria converter "movimentacoes" em int, devolvendo 422.
+router.include_router(movimentacao_estoque.router, prefix="/produtos", tags=["Movimentações de Estoque"])
+
 # Inclui o roteador de produtos sob o prefixo /produtos
 router.include_router(produto.router, prefix="/produtos", tags=["Produtos"])
 
@@ -88,9 +95,6 @@ router.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboard"])
 # Inclui o roteador de Relatorios sob o prefixo /relatorios
 # Endpoints read-only de faturamento/analytics, protegidos por permissao
 router.include_router(relatorios.router, prefix="/relatorios", tags=["Relatórios"])
-# Inclui o roteador de movimentações de estoque sob o prefixo /produtos
-# Contém sub-recursos: registrar movimentação e listar movimentações
-router.include_router(movimentacao_estoque.router, prefix="/produtos", tags=["Movimentações de Estoque"])
 
 # Inclui o roteador de configurações do sistema sob o prefixo /configuracoes
 router.include_router(configuracao.router, prefix="/configuracoes", tags=["Configurações"])

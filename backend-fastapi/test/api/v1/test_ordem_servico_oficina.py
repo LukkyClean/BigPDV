@@ -37,7 +37,7 @@ def _autenticar_e_criar_empresa(client, segmento: str) -> dict:
         "razao_social": "Empresa Teste 000199 LTDA",
         "nome_fantasia": "Teste",
         "is_cnpj": True,
-        "documento": "12345678000199",
+        "documento": "12345678000195",
         "regime_tributario": "Simples Nacional",
         "celular": "11999998888",
         "segmento": segmento,
@@ -54,7 +54,7 @@ def _autenticar_e_criar_empresa(client, segmento: str) -> dict:
 def _criar_cliente(client, header: dict) -> int:
     payload = {
         "nome": "João Pedro Silva",
-        "cpf": "98765432101",
+        "cpf": "98765432100",
         "tipo": "PF",
         "celular": "11987654321",
         "endereco": [{

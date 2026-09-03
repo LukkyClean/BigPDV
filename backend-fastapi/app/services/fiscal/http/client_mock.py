@@ -12,6 +12,7 @@ import random
 import string
 import time
 from datetime import datetime
+from typing import Optional
 
 from .client import EmissaoResultado
 
@@ -48,7 +49,9 @@ class FiscalClientMock:
         if self._delay > 0:
             time.sleep(self._delay)
 
-    def emitir_nfe(self, ref: str, payload: dict) -> EmissaoResultado:
+    def emitir_nfe(
+        self, ref: str, payload: dict, idempotency_key: Optional[str] = None
+    ) -> EmissaoResultado:
         logger.info("[FISCAL MOCK] emitir_nfe ref=%s", ref)
         self._simular_latencia()
 
@@ -103,4 +106,22 @@ class FiscalClientMock:
             "url_xml": None,
             "codigo_sefaz": 135,
             "mensagem_sefaz": "Evento registrado e vinculado a NF-e (HOMOLOGAÇÃO)",
+        }
+
+    def inutilizar_numeracao(
+        self, ref: str, payload: dict, idempotency_key: Optional[str] = None
+    ) -> EmissaoResultado:
+        logger.info("[FISCAL MOCK] inutilizar_numeracao ref=%s", ref)
+        self._simular_latencia()
+
+        return {
+            "status": "homologado",
+            "chave_acesso": None,
+            "protocolo": _gerar_protocolo(),
+            "numero": None,
+            "serie": payload.get("serie"),
+            "url_pdf": None,
+            "url_xml": f"https://mock.startbig.com.br/inutilizacao/{ref}.xml",
+            "codigo_sefaz": 102,
+            "mensagem_sefaz": "Inutilizacao de numero homologado",
         }

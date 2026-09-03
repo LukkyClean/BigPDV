@@ -38,7 +38,7 @@ def _funcionario(client: TestClient, header: dict) -> int:
         "/api/v1/funcionarios/",
         json={
             "nome": "Vendedor Fiscal",
-            "cpf": "11122233344",
+            "cpf": "11122233396",
             "contato": "11999999999",
             "usuario": {"nome": "vend_fiscal", "email": "vend_fiscal@empresa.com", "senha": "SenhaForte123!"},
             "endereco": [
@@ -488,12 +488,17 @@ def test_bloqueio_correcao_venda_com_nfe_autorizada(client: TestClient, db_sessi
     db_session.add(doc)
     db_session.commit()
 
-    # 3. Tenta aplicar correção fiscal na venda -> DEVE FALHAR (422)
+    # 3. Tenta aplicar correção fiscal na venda -> DEVE FALHAR (409)
+    #    O bloqueio passou a responder 409 com detail estruturado, igual ao
+    #    resto do módulo fiscal (ver emissao.py). O frontend lê detail.mensagem.
     cliente_id = _cliente(client, header, nome="Tentativa Invalida")
     res_bloq = client.patch(
         f"/api/v1/vendas/{venda_id}/correcao-fiscal",
         json={"cliente_id": cliente_id},
         headers=header,
     )
-    assert res_bloq.status_code == 422, res_bloq.text
-    assert "Nota Fiscal já autorizada" in res_bloq.json()["detail"]
+    assert res_bloq.status_code == 409, res_bloq.text
+    detalhe = res_bloq.json()["detail"]
+    assert detalhe["codigo"] == "NF_AUTORIZADA"
+    assert "autorizada" in detalhe["mensagem"]
+    assert detalhe["documento_id"] is not None

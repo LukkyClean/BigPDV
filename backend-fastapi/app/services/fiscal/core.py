@@ -6,7 +6,7 @@ from app.schemas.verificacao_fiscal import ResultadoVerificacaoFiscal
 from app.db.crud import fiscal as crud
 
 from . import validators
-from .helpers import is_simples_nacional, criar_pendencia as _p
+from .helpers import obter_crt, usa_csosn, criar_pendencia as _p
 
 def verificar_completude_venda(db: Session, venda_id: int, empresa_id: int) -> ResultadoVerificacaoFiscal:
     venda = crud.get_venda_completa(db, venda_id)
@@ -14,7 +14,7 @@ def verificar_completude_venda(db: Session, venda_id: int, empresa_id: int) -> R
         raise HTTPException(status_code=404, detail="Venda não encontrada.")
 
     empresa = crud.get_empresa(db, empresa_id)
-    simples = is_simples_nacional(empresa.regime_tributario if empresa else None)
+    simples = usa_csosn(obter_crt(empresa))
 
     pendencias = []
     pendencias.extend(validators.verificar_emitente(db, empresa_id))
@@ -35,7 +35,7 @@ def verificar_completude_os(db: Session, numero_os: str, empresa_id: int, tipo_d
         raise HTTPException(status_code=404, detail="Ordem de Serviço não encontrada.")
 
     empresa = crud.get_empresa(db, empresa_id)
-    simples = is_simples_nacional(empresa.regime_tributario if empresa else None)
+    simples = usa_csosn(obter_crt(empresa))
 
     nota = os_obj.nota_fiscal
     emitir_nfe = nota.emitir_nfe if nota and nota.emitir_nfe is not None else True

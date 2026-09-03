@@ -40,7 +40,7 @@ def _criar_master_e_empresa(client) -> dict:
         "razao_social": "Empresa Tema LTDA",
         "nome_fantasia": "Tema",
         "is_cnpj": True,
-        "documento": "12345678000199",
+        "documento": "12345678000195",
         "regime_tributario": "Simples Nacional",
         "celular": "11999998888",
         "segmento": "assistencia_tecnica",

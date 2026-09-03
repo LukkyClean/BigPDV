@@ -31,7 +31,7 @@ def _auth(client):
     header = {"Authorization": f"Bearer {login.json()['access_token']}"}
     empresa = {
         "razao_social": "Empresa Teste 000199 LTDA", "nome_fantasia": "Teste", "is_cnpj": True,
-        "documento": "12345678000199", "regime_tributario": "Simples Nacional",
+        "documento": "12345678000195", "regime_tributario": "Simples Nacional",
         "celular": "11999998888", "segmento": "assistencia_tecnica",
         "endereco": [{"logradouro": "Av. Paulista", "numero": "1000", "bairro": "Bela Vista",
                       "cidade": "São Paulo", "estado": "SP", "cep": "01310-100"}],
@@ -43,7 +43,7 @@ def _auth(client):
 
 def _cliente(client, header):
     r = client.post("/api/v1/clientes/cliente_pf", json={
-        "nome": "João Pedro Silva", "cpf": "98765432101", "tipo": "PF", "celular": "11987654321",
+        "nome": "João Pedro Silva", "cpf": "98765432100", "tipo": "PF", "celular": "11987654321",
         "endereco": [{"logradouro": "Rua das Flores", "numero": "100", "bairro": "Centro",
                       "cidade": "Campinas", "estado": "SP", "cep": "13010-000"}],
     }, headers=header)
@@ -59,7 +59,7 @@ def _forma_pagamento(client, header):
 
 def _funcionario(client, header):
     payload = {
-        "nome": "Vendedor Teste", "cpf": "11122233344", "contato": "11999999999",
+        "nome": "Vendedor Teste", "cpf": "11122233396", "contato": "11999999999",
         "usuario": {"nome": "vendedor1", "email": "vend1@empresa.com", "senha": "SenhaForte123!"},
         "endereco": [{"logradouro": "Rua X", "numero": "1", "cep": "12345-678",
                       "bairro": "Centro", "cidade": "Lab City", "estado": "SP"}],
