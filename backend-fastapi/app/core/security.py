@@ -11,7 +11,21 @@ import bcrypt
 from fastapi import HTTPException, status
 from jose import jwt, JWTError
 
+from cryptography.fernet import Fernet
+
 from app.core.config import settings
+
+# =========================
+# Configuração Fernet - Certificados
+# =========================
+
+_fernet_instance = Fernet(settings.FERNET_KEY)
+
+def encrypt_data(plain_text: str) -> str:
+    return _fernet_instance.encrypt(plain_text.encode('utf-8')).decode('utf-8')
+
+def decrypt_data(encrypted_text: str) -> str:
+    return _fernet_instance.decrypt(encrypted_text.encode('utf-8')).decode('utf-8')
 
 # =========================
 # Hash de Senha

@@ -12,7 +12,7 @@ import asyncio
 from fastapi import APIRouter, Depends, HTTPException, Path, Response, status
 from sqlalchemy.orm import Session
 
-from app.core.depends import get_current_master_user, _handle_db_transaction
+from app.core.depends import get_current_active_user, _handle_db_transaction
 from app.db.session import get_db
 from app.schemas.backup import (
     BackupCriadoComCota,
@@ -40,7 +40,7 @@ LIMITE_BACKUP_MANUAL_DIARIO = 2
     summary="Listar todos os backups locais",
 )
 def listar_backups(
-    usuario_token: dict = Depends(get_current_master_user),
+    usuario_token: dict = Depends(get_current_active_user),
 ):
     return backup_service.list_backups()
 
@@ -53,7 +53,7 @@ def listar_backups(
     responses={204: {"description": "Nenhum backup encontrado"}},
 )
 def ultimo_backup(
-    usuario_token: dict = Depends(get_current_master_user),
+    usuario_token: dict = Depends(get_current_active_user),
 ):
     ultimo = backup_service.get_last_backup()
     if ultimo is None:
@@ -68,7 +68,7 @@ def ultimo_backup(
     summary="Criar backup manual",
 )
 async def criar_backup(
-    usuario_token: dict = Depends(get_current_master_user),
+    usuario_token: dict = Depends(get_current_active_user),
 ):
     backups_hoje = backup_service.count_backups_today()
 
@@ -103,7 +103,7 @@ async def criar_backup(
     summary="Buscar configurações de backup",
 )
 def get_configuracao_backup(
-    usuario_token: dict = Depends(get_current_master_user),
+    usuario_token: dict = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
     empresa_id = int(usuario_token.get("empresa_id"))
@@ -122,7 +122,7 @@ def get_configuracao_backup(
 )
 def update_configuracao_backup(
     data: ConfiguracaoBackupUpdate,
-    usuario_token: dict = Depends(get_current_master_user),
+    usuario_token: dict = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
     empresa_id = int(usuario_token.get("empresa_id"))
@@ -141,7 +141,7 @@ def update_configuracao_backup(
     summary="Listar ciclos de backup disponíveis na nuvem (via journal local)",
 )
 def listar_ciclos_nuvem(
-    usuario_token: dict = Depends(get_current_master_user),
+    usuario_token: dict = Depends(get_current_active_user),
 ):
     return cloud_journal.get_ciclos_enviados()
 
@@ -153,7 +153,7 @@ def listar_ciclos_nuvem(
     summary="Baixa e restaura cadeia de backups da nuvem",
 )
 async def backup_download(
-    usuario_token: dict = Depends(get_current_master_user),
+    usuario_token: dict = Depends(get_current_active_user),
     db: Session = Depends(get_db),
     *,
     ciclo: str = Path(..., description="ID do ciclo de backup a ser baixado"),
@@ -168,7 +168,7 @@ async def backup_download(
     summary="Preparar restauração de backup",
 )
 def preparar_restauracao(
-    usuario_token: dict = Depends(get_current_master_user),
+    usuario_token: dict = Depends(get_current_active_user),
     *,
     ciclo: str = Path(..., description="ID do ciclo de backup"),
 ):
@@ -188,7 +188,7 @@ def preparar_restauracao(
     summary="Confirmar restauração de backup",
 )
 def confirmar_restauracao(
-    usuario_token: dict = Depends(get_current_master_user),
+    usuario_token: dict = Depends(get_current_active_user),
     *,
     ciclo: str = Path(..., description="ID do ciclo de backup"),
     pre_restore_backup: str,

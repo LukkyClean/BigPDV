@@ -5,7 +5,7 @@
  * Permite buscar e filtrar opções conforme o usuário digita.
  */
 
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 
 import { onClickOutside } from '@vueuse/core';
 
@@ -41,8 +41,10 @@ const model = defineModel<string | number>();
 const searchQuery = ref('');
 const isOpen = ref(false);
 const selectRef = ref<HTMLDivElement | null>(null);
+const dropdownRef = ref<HTMLDivElement | null>(null);
 const inputRef = ref<HTMLInputElement>();
 const highlightedIndex = ref(-1);
+const dropdownStyle = ref<Record<string, string>>({});
 
 const uniqueId = props.id || `select-${Math.random().toString(36).slice(2, 7)}`;
 
@@ -86,11 +88,54 @@ function handleInput(event: Event) {
   }
 }
 
+function updateDropdownPosition() {
+  if (!inputRef.value) return;
+  const rect = inputRef.value.getBoundingClientRect();
+  const spaceBelow = window.innerHeight - rect.bottom;
+  const maxHeight = 240; // max-h-60 = 15rem = 240px
+  const openAbove = spaceBelow < maxHeight && rect.top > spaceBelow;
+
+  dropdownStyle.value = {
+    position: 'fixed',
+    left: `${rect.left}px`,
+    width: `${rect.width}px`,
+    zIndex: '9999',
+    ...(openAbove
+      ? { bottom: `${window.innerHeight - rect.top + 4}px` }
+      : { top: `${rect.bottom + 4}px` }),
+  };
+}
+
+function onScrollOrResize() {
+  updateDropdownPosition();
+}
+
+function addPositionListeners() {
+  window.addEventListener('scroll', onScrollOrResize, true);
+  window.addEventListener('resize', onScrollOrResize);
+}
+
+function removePositionListeners() {
+  window.removeEventListener('scroll', onScrollOrResize, true);
+  window.removeEventListener('resize', onScrollOrResize);
+}
+
+function handleMousedown(event: MouseEvent) {
+  if (props.disabled) return;
+  if (isOpen.value) {
+    event.preventDefault();
+    closeDropdown();
+    inputRef.value?.blur();
+  }
+}
+
 function openDropdown() {
   if (props.disabled) return;
   isOpen.value = true;
   searchQuery.value = '';
   highlightedIndex.value = -1;
+  updateDropdownPosition();
+  addPositionListeners();
   setTimeout(() => inputRef.value?.focus(), 0);
 }
 
@@ -98,7 +143,12 @@ function closeDropdown() {
   isOpen.value = false;
   searchQuery.value = '';
   highlightedIndex.value = -1;
+  removePositionListeners();
 }
+
+onBeforeUnmount(() => {
+  removePositionListeners();
+});
 
 function selectOption(option: SelectOption) {
   model.value = option.value;
@@ -170,7 +220,8 @@ function scrollToHighlighted() {
   }, 0);
 }
 
-onClickOutside(selectRef, () => {
+onClickOutside(selectRef, (event) => {
+  if (dropdownRef.value?.contains(event.target as Node)) return;
   if (isOpen.value) {
     closeDropdown();
   }
@@ -197,7 +248,7 @@ watch(
       <span v-if="required" class="text-red-600"> * </span>
     </label>
 
-    <div class="relative">
+    <div class="relative" @mousedown="handleMousedown">
       <input
         ref="inputRef"
         :id="uniqueId"
@@ -219,6 +270,9 @@ watch(
         <LucideIcon :icon="ChevronDown" />
       </div>
 
+    </div>
+
+    <Teleport to="body">
       <Transition
         enter-active-class="transition ease-out duration-100"
         enter-from-class="opacity-0 scale-95"
@@ -229,7 +283,9 @@ watch(
       >
         <div
           v-if="isOpen"
-          class="absolute z-50 w-full h-fit mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto"
+          ref="dropdownRef"
+          :style="dropdownStyle"
+          class="bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto"
         >
           <ul v-if="filteredOptions.length > 0" class="py-1">
             <li
@@ -253,7 +309,7 @@ watch(
           </div>
         </div>
       </Transition>
-    </div>
+    </Teleport>
 
     <p v-if="error" class="select-none mt-0.5 text-xs text-red-500">
       {{ error }}

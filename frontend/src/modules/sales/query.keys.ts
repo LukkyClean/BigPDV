@@ -35,3 +35,7 @@ export const customerKeys = {
     all: [CLIENTES_KEY] as const,
     search: (term: string) => [...customerKeys.all, 'venda-busca', term] as const,
 }
+
+export const vendaNotaFiscalKeys = {
+    detail: (vendaId: number) => ['venda-nota-fiscal', vendaId] as const,
+}

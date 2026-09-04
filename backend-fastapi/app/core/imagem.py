@@ -13,7 +13,7 @@ from io import BytesIO
 
 from fastapi import HTTPException, UploadFile, status
 from PIL import Image, ImageOps, UnidentifiedImageError
-from app.core.config import BASE_DIR
+from app.core.config import data_dir
 
 # ---------------------------------------------------------------------------
 # CONSTANTES
@@ -176,7 +176,7 @@ def salvar_imagem(arquivo: UploadFile, entidade_id: int, contexto: str) -> str:
         nome_arquivo = f"{uuid.uuid4()}.webp"
 
         # 4. Criar diretorio
-        diretorio = os.path.join(BASE_DIR, config["diretorio_base"], str(entidade_id))
+        diretorio = os.path.join(data_dir, config["diretorio_base"], str(entidade_id))
         os.makedirs(diretorio, exist_ok=True)
 
         # 5. Escrever no disco
@@ -206,7 +206,7 @@ def deletar_imagem(caminho_arquivo: str) -> bool:
     Returns:
         True se o arquivo foi removido, False se nao existia.
     """
-    caminho_abs = os.path.join(BASE_DIR, caminho_arquivo)
+    caminho_abs = os.path.join(data_dir, caminho_arquivo)
 
     if not os.path.exists(caminho_abs):
         return False

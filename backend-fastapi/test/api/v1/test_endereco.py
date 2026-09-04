@@ -59,7 +59,7 @@ def test_deletar_endereco(client: TestClient, header_with_token: dict):
             }
         ],
         "nome": "João Pedro Silva",
-        "cpf": "98765432101",
+        "cpf": "98765432100",
         "rg": "12345678",
         "genero": "MASCULINO",
         "data_nascimento": "1995-12-15"

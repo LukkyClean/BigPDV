@@ -225,6 +225,9 @@ async function salvar(): Promise<void> {
       toast.success('Configurações de impressão salvas!')
       fecharComDelay()
       break
+    case 'backup-dados':
+      salvarBackup(comp.form as any, fecharAposSalvar)
+      break
     case 'formatos-exibicao': {
       // Só o tema é gravável aqui (data e hora são informativos). A cor mora na
       // empresa, junto do logo, e o PUT /empresas/ já exige master — a regra de

@@ -166,7 +166,7 @@ onBeforeRouteLeave(async () => {
             </div>
             <div class="flex-1 min-w-0">
               <div class="flex items-center gap-2">
-                <h3 class="text-sm font-bold text-gray-800">Emissão de Notas Fiscais</h3>
+                <h3 class="text-sm font-bold text-gray-800">{{ nfeDisponivel ? 'Emissão Fiscal Ativa' : 'Emissão de Notas Fiscais' }}</h3>
                 <span
                   v-if="!nfeDisponivel"
                   class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 text-[10px] font-bold uppercase"
@@ -176,7 +176,7 @@ onBeforeRouteLeave(async () => {
               </div>
               <p class="text-xs text-gray-500 mt-0.5">
                 {{ nfeDisponivel
-                  ? 'Configure a emissão de NF-e, NFC-e e NFS-e.'
+                  ? 'Acesse as configurações fiscais, certificados e ambientes.'
                   : 'Não incluído no seu plano. Toque para fazer upgrade.' }}
               </p>
             </div>

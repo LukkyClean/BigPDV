@@ -34,7 +34,7 @@ def valid_pf_payload():
     """Retorna um dicionário com dados válidos para criar um Cliente PF."""
     return {
         "nome": "João Pedro Silva",
-        "cpf": "98765432101",
+        "cpf": "98765432100",
         "rg": "12345678",
         "genero": "MASCULINO",
         "data_nascimento": "1995-12-15",
@@ -59,7 +59,7 @@ def valid_pj_payload():
     """Retorna um dicionário com dados válidos para criar um Cliente PJ."""
     return {
         "razao_social": "Tech Solutions LTDA",
-        "cnpj": "12345678000199",
+        "cnpj": "12345678000195",
         "nome_fantasia": "Tech Soluções",
         "ie": "123456789",
         "responsavel": "Ana Gerente",

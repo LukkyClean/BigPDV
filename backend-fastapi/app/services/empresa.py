@@ -27,7 +27,8 @@ from app.db.crud import empresa as empresa_crud
 from app.db.models.funcionario import Funcionario as FuncionarioModel
 from app.db.crud import funcionario as funcionario_crud
 from app.core.imagem import salvar_imagem
-from app.core.config import BASE_DIR
+from app.core.config import data_dir, secure_dir
+from app.core.security import encrypt_data
 
 # ---------------------------------------------------------------------------
 # CONSTANTES E EXCEÇÕES
@@ -45,10 +46,8 @@ NOT_FOUND_EXCE = HTTPException(
 )
 
 # Diretório seguro para certificados (fora de static para não expor publicamente)
-CERT_UPLOAD_DIR = "secure_storage/certificates"
-
-secure_path = os.path.join(BASE_DIR, CERT_UPLOAD_DIR)
-os.makedirs(secure_path, exist_ok=True)
+CERT_UPLOAD_DIR = os.path.join(secure_dir, "certificados")
+os.makedirs(CERT_UPLOAD_DIR, exist_ok=True)
 
 # ---------------------------------------------------------------------------
 # FUNÇÕES DE SERVIÇO
@@ -268,9 +267,6 @@ def upload_certificado_a1(
     """
     Upload e validação de certificado A1 (PKCS#12).
 
-    IMPORTANTE: A senha NÃO é persistida no banco de dados.
-    Ela é usada apenas para validar o certificado e extrair metadados.
-
     Args:
         db: Sessão do banco de dados.
         empresa_id: ID da empresa.
@@ -320,7 +316,7 @@ def upload_certificado_a1(
     cert_validade = certificate.not_valid_after_utc
 
     # 4. Verificar se não está expirado
-    if cert_validade < datetime.utcnow():
+    if cert_validade < datetime.now(datetime.timezone.utc):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Certificado expirado em {cert_validade.strftime('%d/%m/%Y')}"
@@ -341,6 +337,86 @@ def upload_certificado_a1(
     settings.certificado_validade = cert_validade
     settings.certificado_subject = cert_subject
     settings.certificado_thumbprint = None  # Limpar Windows se estava usando
+    settings.certificado_senha = encrypt_data(senha)
+
+    db.flush()
+    db.refresh(empresa_in_db)
+
+    return empresa_in_db
+
+
+def upload_certificado_focus(
+    db: Session,
+    empresa_id: int,
+    file: UploadFile,
+    senha: str
+) -> EmpresaModel:
+    """
+    Upload e validação de certificado A1 (PKCS#12) para a API da Focus NFe.
+    Não salva o certificado no disco nem a senha no banco de dados.
+    """
+    from cryptography.hazmat.primitives.serialization import pkcs12
+    from cryptography.hazmat.backends import default_backend
+
+    empresa_in_db = empresa_crud.get_empresa_by_id(db, empresa_id=empresa_id)
+    if not empresa_in_db:
+        raise NOT_FOUND_EXCE
+
+    # 1. Ler arquivo em memória
+    file_content = file.file.read()
+
+    # 2. Validar certificado com a senha
+    try:
+        private_key, certificate, chain = pkcs12.load_key_and_certificates(
+            file_content,
+            senha.encode('utf-8'),
+            default_backend()
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Senha incorreta ou certificado inválido"
+        )
+    finally:
+        file.file.close()
+
+    if certificate is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Certificado não encontrado no arquivo"
+        )
+
+    # 3. Extrair metadados
+    cert_subject = certificate.subject.rfc4514_string()
+    cert_validade = certificate.not_valid_after_utc
+    
+    # Extrair CNPJ se possível
+    import re
+    cnpj_match = re.search(r'2\.5\.4\.97=#131[a-f0-9]{2}([0-9]{14})', cert_subject) or re.search(r'CNPJ:?([0-9]{14})', cert_subject)
+    cert_cnpj = cnpj_match.group(1) if cnpj_match else None
+
+    # 4. Verificar se não está expirado
+    if cert_validade < datetime.now(datetime.timezone.utc):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Certificado expirado em {cert_validade.strftime('%d/%m/%Y')}"
+        )
+
+    # 5. Mock de envio para a API Online
+    import time
+    time.sleep(0.5)
+
+    # 6. Atualizar configurações fiscais
+    settings = get_or_create_fiscal_settings(db, empresa_id)
+    settings.tipo_certificado = "NUVEM"
+    settings.certificado_digital_path = None
+    settings.certificado_validade = cert_validade
+    settings.certificado_subject = cert_subject
+    settings.certificado_thumbprint = None
+    settings.certificado_senha = None
+    settings.certificado_status = "CONECTADO_NUVEM"
+    if cert_cnpj:
+        settings.certificado_cnpj = cert_cnpj
 
     db.flush()
     db.refresh(empresa_in_db)

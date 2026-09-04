@@ -1,6 +1,7 @@
 import type { StatusFilter } from '../types/servicos.types';
 
 export { SERVICOS_QUERY_KEY, SERVICOS_STATS_QUERY_KEY } from '../../shared/constants/queryKeys';
+export const SERVICO_FISCAL_QUERY_KEY = 'servico-fiscal';
 export const SERVICOS_STALE_TIME = 1000 * 60 * 5;
 export const SEARCH_DEBOUNCE_MS = 300;
 

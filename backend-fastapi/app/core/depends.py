@@ -3,16 +3,21 @@
 # DESCRIÇÃO: Dependências (Middlewares) para proteção de rotas.
 # ---------------------------------------------------------------------------
 
+import logging
 from typing import Callable, Dict, Any
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from app.core.security import verify_token_data
 from app.services import usuario as usuario
 from app.db.crud import token as token_crud
 from app.db.crud import configuracao_licenca as licenca_crud
 from app.db.session import get_db
+from app.db.models.empresa_fiscal_settings import EmpresaFiscalSettings
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
@@ -198,7 +203,7 @@ def check_permission(required_permission: str | list[str]) -> Callable:
         Callable: A função de dependência que executa a verificação.
     """
     
-    def permission_dependency(usuario_token: Dict[str, Any] = Depends(get_current_active_user), db: Session = Depends(get_db)):
+    def permission_dependency(usuario_token: Dict[str, Any] = Depends(get_current_active_user)):
         """
         Função de dependência que verifica o Tenant e a Permissão específica.
         """
@@ -239,6 +244,45 @@ def check_permission(required_permission: str | list[str]) -> Callable:
     
     return permission_dependency
 
+# =========================
+# 4. Validação de Módulo Fiscal
+# =========================
+def requer_modulo_fiscal(
+    usuario_token: Dict[str, Any] = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    """
+    Garante que a empresa do usuário possui o módulo fiscal ativo.
+    A presença de EmpresaFiscalSettings é o indicador canônico de ativação.
+
+    Raises:
+        HTTPException 403: Se o módulo fiscal não estiver ativado para a empresa.
+
+    Returns:
+        Dict[str, Any]: O payload do token (passthrough para encadeamento de depends).
+    """
+    empresa_id = usuario_token.get("empresa_id")
+    if not empresa_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Usuário sem empresa vinculada. Acesso negado.",
+        )
+
+    fiscal_settings = (
+        db.query(EmpresaFiscalSettings)
+        .filter(EmpresaFiscalSettings.empresa_id == empresa_id)
+        .first()
+    )
+    if not fiscal_settings:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Módulo fiscal não configurado para esta empresa. "
+                   "Acesse Configurações > Dados Fiscais para ativar.",
+        )
+
+    return usuario_token
+
+
 _CARGOS_GERENCIAIS = {"gerente", "administrador"}
 
 def is_visao_gerencial(user_token: dict) -> bool:
@@ -272,20 +316,28 @@ def _handle_db_transaction(db: Session, func: Callable, *args, **kwargs):
         return result
     except HTTPException as http_exce:
         # 3. Trata erros de negócio controlados (404, 409, 403)
-        print(f"Erro de negócio: {http_exce.detail}")
+        logger.warning("Erro de negócio: %s", http_exce.detail)
         db.rollback()
         raise http_exce
     except ValueError as e:
         # 4. Captura erros de validação de negócio (lançados por serviços)
-        print(f"Erro de validação: {e}")
+        logger.warning("Erro de validação: %s", e)
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(e)
         )
+    except IntegrityError as e:
+        # 5. Trata violações de integridade (unique, FK, etc.)
+        logger.warning("Violação de integridade: %s", e.orig)
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Registro duplicado ou violação de integridade: {str(e.orig)[:200]}"
+        )
     except Exception as e:
-        # 5. Trata erros inesperados (internos)
-        print(f"Erro inesperado: {e}")
+        # 6. Trata erros inesperados (internos)
+        logger.exception("Erro inesperado: %s", e)
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

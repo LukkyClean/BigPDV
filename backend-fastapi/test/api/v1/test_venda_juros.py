@@ -29,7 +29,7 @@ def _auth(client):
     header = {"Authorization": f"Bearer {login.json()['access_token']}"}
     empresa = {
         "razao_social": "Empresa Juros 000199 LTDA", "nome_fantasia": "Juros", "is_cnpj": True,
-        "documento": "12345678000199", "regime_tributario": "Simples Nacional",
+        "documento": "12345678000195", "regime_tributario": "Simples Nacional",
         "celular": "11999998888", "segmento": "assistencia_tecnica",
         "endereco": [{"logradouro": "Av. Paulista", "numero": "1000", "bairro": "Bela Vista",
                       "cidade": "São Paulo", "estado": "SP", "cep": "01310-100"}],
@@ -41,7 +41,7 @@ def _auth(client):
 
 def _funcionario(client, header):
     r = client.post("/api/v1/funcionarios/", json={
-        "nome": "Vendedor Teste", "cpf": "11122233344", "contato": "11999999999",
+        "nome": "Vendedor Teste", "cpf": "11122233396", "contato": "11999999999",
         "usuario": {"nome": "vendedor1", "email": "vend1@empresa.com", "senha": "SenhaForte123!"},
         "endereco": [{"logradouro": "Rua X", "numero": "1", "cep": "12345-678",
                       "bairro": "Centro", "cidade": "Lab City", "estado": "SP"}],

@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from .ordem_servico_pagamento import OrdemServicoPagamento
     from .ordem_servico_foto import OrdemServicoFoto
     from .forma_pagamento import FormaPagamento
+    from .ordem_servico_nota_fiscal import OrdemServicoNotaFiscal
 
 
 class OrdemServico(Base):
@@ -139,6 +140,13 @@ class OrdemServico(Base):
         foreign_keys=[forma_pagamento_entrada_id],
         lazy="joined",
         doc="Forma de pagamento usada no adiantamento"
+    )
+    nota_fiscal: Mapped[Optional["OrdemServicoNotaFiscal"]] = relationship(
+        "OrdemServicoNotaFiscal",
+        back_populates="ordem_servico",
+        cascade="all, delete-orphan",
+        uselist=False,
+        doc="Configuração de nota fiscal da OS (1:1 opcional)"
     )
 
     @property

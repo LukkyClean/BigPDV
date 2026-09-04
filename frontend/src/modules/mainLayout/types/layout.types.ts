@@ -7,7 +7,7 @@ export type sidebarTitles =
     | 'MENU PRINCIPAL'
     | 'EMPRESA'
 
-export type SidebarLabelOptions = 
+export type SidebarLabelOptions =
     | 'Início'
     | 'Vendas'
     | 'Serviços'
@@ -18,12 +18,20 @@ export type SidebarLabelOptions =
     | 'Dados da Empresa'
     | 'Gestão de Equipe'
     | 'Minha Conta'
-    
+    | 'Centro Fiscal'
+
+export interface SidebarSubItem {
+    id: string;
+    label: string;
+}
+
 export interface SidebarOption {
     id: string;
     icon: Component;
     label: SidebarLabelOptions;
     requiredPermission?: Permissions;
+    featureFlag?: () => boolean;
+    children?: SidebarSubItem[];
 }
 
 export interface SidebarSection {

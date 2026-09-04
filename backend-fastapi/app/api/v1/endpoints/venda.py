@@ -16,10 +16,15 @@
 #   POST   /{venda_id}/finalizar          → Finalizar venda (checkout)
 # ---------------------------------------------------------------------------
 
-from fastapi import APIRouter, Depends, Path, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from sqlalchemy.orm import Session
 
-from app.core.depends import check_permission, get_db, _handle_db_transaction, is_visao_gerencial
+from app.core.depends import check_permission, get_db, _handle_db_transaction, is_visao_gerencial, requer_modulo_fiscal
+from app.schemas.venda_nota_fiscal import VendaNotaFiscalRead, VendaNotaFiscalUpdate
+from app.schemas.venda_correcao_fiscal import VendaCorrecaoFiscalPayload, VendaCorrecaoFiscalRead
+from app.schemas.verificacao_fiscal import ResultadoVerificacaoFiscal, ResultadoVerificacaoBatch
+from app.services import venda_nota_fiscal as venda_nota_fiscal_service
+from app.services import verificacao_fiscal as verificacao_fiscal_service
 from app.schemas.vendas import (
     ProdutosAlterSummary,
     FinalizarVendaPayload,
@@ -375,21 +380,6 @@ def listar_vendas(
         links=links
     )
 
-@router.get(
-    "/{venda_id}",
-    response_model=VendaRead,
-    summary="Obter Detalhes da Venda",
-    description=(
-        "Retorna os detalhes completos de uma venda específica, incluindo itens, pagamentos e informações do cliente."
-    )
-)
-def obter_detalhes_venda(
-    user_token: dict = Depends(check_permission(required_permission=module_permission)),
-    *,
-    db: Session = Depends(get_db),
-    venda_id: int = Path(..., description="ID da venda"),
-):
-    return venda_service.get_sale_by_id(db, venda_id)
 
 @router.get(
     "/status/",
@@ -407,5 +397,175 @@ def resumo_status_vendas(
 ):
     funcionario_id = None if is_visao_gerencial(user_token) else user_token.get("funcionario_id")
     return venda_service.get_sales_status(db, funcionario_id=funcionario_id)
+
+
+# ===========================================================================
+# NOTA FISCAL (GET + PUT /{venda_id}/fiscal)
+# ===========================================================================
+
+@router.get(
+    "/{venda_id}/fiscal",
+    response_model=VendaNotaFiscalRead,
+    status_code=status.HTTP_200_OK,
+    summary="Dados Fiscais da Venda",
+    description="Retorna a configuração de nota fiscal de uma venda. 404 se ainda não preenchidos.",
+)
+def get_nota_fiscal_venda(
+    user_token: dict = Depends(check_permission(required_permission=module_permission)),
+    _fiscal: dict = Depends(requer_modulo_fiscal),
+    venda_id: int = Path(..., ge=1),
+    db: Session = Depends(get_db),
+):
+    resultado = venda_nota_fiscal_service.get_dados_fiscais(db, venda_id)
+    if resultado is None:
+        raise HTTPException(status_code=404, detail="Nota fiscal ainda não configurada para esta venda")
+    return resultado
+
+
+@router.put(
+    "/{venda_id}/fiscal",
+    response_model=VendaNotaFiscalRead,
+    status_code=status.HTTP_200_OK,
+    summary="Salvar Dados Fiscais da Venda",
+    description="Cria ou atualiza (upsert) a configuração de nota fiscal de uma venda.",
+)
+def upsert_nota_fiscal_venda(
+    user_token: dict = Depends(check_permission(required_permission=module_permission)),
+    _fiscal: dict = Depends(requer_modulo_fiscal),
+    *,
+    venda_id: int = Path(..., ge=1),
+    dados: VendaNotaFiscalUpdate,
+    db: Session = Depends(get_db),
+):
+    return _handle_db_transaction(
+        db,
+        venda_nota_fiscal_service.upsert_dados_fiscais,
+        venda_id,
+        dados,
+    )
+
+
+@router.patch(
+    "/{venda_id}/correcao-fiscal",
+    response_model=VendaRead,
+    status_code=status.HTTP_200_OK,
+    summary="Correção Cadastral e Fiscal da Venda",
+    description=(
+        "Permite atualizar o cliente vinculado, observações e dados fiscais de uma venda "
+        "(inclusive no status FINALIZADA) para fins de emissão de NF-e, garantindo a "
+        "invariância dos valores financeiros e do estoque."
+    ),
+)
+def corrigir_venda_fiscal(
+    user_token: dict = Depends(check_permission(required_permission=module_permission)),
+    *,
+    venda_id: int = Path(..., ge=1, description="ID da venda"),
+    payload: VendaCorrecaoFiscalPayload,
+    db: Session = Depends(get_db),
+):
+    return _handle_db_transaction(
+        db,
+        venda_service.corrigir_dados_venda_fiscal,
+        venda_id,
+        payload,
+    )
+
+
+# ===========================================================================
+# VERIFICAÇÃO FISCAL BATCH (path estático — antes de {venda_id})
+# ===========================================================================
+
+@router.get(
+    "/verificar-fiscal-batch",
+    response_model=ResultadoVerificacaoBatch,
+    summary="Verificação Fiscal em Lote",
+    description="Verifica completude fiscal de múltiplas vendas simultaneamente.",
+)
+def verificar_fiscal_batch(
+    user_token: dict = Depends(check_permission(required_permission=module_permission)),
+    _fiscal: dict = Depends(requer_modulo_fiscal),
+    ids: str = Query(..., description="IDs de venda separados por vírgula, máximo 50"),
+    db: Session = Depends(get_db),
+):
+    empresa_id = user_token["empresa_id"]
+    venda_ids = [int(x.strip()) for x in ids.split(",") if x.strip().isdigit()]
+    if not venda_ids or len(venda_ids) > 50:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Informe entre 1 e 50 IDs de venda.",
+        )
+    return verificacao_fiscal_service.verificar_completude_vendas_batch(db, venda_ids, empresa_id)
+
+
+# ===========================================================================
+# VERIFICAÇÃO E EMISSÃO FISCAL (rotas com {venda_id})
+# ===========================================================================
+
+@router.get(
+    "/{venda_id}/verificar-fiscal",
+    response_model=ResultadoVerificacaoFiscal,
+    summary="Verificar Completude Fiscal da Venda",
+    description="Retorna lista de pendências fiscais que impedem a emissão de NF-e.",
+)
+def verificar_fiscal_venda(
+    user_token: dict = Depends(check_permission(required_permission=module_permission)),
+    _fiscal: dict = Depends(requer_modulo_fiscal),
+    venda_id: int = Path(..., ge=1),
+    db: Session = Depends(get_db),
+):
+    empresa_id = user_token["empresa_id"]
+    return verificacao_fiscal_service.verificar_completude_venda(db, venda_id, empresa_id)
+
+
+@router.post(
+    "/{venda_id}/emitir-fiscal",
+    response_model=ResultadoVerificacaoFiscal,
+    summary="Emitir Nota Fiscal da Venda",
+    description=(
+        "Executa o gate de verificação fiscal. Se completo, retorna placeholder "
+        "(integração com SEFAZ ainda não disponível)."
+    ),
+)
+def emitir_fiscal_venda(
+    user_token: dict = Depends(check_permission(required_permission=module_permission)),
+    _fiscal: dict = Depends(requer_modulo_fiscal),
+    venda_id: int = Path(..., ge=1),
+    db: Session = Depends(get_db),
+):
+    empresa_id = user_token["empresa_id"]
+    resultado = verificacao_fiscal_service.verificar_completude_venda(db, venda_id, empresa_id)
+    if not resultado.completo:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "codigo": "PENDENCIAS_FISCAIS",
+                "mensagem": "Existem pendências que impedem a emissão.",
+                "pendencias": [p.model_dump() for p in resultado.pendencias],
+            },
+        )
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail={
+            "codigo": "API_NAO_DISPONIVEL",
+            "mensagem": "Verificação fiscal aprovada. A integração com a SEFAZ ainda não está disponível.",
+        },
+    )
+
+
+@router.get(
+    "/{venda_id}",
+    response_model=VendaRead,
+    summary="Obter Detalhes da Venda",
+    description=(
+        "Retorna os detalhes completos de uma venda específica, incluindo itens, pagamentos e informações do cliente."
+    )
+)
+def obter_detalhes_venda(
+    user_token: dict = Depends(check_permission(required_permission=module_permission)),
+    *,
+    db: Session = Depends(get_db),
+    venda_id: int = Path(..., description="ID da venda"),
+):
+    return venda_service.get_sale_by_id(db, venda_id)
 
     

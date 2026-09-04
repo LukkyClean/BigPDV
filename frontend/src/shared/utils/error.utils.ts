@@ -117,8 +117,20 @@ export function getErrorMessage(
       // 422 Validation: array de {loc, msg, type}
       return formatValidationErrors(data.detail);
     }
+    if (typeof data.detail === 'object' && data.detail !== null) {
+      const detailObj = data.detail as Record<string, any>;
+      if (detailObj.mensagem && Array.isArray(detailObj.pendencias)) {
+        const pendencias = detailObj.pendencias.map((p: any) => p.mensagem).join(' • ');
+        return `${detailObj.mensagem} • ${pendencias}`;
+      }
+      if (detailObj.mensagem) {
+        return detailObj.mensagem;
+      }
+    }
     // Se detail for uma string
-    return data.detail;
+    if (typeof data.detail === 'string') {
+      return data.detail;
+    }
   }
 
   // Verifica campo message

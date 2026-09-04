@@ -1,4 +1,5 @@
 import api from '@/api/axios';
+import type { ResultadoVerificacaoFiscal } from '@/shared/types/fiscal.types';
 
 import { parseSchema } from './parseSchema.util';
 
@@ -13,6 +14,9 @@ import {
   SaleReadSchema,
   SaleListSchema,
   SaleUpdateSchema,
+  VendaNotaFiscalRead,
+  VendaNotaFiscalUpdate,
+  VendaNotaFiscalReadSchema,
 } from './schemas/sale.schema';
 
 import {
@@ -122,6 +126,32 @@ export const saleService = {
   async getSalesStatus(): Promise<SalesStatus> {
     const { data } = await api.get<SalesStatus>(`${SALE_ENDPOINT}/status/`);
     return parseSchema(SalesStatusSchema, data, 'saleService.getSalesStatus.response');
+  },
+
+  async getVendaNotaFiscal(venda_id: number): Promise<VendaNotaFiscalRead | null> {
+    try {
+      const { data } = await api.get<VendaNotaFiscalRead>(`${SALE_ENDPOINT}/${venda_id}/fiscal`);
+      return parseSchema(VendaNotaFiscalReadSchema, data, 'saleService.getVendaNotaFiscal.response');
+    } catch (err: any) {
+      if (err?.response?.status === 404) return null;
+      throw err;
+    }
+  },
+
+  async upsertVendaNotaFiscal(venda_id: number, dados: VendaNotaFiscalUpdate): Promise<VendaNotaFiscalRead> {
+    const { data } = await api.put<VendaNotaFiscalRead>(`${SALE_ENDPOINT}/${venda_id}/fiscal`, dados);
+    return parseSchema(VendaNotaFiscalReadSchema, data, 'saleService.upsertVendaNotaFiscal.response');
+  },
+
+  async verificarFiscal(venda_id: number): Promise<ResultadoVerificacaoFiscal> {
+    const { data } = await api.get<ResultadoVerificacaoFiscal>(
+      `${SALE_ENDPOINT}/${venda_id}/verificar-fiscal`,
+    );
+    return data;
+  },
+
+  async emitirFiscal(venda_id: number): Promise<void> {
+    await api.post(`${SALE_ENDPOINT}/${venda_id}/emitir-fiscal`);
   },
 };
 

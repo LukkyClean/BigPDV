@@ -13,6 +13,7 @@ from sqlalchemy import select, func, or_, case
 from typing import Sequence
 from datetime import datetime
 
+from app.core.tempo import agora_utc
 from app.db.models.ordem_servico import OrdemServico as OSModel
 from app.db.models.ordem_servico_item import OrdemServicoItem as OSItemModel
 from app.db.models.ordem_servico_pagamento import OrdemServicoPagamento as OSPagamentoModel
@@ -432,7 +433,7 @@ def delete_os_foto(db: Session, foto_to_delete: OSFotoModel) -> None:
 def get_os_abandono(db: Session, empresa_id: int, prazo_abandono_dias: int, funcionario_id: int | None = None) -> list[OSModel]:
     """Retorna OS em aberto criadas há mais de prazo_abandono_dias sem resolução."""
     from datetime import timedelta
-    cutoff = datetime.utcnow() - timedelta(days=prazo_abandono_dias)
+    cutoff = agora_utc() - timedelta(days=prazo_abandono_dias)
     stmt = (
         select(OSModel)
         .where(
@@ -453,7 +454,9 @@ def get_os_atrasadas(db: Session, empresa_id: int, funcionario_id: int | None = 
         .where(
             OSModel.status.notin_([OrdemServicoStatus.FINALIZADA, OrdemServicoStatus.CANCELADA]),
             OSModel.data_previsao.isnot(None),
-            OSModel.data_previsao < datetime.utcnow(),
+            # Prazo e data de calendario definida por pessoa: compara com o
+            # relogio local, como o painel ja faz.
+            OSModel.data_previsao < datetime.now(),
         )
         .order_by(OSModel.data_previsao.asc())
     )

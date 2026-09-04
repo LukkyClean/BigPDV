@@ -2,7 +2,7 @@
 import { ref, computed, watch } from 'vue';
 import { refDebounced } from '@vueuse/core';
 import { useQuery } from '@tanstack/vue-query';
-import { Wrench, ShoppingBag, Save, Search, Loader2, Lock } from 'lucide-vue-next';
+import { Wrench, ShoppingBag, Save, Search, Loader2, Lock, AlertTriangle } from 'lucide-vue-next';
 import BaseModal from '@/shared/components/commons/BaseModal/BaseModal.vue';
 import BaseSelect from '@/shared/components/ui/BaseSelect/BaseSelect.vue';
 import BaseInput from '@/shared/components/ui/BaseInput/BaseInput.vue';
@@ -17,6 +17,7 @@ import { MEDIDA_SERVICO_OPTIONS, MEDIDA_PRODUTO_OPTIONS } from '../../constants/
 import type { OsItemCreateSchemaDataType } from '../../schemas/relationship/osItem.schema';
 import type { OsItemTypeEnumDataType, OsItemMeasureEnumDataType, OsItemAprovacaoEnumDataType } from '../../schemas/enums/osEnums.schema';
 import { useCapacidades } from '@/modules/order-service/shared/segmento/useCapacidades';
+import { recursoDisponivel } from '@/shared/config/planos';
 
 interface Props {
   isOpen: boolean;
@@ -48,6 +49,7 @@ const custoUnitarioNum = ref(0);
 // Aprovação/garantia por item (fluxo de orçamento): dirigidas por capacidade,
 // não por segmento — qualquer negócio de serviço pode querer orçar e garantir.
 const { temAprovacaoItens, temGarantiaItens } = useCapacidades();
+const nfeDisponivel = recursoDisponivel('nfe');
 const statusAprovacao = ref<OsItemAprovacaoEnumDataType>('APROVADO');
 const garantiaDias = ref<number | null>(null);
 const garantiaKm = ref<number | null>(null);
@@ -317,6 +319,21 @@ function handleClose(): void {
         <div class="flex-1 border-t border-slate-200"></div>
         <span class="text-xs text-slate-400 font-medium">ou preencha manualmente</span>
         <div class="flex-1 border-t border-slate-200"></div>
+      </div>
+
+      <!-- Alerta fiscal para itens avulsos -->
+      <div v-if="nfeDisponivel && nome.trim().length > 0 && selectedCatalogId == null" class="p-3 bg-amber-50 border border-amber-200 rounded-xl">
+        <div class="flex items-start gap-2.5">
+          <AlertTriangle :size="16" class="text-amber-500 mt-0.5 shrink-0" />
+          <div>
+            <p class="text-sm font-semibold text-amber-700">Emissão fiscal indisponível</p>
+            <p class="text-xs text-amber-600 mt-0.5">
+              Itens avulsos impedem a emissão de nota fiscal.
+              Para emitir {{ tipo === 'PRODUTO' ? 'NFe' : 'NFSe' }}, selecione um
+              {{ tipo === 'PRODUTO' ? 'produto' : 'serviço' }} cadastrado na busca acima.
+            </p>
+          </div>
+        </div>
       </div>
 
       <!-- Campos do formulário -->

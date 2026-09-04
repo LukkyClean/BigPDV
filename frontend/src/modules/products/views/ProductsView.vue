@@ -72,6 +72,10 @@ const toggleMutation = useToggleProductActiveMutation();
 
 const localOverrides = ref<Record<number, ProdutoRead>>({});
 
+import { useRoute, useRouter } from 'vue-router';
+const route = useRoute();
+const router = useRouter();
+
 const mergedProducts = computed(() => {
   const base = products.value || [];
   const overrides = Object.values(localOverrides.value);
@@ -83,6 +87,24 @@ const mergedProducts = computed(() => {
   });
   return merged;
 });
+
+// Auto-open edit modal if query param 'editar' is present
+import { watch } from 'vue';
+watch(
+  () => [mergedProducts.value, route.query.editar] as const,
+  ([list, editarId]) => {
+    if (editarId && list.length > 0) {
+      const id = Number(editarId);
+      const product = list.find((p) => p.id === id);
+      if (product) {
+        openEditModal(product);
+        // Remove from query so it doesn't re-open on refresh
+        router.replace({ query: { ...route.query, editar: undefined } });
+      }
+    }
+  },
+  { immediate: true }
+);
 
 function normalizarCategoria(cat: string | null | undefined): string {
   const raw = (cat || 'SEM CATEGORIA').trim().toUpperCase();

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.db.models.fornecedor import Fornecedor as FornecedorModel # Adicionado import do modelo para fixtures
 
 # --- Constantes de Teste ---
-TEST_CNPJ = "72345734000132"
+TEST_CNPJ = "72345734000113"
 TEST_NOME = "Alan Amorim ME"
 TEST_IE = "123456789012"
 TEST_USER_EMAIL = "teste.funcionario@example.com"

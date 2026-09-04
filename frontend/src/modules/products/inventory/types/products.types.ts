@@ -74,6 +74,59 @@ export interface ProdutoUpdate extends Partial<ProdutoBase> {
 }
 
 // =============================================
+// FISCAL TYPES (tabela satélite produto_fiscal)
+// =============================================
+
+export interface ProdutoFiscalRead {
+  id: number;
+  produto_id: number;
+  ncm?: string | null;
+  cest?: string | null;
+  cfop_padrao?: string | null;
+  origem_mercadoria?: number | null;
+  unidade_tributavel?: string | null;
+  gtin_tributavel?: string | null;
+  cst_icms?: string | null;
+  csosn?: string | null;
+  aliquota_icms?: number | null;
+  reducao_base_icms?: number | null;
+  codigo_beneficio_fiscal?: string | null;
+  aliquota_pis?: number | null;
+  aliquota_cofins?: number | null;
+  cst_pis?: string | null;
+  cst_cofins?: string | null;
+  c_class_trib?: string | null;
+  cst_ibs_cbs?: string | null;
+  aliquota_ibs?: number | null;
+  aliquota_cbs?: number | null;
+  c_benef?: string | null;
+  data_atualizacao: string;
+}
+
+export interface ProdutoFiscalUpdate {
+  ncm?: string | null;
+  cest?: string | null;
+  cfop_padrao?: string | null;
+  origem_mercadoria?: number | null;
+  unidade_tributavel?: string | null;
+  gtin_tributavel?: string | null;
+  cst_icms?: string | null;
+  csosn?: string | null;
+  aliquota_icms?: number | null;
+  reducao_base_icms?: number | null;
+  codigo_beneficio_fiscal?: string | null;
+  aliquota_pis?: number | null;
+  aliquota_cofins?: number | null;
+  cst_pis?: string | null;
+  cst_cofins?: string | null;
+  c_class_trib?: string | null;
+  cst_ibs_cbs?: string | null;
+  aliquota_ibs?: number | null;
+  aliquota_cbs?: number | null;
+  c_benef?: string | null;
+}
+
+// =============================================
 // UI TYPES
 // =============================================
 
@@ -160,4 +213,26 @@ export interface ProductFormData {
   quantidade_ideal: number;
 
   image_url: string | null;
+
+  // Dados fiscais (opcionais — preenchidos apenas quando módulo fiscal ativo)
+  fiscal_ncm: string;
+  fiscal_cest: string;
+  fiscal_cfop_padrao: string;
+  fiscal_origem_mercadoria: string;
+  fiscal_unidade_tributavel: string;
+  fiscal_gtin_tributavel: string;
+  fiscal_cst_icms: string;
+  fiscal_csosn: string;
+  fiscal_aliquota_icms_display: string;
+  fiscal_reducao_base_icms_display: string;
+  fiscal_codigo_beneficio_fiscal: string;
+  fiscal_aliquota_pis_display: string;
+  fiscal_aliquota_cofins_display: string;
+  fiscal_cst_pis: string;
+  fiscal_cst_cofins: string;
+  fiscal_c_class_trib: string;
+  fiscal_cst_ibs_cbs: string;
+  fiscal_aliquota_ibs_display: string;
+  fiscal_aliquota_cbs_display: string;
+  fiscal_c_benef: string;
 }

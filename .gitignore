@@ -47,3 +47,4 @@ seeds/
 /backend-fastapi/run.spec
 /frontend/src-tauri/binaries
 *.pfx
+skills/

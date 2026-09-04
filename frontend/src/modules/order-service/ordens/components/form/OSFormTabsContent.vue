@@ -1,19 +1,21 @@
 <script setup lang="ts">
 import { ref, computed, watch, type Component } from 'vue';
-import { ClipboardCheck, ClipboardList, Image as ImageIcon, Package } from 'lucide-vue-next';
+import { ClipboardCheck, ClipboardList, Image as ImageIcon, Package, FileText } from 'lucide-vue-next';
 
 import OSObjetoTab from './OSObjetoTab.vue';
 import OSObjetoDinamicoTab from './OSObjetoDinamicoTab.vue';
 import OSVistoriaTab from './OSVistoriaTab.vue';
 import OSDiagnosticoTab from './OSDiagnosticoTab.vue';
 import OSServicesTab from './OSServicesTab.vue';
+import NotaFiscalSection from './NotaFiscalSection.vue';
 import type { ObjetoFormData } from '../../composables/modal/useOSFormAdapter';
 import { useOSFormView } from '../../context/useOSFormView.context';
 import { useObjetoLabels } from '@/modules/order-service/shared/segmento/useObjetoLabels';
 import { useCapacidades } from '@/modules/order-service/shared/segmento/useCapacidades';
 import { useTiposDeTrabalho } from '@/modules/order-service/shared/segmento/useTiposDeTrabalho';
+import { recursoDisponivel } from '@/shared/config/planos';
 
-type TabType = 'objeto' | 'vistoria' | 'diagnostico' | 'servicos';
+type TabType = 'objeto' | 'vistoria' | 'diagnostico' | 'servicos' | 'fiscal';
 
 const view = useOSFormView();
 
@@ -25,6 +27,7 @@ const { temVistoria, temDiagnostico, temImagemNaEntrada } = useCapacidades();
 // tipos de trabalho no registry — oficina e informática não declaram, então
 // continuam na tab curada, pelo mesmo caminho de sempre.
 const { temTipos } = useTiposDeTrabalho();
+const nfeDisponivel = recursoDisponivel('nfe');
 
 const activeTab = ref<TabType>('objeto');
 
@@ -51,6 +54,9 @@ const allTabs = computed<{ id: TabType; label: string; icon: Component }[]>(() =
       : { id: 'diagnostico', label: 'Imagens', icon: ImageIcon },
     { id: 'servicos', label: 'Serviços e Peças', icon: Package },
   );
+  if (nfeDisponivel && !view.isCreateMode.value) {
+    tabs.push({ id: 'fiscal', label: 'Nota Fiscal', icon: FileText });
+  }
   return tabs;
 });
 
@@ -166,6 +172,12 @@ const objetoModel = computed<ObjetoFormData>({
         @add-photo="view.handleAddPhoto"
         @remove-pending="view.handleRemovePending"
         @photo-change="view.handlePhotoChange"
+      />
+
+      <NotaFiscalSection
+        v-if="activeTab === 'fiscal' && view.osNumber.value"
+        :os-numero="view.osNumber.value"
+        :os-status="view.currentOSData.value?.status ?? ''"
       />
     </div>
   </div>

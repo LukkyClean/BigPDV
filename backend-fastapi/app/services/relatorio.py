@@ -8,6 +8,7 @@ from datetime import date, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
+from app.core.tempo import intervalo_utc
 from app.core.enum import SituacaoEquipamento, MovimentacaoTipo
 from app.core.tempo import intervalo_utc
 from app.helpers.exceptions import NotFoundException

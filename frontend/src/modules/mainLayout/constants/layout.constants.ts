@@ -7,10 +7,12 @@ import {
   IdCard,
   Wrench,
   ChartColumn,
+  FileText,
 } from 'lucide-vue-next';
 
 import { SidebarSection } from '../types/layout.types';
 import { PERMISSIONS } from '@/shared/constants/permissions.constants';
+import { recursoDisponivel } from '@/shared/config/planos';
 
 export const SIDEBAR_SECTIONS: SidebarSection[] = [
   {
@@ -62,6 +64,18 @@ export const SIDEBAR_SECTIONS: SidebarSection[] = [
         icon: Building,
         label: 'Dados da Empresa',
         requiredPermission: PERMISSIONS.enterprise,
+      },
+      {
+        id: 'fiscal',
+        icon: FileText,
+        label: 'Centro Fiscal',
+        requiredPermission: PERMISSIONS.enterprise,
+        featureFlag: () => recursoDisponivel('nfe'),
+        children: [
+          { id: 'fiscal-nfe', label: 'NF-e' },
+          { id: 'fiscal-nfce', label: 'NFC-e' },
+          { id: 'fiscal-nfse', label: 'NFS-e' },
+        ],
       },
       {
         id: 'employees',

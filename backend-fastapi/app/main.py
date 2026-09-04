@@ -10,6 +10,9 @@ logging.basicConfig(
     level=_LOG_LEVEL,
     format="%(levelname)-8s %(name)s — %(message)s",
 )
+# Silencia logs verbosos de bibliotecas externas (httpcore, httpx, etc.)
+for _lib in ("httpcore", "httpx", "hpack", "urllib3"):
+    logging.getLogger(_lib).setLevel(logging.WARNING)
 
 from fastapi import FastAPI # type: ignore
 from app.api.v1 import api
@@ -18,11 +21,14 @@ from fastapi.staticfiles import StaticFiles
 
 from app.core.exceptions import setup_exception_handlers
 from app.core.tarefas import lifespan
-from app.core.config import BASE_DIR, BACKEND_DIR
+from app.core.config import BACKEND_DIR, data_dir
+from app.core.migracoes_dir import migrar_estrutura_diretorios
+
+migrar_estrutura_diretorios()
 
 import app.db.models  # noqa: F401 — registra todos os modelos no Base.metadata
 
-STATIC_DIR = os.path.join(BASE_DIR, 'static')
+STATIC_DIR = os.path.join(data_dir, 'static')
 
 if not os.path.exists(STATIC_DIR):
     os.makedirs(STATIC_DIR, exist_ok=True)

@@ -91,11 +91,22 @@ servidor da loja em 28/07/2026, quando o `7b8d129` trocou o nome para `startbig.
 
 ```
 modules/
-├── auth/          # Login flow
-├── home/          # Dashboard
-├── mainLayout/    # Main app shell (sidebar, header, layout)
-├── onboarding/    # Initial company setup wizard
-└── employees/     # Employee management
+├── auth/           # Login flow
+├── sign-in/        # Sign-in page (separate from auth)
+├── home/           # Dashboard
+├── mainLayout/     # Main app shell (sidebar, header, layout)
+├── minha-conta/    # User account settings
+├── employees/      # Employee management
+├── customers/      # Customer (PF/PJ) management
+├── enterprise/     # Company settings
+├── configuracoes/  # App-wide settings (OS rules, stock, sales)
+├── products/       # Products, inventory, and suppliers
+├── order-service/  # Work orders (OS) and services
+├── sales/          # PDV sales and orcamentos (quotes)
+├── reports/        # Financial and performance reports
+├── fiscal/         # NF-e (locked in plano START — see planos.ts)
+├── license/        # License validation
+└── network-config/ # Network/server configuration
 ```
 
 Each module contains:
@@ -121,6 +132,8 @@ Each module contains:
 - VeeValidate + Zod for form validation
 - Axios instance in `api/axios.ts` with auth interceptors
 
+**Feature gating:** `shared/config/planos.ts` exports `recursoDisponivel(recurso)`. Currently hardcoded to plano `START` (non-fiscal). Use this before exposing any NF-e UI — when a real billing/license API arrives, this is the single file to update.
+
 ### Backend (`backend-fastapi/app/`)
 
 **Layered architecture:**
@@ -143,7 +156,7 @@ app/
 └── services/          # Business logic
 ```
 
-**Key entities:** Usuario, Funcionario, Cliente, Empresa, Produto, Servico, Fornecedor, Cargo, Endereco, Estoque
+**Key entities:** Usuario, Funcionario, Cliente, Empresa, Produto, Servico, Fornecedor, Cargo, Endereco, Estoque, Venda, OrdemServico, Orcamento
 
 **Auth flow:** JWT tokens with blocklist for logout. Tokens stored as HTTP-only cookies.
 
@@ -164,9 +177,19 @@ All endpoints under `/api/v1/`:
 - `/cargos` - Job positions
 - `/clientes` - Customers
 - `/fornecedores` - Suppliers
-- `/produtos` - Products
+- `/produtos` - Products + `/movimentacao-estoque` for stock movements
 - `/servicos` - Services
 - `/enderecos` - Addresses
+- `/ordens-servico` - Work orders (OS)
+- `/vendas` - Sales (PDV)
+- `/orcamentos` - Quotes/estimates
+- `/formas-pagamento` - Payment methods
+- `/configuracao` - App settings
+- `/relatorios` - Reports
+- `/dashboard` - Dashboard KPIs
+- `/licenca` - License validation
+- `/comunicados` - Announcements
+- `/checklist-mobile` - Mobile inspection checklist
 
 ## Language
 

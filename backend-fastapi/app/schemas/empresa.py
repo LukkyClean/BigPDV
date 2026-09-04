@@ -7,7 +7,11 @@ from datetime import datetime
 from typing import List, Optional, Sequence
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+import re
 
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.core.validators import validar_cnpj, validar_cpf
 from app.schemas.endereco import Endereco, EnderecoRead, EnderecoUpdate
 
 # =========================
@@ -76,6 +80,8 @@ class FiscalSettingsRead(FiscalSettingsBase):
     certificado_validade: Optional[datetime] = Field(None, description="Validade do certificado")
     certificado_subject: Optional[str] = Field(None, description="Subject/CN do certificado")
     certificado_thumbprint: Optional[str] = Field(None, description="Thumbprint (Windows)")
+    certificado_status: Optional[str] = Field(None, description="Status da conexão na nuvem")
+    certificado_cnpj: Optional[str] = Field(None, description="CNPJ do certificado")
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -243,6 +249,18 @@ class EmpresaBase(BaseModel):
         None,
         description="Se o QR PIX aparece na finalizacao da venda.",
     )
+
+    @field_validator("documento", mode="before")
+    @classmethod
+    def validar_documento_empresa(cls, v):
+        if v is None or v == "":
+            return v
+        digitos = re.sub(r"\D", "", str(v))
+        if len(digitos) == 11:
+            return validar_cpf(digitos)
+        if len(digitos) == 14:
+            return validar_cnpj(digitos)
+        raise ValueError("Documento deve ser CPF (11 dígitos) ou CNPJ (14 dígitos)")
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -430,6 +448,18 @@ class EmpresaUpdate(BaseModel):
         description="Configurações fiscais para atualização",
     )
 
+    @field_validator("documento", mode="before")
+    @classmethod
+    def validar_documento_empresa(cls, v):
+        if v is None or v == "":
+            return v
+        digitos = re.sub(r"\D", "", str(v))
+        if len(digitos) == 11:
+            return validar_cpf(digitos)
+        if len(digitos) == 14:
+            return validar_cnpj(digitos)
+        raise ValueError("Documento deve ser CPF (11 dígitos) ou CNPJ (14 dígitos)")
+
     model_config = ConfigDict(
         from_attributes=True,
         json_schema_extra={
@@ -555,6 +585,11 @@ class EmpresaUserRead(BaseModel):
     usa_ordem_servico: bool = Field(
         True,
         description="Se a loja deste segmento trabalha com Ordem de Serviço",
+    )
+    regime_tributario: Optional[str] = Field(
+        None,
+        max_length=50,
+        description="Regime Tributário da empresa",
     )
     enderecos: Optional[Sequence["EnderecoRead"]] = Field(
         None,

@@ -26,10 +26,12 @@
 #   DELETE /{os_number}/fotos/{foto_id}   → Remover foto
 # ---------------------------------------------------------------------------
 
-from fastapi import APIRouter, Depends, status, Path, Query, UploadFile, File, Response
+from fastapi import APIRouter, Depends, HTTPException, status, Path, Query, UploadFile, File, Response
 from sqlalchemy.orm import Session
 
-from app.core.depends import check_permission, get_current_active_user, _handle_db_transaction, is_visao_gerencial
+from app.core.depends import check_permission, get_current_active_user, _handle_db_transaction, is_visao_gerencial, requer_modulo_fiscal
+from app.schemas.verificacao_fiscal import ResultadoVerificacaoFiscal
+from app.services import verificacao_fiscal as verificacao_fiscal_service
 from app.db.session import get_db
 from app.schemas.ordem_servico import (
     OrdemServicoCreate,
@@ -48,8 +50,10 @@ from app.schemas.ordem_servico import (
     OSIdentificadorCheck,
     OSObjetoBuscaItem,
 )
+from app.schemas.ordem_servico_nota_fiscal import OrdemServicoNotaFiscalRead, OrdemServicoNotaFiscalUpdate
 from app.services import ordem_servico as os_service
 from app.services import ordem_servico_foto as os_foto_service
+from app.services import ordem_servico_nota_fiscal as os_nota_fiscal_service
 from app.services import segmentos as segmentos_service
 
 router = APIRouter()
@@ -535,3 +539,110 @@ def delete_foto_os(
 ):
     _handle_db_transaction(db, os_foto_service.delete_foto_os, os_number, foto_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# ===========================================================================
+# NOTA FISCAL (GET + PUT /{os_number}/fiscal)
+# ===========================================================================
+
+@router.get(
+    "/{os_number}/fiscal",
+    response_model=OrdemServicoNotaFiscalRead,
+    status_code=status.HTTP_200_OK,
+    summary="Dados Fiscais da OS",
+    description="Retorna a configuração de nota fiscal de uma OS. 404 se ainda não preenchidos.",
+)
+def get_nota_fiscal_os(
+    user_token: dict = Depends(check_permission(required_permission=module_permission)),
+    _fiscal: dict = Depends(requer_modulo_fiscal),
+    os_number: str = Path(..., description="Número da OS"),
+    db: Session = Depends(get_db),
+):
+    resultado = os_nota_fiscal_service.get_dados_fiscais(db, os_number)
+    if resultado is None:
+        raise HTTPException(status_code=404, detail="Nota fiscal ainda não configurada para esta OS")
+    return resultado
+
+
+@router.put(
+    "/{os_number}/fiscal",
+    response_model=OrdemServicoNotaFiscalRead,
+    status_code=status.HTTP_200_OK,
+    summary="Salvar Dados Fiscais da OS",
+    description="Cria ou atualiza (upsert) a configuração de nota fiscal de uma OS.",
+)
+def upsert_nota_fiscal_os(
+    user_token: dict = Depends(check_permission(required_permission=module_permission)),
+    _fiscal: dict = Depends(requer_modulo_fiscal),
+    *,
+    os_number: str = Path(..., description="Número da OS"),
+    dados: OrdemServicoNotaFiscalUpdate,
+    db: Session = Depends(get_db),
+):
+    return _handle_db_transaction(
+        db,
+        os_nota_fiscal_service.upsert_dados_fiscais,
+        os_number,
+        dados,
+    )
+
+
+# ===========================================================================
+# VERIFICAÇÃO E EMISSÃO FISCAL
+# ===========================================================================
+
+@router.get(
+    "/{os_number}/verificar-fiscal",
+    response_model=ResultadoVerificacaoFiscal,
+    summary="Verificar Completude Fiscal da OS",
+    description="Retorna lista de pendências fiscais que impedem a emissão de NF-e/NFSe.",
+)
+def verificar_fiscal_os(
+    user_token: dict = Depends(check_permission(required_permission=module_permission)),
+    _fiscal: dict = Depends(requer_modulo_fiscal),
+    os_number: str = Path(..., description="Número da OS"),
+    tipo_documento: str = Query("ambos", description="nfe, nfse ou ambos"),
+    db: Session = Depends(get_db),
+):
+    empresa_id = user_token["empresa_id"]
+    return verificacao_fiscal_service.verificar_completude_os(
+        db, os_number, empresa_id, tipo_documento
+    )
+
+
+@router.post(
+    "/{os_number}/emitir-fiscal",
+    response_model=ResultadoVerificacaoFiscal,
+    summary="Emitir Nota Fiscal da OS",
+    description=(
+        "Executa o gate de verificação fiscal. Se completo, retorna placeholder "
+        "(integração com SEFAZ ainda não disponível)."
+    ),
+)
+def emitir_fiscal_os(
+    user_token: dict = Depends(check_permission(required_permission=module_permission)),
+    _fiscal: dict = Depends(requer_modulo_fiscal),
+    os_number: str = Path(..., description="Número da OS"),
+    tipo_documento: str = Query("ambos", description="nfe, nfse ou ambos"),
+    db: Session = Depends(get_db),
+):
+    empresa_id = user_token["empresa_id"]
+    resultado = verificacao_fiscal_service.verificar_completude_os(
+        db, os_number, empresa_id, tipo_documento
+    )
+    if not resultado.completo:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "codigo": "PENDENCIAS_FISCAIS",
+                "mensagem": "Existem pendências que impedem a emissão.",
+                "pendencias": [p.model_dump() for p in resultado.pendencias],
+            },
+        )
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail={
+            "codigo": "API_NAO_DISPONIVEL",
+            "mensagem": "Verificação fiscal aprovada. A integração com a SEFAZ ainda não está disponível.",
+        },
+    )

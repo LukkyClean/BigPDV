@@ -7,6 +7,7 @@ from datetime import date
 from typing import List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.core.validators import validar_cnpj, validar_cpf
 from app.schemas.endereco import Endereco
 
 # Tipos válidos para enums do setup
@@ -134,6 +135,16 @@ class SetupCreate(BaseModel):
     nome_usuario: str = Field(..., max_length=255, description="Nome de exibição no sistema")
     email: str = Field(..., max_length=255, description="Email de login do usuário")
     senha: str = Field(..., min_length=8, max_length=72, description="Senha do usuário")
+
+    @field_validator('cpf', mode='before')
+    @classmethod
+    def validar_cpf_setup(cls, v):
+        return validar_cpf(v)
+
+    @field_validator('cnpj', mode='before')
+    @classmethod
+    def validar_cnpj_setup(cls, v):
+        return validar_cnpj(v)
 
     @field_validator('email', 'email_loja', 'email_responsavel', mode='before')
     @classmethod

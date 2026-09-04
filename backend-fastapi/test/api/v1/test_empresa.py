@@ -28,7 +28,7 @@ def header_with_token(client: TestClient, db_session, create_test_empresa) -> di
     token = response.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
 
-def get_empresa_payload_valido(cnpj_suffix="000199", email_prefix="admin"):
+def get_empresa_payload_valido(cnpj_suffix="000195", email_prefix="admin"):
     """
     Gera um payload válido combinando dados da Empresa e do Usuário Master.
     Permite sufixos para criar dados únicos nos testes.

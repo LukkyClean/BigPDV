@@ -8,10 +8,33 @@ import { useToggleServicoAtivoMutation } from '../../servicos/composables/useSer
 import { useServicoModal } from '../../servicos/composables/useServicoModal';
 import type { ServiceReadZod } from '../../servicos/schemas/servicos.schema';
 
+import { useRoute, useRouter } from 'vue-router';
+import { watch } from 'vue';
+
 const { searchQuery, activeFilterQuery, currentPage, setPage, services, totalPages, totalItems, isLoading, isError } = useServicosQuery();
 const { stats, isLoading: isStatsLoading } = useServicosStatsQuery();
 const { openEditModal, openViewModal } = useServicoModal();
 const toggleAtivoMutation = useToggleServicoAtivoMutation();
+
+const route = useRoute();
+const router = useRouter();
+
+// Auto-open edit modal if query param 'editar' is present
+watch(
+  () => [services.value, route.query.editar] as const,
+  ([list, editarId]) => {
+    if (editarId && list && list.length > 0) {
+      const id = Number(editarId);
+      const servico = list.find((s) => s.id === id);
+      if (servico) {
+        openEditModal(servico);
+        // Remove from query so it doesn't re-open on refresh
+        router.replace({ query: { ...route.query, editar: undefined } });
+      }
+    }
+  },
+  { immediate: true }
+);
 
 const isStatusModalOpen = ref(false);
 const servicoToToggle = ref<ServiceReadZod | null>(null);

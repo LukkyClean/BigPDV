@@ -49,7 +49,7 @@ def _autenticar_e_criar_empresa(client, segmento: str) -> dict:
         "razao_social": "Empresa Teste 000199 LTDA",
         "nome_fantasia": "Teste",
         "is_cnpj": True,
-        "documento": "12345678000199",
+        "documento": "12345678000195",
         "regime_tributario": "Simples Nacional",
         "celular": "11999998888",
         "segmento": segmento,
@@ -143,7 +143,7 @@ def test_oficina_so_considera_pesquisavel_o_que_e_placa():
 def test_identificador_generico_nao_gera_conflito(client, db_session):
     """Dois clientes com 'S/N' nao podem virar aviso de duplicidade."""
     header = _autenticar_e_criar_empresa(client, "assistencia_tecnica")
-    ana = _criar_cliente(client, header, "Ana Souza", "98765432101")
+    ana = _criar_cliente(client, header, "Ana Souza", "98765432100")
     bruno = _criar_cliente(client, header, "Bruno Lima", "11122233396")
 
     _criar_os(client, header, ana, "S/N")
@@ -155,7 +155,7 @@ def test_identificador_generico_nao_gera_conflito(client, db_session):
 
 def test_serial_de_outro_cliente_gera_aviso_com_dono_e_ultima_os(client, db_session):
     header = _autenticar_e_criar_empresa(client, "assistencia_tecnica")
-    ana = _criar_cliente(client, header, "Ana Souza", "98765432101")
+    ana = _criar_cliente(client, header, "Ana Souza", "98765432100")
     bruno = _criar_cliente(client, header, "Bruno Lima", "11122233396")
 
     os_ana = _criar_os(client, header, ana, "C02X1234JGH5", marca="Apple", modelo="MacBook")
@@ -176,7 +176,7 @@ def test_serial_de_outro_cliente_gera_aviso_com_dono_e_ultima_os(client, db_sess
 def test_aviso_ignora_diferenca_de_formatacao(client, db_session):
     """Placa gravada como o usuario digitou: 'abc-1d23' tem que achar 'ABC1D23'."""
     header = _autenticar_e_criar_empresa(client, "oficina_mecanica")
-    ana = _criar_cliente(client, header, "Ana Souza", "98765432101")
+    ana = _criar_cliente(client, header, "Ana Souza", "98765432100")
     bruno = _criar_cliente(client, header, "Bruno Lima", "11122233396")
 
     _criar_os(client, header, ana, "ABC1D23", marca="Fiat", modelo="Uno")
@@ -189,7 +189,7 @@ def test_aviso_ignora_diferenca_de_formatacao(client, db_session):
 
 def test_identificador_inedito_nao_gera_aviso(client, db_session):
     header = _autenticar_e_criar_empresa(client, "assistencia_tecnica")
-    ana = _criar_cliente(client, header, "Ana Souza", "98765432101")
+    ana = _criar_cliente(client, header, "Ana Souza", "98765432100")
 
     body = _check(client, header, "SERIALNOVO123", cliente_id=ana)
     assert body["pesquisavel"] is True
@@ -199,7 +199,7 @@ def test_identificador_inedito_nao_gera_aviso(client, db_session):
 def test_dono_atual_nao_recebe_aviso_do_proprio_objeto(client, db_session):
     """Cliente voltando com o mesmo bem e reuso normal, nao duplicidade."""
     header = _autenticar_e_criar_empresa(client, "assistencia_tecnica")
-    ana = _criar_cliente(client, header, "Ana Souza", "98765432101")
+    ana = _criar_cliente(client, header, "Ana Souza", "98765432100")
 
     _criar_os(client, header, ana, "C02X1234JGH5")
 
@@ -215,7 +215,7 @@ def test_aviso_some_depois_que_o_novo_dono_tem_o_objeto(client, db_session):
     OS, o novo dono passa a ter um objeto proprio com aquele identificador.
     """
     header = _autenticar_e_criar_empresa(client, "assistencia_tecnica")
-    ana = _criar_cliente(client, header, "Ana Souza", "98765432101")
+    ana = _criar_cliente(client, header, "Ana Souza", "98765432100")
     bruno = _criar_cliente(client, header, "Bruno Lima", "11122233396")
 
     _criar_os(client, header, ana, "C02X1234JGH5")
@@ -235,7 +235,7 @@ def test_aviso_some_depois_que_o_novo_dono_tem_o_objeto(client, db_session):
 
 def test_sem_cliente_selecionado_lista_todos_os_donos(client, db_session):
     header = _autenticar_e_criar_empresa(client, "assistencia_tecnica")
-    ana = _criar_cliente(client, header, "Ana Souza", "98765432101")
+    ana = _criar_cliente(client, header, "Ana Souza", "98765432100")
 
     _criar_os(client, header, ana, "C02X1234JGH5")
 
@@ -255,7 +255,7 @@ def test_dois_bens_com_sn_do_mesmo_cliente_nao_colapsam(client, db_session):
     registro, senao o cliente perde o cadastro do primeiro aparelho.
     """
     header = _autenticar_e_criar_empresa(client, "assistencia_tecnica")
-    ana = _criar_cliente(client, header, "Ana Souza", "98765432101")
+    ana = _criar_cliente(client, header, "Ana Souza", "98765432100")
 
     os1 = _criar_os(client, header, ana, "S/N", marca="Dell", modelo="Inspiron")
     os2 = _criar_os(client, header, ana, "S/N", marca="Acer", modelo="Aspire")
@@ -276,7 +276,7 @@ def test_serial_real_do_mesmo_cliente_continua_reusando_o_objeto(client, db_sess
     A correcao do 'S/N' nao pode ter desligado isso.
     """
     header = _autenticar_e_criar_empresa(client, "assistencia_tecnica")
-    ana = _criar_cliente(client, header, "Ana Souza", "98765432101")
+    ana = _criar_cliente(client, header, "Ana Souza", "98765432100")
 
     os1 = _criar_os(client, header, ana, "C02X1234JGH5", marca="Apple", modelo="MacBook")
     os2 = _criar_os(client, header, ana, "C02X1234JGH5", marca="Apple", modelo="MacBook")

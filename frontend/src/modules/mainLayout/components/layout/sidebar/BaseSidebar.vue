@@ -5,6 +5,7 @@ import { useLayoutStore } from '@/modules/mainLayout/store/layout.store';
 import { useAuthStore } from '@/shared/stores/auth.store';
 
 import SidebarItem from './SidebarItem.vue';
+import SidebarItemGroup from './SidebarItemGroup.vue';
 import CompanyCard from '../../ui/CompanyCard.vue';
 import SidebarSectionSkeleton from './SidebarSectionSkeleton.vue';
 import AppLogo from '@/shared/components/AppLogo.vue';
@@ -72,14 +73,23 @@ onUnmounted(() => {
           <p class="px-4 text-[10px] font-bold text-zinc-600 uppercase tracking-widest mb-2">
             {{ section.title }}
           </p>
-          <SidebarItem
-            v-for="option in section.options"
-            :key="option.id"
-            :id="option.id"
-            :icon="option.icon"
-            :label="option.label"
-            :active="activeTab === option.id"
-          />
+          <template v-for="option in section.options" :key="option.id">
+            <SidebarItemGroup
+              v-if="option.children?.length"
+              :id="option.id"
+              :icon="option.icon"
+              :label="option.label"
+              :children="option.children"
+              :active-tab="activeTab"
+            />
+            <SidebarItem
+              v-else
+              :id="option.id"
+              :icon="option.icon"
+              :label="option.label"
+              :active="activeTab === option.id"
+            />
+          </template>
         </div>
       </nav>
 

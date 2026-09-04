@@ -9,11 +9,15 @@ import { X } from 'lucide-vue-next';
 
 import { useProductModal } from '../composables/useProductModal';
 import { useProductFormProvider } from '../composables/useProductForm';
+import { recursoDisponivel } from '@/shared/config/planos';
 
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
 
 import DadosProdutoSection from './form/DadosProdutoSection.vue';
 import DadosEstoqueSection from './form/DadosEstoqueSection.vue';
+import DadosFiscaisSection from './form/DadosFiscaisSection.vue';
+
+const nfeDisponivel = recursoDisponivel('nfe');
 
 // =============================================
 // Modal State
@@ -25,6 +29,7 @@ const {
   isViewMode,
   modalTitle,
   closeModal,
+  selectedProduct,
 } = useProductModal();
 
 const { onSubmit, isPending, submitCount, apiError } = useProductFormProvider();
@@ -163,6 +168,29 @@ watch(isOpen, (open) => {
                   :disabled="isViewMode"
                   :is-create-mode="isCreateMode"
                 />
+
+                <!-- Dados Fiscais — visível apenas para licenças com módulo fiscal ativo -->
+                <template v-if="nfeDisponivel">
+                  <!-- Divider -->
+                  <div class="relative">
+                    <div class="absolute inset-0 flex items-center">
+                      <div class="w-full border-t border-zinc-200"></div>
+                    </div>
+                    <div class="relative flex justify-center">
+                      <span
+                        class="px-4 bg-white text-xs font-medium text-zinc-500 uppercase tracking-wider"
+                      >
+                        Dados Fiscais
+                      </span>
+                    </div>
+                  </div>
+
+                  <DadosFiscaisSection
+                    :submit-count="submitCount"
+                    :disabled="isViewMode"
+                    :is-create-mode="isCreateMode"
+                  />
+                </template>
               </form>
             </div>
 

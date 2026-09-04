@@ -81,7 +81,7 @@ const emit = defineEmits<{
     <!-- Toolbar -->
     <div
       v-if="$slots.toolbar"
-      class="p-4 md:p-6 md:max-w-2/3 lg:max-w-1/2 border-b border-zinc-100 flex gap-4 items-center"
+      class="p-4 md:p-6 md:max-w-2/3 lg:max-w-2/3 border-b border-zinc-100 flex gap-4 items-center"
     >
       <slot name="toolbar" />
     </div>

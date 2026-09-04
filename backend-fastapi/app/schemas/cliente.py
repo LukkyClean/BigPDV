@@ -8,6 +8,7 @@ from datetime import date
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from typing import Optional, List, Annotated, Sequence, Union, Literal
 from app.core.enum import Gender, ClientType, TipoEquipamento
+from app.core.validators import validar_cnpj, validar_cpf
 from app.schemas.endereco import Endereco, EnderecoRead, EnderecoUpdate
 
 # ===========================================================================
@@ -72,9 +73,14 @@ class ClientePFCreate(ClienteBase):
         description="Data de nascimento (YYYY-MM-DD)."
     )
     endereco: Optional[List[Endereco]] = Field(
-        None, 
+        None,
         description="Lista de endereços para o cadastro inicial."
     )
+
+    @field_validator("cpf", mode="before")
+    @classmethod
+    def validar_cpf_pf(cls, v):
+        return validar_cpf(v)
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -129,15 +135,20 @@ class ClientePFSimpleRead(BaseModel):
 
 class ClientePFUpdate(ClienteBase):
     """Modelo de entrada para atualização parcial de Pessoa Física."""
-    
+
     tipo: Literal[ClientType.PF] = Field(description="Obrigatório para identificar o schema.")
-    
+
     nome: Optional[str] = Field(None, max_length=255)
     cpf: Optional[str] = Field(None, pattern=r"^\d{11}$")
     rg: Optional[str] = Field(None, pattern=r"^\d{5,20}$")
     genero: Optional[Gender] = Field(None)
     data_nascimento: Optional[date] = Field(None)
     endereco: Optional[List[EnderecoUpdate]] = Field(None)
+
+    @field_validator("cpf", mode="before")
+    @classmethod
+    def validar_cpf_pf(cls, v):
+        return validar_cpf(v)
 
 # ===========================================================================
 # PESSOA JURÍDICA (PJ)
@@ -154,9 +165,15 @@ class ClientePJCreate(ClienteBase):
     regime_tributario: Optional[str] = Field(None, description="Código do Regime Tributário.")
     responsavel: Optional[str] = Field(None, max_length=255, description="Pessoa de contato na empresa.")
     endereco: Optional[List[Endereco]] = Field(
-        None, 
+        None,
         description="Lista de endereços para o cadastro inicial da empresa."
     )
+
+    @field_validator("cnpj", mode="before")
+    @classmethod
+    def validar_cnpj_pj(cls, v):
+        return validar_cnpj(v)
+
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
@@ -208,15 +225,20 @@ class ClientePJSimpleRead(BaseModel):
 
 class ClientePJUpdate(ClienteBase):
     """Modelo de entrada para atualização parcial de Pessoa Jurídica."""
-    
+
     tipo: Literal[ClientType.PJ] = Field(description="Obrigatório para identificar o schema.")
-    
+
     razao_social: Optional[str] = Field(None, max_length=255)
     cnpj: Optional[str] = Field(None, pattern=r"^\d{14}$")
     nome_fantasia: Optional[str] = Field(None, max_length=255)
     ie: Optional[str] = Field(None, pattern=r"^\d{9,14}$")
     responsavel: Optional[str] = Field(None, max_length=255)
     endereco: Optional[List[EnderecoUpdate]] = Field(None)
+
+    @field_validator("cnpj", mode="before")
+    @classmethod
+    def validar_cnpj_pj(cls, v):
+        return validar_cnpj(v)
 
 # ===========================================================================
 # UNIÕES POLIMÓRFICAS

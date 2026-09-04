@@ -71,7 +71,7 @@ def get_empresa_payload_valido(cnpj_suffix="000199", email_prefix="admin"):
         "razao_social": f"Empresa Teste {cnpj_suffix} LTDA",
         "nome_fantasia": "Tech Teste",
         "is_cnpj": True,
-        "documento": f"12345678{cnpj_suffix}", # Deve ter 14 dígitos (Regex)
+        "documento": "11222333000181", # CNPJ válido com dígitos verificadores corretos
         "regime_tributario": "Simples Nacional",
         "celular": "11999998888",
         

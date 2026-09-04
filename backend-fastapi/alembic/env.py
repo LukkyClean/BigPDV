@@ -9,39 +9,7 @@ from alembic import context
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from app.core.config import settings
-from app.db.base import Base
-
-# Importa todos os models para que o autogenerate detecte as tabelas
-import app.db.models.cargo
-import app.db.models.cliente
-import app.db.models.configuracao_clientes
-import app.db.models.configuracao_os
-import app.db.models.configuracao_produtos
-import app.db.models.empresa
-import app.db.models.empresa_fiscal_settings
-import app.db.models.endereco
-import app.db.models.estoque
-import app.db.models.forma_pagamento
-import app.db.models.fornecedor
-import app.db.models.funcionario
-import app.db.models.log_produto
-import app.db.models.movimentacao_estoque
-import app.db.models.orcamento
-import app.db.models.orcamento_produto
-import app.db.models.ordem_servico
-import app.db.models.objeto_servico
-import app.db.models.ordem_servico_foto
-import app.db.models.ordem_servico_item
-import app.db.models.ordem_servico_pagamento
-import app.db.models.produto
-import app.db.models.produto_fotos
-import app.db.models.servico
-import app.db.models.sessao_caixa
-import app.db.models.token
-import app.db.models.usuario
-import app.db.models.venda
-import app.db.models.venda_pagamento
-import app.db.models.venda_produto
+from app.db.base import Base  # auto-descobre todos os models via pkgutil
 
 config = context.config
 

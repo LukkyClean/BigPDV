@@ -41,7 +41,15 @@ class Empresa(Base):
     # --- Dados Fiscais ---
     inscricao_estadual: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, doc="Inscrição Estadual (IE)")
     inscricao_municipal: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, doc="Inscrição Municipal (IM)")
-    regime_tributario: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, doc="Regime fiscal (Simples Nacional, Lucro Presumido, etc.)")
+    regime_tributario: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, doc="Regime fiscal (Simples Nacional, Lucro Presumido, etc.) — rótulo exibido na interface")
+    crt: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True,
+        doc=(
+            "Código de Regime Tributário da NF-e: 1=Simples Nacional, "
+            "2=Simples Nacional excesso de sublimite, 3=Regime Normal, 4=MEI. "
+            "É este campo que decide CSOSN vs CST — nunca o texto de regime_tributario."
+        )
+    )
     cnae_principal: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, doc="CNAE (Classificação Nacional de Atividades Econômicas) principal")
     segmento: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, doc="Segmento de negócio da empresa (ex: assistencia_tecnica, oficina_mecanica)")
     indicador_ie: Mapped[Optional[str]] = mapped_column(String(1), nullable=True, doc="Indicador de IE para NF-e: 1=Contribuinte ICMS, 2=Isento, 9=Não contribuinte")

@@ -1,10 +1,11 @@
 """
 Módulo de migrações automáticas via Alembic.
 
-Aplica migrações pendentes automaticamente na inicialização do app,
-substituindo o antigo sistema manual de _aplicar_migracoes().
+Aplica migrações pendentes automaticamente na inicialização do app.
+O Alembic é a única autoridade sobre o schema do banco de dados.
 """
 import logging
+import logging.config
 import os
 import sys
 
@@ -20,6 +21,38 @@ from app.db.base import Base
 from app.db.session import engine
 
 logger = logging.getLogger(__name__)
+
+
+def _salvar_logging_config():
+    """Salva o estado dos loggers antes do Alembic sobrescrevê-los.
+
+    O fileConfig() do alembic/env.py usa disable_existing_loggers=True (padrão),
+    o que desabilita TODOS os loggers existentes que não estão no alembic.ini
+    (incluindo uvicorn, uvicorn.error, uvicorn.access e os loggers da app).
+    """
+    root = logging.getLogger()
+    manager = root.manager
+    # Salva o estado de todos os loggers existentes
+    loggers_estado = {}
+    for name, lg in manager.loggerDict.items():
+        if isinstance(lg, logging.Logger):
+            loggers_estado[name] = lg.disabled
+    return {
+        "level": root.level,
+        "handlers": list(root.handlers),
+        "loggers_disabled": loggers_estado,
+    }
+
+
+def _restaurar_logging_config(estado):
+    """Restaura os loggers ao estado salvo (desfaz o fileConfig do Alembic)."""
+    root = logging.getLogger()
+    root.setLevel(estado["level"])
+    root.handlers = estado["handlers"]
+    # Re-habilita loggers que foram desabilitados pelo fileConfig
+    for name, was_disabled in estado["loggers_disabled"].items():
+        lg = logging.getLogger(name)
+        lg.disabled = was_disabled
 
 
 def _criar_alembic_config() -> Config:
@@ -67,175 +100,62 @@ def _revisao_existe_no_script(alembic_cfg: Config, revisao: str) -> bool:
         return False
 
 
-def _e_erro_de_schema_ja_existente(exc: Exception) -> bool:
+def _obter_revisao_baseline(alembic_cfg: Config) -> str:
+    """Retorna o ID da baseline canônica (nova baseline, criada em 07/08/2026).
+
+    O diretório versions pode conter chains antigas (51db61228566, 5cf42db01be6)
+    que foram substituídas por esta baseline. get_bases() retornaria múltiplas
+    raízes, então usamos o ID fixo da baseline canônica.
     """
-    Distingue "a migração tentou criar algo que o create_all já criou" de uma
-    falha real de migração. Só o primeiro caso pode ser carimbado e seguido.
+    return "b386f0ba5efd"
+
+
+def _corrigir_branches_inacessiveis(alembic_cfg: Config, revisao_atual: str | None) -> None:
+    """Registra via stamp branches que não são acessíveis a partir da revisão atual.
+
+    Cenário típico: dois conjuntos de migrations de branches git diferentes foram
+    unidos por merge sem um merge migration alembic. O create_all() do startup já
+    criou o schema completo (incluindo colunas das migrations inacessíveis), então
+    o stamp é seguro — apenas sincroniza o alembic_version com a realidade.
+
+    Verifica apenas os parents diretos do(s) head(s) atual(is), que é onde o
+    problema se manifesta (merge migrations com parent em branch inacessível).
     """
-    msg = str(exc).lower()
-    return "already exists" in msg or "duplicate column" in msg
+    if not revisao_atual:
+        return
 
+    script = ScriptDirectory.from_config(alembic_cfg)
+    heads = list(script.get_heads())
 
-def _aplicar_uma_a_uma(alembic_cfg: Config) -> None:
-    """
-    Avança a cadeia de migrações UMA POR VEZ.
+    for head_id in heads:
+        rev = script.get_revision(head_id)
+        parents = rev.down_revision
+        if not parents:
+            continue
+        if isinstance(parents, str):
+            parents = (parents,)
 
-    Por que não um `upgrade("head")` direto: o create_all roda ANTES das
-    migrações e já cria, a partir dos models, as TABELAS que faltavam. Quando o
-    upgrade chega numa migração com `op.create_table` daquela mesma tabela, o
-    banco responde "already exists".
+        for parent_id in parents:
+            # Verifica se parent_id e revisao_atual estão na mesma chain de
+            # ancestralidade (qualquer direção). Se estiverem, o upgrade normal
+            # é suficiente — sem necessidade de stamp.
+            na_mesma_chain = False
+            for upper, lower in [(parent_id, revisao_atual), (revisao_atual, parent_id)]:
+                try:
+                    list(script.iterate_revisions(upper, lower))
+                    na_mesma_chain = True
+                    break
+                except Exception:
+                    pass
 
-    A versão antiga tratava isso com um `stamp("head")` -- que carimba a cadeia
-    inteira sem executar nada. Toda migração pendente dali em diante era PULADA,
-    incluindo as de `add_column`. E `add_column` é justamente o que o create_all
-    nao conserta: ele cria tabela que falta, nunca coluna que falta em tabela
-    que ja existe. Resultado: banco carimbado na head com coluna faltando -- foi
-    o `no such column: configuracoes_licenca.em_carencia` da loja em 24/08/2026.
-
-    Aqui a migração que colide com o create_all é carimbada SOZINHA (`stamp +1`)
-    e o boot segue aplicando as seguintes.
-    """
-    while True:
-        antes = _obter_revisao_atual()
-
-        try:
-            command.upgrade(alembic_cfg, "+1")
-        except OperationalError as exc:
-            if not _e_erro_de_schema_ja_existente(exc):
-                raise
-            logger.warning(
-                "Migração encontrou schema que o create_all já criou (%s). "
-                "Carimbando só esta revisão e seguindo para as próximas.",
-                exc,
-            )
-            command.stamp(alembic_cfg, "+1")
-        except SQLAlchemyError:
-            raise
-        except Exception as exc:
-            # "+1" sem destino: chegamos na head. Alembic sinaliza isso com
-            # CommandError, que não é erro de banco.
-            logger.info("Fim da cadeia de migrações (%s).", exc)
-            return
-
-        depois = _obter_revisao_atual()
-        if depois == antes:
-            # Trava de segurança: sem avanço, o laço seria infinito.
-            logger.warning(
-                "Migração não avançou a partir de %s; interrompendo o laço.", antes
-            )
-            return
-
-
-def _ddl_da_coluna(coluna) -> str | None:
-    """
-    Monta o `ADD COLUMN` para uma coluna ausente, respeitando os limites do
-    SQLite: nada de PRIMARY KEY/UNIQUE, e NOT NULL só com default constante.
-
-    Devolve None quando a coluna não pode ser acrescentada com segurança --
-    nesse caso o chamador registra e deixa para decisão humana.
-    """
-    if coluna.primary_key or coluna.unique:
-        return None
-
-    tipo = coluna.type.compile(engine.dialect)
-    ddl = '"{}" {}'.format(coluna.name, tipo)
-
-    padrao = None
-    if coluna.server_default is not None:
-        texto = getattr(coluna.server_default, "arg", None)
-        padrao = str(getattr(texto, "text", texto)) if texto is not None else None
-    elif coluna.default is not None and getattr(coluna.default, "is_scalar", False):
-        valor = coluna.default.arg
-        if isinstance(valor, bool):
-            padrao = "1" if valor else "0"
-        elif isinstance(valor, (int, float)):
-            padrao = str(valor)
-        elif isinstance(valor, str):
-            escapado = valor.replace("'", "''")
-            padrao = "'{}'".format(escapado)
-
-    if padrao is not None:
-        ddl += " DEFAULT {}".format(padrao)
-
-    if not coluna.nullable and padrao is None:
-        # SQLite recusa ADD COLUMN NOT NULL sem default constante.
-        return None
-
-    # NOT NULL é omitido de propósito: a coluna nasce vazia nas linhas antigas.
-    return ddl
-
-
-def reconciliar_colunas() -> None:
-    """
-    Rede de segurança: compara os models com o schema real e acrescenta as
-    colunas que faltarem.
-
-    Existe porque um banco pode chegar aqui já carimbado na head e mesmo assim
-    estar sem colunas -- resultado do `stamp("head")` cego que esta versão
-    removeu. Sem isto, esses bancos só se consertariam com ALTER TABLE na mão,
-    máquina por máquina.
-
-    SÓ ACRESCENTA. Nunca remove coluna, nunca altera tipo, nunca toca em dado.
-    Falhar aqui não derruba o boot: o app sobe e o erro fica no log.
-    """
-    try:
-        insp = inspect(engine)
-        tabelas = set(insp.get_table_names())
-
-        pendentes = []
-        for tabela in Base.metadata.sorted_tables:
-            if tabela.name not in tabelas:
-                # Tabela ausente é assunto do create_all, não daqui.
-                continue
-            reais = {c["name"] for c in insp.get_columns(tabela.name)}
-            for coluna in tabela.columns:
-                if coluna.name not in reais:
-                    pendentes.append((tabela.name, coluna))
-
-        if not pendentes:
-            logger.info("Reconciliação: schema em dia com os models.")
-            return
-
-        logger.warning(
-            "Reconciliação: %d coluna(s) ausente(s) no banco. Acrescentando...",
-            len(pendentes),
-        )
-
-        adicionadas, manuais = 0, []
-        for nome_tabela, coluna in pendentes:
-            ddl = _ddl_da_coluna(coluna)
-            if ddl is None:
-                manuais.append("{}.{}".format(nome_tabela, coluna.name))
-                continue
-            try:
-                with engine.begin() as conn:
-                    conn.execute(
-                        text('ALTER TABLE "{}" ADD COLUMN {}'.format(nome_tabela, ddl))
-                    )
-                logger.warning(
-                    "Reconciliação: %s.%s criada.", nome_tabela, coluna.name
+            if not na_mesma_chain:
+                logger.info(
+                    "Branch '%s' não é acessível a partir de '%s'. "
+                    "Registrando via stamp (schema já criado pelo create_all).",
+                    parent_id,
+                    revisao_atual,
                 )
-                adicionadas += 1
-            except SQLAlchemyError as exc:
-                manuais.append("{}.{}".format(nome_tabela, coluna.name))
-                logger.error(
-                    "Reconciliação: falhou em %s.%s: %s",
-                    nome_tabela,
-                    coluna.name,
-                    exc,
-                )
-
-        logger.warning("Reconciliação: %d coluna(s) acrescentada(s).", adicionadas)
-        if manuais:
-            logger.error(
-                "Reconciliação: %d coluna(s) exigem decisão manual (NOT NULL sem "
-                "default, PK ou UNIQUE): %s",
-                len(manuais),
-                ", ".join(manuais),
-            )
-    except Exception as exc:
-        # Nunca impedir o boot por causa da rede de segurança.
-        logger.error("Reconciliação de colunas falhou: %s", exc)
+                command.stamp(alembic_cfg, parent_id)
 
 
 def aplicar_migracoes():
@@ -243,45 +163,86 @@ def aplicar_migracoes():
     Aplica migrações Alembic automaticamente na inicialização.
 
     Cenários:
-    1. DB novo (sem tabelas): create_all já foi chamado antes,
-       então basta fazer stamp("head").
-    2. DB existente sem alembic_version: foi criado por create_all.
-       Stamp em "head" pois create_all cria o schema completo.
-    3. DB existente com alembic_version: aplica as migrações pendentes,
-       uma a uma (ver _aplicar_uma_a_uma).
-
-    Em todos os casos, termina reconciliando as colunas contra os models.
+    1. DB novo (sem tabelas): upgrade("head") cria tudo via migrações.
+    2. DB existente sem alembic_version: DB legado criado por create_all.
+       Stamp na baseline, depois upgrade("head") para migrações adicionais.
+    3. DB existente com alembic_version válido: upgrade("head") aplica pendentes.
+    4. Revisão desconhecida (DB de versão mais nova do app / downgrade):
+       Stamp no head. Schema está à frente, colunas extras são inofensivas no SQLite.
     """
     alembic_cfg = _criar_alembic_config()
+    baseline = _obter_revisao_baseline(alembic_cfg)
+    _estado_logging = _salvar_logging_config()
 
     if not _banco_tem_tabela_alembic_version():
-        logger.info(
-            "Tabela alembic_version não encontrada. "
-            "Registrando banco na revisão head..."
-        )
-        command.stamp(alembic_cfg, "head")
-        logger.info("Banco registrado na revisão head com sucesso.")
+        insp = inspect(engine)
+        tabelas_existentes = [
+            t for t in insp.get_table_names() if t != "alembic_version"
+        ]
+
+        if len(tabelas_existentes) == 0:
+            # DB completamente novo: create_all() já criou o schema completo.
+            # Stamp em todos os heads para evitar re-executar migrations que
+            # criariam tabelas que já existem; depois upgrade aplica apenas o
+            # merge migration (no-op) que une as chains.
+            logger.info("Banco novo detectado. Registrando heads e aplicando merge...")
+            command.stamp(alembic_cfg, "heads")
+            command.upgrade(alembic_cfg, "head")
+        else:
+            # DB legado (criado por create_all): schema já existe
+            logger.info(
+                "Banco legado detectado (sem alembic_version, %d tabelas). "
+                "Registrando na baseline e aplicando migrações pendentes...",
+                len(tabelas_existentes),
+            )
+            command.stamp(alembic_cfg, baseline)
+            _corrigir_branches_inacessiveis(alembic_cfg, baseline)
+            command.upgrade(alembic_cfg, "head")
     else:
         revisao_atual = _obter_revisao_atual()
         logger.info("Revisão atual do banco: %s", revisao_atual)
 
         if revisao_atual and not _revisao_existe_no_script(alembic_cfg, revisao_atual):
-            # Banco de outra linhagem (ex.: baseline do master). Andar a cadeia
-            # daqui é impossível; o create_all já garantiu as tabelas e a
-            # reconciliação abaixo cuida das colunas.
+            # DB provavelmente vem de uma versão mais nova do app (downgrade).
+            # Stamp no head para evitar recriar tabelas que já existem.
+            # Colunas extras no SQLite são inofensivas (SQLAlchemy ignora).
             logger.warning(
-                "Revisão %s não existe nos scripts desta versão. "
-                "Registrando na head e deixando o resto para a reconciliação.",
+                "Revisão %s não encontrada nos scripts de migração. "
+                "Provavelmente o banco vem de uma versão mais recente do app. "
+                "Registrando no head atual para evitar conflitos...",
                 revisao_atual,
             )
-            command.stamp(alembic_cfg, "head")
+            command.stamp(alembic_cfg, "head", purge=True)
         else:
-            _aplicar_uma_a_uma(alembic_cfg)
-
+            # Caso normal: aplica migrações pendentes
+            _corrigir_branches_inacessiveis(alembic_cfg, revisao_atual)
+            try:
+                command.upgrade(alembic_cfg, "head")
+            except OperationalError as exc:
+                # create_all roda ANTES das migrações e já cria o schema completo a
+                # partir dos models. Quando o histórico tem galhos unidos depois
+                # (ex.: merge de heads oficina/vendas), o upgrade pode tentar recriar
+                # tabelas/colunas que o create_all já criou -> "already exists". Nesse
+                # caso o schema já está correto; basta registrar o banco na head, do
+                # mesmo jeito que já fazemos para bancos sem alembic_version. Qualquer
+                # outro erro sobe (não mascaramos falha real de migração).
+                msg = str(exc).lower()
+                if "already exists" in msg or "duplicate column" in msg:
+                    logger.warning(
+                        "Upgrade encontrou schema já existente (create_all): %s. "
+                        "Registrando o banco na head via stamp.",
+                        exc,
+                    )
+                    command.stamp(alembic_cfg, "head")
+                else:
+                    raise
         revisao_nova = _obter_revisao_atual()
         if revisao_nova != revisao_atual:
             logger.info("Banco atualizado: %s -> %s", revisao_atual, revisao_nova)
         else:
             logger.info("Banco já está na revisão mais recente: %s", revisao_nova)
 
-    reconciliar_colunas()
+    # O fileConfig() do alembic/env.py sobrescreve o root logger (level=WARNING,
+    # handler próprio), silenciando logs INFO/DEBUG da aplicação. Restauramos o
+    # estado original para que o basicConfig do main.py continue valendo.
+    _restaurar_logging_config(_estado_logging)

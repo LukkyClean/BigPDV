@@ -17,7 +17,7 @@ def _auth(client):
     header = {"Authorization": f"Bearer {login.json()['access_token']}"}
     empresa = {
         "razao_social": "Empresa Teste 000199 LTDA", "nome_fantasia": "Teste", "is_cnpj": True,
-        "documento": "12345678000199", "regime_tributario": "Simples Nacional",
+        "documento": "12345678000195", "regime_tributario": "Simples Nacional",
         "celular": "11999998888", "segmento": "assistencia_tecnica",
         "endereco": [{"logradouro": "Av. Paulista", "numero": "1000", "bairro": "Bela Vista",
                       "cidade": "São Paulo", "estado": "SP", "cep": "01310-100"}],

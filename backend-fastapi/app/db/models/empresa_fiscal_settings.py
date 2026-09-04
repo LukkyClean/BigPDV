@@ -19,8 +19,9 @@ class EmpresaFiscalSettings(Base):
     Configurações fiscais da empresa para emissão de documentos eletrônicos.
     Relacionamento 1:1 com Empresa.
 
-    IMPORTANTE: A senha do certificado A1 NUNCA é persistida nesta tabela.
-    Ela trafega apenas no momento do upload para validação.
+    A senha do certificado A1 (`certificado_senha`) É persistida, criptografada
+    com Fernet — a emissão precisa dela a cada chamada. A docstring anterior
+    afirmava o contrário e contradizia o próprio modelo.
     """
     __tablename__ = "empresa_fiscal_settings"
 
@@ -148,6 +149,21 @@ class EmpresaFiscalSettings(Base):
         String(100),
         nullable=True,
         doc="Thumbprint do certificado Windows (identificador único)"
+    )
+    certificado_senha: Mapped[Optional[str]] = mapped_column(
+        String(200),
+        nullable=True,
+        doc="Senha do certificado digital A1 (Criptografada com Fernet)"
+    )
+    certificado_status: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        doc="Status da conexão do certificado. Ex: CONECTADO_NUVEM, ERRO, etc."
+    )
+    certificado_cnpj: Mapped[Optional[str]] = mapped_column(
+        String(14),
+        nullable=True,
+        doc="CNPJ extraído do certificado (somente números)"
     )
 
     # --- Metadados ---

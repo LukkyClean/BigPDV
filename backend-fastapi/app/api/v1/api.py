@@ -28,8 +28,10 @@ from app.api.v1.endpoints import movimentacao_estoque
 from app.api.v1.endpoints import configuracao
 from app.api.v1.endpoints import comunicado
 from app.api.v1.endpoints import licenca
+from app.api.v1.endpoints import backup
 from app.api.v1.endpoints import checklist_mobile
 from app.api.v1.endpoints import backup
+from app.api.v1.endpoints import fiscal
 
 # Cria a instância principal do roteador para a V1
 router = APIRouter()
@@ -57,6 +59,13 @@ router.include_router(cliente.router, prefix="/clientes", tags=["Clientes"])
 
 # Inclui o roteador de fornecedores sob o prefixo /fornecedores
 router.include_router(fornecedor.router, prefix="/fornecedores", tags=["Fornecedores"])
+
+# Inclui o roteador de movimentações de estoque sob o prefixo /produtos
+# Contém sub-recursos: registrar movimentação e listar movimentações
+# IMPORTANTE: precisa vir ANTES de produto.router. O caminho literal
+# /produtos/movimentacoes seria capturado por /produtos/{produto_id} e o
+# FastAPI tentaria converter "movimentacoes" em int, devolvendo 422.
+router.include_router(movimentacao_estoque.router, prefix="/produtos", tags=["Movimentações de Estoque"])
 
 # Inclui o roteador de produtos sob o prefixo /produtos
 router.include_router(produto.router, prefix="/produtos", tags=["Produtos"])
@@ -99,9 +108,6 @@ router.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboard"])
 # Inclui o roteador de Relatorios sob o prefixo /relatorios
 # Endpoints read-only de faturamento/analytics, protegidos por permissao
 router.include_router(relatorios.router, prefix="/relatorios", tags=["Relatórios"])
-# Inclui o roteador de movimentações de estoque sob o prefixo /produtos
-# Contém sub-recursos: registrar movimentação e listar movimentações
-router.include_router(movimentacao_estoque.router, prefix="/produtos", tags=["Movimentações de Estoque"])
 
 # Inclui o roteador de configurações do sistema sob o prefixo /configuracoes
 router.include_router(configuracao.router, prefix="/configuracoes", tags=["Configurações"])
@@ -111,6 +117,7 @@ router.include_router(comunicado.router, prefix="/comunicados", tags=["Comunicad
 # Endpoint público (sem autenticação) para verificação de licença no boot
 router.include_router(licenca.router, prefix="/licenca", tags=["Licença"])
 
+router.include_router(backup.router, prefix="/backup", tags=["Backup"])
 # Inclui o roteador do checklist mobile (formulario web via QR code)
 # Endpoints publicos autenticados por token HMAC + gerador de token via JWT
 router.include_router(checklist_mobile.router, prefix="/checklist", tags=["Checklist Mobile"])
@@ -118,3 +125,6 @@ router.include_router(checklist_mobile.router, prefix="/checklist", tags=["Check
 # Inclui o roteador de backup sob o prefixo /backup
 # Restauracao de cadeia vinda da nuvem — exclusivo do Master
 router.include_router(backup.router, prefix="/backup", tags=["Backup"])
+# Inclui o roteador do Centro Fiscal sob o prefixo /fiscal
+# Endpoints de documentos fiscais, resumo e pendências globais
+router.include_router(fiscal.router, prefix="/fiscal", tags=["Fiscal"])

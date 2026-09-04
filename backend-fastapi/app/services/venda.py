@@ -7,8 +7,11 @@ from app.db.models.venda import Venda
 from app.db.models.venda_produto import ProdutoVenda
 from app.db.models.venda_pagamento import PagamentoVenda
 from app.db.models.contador_venda import ContadorVenda
-from app.schemas.vendas import VendaCreate, VendaSearchFilters, VendaStatusSummary, VendaUpdate, ProdutoVendaCreate, ProdutoVendaUpdate, PagamentoVendaCreate, VendaRead
-
+from app.schemas.venda_correcao_fiscal import VendaCorrecaoFiscalPayload
+from app.schemas.venda_nota_fiscal import VendaNotaFiscalUpdate
+from app.services import venda_nota_fiscal as venda_nota_fiscal_service
+from fastapi import HTTPException, status
+from app.db.models.documento_fiscal import DocumentoFiscal
 from app.services.cliente import cliente_exists
 from app.services.funcionario import funcionario_exists
 from app.services import produto as produto_service
@@ -25,6 +28,68 @@ from app.core.enum import VendaStatus, TipoProdutoVenda
 from app.helpers.set_pagination import _set_pagination
 from app.core.security import verify_password
 from app.helpers.exceptions import BadRequestException, InternalServerException, NotFoundException
+
+# Estados de DocumentoFiscal que impedem mexer na venda de origem.
+# AUTORIZADA: a nota vale na SEFAZ.
+# PROCESSANDO/PENDENTE: a resposta ainda vem, pode virar autorizada.
+# INDETERMINADA: não sabemos se foi autorizada — tratar como se fosse.
+_STATUS_FISCAIS_BLOQUEANTES = ("AUTORIZADA", "PROCESSANDO", "PENDENTE", "INDETERMINADA")
+
+
+def _documento_fiscal_bloqueante(db: Session, sale_in_db: Venda) -> DocumentoFiscal | None:
+    """Retorna o documento fiscal que impede alterar esta venda, se houver."""
+    # Venda ainda não finalizada não tem numero_venda e não pode ter documento.
+    identificadores = [i for i in (sale_in_db.numero_venda, sale_in_db.id) if i is not None]
+    if not identificadores:
+        return None
+
+    return (
+        db.query(DocumentoFiscal)
+        .filter(
+            DocumentoFiscal.origem_tipo == "VENDA",
+            DocumentoFiscal.origem_id.in_(identificadores),
+            DocumentoFiscal.status.in_(_STATUS_FISCAIS_BLOQUEANTES),
+        )
+        .first()
+    )
+
+
+def _assert_sem_documento_fiscal_ativo(db: Session, sale_in_db: Venda, acao: str) -> None:
+    """
+    Barra qualquer alteração em venda que já tenha nota fiscal viva.
+
+    Sem isso, o operador cancela a venda no PDV — estornando caixa e estoque —
+    enquanto a nota continua válida na SEFAZ. O resultado é omissão de receita
+    e passivo tributário para o cliente.
+    """
+    doc = _documento_fiscal_bloqueante(db, sale_in_db)
+    if not doc:
+        return
+
+    if doc.status == "AUTORIZADA":
+        motivo = (
+            f"Esta venda possui NF-e autorizada (Nº {doc.numero_documento}, "
+            f"Série {doc.serie}). Cancele a nota na SEFAZ antes de {acao}."
+        )
+        codigo = "NF_AUTORIZADA"
+    elif doc.status == "INDETERMINADA":
+        motivo = (
+            "A emissão desta venda não teve retorno confirmado da SEFAZ e a nota "
+            f"pode estar autorizada. Consulte o documento antes de {acao}."
+        )
+        codigo = "NF_INDETERMINADA"
+    else:
+        motivo = (
+            "Esta venda possui uma emissão em andamento. Aguarde o retorno da "
+            f"SEFAZ antes de {acao}."
+        )
+        codigo = "NF_EM_PROCESSAMENTO"
+
+    raise HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={"codigo": codigo, "mensagem": motivo, "documento_id": doc.id},
+    )
+
 
 def _recalc_total_sale(db: Session, sale_in_db: Venda, *, sai_da_fila: bool = True) -> Venda:
 
@@ -179,6 +244,8 @@ def update_sale(db: Session, sale_id: int, update_data: VendaUpdate) -> Venda:
     if sale_in_db.status != VendaStatus.ATIVA:
         raise BadRequestException(detail="Venda não pode ser editada")
 
+    _assert_sem_documento_fiscal_ativo(db, sale_in_db, "editar a venda")
+
     update_fields = update_data.model_dump(exclude_unset=True)
 
     if 'cliente_id' in update_fields:
@@ -225,6 +292,8 @@ def add_item_to_sale(db: Session, sale_id: int, item_data: ProdutoVendaCreate) -
     sale_in_db = get_sale_by_id(db, sale_id=sale_id)
     if sale_in_db.status != VendaStatus.ATIVA:
         raise BadRequestException(detail="Venda não pode ser editada")
+
+    _assert_sem_documento_fiscal_ativo(db, sale_in_db, "adicionar itens")
     
     quantidade = item_data.quantidade
     valor_unitario = item_data.valor_unitario
@@ -271,7 +340,9 @@ def update_item_in_sale(db: Session, sale_id: int, item_id: int, item_update: Pr
     sale_in_db = get_sale_by_id(db, sale_id=sale_id)
     if sale_in_db.status != VendaStatus.ATIVA:
         raise BadRequestException(detail="Venda não pode ser editada")
-    
+
+    _assert_sem_documento_fiscal_ativo(db, sale_in_db, "editar itens")
+
     item_in_db = venda_crud.get_product_by_id(db, item_id=item_id)
     if not item_in_db or item_in_db.venda_id != sale_id:
         raise NotFoundException(detail="Produto não encontrado")
@@ -337,6 +408,8 @@ def remove_item_from_sale(db: Session, sale_id: int, item_id: int) -> None:
     sale_in_db = get_sale_by_id(db, sale_id=sale_id)
     if sale_in_db.status != VendaStatus.ATIVA:
         raise BadRequestException(detail="Venda não pode ser editada")
+
+    _assert_sem_documento_fiscal_ativo(db, sale_in_db, "remover itens")
     
     item_in_db = venda_crud.get_product_by_id(db, item_id=item_id)
     if not item_in_db or item_in_db.venda_id != sale_id:
@@ -350,6 +423,8 @@ def delete_draft_sale(db: Session, sale_id: int) -> None:
     sale_in_db = get_sale_by_id(db, sale_id=sale_id)
     if sale_in_db.status != VendaStatus.ATIVA:
         raise BadRequestException(detail="Apenas vendas ativas podem ser descartadas")
+
+    _assert_sem_documento_fiscal_ativo(db, sale_in_db, "descartar a venda")
     db.delete(sale_in_db)
     db.commit()
 
@@ -415,12 +490,11 @@ def finish_sale(
             sale_in_db = _aplly_discount(sale_in_db=sale_in_db, discount=0)
             sale_in_db = _recalc_total_sale(db, sale_in_db, sai_da_fila=False)
 
-    # Atribui número sequencial oficial
-    contador = db.query(ContadorVenda).filter(ContadorVenda.id == 1).with_for_update().first()
-    if not contador:
+    # Atribui número sequencial oficial (reserva atômica — ver o crud)
+    numero_reservado = venda_crud.reservar_proximo_numero_venda(db)
+    if numero_reservado is None:
         raise InternalServerException(detail="Contador de vendas não inicializado. Contate o suporte.")
-    sale_in_db.numero_venda = contador.proximo_numero
-    contador.proximo_numero += 1
+    sale_in_db.numero_venda = numero_reservado
 
     products_in_db = sale_in_db.itens
 
@@ -446,6 +520,8 @@ def cancel_sale(db: Session, sale_id: int, motivo: str, codigo_gerente: str | No
 
     if sale_in_db.status != VendaStatus.FINALIZADA:
         raise BadRequestException("Apenas vendas finalizadas podem ser canceladas")
+
+    _assert_sem_documento_fiscal_ativo(db, sale_in_db, "cancelar a venda")
 
     empresa_id = sale_in_db.funcionario.empresa_id
     config_seg = config_seg_crud.get_configuracao_seguranca(db, empresa_id=empresa_id)
@@ -474,6 +550,8 @@ def reopen_sale(db: Session, sale_id: int, codigo_gerente: str | None = None) ->
 
     if sale_in_db.status != VendaStatus.CANCELADA:
         raise BadRequestException(detail="Venda não pode ser reaberta")
+
+    _assert_sem_documento_fiscal_ativo(db, sale_in_db, "reabrir a venda")
 
     empresa_id = sale_in_db.funcionario.empresa_id
     config_seg = config_seg_crud.get_configuracao_seguranca(db, empresa_id=empresa_id)
@@ -509,12 +587,50 @@ def get_sales(db: Session, filters: VendaSearchFilters, page: int, limit: int = 
 
 def get_sales_status(db: Session, funcionario_id: int | None = None) -> Sequence[VendaStatusSummary]:
     return venda_crud.get_sales_status(db, funcionario_id=funcionario_id)
-    
 
-    
-        
-        
-    
-    
 
-    
+def corrigir_dados_venda_fiscal(
+    db: Session, venda_id: int, payload: VendaCorrecaoFiscalPayload
+) -> Venda:
+    """
+    Atualiza dados de cliente, observações e parâmetros fiscais de uma venda.
+    Permite atualização mesmo se status for FINALIZADA ou ATIVA,
+    garantindo a invariância de valores financeiros e movimentações de estoque.
+    """
+    sale_in_db = get_sale_by_id(db, sale_id=venda_id)
+
+    # Bloqueio de segurança. Cobre também PROCESSANDO/PENDENTE/INDETERMINADA:
+    # durante o polling o payload já viajou com os dados antigos, então trocar
+    # cliente ou natureza da operação agora deixaria o registro local divergindo
+    # da nota que está na SEFAZ.
+    _assert_sem_documento_fiscal_ativo(db, sale_in_db, "alterar os dados fiscais")
+
+    # 1. Validação e atualização de cliente
+    if payload.cliente_id is not None:
+        customer_in_db = cliente_exists(db, payload.cliente_id)
+        sale_in_db.cliente_id = customer_in_db.id
+    elif "cliente_id" in payload.model_fields_set and payload.cliente_id is None:
+        sale_in_db.cliente_id = None
+
+    # 2. Atualização de observações da venda
+    if payload.observacao is not None:
+        sale_in_db.observacao = payload.observacao
+    if payload.observacao_interna is not None:
+        sale_in_db.observacao_interna = payload.observacao_interna
+
+    # 3. Atualização de dados fiscais (VendaNotaFiscal) caso informados
+    campos_fiscais = ["natureza_operacao", "consumidor_final", "indicador_presenca", "finalidade_emissao"]
+    fiscal_present = any(getattr(payload, f) is not None for f in campos_fiscais)
+    if fiscal_present:
+        venda_nota_fiscal_service.upsert_dados_fiscais(
+            db,
+            venda_id,
+            VendaNotaFiscalUpdate(
+                natureza_operacao=payload.natureza_operacao,
+                consumidor_final=payload.consumidor_final,
+                indicador_presenca=payload.indicador_presenca,
+                finalidade_emissao=payload.finalidade_emissao,
+            ),
+        )
+
+    return venda_crud.update_sale(db, sale_in_db)

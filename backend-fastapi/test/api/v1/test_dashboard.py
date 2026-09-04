@@ -46,7 +46,7 @@ def _auth_master(client):
     header = {"Authorization": f"Bearer {login.json()['access_token']}"}
     empresa = {
         "razao_social": "Empresa Dash 000199 LTDA", "nome_fantasia": "Dash", "is_cnpj": True,
-        "documento": "12345678000199", "regime_tributario": "Simples Nacional",
+        "documento": "12345678000195", "regime_tributario": "Simples Nacional",
         "celular": "11999998888", "segmento": "assistencia_tecnica",
         "endereco": [{"logradouro": "Av. Paulista", "numero": "1000", "bairro": "Bela Vista",
                       "cidade": "São Paulo", "estado": "SP", "cep": "01310-100"}],
@@ -60,7 +60,7 @@ def _auth_funcionario(client, master_header):
     """Cria um funcionario comum (nao-master, sem cargo) e loga como ele.
     Retorna (header, funcionario_id)."""
     payload = {
-        "nome": "Vendedor Comum", "cpf": "11122233344",
+        "nome": "Vendedor Comum", "cpf": "11122233396",
         "usuario": {"nome": "vendcomum", "email": "vendcomum@empresa.com", "senha": "SenhaForte123!"},
         "endereco": [{"logradouro": "Rua X", "numero": "1", "cep": "12345-678",
                       "bairro": "Centro", "cidade": "Lab City", "estado": "SP"}],
@@ -78,7 +78,7 @@ def _auth_funcionario(client, master_header):
 
 def _cliente(client, header):
     r = client.post("/api/v1/clientes/cliente_pf", json={
-        "nome": "Cliente Dash", "cpf": "98765432101", "tipo": "PF", "celular": "11987654321",
+        "nome": "Cliente Dash", "cpf": "98765432100", "tipo": "PF", "celular": "11987654321",
         "endereco": [{"logradouro": "Rua Y", "numero": "10", "bairro": "Centro",
                       "cidade": "Campinas", "estado": "SP", "cep": "13010-000"}],
     }, headers=header)
@@ -211,7 +211,7 @@ def test_ranking_ordena_por_vendas_mais_os_e_esconde_zerados(client, db_session)
 
     # Segundo funcionario SEM nenhum movimento (deve sumir do ranking).
     r2 = client.post("/api/v1/funcionarios/", json={
-        "nome": "Sem Movimento", "cpf": "55566677788",
+        "nome": "Sem Movimento", "cpf": "55566677720",
         "usuario": {"nome": "vendzero", "email": "vendzero@empresa.com", "senha": "SenhaForte123!"},
         "endereco": [{"logradouro": "Rua Z", "numero": "2", "cep": "12345-678",
                       "bairro": "Centro", "cidade": "Lab City", "estado": "SP"}],

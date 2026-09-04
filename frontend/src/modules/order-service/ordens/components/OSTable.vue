@@ -1,12 +1,15 @@
 <script setup lang="ts">
-import { Ellipsis, Pencil, CheckCircle, XCircle, RotateCcw, Printer } from 'lucide-vue-next';
+import { Ellipsis, Pencil, CheckCircle, XCircle, RotateCcw, Printer, FileText } from 'lucide-vue-next';
 import type { OrderServiceReadDataType } from '../schemas/orderServiceQuery.schema';
 import { OS_STATUS_FILTER_CONFIG } from '../constants/ordemServico.constants';
 import { getEstadoOS, getClienteNome } from '../../shared/utils/formatters';
 import { formatCurrency } from '@/shared/utils/finance';
+import { recursoDisponivel } from '@/shared/config/planos';
+import { useEmitirFiscal } from '@/shared/composables/useEmitirFiscal';
 import BaseTableContainer from '@/shared/components/commons/BaseTableContainer/BaseTableContainer.vue';
 import BaseSearchInput from '@/shared/components/ui/BaseSearchInput/BaseSearchInput.vue';
 import BaseFilter from '@/shared/components/ui/BaseFilter/BaseFilter.vue';
+import PendenciasFiscaisModal from '@/shared/components/commons/PendenciasFiscaisModal.vue';
 import { parseTimestampBackend } from '@/shared/utils/date.utils';
 
 interface Props {
@@ -36,6 +39,9 @@ const emit = defineEmits<{
 
 const search = defineModel<string>('search', { default: '' });
 const activeFilter = defineModel<string | null>('activeFilter', { default: null });
+
+const nfeDisponivel = recursoDisponivel('nfe');
+const { pendencias, pendenciasModalOpen, isVerificando, emitirOS } = useEmitirFiscal();
 
 // `data_criacao` é timestamp de evento (UTC no backend).
 function formatDate(dateValue: string | Date): string {
@@ -184,6 +190,16 @@ function getOSSequence(numero_os: string): string {
                     >
                       <Printer :size="18" />
                     </button>
+                    <button
+                      v-if="nfeDisponivel && os.status === 'FINALIZADA'"
+                      type="button"
+                      title="Emitir Nota Fiscal"
+                      class="p-2 rounded-lg text-zinc-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors cursor-pointer"
+                      :disabled="isVerificando"
+                      @click.stop="emitirOS(os.numero_os)"
+                    >
+                      <FileText :size="18" />
+                    </button>
                   </template>
                 </div>
                 <div class="p-2 text-zinc-400 group-hover:hidden cursor-pointer">
@@ -196,4 +212,11 @@ function getOSSequence(numero_os: string): string {
       </table>
     </div>
   </BaseTableContainer>
+
+  <PendenciasFiscaisModal
+    :is-open="pendenciasModalOpen"
+    :pendencias="pendencias"
+    titulo="Pendências Fiscais — OS"
+    @close="pendenciasModalOpen = false"
+  />
 </template>
