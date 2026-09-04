@@ -11,7 +11,12 @@ import OSPagamentoModal from '../../ordens/components/OSPagamentoModal.vue';
 import type { PrintFormat } from '../../ordens/composables/modal/useOSPrintFlow';
 import { useImpressao } from '@/shared/composables/useImpressao';
 import { useImpressaoStore } from '@/shared/stores/impressao.store';
-import { useCompanyPrintInfo, imprimirComPagina } from '@/shared/utils/print.utils';
+import {
+  useCompanyPrintInfo,
+  imprimirComPagina,
+  aguardarImagensDaImpressao,
+} from '@/shared/utils/print.utils';
+import { usePerfilComprovante } from '@/shared/composables/usePerfilComprovante';
 import { osToEscPos } from '../../ordens/components/osToEscPos';
 import { DOTS } from '@/shared/services/escpos';
 import { carregarLogoRaster } from '@/shared/services/escposImagem';
@@ -72,6 +77,8 @@ const pendingPrintAfterSelect = ref<(() => void) | null>(null);
 const impressao = useImpressao();
 const impressaoStore = useImpressaoStore();
 const { companyInfo } = useCompanyPrintInfo();
+// Papel escolhido pela empresa (folha inteira / meia folha), por documento.
+const { opcoesPaginaDe } = usePerfilComprovante();
 const { labelSingular } = useObjetoLabels();
 
 /** Manda o cupom térmico direto pra impressora configurada; false = sem impressora/falhou */
@@ -245,6 +252,22 @@ async function handlePrintOS(os: OrderServiceReadDataType) {
 }
 
 /**
+ * Papel da via que está sendo impressa daqui.
+ *
+ * Esta tela não usa o `usePrintFlow` (ela tem fluxo próprio: finaliza, cancela
+ * e reimprime direto da lista), e por isso ficou de fora quando o papel passou a
+ * ser escolhido pela empresa — as chamadas daqui iam sem opção nenhuma e sempre
+ * caíam no padrão A4. Resultado: quem configurava "meia folha" via a escolha
+ * valer ao imprimir pelo formulário da OS e ser ignorada ao finalizar pela
+ * lista, que é justamente o caminho da impressão automática.
+ *
+ * CANCELAMENTO segue o papel da entrega: é a via que encerra o atendimento.
+ */
+function opcoesDaVia() {
+  return opcoesPaginaDe(printType.value === 'ENTRADA' ? 'os_entrada' : 'os_entrega');
+}
+
+/**
  * Regra única (sem perguntar formato): térmica configurada → cupom ESC/POS
  * direto; sem térmica (ou falha) → recibo A4 abrindo o diálogo do sistema.
  */
@@ -259,8 +282,9 @@ async function imprimirComRegra() {
   }
 
   printFormat.value = 'A4';
-  setTimeout(() => {
-    imprimirComPagina('A4');
+  setTimeout(async () => {
+    await aguardarImagensDaImpressao();
+    imprimirComPagina('A4', opcoesDaVia());
     setTimeout(() => {
       pendingPrintAfterSelect.value?.();
       pendingPrintAfterSelect.value = null;
@@ -290,8 +314,9 @@ async function handlePrintFormatSelected(format: PrintFormat) {
   printFormat.value = format;
   isPrintSelectOpen.value = false;
 
-  setTimeout(() => {
-    imprimirComPagina(format);
+  setTimeout(async () => {
+    await aguardarImagensDaImpressao();
+    imprimirComPagina(format, opcoesDaVia());
     setTimeout(() => {
       pendingPrintAfterSelect.value?.();
       pendingPrintAfterSelect.value = null;

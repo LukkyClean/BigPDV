@@ -10,8 +10,11 @@ from sqlalchemy.orm import Session
 
 from app.core.tempo import intervalo_utc
 from app.core.enum import SituacaoEquipamento, MovimentacaoTipo
+from app.core.tempo import intervalo_utc
+from app.helpers.exceptions import NotFoundException
 from app.db.crud import dashboard as dashboard_crud
 from app.db.crud import relatorio as relatorio_crud
+from app.db.crud import funcionario as funcionario_crud
 from app.schemas.relatorio import (
     RelatorioFaturamento,
     FaturamentoDiaItem,
@@ -25,10 +28,91 @@ from app.schemas.relatorio import (
     EstoqueReposicaoItem,
     EstoqueParadoItem,
     RelatorioOSPerformance,
+    RelatorioExtratoFuncionario,
+    ExtratoServicoItem,
     OSReparoResumo,
     OSStatusItem,
     OSTecnicoItem,
 )
+
+
+def _serie_por_dia(
+    inicio: date,
+    fim: date,
+    vendas_dia: dict[str, int],
+    os_dia: dict[str, int],
+) -> list[FaturamentoDiaItem]:
+    """Serie diaria continua: dia sem movimento entra como zero, senao o grafico pula buracos."""
+    por_dia: list[FaturamentoDiaItem] = []
+    dia = inicio
+    while dia <= fim:
+        chave = dia.isoformat()
+        tv = vendas_dia.get(chave, 0)
+        to = os_dia.get(chave, 0)
+        por_dia.append(
+            FaturamentoDiaItem(dia=dia, total_vendas=tv, total_os=to, total_geral=tv + to)
+        )
+        dia += timedelta(days=1)
+    return por_dia
+
+
+def get_faturamento_pessoal(
+    db: Session, inicio: date, fim: date, funcionario_id: int
+) -> RelatorioFaturamento:
+    """
+    O relatorio de faturamento restrito ao que ESTE funcionario fez.
+
+    Mesmo schema do relatorio da loja, de proposito: a tela e a impressao sao as
+    mesmas, muda so o recorte. Reusa as agregacoes pessoais do dashboard
+    (get_meu_resumo_stats, get_minhas_*_por_dia), entao o numero daqui bate com o
+    "Meu resumo" da Home — dois lugares que discordassem seriam pior que um so.
+
+    O QUE FICA DE FORA, E POR QUE. Juros de cartao, CMV, lucro bruto, margem e
+    formas de pagamento ficam no DEFAULT (zero/vazio). Nao e omissao por
+    preguica: sao contas da LOJA, nao do funcionario.
+
+      - juros e CMV sao custo do dono. Repassar um pedaco deles ao funcionario
+        que fez a venda daria um "lucro" que nao e o lucro de ninguem: o juros
+        de uma venda dele foi bancado pelo caixa da loja, e o custo da peca saiu
+        do estoque da loja.
+      - formas de pagamento respondem "como o dinheiro entrou na loja", que e
+        pergunta de conciliacao — do dono.
+
+    A tela ja esconde esses blocos quando os valores sao zero, mas quem garante
+    que o dado nao sai daqui e ESTE recorte, nao o `v-if`.
+    """
+    dt_inicio, dt_fim = intervalo_utc(inicio, fim)
+
+    stats = dashboard_crud.get_meu_resumo_stats(db, dt_inicio, dt_fim, funcionario_id)
+    faturamento_vendas = stats.minhas_vendas_valor
+    faturamento_os = stats.minhas_os_valor
+    faturamento_total = faturamento_vendas + faturamento_os
+    qtd_transacoes = stats.minhas_vendas_count + stats.minhas_os_concluidas
+    ticket_medio = int(faturamento_total / qtd_transacoes) if qtd_transacoes else 0
+
+    vendas_dia = {
+        str(r.dia): (r.total or 0)
+        for r in dashboard_crud.get_minhas_vendas_por_dia(db, dt_inicio, dt_fim, funcionario_id)
+    }
+    os_dia = {
+        str(r.dia): (r.total or 0)
+        for r in dashboard_crud.get_minhas_os_por_dia(db, dt_inicio, dt_fim, funcionario_id)
+    }
+
+    return RelatorioFaturamento(
+        inicio=inicio,
+        fim=fim,
+        faturamento_total=faturamento_total,
+        faturamento_vendas=faturamento_vendas,
+        faturamento_os=faturamento_os,
+        # Sem juros a descontar, o liquido E o total. Preencher explicitamente
+        # evita que a tela caia no fallback e mostre "R$ 0,00" de faturamento.
+        faturamento_liquido=faturamento_total,
+        ticket_medio=ticket_medio,
+        qtd_vendas=stats.minhas_vendas_count,
+        qtd_os=stats.minhas_os_concluidas,
+        por_dia=_serie_por_dia(inicio, fim, vendas_dia, os_dia),
+    )
 
 
 def get_faturamento(db: Session, inicio: date, fim: date, empresa_id: int) -> RelatorioFaturamento:
@@ -99,16 +183,7 @@ def get_faturamento(db: Session, inicio: date, fim: date, empresa_id: int) -> Re
         for r in relatorio_crud.get_faturamento_os_por_dia(db, dt_inicio, dt_fim, empresa_id)
     }
 
-    por_dia: list[FaturamentoDiaItem] = []
-    dia = inicio
-    while dia <= fim:
-        chave = dia.isoformat()
-        tv = vendas_dia.get(chave, 0)
-        to = os_dia.get(chave, 0)
-        por_dia.append(
-            FaturamentoDiaItem(dia=dia, total_vendas=tv, total_os=to, total_geral=tv + to)
-        )
-        dia += timedelta(days=1)
+    por_dia = _serie_por_dia(inicio, fim, vendas_dia, os_dia)
 
     # Formas de pagamento — reusa o crud do dashboard e mescla vendas + OS.
     totais: dict[str, int] = {}
@@ -371,6 +446,74 @@ def _duracao_horas(criacao: datetime, finalizacao: datetime) -> float:
     """
     segundos = (finalizacao - criacao).total_seconds()
     return max(segundos, 0) / 3600
+
+
+def get_extrato_funcionario(
+    db: Session, inicio: date, fim: date, empresa_id: int, funcionario_id: int
+) -> RelatorioExtratoFuncionario:
+    """O extrato de servicos de uma pessoa -- o papel que ela leva para conferir.
+
+    A CONTAGEM DE OS E POR OS DISTINTA, e isso nao e detalhe. O crud devolve uma
+    linha por ITEM, entao somar linhas diria "3 OS" onde ha uma OS com tres
+    servicos. O ranking, que e o primeiro lugar onde alguem confere este extrato,
+    conta OS -- e dois relatorios que discordam do mesmo numero destroem a
+    confianca nos dois.
+
+    Pela mesma razao o `valor_total` soma os ITENS de servico, e nao o
+    `valor_total` da OS: a OS carrega peca junto, e o extrato e sobre o trabalho.
+    O numero daqui e menor que o `faturamento_os` do ranking sempre que houver
+    peca -- e isso e correto, nao divergencia.
+    """
+    dt_inicio, dt_fim = intervalo_utc(inicio, fim)
+
+    funcionario = funcionario_crud.get_funcionario_by_id(db, funcionario_id)
+    if not funcionario or funcionario.empresa_id != empresa_id:
+        raise NotFoundException(detail="Funcionário não encontrado")
+
+    linhas = relatorio_crud.get_servicos_do_funcionario(
+        db, dt_inicio, dt_fim, empresa_id, funcionario_id
+    )
+
+    itens: list[ExtratoServicoItem] = []
+    os_distintas: set[int] = set()
+    total = 0
+
+    for linha in linhas:
+        os_distintas.add(linha.os_id)
+        total += linha.valor_total or 0
+
+        # "Fiat Uno · ABC-1234" -- o mesmo par que a OS mostra na tela. Cada
+        # pedaco pode faltar (objeto sem serie, OS sem objeto), entao monta com o
+        # que houver em vez de assumir os tres.
+        partes = [p for p in (linha.marca, linha.modelo) if p]
+        descricao = " ".join(partes) if partes else None
+        if descricao and linha.numero_serie:
+            descricao = f"{descricao} · {linha.numero_serie}"
+        elif not descricao and linha.numero_serie:
+            descricao = linha.numero_serie
+
+        itens.append(
+            ExtratoServicoItem(
+                numero_os=linha.numero_os,
+                data_finalizacao=linha.data_finalizacao.date(),
+                objeto=descricao,
+                cliente=linha.cliente_nome,
+                servico=linha.servico,
+                quantidade=linha.quantidade,
+                valor_total=linha.valor_total or 0,
+            )
+        )
+
+    return RelatorioExtratoFuncionario(
+        inicio=inicio,
+        fim=fim,
+        funcionario_id=funcionario_id,
+        funcionario_nome=funcionario.nome,
+        qtd_os=len(os_distintas),
+        qtd_servicos=len(itens),
+        valor_total=total,
+        itens=itens,
+    )
 
 
 def get_os_performance(db: Session, inicio: date, fim: date, empresa_id: int) -> RelatorioOSPerformance:

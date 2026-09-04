@@ -3,6 +3,16 @@ import { ref, computed, type Ref } from "vue";
 import { PaymentSaleCreate } from "../../schemas/paymentSale.schema";
 
 const finishModalIsOpen = ref(false);
+
+/**
+ * O sub-modal de detalhes do pagamento ("Dinheiro", "Cartao", ...).
+ *
+ * Mora aqui, e nao dentro do FinishSaleModal, porque a hierarquia do Escape
+ * precisa enxerga-lo: era um `ref` local, o atalho global nao sabia da sua
+ * existencia e o Esc pulava direto para o nivel de cima -- fechando a
+ * Finalizar Venda inteira, com `resetPayments()` junto. Achado em 20/08/2026.
+ */
+const showPaymentDetails = ref(false);
 const payments = ref<PaymentSaleCreate[]>([]);
 
 export function useFinishSaleModal(saleTotal?: Ref<number>) {
@@ -58,11 +68,13 @@ export function useFinishSaleModal(saleTotal?: Ref<number>) {
 
     function closeFinishModal() {
         resetPayments();
+        showPaymentDetails.value = false;
         finishModalIsOpen.value = false;
     }
 
     return {
         finishModalIsOpen,
+        showPaymentDetails,
         openFinishModal,
         closeFinishModal,
         payments,

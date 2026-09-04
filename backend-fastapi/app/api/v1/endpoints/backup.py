@@ -1,3 +1,12 @@
+# ---------------------------------------------------------------------------
+# ACESSO: TODAS as rotas sao EXCLUSIVAS do Master -> get_current_master_user.
+#
+# Nao afrouxar para get_current_active_user. `/download/{ciclo}` entrega o banco
+# INTEIRO da empresa, e `/confirmar-restauracao` agenda a troca do arquivo do
+# banco de producao no proximo boot. Com o backend escutando em 0.0.0.0, um
+# funcionario logado de qualquer terminal alcancaria as duas coisas.
+# ---------------------------------------------------------------------------
+
 import asyncio
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Response, status

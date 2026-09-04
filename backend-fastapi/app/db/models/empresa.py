@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from app.db.models.configuracao_os import ConfiguracaoOS
     from app.db.models.configuracao_vendas import ConfiguracaoVendas
     from app.db.models.configuracao_seguranca import ConfiguracaoSeguranca
+    from app.db.models.configuracao_backup import ConfiguracaoBackup
 
 class Empresa(Base):
     """

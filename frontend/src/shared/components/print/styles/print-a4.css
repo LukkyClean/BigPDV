@@ -1,5 +1,19 @@
+/* =========================================================================
+   CAMADA 1 — A PÁGINA (só existe na impressão)
+
+   Tudo que fala com o dispositivo: tamanho do papel, o que aparece e o que
+   some. Fica dentro de `@media print` porque de fato só faz sentido lá.
+   ========================================================================= */
 @media print {
   @page {
+    /* O papel é SEMPRE A4 aqui. "Meia folha" não troca o papel: continua a
+       mesma A4 que a loja tem na gaveta, e o comprovante é confinado à metade
+       de cima (ver CAMADA 3). Pedir `size: A5` mandava a impressora para uma
+       página de 148mm de LARGURA, e o layout inteiro refluía numa coluna
+       estreita — crescia em vez de encolher, e era isso que empurrava o rodapé
+       para a segunda folha.
+       Quem realmente troca o tamanho é `imprimirComPagina`, que injeta a regra
+       do formato atual por último no <head> (o cupom precisa de 58/80mm). */
     size: A4;
     /* Margem 0 no @page: este motor de impressão (diálogo do app, "Margens:
        Nenhuma") ignora a margem do @page, então o conteúdo encostava nas quatro
@@ -43,37 +57,151 @@
   .print-container {
     visibility: visible;
     display: block !important;
-    width: 100%;
-    /* Margem do documento nas quatro bordas (única fonte da verdade — ver @page
-       acima). box-sizing evita que o padding estoure a largura útil da página. */
-    box-sizing: border-box;
-    padding: 1cm;
-    background: white;
-    font-size: 12px;
-  }
-
-  .print-footer {
-    margin-top: 2rem;
-  }
-
-  /* Cabeçalho e blocos de grade não quebram entre páginas */
-  .print-container header,
-  .print-container > .grid {
-    page-break-inside: avoid;
-  }
-
-  /* Na tabela de itens, quebra é permitida entre linhas, mas não dentro de uma linha */
-  .print-container table tr {
-    page-break-inside: avoid;
-  }
-
-  /* Seções de texto (termo de garantia, declarações) ficam inteiras */
-  .print-container .border {
-    page-break-inside: avoid;
   }
 
   * {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
+}
+
+/* =========================================================================
+   CAMADA 2 — O DOCUMENTO (fora do @media print de propósito)
+
+   Estas regras definem QUANTO PAPEL o comprovante ocupa: margem, corpo de
+   letra, respiro entre blocos. Elas moram fora do `@media print` porque a
+   meia folha precisa MEDIR a via antes de imprimir (ver `medirAlturaComprovante`
+   em print.utils.ts), e a medição acontece na tela, com o container exposto
+   fora do viewport. Se estas medidas só existissem sob `@media print`, a
+   medição leria um layout diferente do que sai no papel e o zoom sairia errado.
+
+   Não vazam para a tela: `.print-container` é `hidden` (display:none) fora da
+   impressão — quem o torna visível é a CAMADA 1, ou a medição, por inline
+   style, por alguns milissegundos.
+   ========================================================================= */
+.print-container {
+  width: 100%;
+  /* Margem do documento nas quatro bordas (única fonte da verdade — ver @page
+     na CAMADA 1). box-sizing evita que o padding estoure a largura útil. */
+  box-sizing: border-box;
+  padding: 1cm;
+  background: white;
+  font-size: 12px;
+}
+
+.print-container .print-footer {
+  margin-top: 2rem;
+}
+
+/* Cabeçalho e blocos de grade não quebram entre páginas */
+.print-container header,
+.print-container > .grid {
+  page-break-inside: avoid;
+}
+
+/* Na tabela de itens, quebra é permitida entre linhas, mas não dentro de uma linha */
+.print-container table tr {
+  page-break-inside: avoid;
+}
+
+/* Seções de texto (termo de garantia, declarações) ficam inteiras */
+.print-container .border {
+  page-break-inside: avoid;
+}
+
+/* =====================================================================
+   DENSIDADE COMPACTA
+
+   A MESMA informação ocupando menos papel. Não remove nada: os dados da
+   empresa, do cliente com endereço, os itens discriminados e o resumo de
+   pagamento continuam saindo — eles protegem o cliente e não são
+   configuráveis. Ver docs/comprovantes-perfil-plano.md §4.
+
+   A compactação é só de ESPAÇO (padding, margem, entrelinha). As molduras
+   ficam de propósito: elas separam as seções, e sem espaçamento generoso
+   passam a ser a única pista visual de onde uma seção termina.
+
+   Medido no comprovante de venda (Chrome, largura A4): normal custa 209mm com
+   1 item e 227mm com 3; compacto custa 146mm e 157mm. É o compacto que põe a
+   via na casa da meia folha — por isso a meia folha o liga sozinha.
+
+   Sobrescreve as utilitárias do Tailwind por especificidade (0,2,0 contra
+   0,1,0) — sem `!important`, que aqui não é necessário.
+   ===================================================================== */
+
+.print-container.compacto {
+  padding: 0.5cm;
+}
+
+/* Margens entre blocos — a maior fonte de folha desperdiçada, porque se
+   acumulam: são vários blocos empilhados em sequência. */
+.print-container.compacto .mb-8 { margin-bottom: 0.4rem; }
+.print-container.compacto .mb-6 { margin-bottom: 0.35rem; }
+.print-container.compacto .mb-4 { margin-bottom: 0.3rem; }
+.print-container.compacto .mb-3 { margin-bottom: 0.25rem; }
+.print-container.compacto .mb-2 { margin-bottom: 0.2rem; }
+
+/* Respiro interno dos cards */
+.print-container.compacto .p-4 { padding: 0.35rem; }
+.print-container.compacto .p-3 { padding: 0.3rem; }
+.print-container.compacto .p-2 { padding: 0.25rem; }
+
+/* Barras de cabeçalho das seções */
+.print-container.compacto .py-2 { padding-top: 0.1rem; padding-bottom: 0.1rem; }
+.print-container.compacto .py-1\.5 { padding-top: 0.08rem; padding-bottom: 0.08rem; }
+.print-container.compacto .py-1 { padding-top: 0.06rem; padding-bottom: 0.06rem; }
+
+/* Espaçamento entre linhas de dados dentro dos cards */
+.print-container.compacto .space-y-2 > * + * { margin-top: 0.15rem; }
+.print-container.compacto .space-y-1\.5 > * + * { margin-top: 0.1rem; }
+.print-container.compacto .space-y-1 > * + * { margin-top: 0.08rem; }
+
+/* Colunas mais próximas */
+.print-container.compacto .gap-4 { gap: 0.4rem; }
+.print-container.compacto .gap-2 { gap: 0.25rem; }
+
+/* Os textos legais (termo de garantia, condições de entrada) são os maiores
+   blocos de tamanho FIXO da via — não crescem com a OS, pesam igual sempre.
+   `leading-relaxed` neles custa várias linhas. */
+.print-container.compacto .leading-relaxed { line-height: 1.25; }
+
+.print-container.compacto .print-footer { margin-top: 0.5rem; }
+
+/* =========================================================================
+   CAMADA 3 — MEIA FOLHA
+
+   O comprovante ocupa a metade de cima de uma A4 e sai numa folha só. O papel
+   continua A4 (CAMADA 1): o que muda é o espaço que a via ocupa.
+
+   Os 148mm são PISO, não teto: via curta é completada até a metade (para o
+   corte cair sempre na mesma altura), via longa cresce para baixo. Quem não
+   varia é o corpo de letra — `--meia-zoom` é fixo em 10/12, o fator que põe o
+   texto da via em 10px. Ver ZOOM_MEIA_FOLHA em print.utils.ts: a alternativa,
+   calcular o zoom por via para caber nos 148mm, fazia cada recibo sair com uma
+   letra de tamanho diferente.
+
+   O `zoom` multiplica TODO comprimento de dentro do elemento, inclusive este
+   `min-height` — por isso ele é dividido pelo zoom: 148mm/0,83 desenhado a 83%
+   dá exatamente 148mm no papel. Sem a divisão, a linha de corte subiria junto
+   com o conteúdo.
+   ========================================================================= */
+.print-container.meia-folha {
+  zoom: var(--meia-zoom, 1);
+  min-height: calc(148mm / var(--meia-zoom, 1));
+  position: relative;
+}
+
+/* Linha de corte no fim da metade. É `::after` posicionado, e não um bloco no
+   fluxo, para ficar SEMPRE na mesma altura — inclusive num recibo curto, que
+   termina bem antes dela. */
+.print-container.meia-folha::after {
+  content: '✂  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  text-align: center;
+  font-size: 9px;
+  letter-spacing: 0.5px;
+  color: #9ca3af;
 }

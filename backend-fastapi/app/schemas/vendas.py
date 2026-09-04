@@ -155,6 +155,12 @@ class VendaSimpleRead(BaseModel):
     status: VendaStatus = Field("ATIVA", description="Status da venda")
     criado_em: datetime = Field(..., description="Data de criação da venda no formato ISO 8601")
     atualizado_em: datetime = Field(..., description="Data da última atualização da venda no formato ISO 8601")
+    # Mora na SimpleRead, e não na VendaRead: quem precisa saber quem está na
+    # fila é a LISTA, que carrega o schema enxuto.
+    enviada_ao_caixa_em: Optional[datetime] = Field(
+        None,
+        description="Quando o atendente entregou a venda ao caixa. Nulo = ainda em montagem",
+    )
 
     cliente: Optional[ClienteSimpleRead] = Field(None, description="Dados do cliente associado à venda, preenchido automaticamente com base no cliente_id")
     funcionario: Optional[FuncionarioVendaRead] = Field(None, description="Dados do funcionário responsável pela venda")
@@ -179,6 +185,7 @@ class VendaFinanceSummary(BaseModel):
 
 class VendaStatusSummary(BaseModel):
     vendas_ativas: int = Field(0, ge=0, description="Quantidade de vendas ativas")
+    vendas_na_fila: int = Field(0, ge=0, description="Vendas ativas já entregues ao caixa")
     vendas_finalizadas: int = Field(0, ge=0, description="Quantidade de vendas finalizadas")
     vendas_canceladas: int = Field(0, ge=0, description="Quantidade de vendas canceladas")
     ticket_medio: int = Field(0, ge=0, description="Valor médio dos tickets das vendas finalizadas")
@@ -204,6 +211,10 @@ class VendaSearchFilters(BaseModel):
     search: Optional[str] = Field(None, max_length=255, description="Termo de busca para filtrar vendas por número da venda, nome do cliente ou nome do funcionário")
     status: Optional[VendaStatus] = Field(None, description="Status para filtrar as vendas")
     funcionario_id: Optional[int] = Field(None, description="Filtrar vendas pelo funcionário responsável")
+    na_fila: Optional[bool] = Field(
+        None,
+        description="True traz só as vendas entregues ao caixa; False só as em montagem; nulo traz todas",
+    )
 
 class VendaListRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)

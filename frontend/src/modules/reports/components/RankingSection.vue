@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { computed, toRef } from 'vue';
-import { Trophy } from 'lucide-vue-next';
+import { computed, ref, toRef } from 'vue';
+import { Trophy, FileText } from 'lucide-vue-next';
 import type { ChartConfiguration } from 'chart.js/auto';
 
 import { formatCurrency } from '@/shared/utils/finance';
 import { useCoresTema } from '@/shared/theme/useCoresTema';
+import { useOrdemServico } from '@/shared/composables/useOrdemServico';
 import { useRankingQuery } from '../composables/useRankingQuery';
 import ChartCanvas from './ChartCanvas.vue';
+import ExtratoFuncionarioModal from './ExtratoFuncionarioModal.vue';
 
 // Série única, cor institucional: segue o tema. Ler daqui (e não escrever o hex)
 // é o que amarra o `config` à versão da paleta — quando a cor muda, o computed
@@ -17,6 +19,27 @@ const props = defineProps<{ inicio: string; fim: string }>();
 
 const { data } = useRankingQuery(toRef(props, 'inicio'), toRef(props, 'fim'));
 const itens = computed(() => data.value?.itens ?? []);
+
+/**
+ * O extrato de cada pessoa sai daqui.
+ *
+ * O ranking já tem `funcionario_id` e `nome` — abrir o extrato de uma linha não
+ * custa consulta nenhuma a mais, e é onde o dono já está olhando quando a
+ * pergunta "o que essa pessoa fez?" aparece.
+ *
+ * O id fica em `ref` e é o que habilita a query lá dentro: com `null` ela não
+ * dispara, então o modal montado e fechado não busca nada.
+ */
+const extratoDe = ref<number | null>(null);
+
+/**
+ * Loja de PDV puro não tem serviço — só produto.
+ *
+ * O extrato sairia sempre vazio ali, e botão que nunca traz nada é pior que
+ * botão nenhum: ele promete uma resposta e entrega uma tela em branco. O
+ * ranking em si continua, porque venda também rende posição nele.
+ */
+const { usaOrdemServico } = useOrdemServico();
 
 // Desenha o valor exato na ponta de cada barra (sempre visível, sem depender do hover).
 const valueLabelPlugin = {
@@ -92,7 +115,8 @@ const config = computed<ChartConfiguration>(() => ({
               <th class="py-2 pr-3 font-semibold text-left">Funcionário</th>
               <th class="py-2 px-3 font-semibold text-right">Vendas</th>
               <th class="py-2 px-3 font-semibold text-right">OS</th>
-              <th class="py-2 pl-3 font-semibold text-right">Total</th>
+              <th class="py-2 px-3 font-semibold text-right">Total</th>
+              <th v-if="usaOrdemServico" class="py-2 pl-3 font-semibold text-right"><span class="sr-only">Extrato</span></th>
             </tr>
           </thead>
           <tbody>
@@ -105,7 +129,20 @@ const config = computed<ChartConfiguration>(() => ({
               <td class="py-2 pr-3 text-slate-700 font-medium">{{ i.nome }}</td>
               <td class="py-2 px-3 text-right text-slate-500 tabular-nums">{{ formatCurrency(i.faturamento_vendas) }}</td>
               <td class="py-2 px-3 text-right text-slate-500 tabular-nums">{{ formatCurrency(i.faturamento_os) }}</td>
-              <td class="py-2 pl-3 text-right font-semibold text-slate-800 tabular-nums">{{ formatCurrency(i.faturamento_total) }}</td>
+              <td class="py-2 px-3 text-right font-semibold text-slate-800 tabular-nums">{{ formatCurrency(i.faturamento_total) }}</td>
+              <td v-if="usaOrdemServico" class="py-2 pl-3 text-right">
+                <!-- Discreto de propósito: ícone sem rótulo, na cor de apoio,
+                     como as ações rápidas da tabela de vendas. A coluna existe
+                     para quem procura, não para disputar atenção com os números. -->
+                <button
+                  type="button"
+                  class="p-1.5 rounded-lg text-slate-400 hover:text-brand-primary hover:bg-slate-100 transition-colors cursor-pointer"
+                  :title="`Ver serviços de ${i.nome}`"
+                  @click="extratoDe = i.funcionario_id"
+                >
+                  <FileText :size="15" />
+                </button>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -115,5 +152,14 @@ const config = computed<ChartConfiguration>(() => ({
     <div v-else class="py-8 text-center text-xs text-slate-400">
       Nenhum faturamento por funcionário no período.
     </div>
+
+    <ExtratoFuncionarioModal
+      v-if="usaOrdemServico"
+      :is-open="extratoDe !== null"
+      :funcionario-id="extratoDe"
+      :inicio="props.inicio"
+      :fim="props.fim"
+      @close="extratoDe = null"
+    />
   </div>
 </template>

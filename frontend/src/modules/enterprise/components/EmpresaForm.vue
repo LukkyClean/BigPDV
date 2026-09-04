@@ -6,6 +6,7 @@
  * Todas as sections injetam context diretamente
  */
 
+import { computed } from 'vue';
 import { Building, Save, FileText, Lock, ChevronRight } from 'lucide-vue-next';
 import { onBeforeRouteLeave, useRouter } from 'vue-router';
 
@@ -31,12 +32,28 @@ import { recursoDisponivel } from '@/shared/config/planos';
 
 const {
   is_cnpj,
+  documento,
+  razao_social,
   apiError,
   isLoading,
   isPending,
   temAlteracoesPendentes,
   onSubmit,
 } = useEmpresaFormProvider();
+
+// O selo do cabeçalho olhava para `is_cnpj`, o que marcava toda empresa de CPF
+// como "Cadastro Incompleto" para sempre. O que define completo é ter nome e
+// documento — o tipo de pessoa é só uma característica do cadastro.
+const cadastroCompleto = computed(
+  () =>
+    !!razao_social.value?.trim() &&
+    documento.value.replace(/\D/g, '').length >= 11,
+);
+
+const seloCadastro = computed(() => {
+  if (!cadastroCompleto.value) return 'Cadastro Incompleto';
+  return is_cnpj.value ? 'Pessoa Jurídica' : 'Pessoa Física';
+});
 
 // =============================================
 // Confirmações
@@ -113,7 +130,7 @@ onBeforeRouteLeave(async () => {
           <span
             class="px-3 py-1 bg-brand-primary-light text-brand-primary text-xs font-bold uppercase rounded-full tracking-wide"
           >
-            {{ is_cnpj ? 'Empresa Verificada' : 'Cadastro Incompleto' }}
+            {{ seloCadastro }}
           </span>
           <!--
             O selo de ambiente (Homologação/Produção) saiu daqui: é conceito de
@@ -132,7 +149,9 @@ onBeforeRouteLeave(async () => {
           <!-- Todas as sections injetam context via useEmpresaForm() -->
           <IdentificationSection />
           <AddressSection />
-          <TaxDataSection />
+          <!-- Dados Fiscais são exclusivos de PJ: IE, regime tributário,
+               natureza jurídica e CNAE não existem para uma pessoa física. -->
+          <TaxDataSection v-if="is_cnpj" />
           <ContactSection />
 
           <!-- Acesso à tela fiscal (separada). Na v1 (plano Start) é um upsell

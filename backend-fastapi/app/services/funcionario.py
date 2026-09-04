@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from typing import Sequence
 
 from app.schemas.funcionario import FuncionarioCreate, FuncionarioUpdate
+from app.schemas.usuario import UsuarioCreate
 from app.db.models.funcionario import Funcionario as FuncionarioModel
 from app.db.crud import funcionario as funcionario_crud
 from app.db.crud import cargo as cargo_crud
@@ -87,19 +88,33 @@ def create_funcionario(db: Session, empresa_id: int, funcionario_to_add: Funcion
         if cargo_in_db and cargo_in_db.nome.lower() == "master":
             is_master = True
 
-    # 2. Criação do Usuário (Delegate)
-    usuario_to_add = funcionario_to_add.usuario
-    usuario_in_db = usuario_service.create_usuario(
-        db,
-        usuario_to_add=usuario_to_add,
-        empresa_id=empresa_id,
-        is_master=is_master
-    )
+    # 2. Criação do Usuário (Delegate) — SE a empresa quiser dar acesso.
+    #
+    # Sem o bloco `usuario`, o funcionário é só ficha: existe, pode ser o
+    # vendedor de uma venda, entra no ranking e na comissão, e não tem por onde
+    # entrar no sistema. É o caso do entregador e do ajudante, que antes
+    # obrigavam a inventar um e-mail e uma senha de verdade.
+    usuario_in_db = None
+    if funcionario_to_add.usuario is not None:
+        usuario_in_db = usuario_service.create_usuario(
+            db,
+            usuario_to_add=funcionario_to_add.usuario,
+            empresa_id=empresa_id,
+            is_master=is_master
+        )
+    elif is_master:
+        # Master é quem administra a loja. Sem login ele não administra nada, e
+        # o cargo ficaria mentindo — melhor recusar aqui do que criar um Master
+        # inacessível que só aparece como problema depois.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="O cargo Master exige acesso ao sistema. Informe os dados de login."
+        )
 
     # 3. Criação do Funcionário
     funcionario_to_db = FuncionarioModel(
         **funcionario_data,
-        usuario_id=usuario_in_db.id, # Foreign Key
+        usuario_id=usuario_in_db.id if usuario_in_db else None, # Foreign Key
         empresa_id=empresa_id
     )
     funcionario_in_db = funcionario_crud.create_funcionario(db, funcionario_to_add=funcionario_to_db)
@@ -123,8 +138,14 @@ def get_funcionario_by_search(db: Session, search: str | None) -> Sequence[Funci
     """Delega busca para o CRUD."""
     return funcionario_crud.get_funcionario_by_search(db, search=search)
 
-def funcionario_exists(db: Session, funcionario_id: int) -> None:
-    """Verifica se um funcionário existe no banco."""
+def funcionario_exists(db: Session, funcionario_id: int) -> FuncionarioModel:
+    """Verifica se um funcionário existe no banco e o devolve.
+
+    A anotação dizia `-> None` e mentia: a função sempre devolveu o objeto, e há
+    chamador que depende disso. Corrigida para que ninguém "conserte" o retorno
+    achando que é sobra — quem lê o funcionário daqui perderia a validação em
+    silêncio.
+    """
     funcionario_in_db = funcionario_crud.get_funcionario_by_id(db, funcionario_id=funcionario_id)
     if not funcionario_in_db:
         raise not_found_exce
@@ -206,6 +227,48 @@ def update_cargo_funcionario(db: Session, funcionario_id: int, cargo_id: int) ->
         funcionario_in_db.usuario.is_master = (cargo_in_db.nome.lower() == "master")
         
     return funcionario_crud.update_funcionario_in_db(db, funcionario_to_update=funcionario_in_db)
+
+# ===========================================================================
+# LÓGICA DE ACESSO (CONCEDER LOGIN DEPOIS)
+# ===========================================================================
+
+def conceder_acesso(db: Session, funcionario_id: int, usuario_to_add: UsuarioCreate) -> FuncionarioModel:
+    """Dá login a um funcionário que foi cadastrado sem acesso ao sistema.
+
+    Sem isto, "funcionário sem usuário" seria porta sem saída: o dia em que o
+    entregador virar caixa, a ficha dele teria que ser apagada e refeita — e com
+    ela iriam embora as vendas, a comissão e o histórico que apontam para o
+    `funcionario_id`.
+
+    Quem já tem login não passa por aqui: trocar credencial é outro assunto
+    (mexe em senha e e-mail de quem está trabalhando), e deixar esta porta
+    aceitar os dois casos faria uma sobrescrever a outra sem ninguém pedir.
+    """
+    funcionario_in_db = funcionario_crud.get_funcionario_by_id(db, funcionario_id=funcionario_id)
+    if not funcionario_in_db:
+        raise not_found_exce
+
+    if funcionario_in_db.usuario_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Este funcionário já tem acesso ao sistema."
+        )
+
+    # O cargo continua mandando no is_master, exatamente como no cadastro.
+    is_master = bool(
+        funcionario_in_db.cargo and funcionario_in_db.cargo.nome.lower() == "master"
+    )
+
+    usuario_in_db = usuario_service.create_usuario(
+        db,
+        usuario_to_add=usuario_to_add,
+        empresa_id=funcionario_in_db.empresa_id,
+        is_master=is_master,
+    )
+
+    funcionario_in_db.usuario_id = usuario_in_db.id
+    return funcionario_crud.update_funcionario_in_db(db, funcionario_to_update=funcionario_in_db)
+
 
 # ===========================================================================
 # LÓGICA DE STATUS (TOGGLE)

@@ -8,6 +8,7 @@ import type { OsStatusEnumDataType, OsEquipSituacaoEnumDataType } from '../../sc
 import { inferPaymentType, getPaymentDisplayName } from '@/shared/utils/print.utils';
 import { getEstadoOS } from '../../../shared/utils/formatters';
 import { formatDataHora } from '@/shared/utils/date.utils';
+import { useOsPaymentMethodsGet } from '../../composables/request/relationship/useOSPaymentMethods.queries';
 
 interface Props {
   subtotal: number;
@@ -15,6 +16,8 @@ interface Props {
   valorDesconto: number;
   valorTotal: number;
   valorEntrada: number;
+  /** Forma de pagamento do adiantamento. Null em OS anterior a este campo. */
+  formaPagamentoEntradaId?: number | null;
   valorAcrescimo?: number;
   isLocked: boolean;
   isFinalizada?: boolean;
@@ -75,12 +78,30 @@ const troco = computed(() => {
 const emit = defineEmits<{
   'update:valorEntrada': [value: number];
   'update:valorEntrega': [value: number];
+  'update:formaPagamentoEntradaId': [value: number | null];
   'usarCredito': [];
 }>();
 
 const valorEntradaReais = computed({
   get: () => (props.valorEntrada || 0) / 100,
   set: (val: number) => emit('update:valorEntrada', Math.round((val || 0) * 100)),
+});
+
+// ─── Forma de pagamento do adiantamento ──────────────────────────────────────
+// O adiantamento guardava só o número: não dava para saber depois se o cliente
+// adiantou em PIX, dinheiro ou cartão. O valor aparecia no resumo, a forma não
+// existia em lugar nenhum.
+const { formasPagamento } = useOsPaymentMethodsGet();
+
+const formaEntradaSelecionada = computed({
+  get: () => props.formaPagamentoEntradaId ?? null,
+  set: (val: number | null) => emit('update:formaPagamentoEntradaId', val),
+});
+
+const formaEntradaNome = computed(() => {
+  const id = props.formaPagamentoEntradaId;
+  if (id == null) return null;
+  return formasPagamento.value.find((forma) => forma.id === id)?.nome ?? null;
 });
 
 const valorEntregaReais = computed({
@@ -192,6 +213,30 @@ const formattedDataSaida = computed(() => formatDataHora(props.dataFinalizacao))
               input-class="text-right"
             />
           </div>
+        </div>
+
+        <!-- Forma do adiantamento: só faz sentido havendo valor adiantado.
+             Em OS antiga (aberta antes deste campo) fica sem forma; nesse caso
+             não inventamos nada, apenas não exibimos a linha. -->
+        <div
+          v-if="valorEntrada > 0 && (!isFinalizada || formaEntradaNome)"
+          class="flex items-center justify-between gap-2 pl-5"
+        >
+          <span class="text-xs text-slate-400">Pago em</span>
+          <div v-if="!isFinalizada && !isLocked" class="w-36">
+            <select
+              v-model="formaEntradaSelecionada"
+              class="w-full text-xs text-right text-slate-600 bg-white border border-slate-200 rounded-md px-2 py-1 outline-none focus:border-brand-primary cursor-pointer"
+            >
+              <option :value="null">Não informado</option>
+              <option v-for="forma in formasPagamento" :key="forma.id" :value="forma.id">
+                {{ forma.nome }}
+              </option>
+            </select>
+          </div>
+          <span v-else class="text-xs font-semibold text-slate-600">
+            {{ formaEntradaNome ?? 'Não informado' }}
+          </span>
         </div>
 
         <!-- Crédito disponível do cliente -->

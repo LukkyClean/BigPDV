@@ -1,13 +1,30 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { nextTick, ref, watch } from 'vue'
 import { Eye, EyeOff, ShieldAlert } from 'lucide-vue-next'
 import BaseModal from '@/shared/components/commons/BaseModal/BaseModal.vue'
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue'
 
-const props = defineProps<{
+/**
+ * Modal de PIN do gerente, compartilhado por todas as aprovações.
+ *
+ * O SUBTÍTULO E O TEXTO SÃO CONFIGURÁVEIS, com o desconto como padrão.
+ *
+ * Eles nasceram chumbados em "Desconto acima do limite configurado" porque o
+ * desconto era o único caso. Hoje sangria, cancelamento, reabertura e abertura
+ * de caixa usam este mesmo modal — e o operador do caixa lia "o desconto
+ * informado excede o limite permitido" ao abrir o turno, sem desconto nenhum na
+ * tela. O padrão mantém as telas antigas exatamente como estão; quem tem outro
+ * motivo passa o seu.
+ */
+const props = withDefaults(defineProps<{
   isOpen: boolean
   isLoading?: boolean
-}>()
+  motivo?: string
+  descricao?: string
+}>(), {
+  motivo: 'Desconto acima do limite configurado',
+  descricao: 'O desconto informado excede o limite permitido. Insira o PIN do gerente para autorizar.',
+})
 
 const emit = defineEmits<{
   (e: 'confirmar', pin: string): void
@@ -17,12 +34,37 @@ const emit = defineEmits<{
 const pin = ref('')
 const showPin = ref(false)
 
+const pinInputRef = ref<HTMLInputElement | null>(null)
+
 watch(() => props.isOpen, (aberto) => {
   if (aberto) {
     pin.value = ''
     showPin.value = false
+    focarPin()
   }
 })
+
+/**
+ * O cursor nasce no PIN.
+ *
+ * O `autofocus` do HTML já estava aqui e não bastava: ele vale para o elemento
+ * que existe quando a página carrega, e este campo nasce dentro de um modal com
+ * transição, muito depois. Quem era interrompido no meio de uma venda tinha que
+ * largar o teclado e clicar no campo para digitar a senha do gerente.
+ */
+function focarPin() {
+  const tentar = () => {
+    const input = pinInputRef.value
+    if (!input) return false
+    input.focus()
+    return document.activeElement === input
+  }
+
+  nextTick(() => {
+    if (tentar()) return
+    requestAnimationFrame(() => void tentar())
+  })
+}
 
 function handleConfirmar() {
   if (!pin.value.trim()) return
@@ -53,19 +95,18 @@ function handleKeydown(e: KeyboardEvent) {
           </div>
           <div>
             <h2 class="text-sm font-bold text-zinc-800">Aprovação do Gerente</h2>
-            <p class="text-xs text-zinc-500">Desconto acima do limite configurado</p>
+            <p class="text-xs text-zinc-500">{{ motivo }}</p>
           </div>
         </div>
       </div>
     </template>
 
     <div class="px-6 py-5">
-      <p class="text-sm text-zinc-600 mb-4">
-        O desconto informado excede o limite permitido. Insira o PIN do gerente para autorizar.
-      </p>
+      <p class="text-sm text-zinc-600 mb-4">{{ descricao }}</p>
       <label class="text-xs font-medium text-zinc-700 block mb-1.5">PIN do gerente</label>
       <div class="relative">
         <input
+          ref="pinInputRef"
           v-model="pin"
           :type="showPin ? 'text' : 'password'"
           class="w-full border border-zinc-200 rounded-lg px-3 py-2.5 pr-10 bg-zinc-50 text-sm text-zinc-800 focus:outline-none focus:ring-2 focus:ring-brand-primary/30"

@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from sqlalchemy.orm import Session
 from typing import Sequence
 
@@ -13,6 +15,7 @@ from app.db.models.documento_fiscal import DocumentoFiscal
 from app.services.cliente import cliente_exists
 from app.services.funcionario import funcionario_exists
 from app.services import produto as produto_service
+from app.services import sessao_caixa as caixa_service
 
 from app.db.crud import venda as venda_crud
 from app.db.crud import forma_pagamento as forma_pagamento_crud
@@ -88,7 +91,7 @@ def _assert_sem_documento_fiscal_ativo(db: Session, sale_in_db: Venda, acao: str
     )
 
 
-def _recalc_total_sale(db: Session, sale_in_db: Venda) -> Venda:
+def _recalc_total_sale(db: Session, sale_in_db: Venda, *, sai_da_fila: bool = True) -> Venda:
 
     if sale_in_db.total_bruto < sale_in_db.descontos:
         raise BadRequestException(detail="O desconto não pode ser maior que o total da venda")
@@ -98,6 +101,78 @@ def _recalc_total_sale(db: Session, sale_in_db: Venda) -> Venda:
     sale_in_db.subtotal = sale_in_db.total_bruto
     sale_in_db.total = total_sale
 
+    # MUDOU O VALOR DO CARRINHO, A VENDA SAI DA FILA DO CAIXA.
+    #
+    # Se o atendente acrescentar um item depois de entregar, o caixa fica
+    # olhando um total que mudou embaixo dele. Custa um reenvio ao atendente e
+    # evita cobrar valor errado.
+    #
+    # A regra mora AQUI porque este e o ponto de estrangulamento: acrescentar,
+    # alterar e remover item, e aplicar desconto, todos passam por esta funcao.
+    # Repeti-la nos quatro chamadores seria quatro chances de esquecer uma.
+    #
+    # `finish_sale` passa `sai_da_fila=False`, e e a unica excecao: la quem esta
+    # mexendo e o proprio caixa, a venda esta saindo da fila pela porta certa, e
+    # apagar o carimbo perderia o registro de que ela chegou a esperar.
+    if sai_da_fila:
+        sale_in_db.enviada_ao_caixa_em = None
+
+    return venda_crud.update_sale(db, sale_in_db)
+
+
+def enviar_ao_caixa(db: Session, sale_id: int) -> Venda:
+    """O atendente entrega a venda ao caixa.
+
+    Nao muda o status: a venda continua ATIVA. O que muda e o carimbo que a
+    lista usa para separar "pronta, esperando o caixa" de "ainda sendo montada".
+
+    IDEMPOTENTE de proposito. Reenviar mantem o carimbo original -- senao um
+    clique repetido mandaria o atendente para o fim da fila sem que ninguem
+    tivesse feito nada de errado.
+    """
+    sale_in_db = get_sale_by_id(db, sale_id=sale_id)
+
+    # A fila e opcional. A tela ja esconde o botao quando a chave esta desligada,
+    # mas quem garante que nao entra venda na fila de uma loja que nao usa fila e
+    # esta checagem -- o frontend pode estar mais novo que a configuracao, e foi
+    # exatamente assim que a chave do PIN pareceu quebrada num teste na loja.
+    empresa_id = sale_in_db.funcionario.empresa_id
+    config = config_vendas_crud.get_configuracao_vendas(db, empresa_id=empresa_id)
+    if not (config and config.usar_fila_do_caixa):
+        raise BadRequestException(
+            detail="A fila do caixa não está ligada em Configurações > Regras de Vendas"
+        )
+
+    if sale_in_db.status != VendaStatus.ATIVA:
+        raise BadRequestException(detail="Só uma venda em aberto pode ir para o caixa")
+
+    # Carrinho vazio na fila e ruido: o caixa abre e nao ha o que cobrar.
+    if not sale_in_db.itens:
+        raise BadRequestException(detail="Adicione ao menos um item antes de enviar ao caixa")
+
+    if sale_in_db.enviada_ao_caixa_em is None:
+        sale_in_db.enviada_ao_caixa_em = datetime.utcnow()
+
+    return venda_crud.update_sale(db, sale_in_db)
+
+
+def devolver_para_montagem(db: Session, sale_id: int) -> Venda:
+    """Tira a venda da fila do caixa, sem mexer em mais nada.
+
+    Qualquer operador pode: o atendente que se arrependeu e o caixa que viu
+    problema. Como a coluna e so sinal de lista, nao ha nada a desfazer alem
+    dela -- nenhum dinheiro foi movido para entrar na fila.
+
+    NAO checa `usar_fila_do_caixa`, ao contrario do enviar. Se o dono desligar a
+    chave com vendas ainda na fila, elas precisam poder sair -- recusar aqui as
+    deixaria carimbadas para sempre, sem tela nenhuma para desfazer.
+    """
+    sale_in_db = get_sale_by_id(db, sale_id=sale_id)
+
+    if sale_in_db.status != VendaStatus.ATIVA:
+        raise BadRequestException(detail="Só uma venda em aberto pode voltar para montagem")
+
+    sale_in_db.enviada_ao_caixa_em = None
     return venda_crud.update_sale(db, sale_in_db)
 
 def _aplly_discount(sale_in_db: Venda, discount: int) -> Venda:
@@ -130,11 +205,32 @@ def _payments_valid(db: Session, payments: Sequence[PagamentoVendaCreate]) -> Se
     return sale_payments
 
 def create_sale(db: Session, sale: VendaCreate) -> VendaRead:
-
-    # Valida existência de cliente (se informado) e funcionário
+    # Valida existência de cliente (se informado) e funcionário.
+    # `funcionario_exists` existe pelo efeito -- levanta se nao achar.
     if sale.cliente_id is not None:
         cliente_exists(db, sale.cliente_id)
     funcionario_exists(db, sale.funcionario_id)
+
+    # AQUI NAO HA TRAVA DE CAIXA -- e a ausencia e deliberada.
+    #
+    # Ate 21/08/2026 esta funcao chamava `exigir_caixa_aberto_para_vender`, e o
+    # comentario de entao ja admitia que aquilo era CORTESIA: "a trava existe
+    # tambem na finalizacao, e la e a garantia de verdade -- e o momento do
+    # dinheiro". Montar carrinho nao move dinheiro nenhum; so `finish_sale` move.
+    #
+    # Tirar a cortesia e o que permite o atendente montar a venda e o CAIXA
+    # receber, sem que os dois precisem de turno aberto no proprio nome. O
+    # dinheiro continua caindo no turno de quem recebe -- isso e `finish_sale` e
+    # `registrar_pagamentos_de_venda`, e nenhum dos dois mudou.
+    #
+    # E de graca fecha o beco da maquina RETAGUARDA, que escondia a barra do
+    # caixa mas continuava sendo cobrada por `exigir_caixa_aberto`: ficava sem o
+    # botao de abrir E sem poder vender.
+    #
+    # O QUE VEIO NO LUGAR, no frontend: a barra do caixa avisa que a venda pode
+    # ser montada mas nao finalizada. Sem esse aviso, quem trabalha sozinho na
+    # loja montaria o carrinho inteiro para descobrir no checkout -- que era
+    # exatamente o atrito que a linha removida evitava.
 
     sale_data = Venda(
         **sale.model_dump(exclude_unset=True),
@@ -333,7 +429,13 @@ def delete_draft_sale(db: Session, sale_id: int) -> None:
     db.commit()
 
 
-def finish_sale(db: Session, sale_id: int, payments: Sequence[PagamentoVendaCreate], acrescimo: int = 0):
+def finish_sale(
+    db: Session,
+    sale_id: int,
+    payments: Sequence[PagamentoVendaCreate],
+    acrescimo: int = 0,
+    operador_funcionario_id: int | None = None,
+):
     sale_in_db = get_sale_by_id(db, sale_id=sale_id)
 
     if sale_in_db.status != VendaStatus.ATIVA:
@@ -343,6 +445,13 @@ def finish_sale(db: Session, sale_id: int, payments: Sequence[PagamentoVendaCrea
     config_vendas = config_vendas_crud.get_configuracao_vendas(db, empresa_id=empresa_id)
     if config_vendas and config_vendas.exigir_cliente_identificado and not sale_in_db.cliente_id:
         raise BadRequestException(detail="Esta venda exige um cliente identificado para ser finalizada")
+
+    # Trava do caixa: so morde quando a loja ligou AS DUAS chaves
+    # (`controlar_caixa` e `exigir_caixa_aberto`). Loja que nao ligou nada passa
+    # reto -- e o que mantem as tres lojas em producao vendendo como sempre.
+    caixa_service.exigir_caixa_aberto_para_vender(
+        db, sale_in_db.funcionario, operador_funcionario_id
+    )
 
     valid_payments_to_db = _payments_valid(db, payments)
 
@@ -358,7 +467,9 @@ def finish_sale(db: Session, sale_id: int, payments: Sequence[PagamentoVendaCrea
     # O valor de cada pagamento já vem com o juros embutido; o acréscimo entra no
     # total para que o excedente não seja tratado como troco.
     sale_in_db.acrescimo = acrescimo or 0
-    sale_in_db = _recalc_total_sale(db, sale_in_db)
+    # `sai_da_fila=False`: quem esta mexendo aqui e o proprio caixa, e a venda
+    # esta saindo da fila pela porta certa. Ver `_recalc_total_sale`.
+    sale_in_db = _recalc_total_sale(db, sale_in_db, sai_da_fila=False)
 
     total_payments = sum(payment.valor for payment in valid_payments_to_db)
     total_sale = sale_in_db.total or 0
@@ -377,7 +488,7 @@ def finish_sale(db: Session, sale_id: int, payments: Sequence[PagamentoVendaCrea
         percentual = (sale_in_db.descontos * 100) // sale_in_db.total_bruto
         if percentual > config_vendas.desconto_maximo_percent:
             sale_in_db = _aplly_discount(sale_in_db=sale_in_db, discount=0)
-            sale_in_db = _recalc_total_sale(db, sale_in_db)
+            sale_in_db = _recalc_total_sale(db, sale_in_db, sai_da_fila=False)
 
     # Atribui número sequencial oficial (reserva atômica — ver o crud)
     numero_reservado = venda_crud.reservar_proximo_numero_venda(db)
@@ -393,6 +504,15 @@ def finish_sale(db: Session, sale_id: int, payments: Sequence[PagamentoVendaCrea
 
     sale_in_db.status = VendaStatus.FINALIZADA
     sale_in_db.pagamentos = valid_payments_to_db
+
+    # Lanca os pagamentos no livro do dinheiro. Sai na primeira linha quando o
+    # controle de caixa esta desligado, entao para quem nao usa esta chamada
+    # custa uma consulta a configuracao e nada mais: nenhuma linha nova gravada.
+    # Precisa vir DEPOIS do flush dos pagamentos, senao eles ainda nao teriam id
+    # para o movimento apontar.
+    db.flush()
+    caixa_service.registrar_pagamentos_de_venda(db, sale_in_db, operador_funcionario_id)
+
     return venda_crud.update_sale(db, sale_in_db)
 
 def cancel_sale(db: Session, sale_id: int, motivo: str, codigo_gerente: str | None = None) -> Venda:

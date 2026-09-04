@@ -61,6 +61,10 @@ class ProdutoSimpleRead(BaseModel):
     id: int = Field(..., description="ID único do sistema.")
     nome: str = Field(..., max_length=255, description="Nome comercial.")
     sku: str = Field(...,  validation_alias="codigo_produto", max_length=50, description="Código SKU único.")
+    # Exposto para o LEITOR de código de barras da venda: sem ele o frontend não
+    # tem como exigir correspondência exata antes de somar um item sozinho, e
+    # "veio um resultado só" é fraco demais para mexer no carrinho sem confirmação.
+    codigo_barras: Optional[str] = Field(None, max_length=100, description="Código de barras (EAN/UPC).")
     preco: int = Field(..., validation_alias=AliasPath("estoque", "valor_varejo"), ge=0, description="Preço atual do produto em centavos.")
     estoque: int = Field(..., validation_alias=AliasPath("estoque", "quantidade"), ge=0, description="Quantidade atual em estoque.")
     quantidade_minima: Optional[int] = Field(None, validation_alias=AliasPath("estoque", "quantidade_minima"), description="Quantidade mínima de estoque.")

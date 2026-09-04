@@ -12,6 +12,11 @@ const {
   permitirParcelamento,
   parcelasMaximas,
   permitirVendaEstoqueZerado,
+  controlarCaixa,
+  exigirCaixaAberto,
+  fechamentoCego,
+  requerPinAbrirCaixa,
+  usarFilaDoCaixa,
 } = storeToRefs(configStore)
 
 function valoresDoStore() {
@@ -23,6 +28,11 @@ function valoresDoStore() {
       valor_minimo_venda_reais: (valorMinimoVenda.value / 100) as number,
       permitir_parcelamento: permitirParcelamento.value,
       parcelas_maximas: parcelasMaximas.value,
+      controlar_caixa: controlarCaixa.value,
+      exigir_caixa_aberto: exigirCaixaAberto.value,
+      fechamento_cego: fechamentoCego.value,
+      requer_pin_abrir_caixa: requerPinAbrirCaixa.value,
+      usar_fila_do_caixa: usarFilaDoCaixa.value,
     },
     estoque: {
       permitir_venda_estoque_zerado: permitirVendaEstoqueZerado.value,
@@ -61,6 +71,11 @@ defineExpose({
         valor_minimo_venda: Math.round(form.vendas.valor_minimo_venda_reais * 100),
         permitir_parcelamento: form.vendas.permitir_parcelamento,
         parcelas_maximas: form.vendas.parcelas_maximas,
+        controlar_caixa: form.vendas.controlar_caixa,
+        exigir_caixa_aberto: form.vendas.exigir_caixa_aberto,
+        fechamento_cego: form.vendas.fechamento_cego,
+        requer_pin_abrir_caixa: form.vendas.requer_pin_abrir_caixa,
+        usar_fila_do_caixa: form.vendas.usar_fila_do_caixa,
       },
       estoque: {
         permitir_venda_estoque_zerado: form.estoque.permitir_venda_estoque_zerado,
@@ -106,6 +121,115 @@ defineExpose({
           class="mt-1.5 w-full border border-zinc-200 rounded-lg px-3 py-2.5 bg-zinc-50 text-sm text-zinc-700 focus:outline-none focus:ring-2 focus:ring-brand-primary/30 disabled:opacity-40 disabled:cursor-not-allowed"
         />
       </div>
+    </div>
+
+    <!-- Controle de Caixa -->
+    <!-- Chaves por EMPRESA, e não por segmento: quem tem balcão e recebe
+         dinheiro na mão pode querer o controle, seja adega, mercado ou oficina.
+         Todas nascem desligadas — a segurança é o padrão, não esconder a opção. -->
+    <div class="flex flex-col">
+      <p class="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-3">Controle de Caixa</p>
+
+      <div class="flex items-center justify-between py-3 border-b border-zinc-100">
+        <div>
+          <p class="text-sm font-medium text-zinc-800">Usar controle de caixa</p>
+          <p class="text-xs text-zinc-500 mt-0.5">Abertura com troco, sangria, suprimento e fechamento conferido</p>
+        </div>
+        <button
+          type="button"
+          :class="['relative w-9 h-4.5 rounded-full transition-colors duration-200 cursor-pointer shrink-0', form.vendas.controlar_caixa ? 'bg-brand-primary' : 'bg-zinc-200']"
+          @click="form.vendas.controlar_caixa = !form.vendas.controlar_caixa"
+        >
+          <span :class="['absolute left-0 top-0.5 w-3.5 h-3.5 bg-white rounded-full shadow transition-transform duration-200', form.vendas.controlar_caixa ? 'translate-x-5' : 'translate-x-0.5']" />
+        </button>
+      </div>
+
+      <div class="flex items-center justify-between py-3 border-b border-zinc-100">
+        <div>
+          <p class="text-sm font-medium text-zinc-800">Exigir caixa aberto para vender</p>
+          <p class="text-xs text-zinc-500 mt-0.5">Sem um turno aberto, a venda não é finalizada</p>
+        </div>
+        <button
+          type="button"
+          :disabled="!form.vendas.controlar_caixa"
+          :class="['relative w-9 h-4.5 rounded-full transition-colors duration-200 shrink-0', !form.vendas.controlar_caixa ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer', form.vendas.exigir_caixa_aberto ? 'bg-brand-primary' : 'bg-zinc-200']"
+          @click="form.vendas.controlar_caixa && (form.vendas.exigir_caixa_aberto = !form.vendas.exigir_caixa_aberto)"
+        >
+          <span :class="['absolute left-0 top-0.5 w-3.5 h-3.5 bg-white rounded-full shadow transition-transform duration-200', form.vendas.exigir_caixa_aberto ? 'translate-x-5' : 'translate-x-0.5']" />
+        </button>
+      </div>
+
+      <div class="flex items-center justify-between py-3 border-b border-zinc-100">
+        <div>
+          <p class="text-sm font-medium text-zinc-800">Fechamento às cegas</p>
+          <p class="text-xs text-zinc-500 mt-0.5">O operador conta a gaveta sem ver o valor esperado</p>
+        </div>
+        <button
+          type="button"
+          :disabled="!form.vendas.controlar_caixa"
+          :class="['relative w-9 h-4.5 rounded-full transition-colors duration-200 shrink-0', !form.vendas.controlar_caixa ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer', form.vendas.fechamento_cego ? 'bg-brand-primary' : 'bg-zinc-200']"
+          @click="form.vendas.controlar_caixa && (form.vendas.fechamento_cego = !form.vendas.fechamento_cego)"
+        >
+          <span :class="['absolute left-0 top-0.5 w-3.5 h-3.5 bg-white rounded-full shadow transition-transform duration-200', form.vendas.fechamento_cego ? 'translate-x-5' : 'translate-x-0.5']" />
+        </button>
+      </div>
+
+      <!-- Abrir o turno e declarar o troco inicial, e o troco inicial e a base
+           contra a qual o fechamento vai acusar falta ou sobra. Quem declara a
+           base sozinho escolhe, na pratica, o resultado da propria conferencia.
+           Fechar NAO pede PIN: quem abriu precisa conseguir fechar, senao a
+           gaveta fica aberta ate o dia seguinte. -->
+      <div class="flex items-center justify-between py-3 border-b border-zinc-100">
+        <div>
+          <p class="text-sm font-medium text-zinc-800">Exigir PIN para abrir o caixa</p>
+          <p class="text-xs text-zinc-500 mt-0.5">Um supervisor libera a abertura; fechar não pede PIN</p>
+        </div>
+        <button
+          type="button"
+          :disabled="!form.vendas.controlar_caixa"
+          :class="['relative w-9 h-4.5 rounded-full transition-colors duration-200 shrink-0', !form.vendas.controlar_caixa ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer', form.vendas.requer_pin_abrir_caixa ? 'bg-brand-primary' : 'bg-zinc-200']"
+          @click="form.vendas.controlar_caixa && (form.vendas.requer_pin_abrir_caixa = !form.vendas.requer_pin_abrir_caixa)"
+        >
+          <span :class="['absolute left-0 top-0.5 w-3.5 h-3.5 bg-white rounded-full shadow transition-transform duration-200', form.vendas.requer_pin_abrir_caixa ? 'translate-x-5' : 'translate-x-0.5']" />
+        </button>
+      </div>
+
+      <!-- Separada de "Usar controle de caixa" porque sao perguntas
+           diferentes: uma e "esta loja controla a gaveta", a outra e "quem monta
+           a venda e quem recebe sao pessoas diferentes". Numa loja de um PC so a
+           segunda resposta e nao, e o botao seria um comando que nunca serve. -->
+      <div class="flex items-center justify-between py-3 border-b border-zinc-100">
+        <div>
+          <p class="text-sm font-medium text-zinc-800">Fila do caixa</p>
+          <p class="text-xs text-zinc-500 mt-0.5">O atendente monta a venda e entrega; o caixa recebe</p>
+        </div>
+        <button
+          type="button"
+          :disabled="!form.vendas.controlar_caixa"
+          :class="['relative w-9 h-4.5 rounded-full transition-colors duration-200 shrink-0', !form.vendas.controlar_caixa ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer', form.vendas.usar_fila_do_caixa ? 'bg-brand-primary' : 'bg-zinc-200']"
+          @click="form.vendas.controlar_caixa && (form.vendas.usar_fila_do_caixa = !form.vendas.usar_fila_do_caixa)"
+        >
+          <span :class="['absolute left-0 top-0.5 w-3.5 h-3.5 bg-white rounded-full shadow transition-transform duration-200', form.vendas.usar_fila_do_caixa ? 'translate-x-5' : 'translate-x-0.5']" />
+        </button>
+      </div>
+
+      <!-- O PIN conferido e o mesmo de Seguranca. Sem ele cadastrado, a chave
+           acima trava a abertura para quem nao e gerente — e sem caixa aberto a
+           loja nao vende. Por isso o aviso e condicional, e nao nota de rodape. -->
+      <p
+        v-if="form.vendas.requer_pin_abrir_caixa"
+        class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2.5 mt-3"
+      >
+        Use o mesmo PIN de gerente cadastrado em
+        <strong class="font-semibold">Segurança</strong>. Sem PIN cadastrado, quem não for
+        gerente não conseguirá abrir o caixa.
+      </p>
+
+      <p class="text-xs text-zinc-500 mt-3">
+        A exigência de PIN para sangria fica em
+        <strong class="text-zinc-700">Segurança</strong>, junto das outras
+        aprovações de gerente.
+      </p>
     </div>
 
     <!-- Estoque e Clientes -->

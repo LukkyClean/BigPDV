@@ -224,6 +224,31 @@ def test_autocomplete_encontra_palavra_no_meio(client, header_with_token, catalo
 
     assert "Tinta Azul Metálica" in _nomes(resposta)
 
+
+def test_autocomplete_devolve_codigo_de_barras(client, header_with_token):
+    """O LEITOR de código de barras depende deste campo.
+
+    Sem ele o frontend não tem como exigir correspondência exata antes de somar
+    um item sozinho no carrinho — e "veio um resultado só" é fraco demais para
+    isso, porque a busca é ampla (nome, marca, categoria) e uma coincidência
+    somaria o produto errado sem ninguém perceber.
+    """
+    ean = "7891234567895"
+    client.post("/api/v1/produtos/", json={
+        "nome": "Cerveja Pilsen 600ml",
+        "codigo_produto": "BEBIDA-001",
+        "codigo_barras": ean,
+        "unidade_medida": "UN",
+        "estoque": {"valor_varejo": 1200, "quantidade": 50},
+    }, headers=header_with_token)
+
+    resposta = client.get(f"/api/v1/produtos/search?search={ean}", headers=header_with_token)
+    assert resposta.status_code == 200, resposta.text
+
+    encontrados = resposta.json()
+    assert len(encontrados) == 1, "buscar pelo EAN exato tem que devolver um só"
+    assert encontrados[0]["codigo_barras"] == ean
+
 # =========================
 # 3. Testes: Atualização (PUT)
 # =========================

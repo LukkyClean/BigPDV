@@ -102,14 +102,16 @@ export interface FuncionarioBase {
 }
 
 export interface FuncionarioCreate extends FuncionarioBase {
-  usuario: UsuarioCreate;
+  /** Ausente = funcionário sem acesso ao sistema (só a ficha). */
+  usuario?: UsuarioCreate;
   endereco?: Endereco[];
 }
 
 export interface FuncionarioRead extends FuncionarioBase {
   id: number;
   ativo: boolean;
-  usuario: UsuarioRead;
+  /** null = funcionário sem acesso ao sistema. */
+  usuario: UsuarioRead | null;
   endereco?: EnderecoRead[];
 }
 
@@ -173,6 +175,8 @@ export interface EmployeeFormData {
   carteira_trabalho: string;
 
   // Usuario (for creating login - only in create mode)
+  /** true = cadastrar só a ficha, sem login. */
+  sem_acesso: boolean;
   usuario_nome: string;
   usuario_email: string;
   usuario_senha: string;

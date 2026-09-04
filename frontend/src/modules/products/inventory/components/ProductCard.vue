@@ -2,6 +2,8 @@
 import { Eye, Pencil, Power, Box, AlertTriangle, Plus, Minus } from 'lucide-vue-next';
 import { computed } from 'vue';
 
+import { formatarQuantidade } from '@/shared/utils/quantidade';
+
 interface Props {
   id: number;
   name: string;
@@ -9,6 +11,8 @@ interface Props {
   category: string;
   price: number;
   storage: number;
+  /** `produto.unidade_medida`. Ausente = "UN", como sempre foi. */
+  unidade?: string | null;
   image_url: string;
   status: boolean;
 }
@@ -52,9 +56,9 @@ const formattedPrice = computed(() => {
   }).format(props.price).replace(/\s/g, ' ');
 });
 
-const stockDisplay = computed(() => {
-  return props.storage === 0 ? '0 un' : `${props.storage} un`;
-});
+// A unidade vem do cadastro do produto: uma sacola comprada por peso mostrava
+// "2,5 un" — que se lê como duas sacolas e meia, sendo 2,5 kg.
+const stockDisplay = computed(() => formatarQuantidade(props.storage, props.unidade));
 
 const stockTextColor = computed(() => {
   if (props.storage === 0) return 'text-red-600';

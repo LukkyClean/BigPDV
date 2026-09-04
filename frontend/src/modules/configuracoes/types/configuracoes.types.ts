@@ -7,6 +7,7 @@ export type SecaoId =
   | 'ordens-de-servico'
   | 'clientes-cadastro'
   | 'integracoes-apis'
+  | 'terminais'
   | 'impressao'
   | 'formatos-exibicao'
   | 'backup-dados'

@@ -97,7 +97,15 @@ export const employeeSchema = z
     pai: z.string().max(255).optional().or(z.literal('')),
     carteira_trabalho: z.string().max(50).optional().or(z.literal('')),
 
-    // Usuario (obrigatório só no create — validação manual no onSubmit)
+    // Funcionário SEM acesso ao sistema: só a ficha, sem login.
+    //
+    // Fica no formulário (e não num ref solto) para o reset limpar junto — uma
+    // chavinha que sobrevive ao fechar do modal reaparece marcada no próximo
+    // cadastro, e aí alguém cria sem querer um funcionário que não consegue
+    // entrar no sistema.
+    sem_acesso: z.boolean().optional().default(false),
+
+    // Usuario (obrigatório só no create COM acesso — validação manual no onSubmit)
     usuario_nome: z.string().max(255).optional().or(z.literal('')),
     usuario_email: z.string().email('Email do usuario inválido').max(255).optional().or(z.literal('')),
     usuario_senha: z.string().max(72).optional().or(z.literal('')),

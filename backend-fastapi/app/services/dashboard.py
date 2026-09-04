@@ -9,9 +9,7 @@ from calendar import monthrange
 
 from sqlalchemy.orm import Session
 
-from app.core.tempo import (
-    agora_utc, fim_do_dia_utc, hoje_local, inicio_do_dia_utc,
-)
+from app.core.tempo import agora_utc, fim_do_dia_utc, hoje_local, inicio_do_dia_utc
 from app.db.crud import dashboard as dashboard_crud
 from app.db.crud import relatorio as relatorio_crud
 from app.schemas.dashboard import (
@@ -52,11 +50,13 @@ def _calcular_periodo(periodo: str) -> tuple[datetime, datetime, datetime, datet
     """
     Retorna (inicio_atual, fim_atual, inicio_anterior, fim_anterior) em UTC.
 
-    Os limites nascem do calendario LOCAL da loja e sao convertidos para UTC,
-    que e como o banco grava. Definir o dia pelo calendario UTC fazia o painel
-    virar de dia as 21h no horario de Brasilia: o card "hoje" passava a mostrar
-    apenas os minutos decorridos desde 00h UTC, e o movimento acumulado do dia
-    migrava para o card do dia anterior.
+    As BORDAS sao o dia da loja; a SAIDA e em UTC, porque e assim que o banco
+    grava (`func.now()` no SQLite e UTC).
+
+    Antes isto usava `datetime.utcnow().date()` como "hoje", o que fazia o dia
+    virar junto com o UTC: no Brasil (UTC-3), as 21h o dashboard ja trocava de
+    dia e o faturamento da noite sumia da tela do lojista, reaparecendo no dia
+    seguinte. O dia agora vira quando vira para quem esta na loja.
     """
     agora = agora_utc()
     hoje = hoje_local()
@@ -144,6 +144,8 @@ def get_dashboard_stats(db: Session, periodo: str, empresa_id: int) -> Dashboard
         faturamento_total_variacao=_calcular_variacao(fat_atual, fat_ant),
         vendas_total=atual.vendas_total,
         vendas_total_variacao=_calcular_variacao(atual.vendas_total, anterior.vendas_total),
+        vendas_count=atual.vendas_count,
+        vendas_count_variacao=_calcular_variacao(atual.vendas_count, anterior.vendas_count),
         os_total=atual.os_soma,
         os_total_variacao=_calcular_variacao(atual.os_soma, anterior.os_soma),
         # OS FINALIZADAS, não criadas. Este painel é de resultados: ao lado

@@ -43,13 +43,22 @@ class Funcionario(Base):
         doc="ID da empresa à qual o funcionário pertence"
     )
 
-    # CHAVE ESTRANGEIRA (FK) para a relação 1:1 com Usuarios
-    usuario_id: Mapped[int] = mapped_column(
+    # CHAVE ESTRANGEIRA (FK) para a relação 1:1 com Usuarios.
+    #
+    # NULLABLE de propósito: ficha de RH e credencial de acesso são coisas
+    # diferentes. Loja que só precisa registrar o entregador não deveria ser
+    # obrigada a inventar um e-mail e uma senha para alguém que nunca vai entrar
+    # — essa credencial passaria a existir de verdade.
+    #
+    # O `unique` continua: em SQL vários NULL convivem numa coluna única, então
+    # muitos funcionários podem ficar sem acesso, mas um usuário segue valendo
+    # para um funcionário só.
+    usuario_id: Mapped[Optional[int]] = mapped_column(
         Integer, 
         ForeignKey("usuarios.id"), 
         unique=True, # ESSENCIAL: Garante que um usuário de acesso só pode estar vinculado a um funcionário
-        nullable=False,
-        doc="ID do usuário de acesso associado (FK, restrição 1:1)"
+        nullable=True,
+        doc="ID do usuário de acesso associado (FK, restrição 1:1). NULL = funcionário sem acesso ao sistema"
     )
     
     # --- Dados Pessoais/Gerais ---
@@ -112,9 +121,9 @@ class Funcionario(Base):
     )
 
     # RELACIONAMENTO 1:1 com Usuario
-    usuario: Mapped["Usuario"] = relationship(
+    usuario: Mapped[Optional["Usuario"]] = relationship(
         back_populates="funcionario",
-        doc="Relacionamento Um-para-Um com o usuário de acesso associado"
+        doc="Relacionamento Um-para-Um com o usuário de acesso associado (None = sem acesso ao sistema)"
     )
 
     # Relacionamento M:1 com Cargo

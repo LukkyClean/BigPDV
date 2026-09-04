@@ -62,6 +62,23 @@ export const SaleSimpleReadSchema = z.object({
     }),
   ),
 
+  /**
+   * A fila do caixa. Nulo = ainda em montagem; preenchido = entregue ao caixa.
+   *
+   * Fica CRU, sem o `transform` do `atualizado_em`, porque a tela precisa do
+   * instante para calcular há quanto tempo a venda espera — uma data formatada
+   * em dd/mm/aa não serve para essa conta. É timestamp de evento: UTC no
+   * backend, convertido só na exibição.
+   *
+   * `.optional()` cobre o backend mais antigo que o frontend: campo ausente vira
+   * `undefined` em vez de reprovar a venda inteira e derrubar a lista.
+   *
+   * Sem `.catch()` aqui de propósito — ele tipa a ENTRADA como `unknown` e
+   * contamina o `z.infer` de tudo que aninha este schema. É a mesma armadilha
+   * do `z.preprocess` que já custou uma faxina de TypeScript neste repositório.
+   */
+  enviada_ao_caixa_em: z.string().nullable().optional(),
+
   cliente: CustomerDiscriminatedSchema.nullable().optional(),
   funcionario: FuncionarioVendaReadSchema.nullable().optional(),
 });
@@ -88,6 +105,8 @@ export type SaleRead = z.infer<typeof SaleReadSchema>;
 export const SaleSearchSchema = z.object({
   search: z.string().max(255).nullable().optional(),
   status: z.enum(['ATIVA', 'FINALIZADA', 'CANCELADA']).nullable().optional(),
+  // true traz só a fila do caixa, false só as em montagem, ausente traz tudo.
+  na_fila: z.boolean().nullable().optional(),
 });
 
 export type SaleSearch = z.infer<typeof SaleSearchSchema>;
@@ -109,6 +128,10 @@ export type SaleList = z.infer<typeof SaleListSchema>;
 
 export const SalesStatusSchema = z.object({
   vendas_ativas: z.number(),
+  // Subconjunto das ativas, não uma quarta categoria — somar tudo daria mais
+  // que o total. `.default(0)` cobre o backend mais antigo, que não manda o
+  // campo, sem transformar a entrada em `unknown` como o `.catch()` faria.
+  vendas_na_fila: z.number().default(0),
   vendas_finalizadas: z.number(),
   vendas_canceladas: z.number(),
   ticket_medio: z.number(),

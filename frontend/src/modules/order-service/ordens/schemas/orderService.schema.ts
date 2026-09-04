@@ -33,6 +33,7 @@ export const OrderServiceBaseSchema = z.object({
   // Financeiro
   desconto: z.number().int().optional().nullable(),
   valor_entrada: z.number().int().optional().nullable(),
+  forma_pagamento_entrada_id: z.number().int().positive().optional().nullable(),
   taxa_entrega: z.number().int().optional().nullable(),
   acrescimo: z.number().int().optional().nullable(),
 

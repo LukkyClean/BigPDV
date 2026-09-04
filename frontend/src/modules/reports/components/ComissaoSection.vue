@@ -6,6 +6,7 @@ import { formatCurrency, formatCentsToInput } from '@/shared/utils/finance';
 import { saveCsv } from '@/shared/utils/csv';
 import { imprimirComPagina } from '@/shared/utils/print.utils';
 import { useToast } from '@/shared/composables/useToast';
+import { useOrdemServico } from '@/shared/composables/useOrdemServico';
 import { useComissaoQuery } from '../composables/useComissaoQuery';
 import ComissaoFolhaPrint from './ComissaoFolhaPrint.vue';
 
@@ -15,6 +16,16 @@ const { data } = useComissaoQuery(toRef(props, 'inicio'), toRef(props, 'fim'));
 const itens = computed(() => data.value?.itens ?? []);
 const totalPagar = computed(() => data.value?.total_comissao ?? 0);
 const toast = useToast();
+
+/**
+ * Loja sem Ordem de Servico nao tem coluna de servico.
+ *
+ * "Servicos R$ 0,00" e "% S: —" em toda linha nao e informacao: e ruido que o
+ * dono precisa aprender a ignorar, numa folha que ele assina e entrega para o
+ * funcionario. O padrao de `usaOrdemServico` e TRUE, entao oficina, informatica
+ * e serigrafia continuam com a folha exatamente como e hoje.
+ */
+const { usaOrdemServico } = useOrdemServico();
 
 /** Basis points → texto de %. Ex.: 500 → "5%", 550 → "5,5%". */
 function pct(bp: number | null): string {
@@ -46,17 +57,27 @@ async function imprimirFolha() {
 async function exportar() {
   const d = data.value;
   if (!d) return;
+  // O CSV segue a MESMA regra da tela. Exportar colunas que a tela nao mostra
+  // devolveria o ruido pela porta dos fundos, e ainda por cima numa planilha que
+  // alguem vai somar.
   const linhas = d.itens.map((i) => [
     i.nome,
     formatCentsToInput(i.faturamento_vendas),
     i.percentual_venda != null ? String(i.percentual_venda / 100) : '',
-    formatCentsToInput(i.faturamento_os),
-    i.percentual_servico != null ? String(i.percentual_servico / 100) : '',
+    ...(usaOrdemServico.value
+      ? [
+          formatCentsToInput(i.faturamento_os),
+          i.percentual_servico != null ? String(i.percentual_servico / 100) : '',
+        ]
+      : []),
     formatCentsToInput(i.comissao_total),
   ]);
+  const cabecalho = usaOrdemServico.value
+    ? ['Funcionário', 'Vendas (R$)', '% Venda', 'Serviços (R$)', '% Serviço', 'Comissão (R$)']
+    : ['Funcionário', 'Vendas (R$)', '% Venda', 'Comissão (R$)'];
   const caminho = await saveCsv(
     `comissao_${d.inicio}_a_${d.fim}.csv`,
-    ['Funcionário', 'Vendas (R$)', '% Venda', 'Serviços (R$)', '% Serviço', 'Comissão (R$)'],
+    cabecalho,
     linhas,
   );
   if (caminho) toast.success(`Folha de comissão salva em: ${caminho}`);
@@ -109,8 +130,8 @@ async function exportar() {
             <th class="py-2 pr-3 font-semibold text-left">Funcionário</th>
             <th class="py-2 px-3 font-semibold text-right">Vendas</th>
             <th class="py-2 px-2 font-semibold text-right">% V</th>
-            <th class="py-2 px-3 font-semibold text-right">Serviços</th>
-            <th class="py-2 px-2 font-semibold text-right">% S</th>
+            <th v-if="usaOrdemServico" class="py-2 px-3 font-semibold text-right">Serviços</th>
+            <th v-if="usaOrdemServico" class="py-2 px-2 font-semibold text-right">% S</th>
             <th class="py-2 px-3 font-semibold text-right">Meta</th>
             <th class="py-2 pl-3 font-semibold text-right">Comissão</th>
           </tr>
@@ -124,8 +145,8 @@ async function exportar() {
             <td class="py-2 pr-3 text-slate-700 font-medium">{{ i.nome }}</td>
             <td class="py-2 px-3 text-right text-slate-500 tabular-nums">{{ formatCurrency(i.faturamento_vendas) }}</td>
             <td class="py-2 px-2 text-right text-slate-400 tabular-nums">{{ pct(i.percentual_venda) }}</td>
-            <td class="py-2 px-3 text-right text-slate-500 tabular-nums">{{ formatCurrency(i.faturamento_os) }}</td>
-            <td class="py-2 px-2 text-right text-slate-400 tabular-nums">{{ pct(i.percentual_servico) }}</td>
+            <td v-if="usaOrdemServico" class="py-2 px-3 text-right text-slate-500 tabular-nums">{{ formatCurrency(i.faturamento_os) }}</td>
+            <td v-if="usaOrdemServico" class="py-2 px-2 text-right text-slate-400 tabular-nums">{{ pct(i.percentual_servico) }}</td>
             <td class="py-2 px-3 text-right tabular-nums">
               <span
                 v-if="!i.comissao_liberada"

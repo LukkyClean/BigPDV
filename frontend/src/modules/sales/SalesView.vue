@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import { Plus, AlertTriangle } from 'lucide-vue-next';
+import { Plus, AlertTriangle, Zap } from 'lucide-vue-next';
+import { storeToRefs } from 'pinia';
 import GerenteAprovacaoModal from '@/shared/components/commons/GerenteAprovacaoModal/GerenteAprovacaoModal.vue';
 import { useGerenteAprovacao } from '@/shared/composables/useGerenteAprovacao';
 import { useToast } from '@/shared/composables/useToast';
@@ -15,7 +16,10 @@ import PrintFormatSelectModal from '@/shared/components/print/PrintFormatSelectM
 
 import SalesStatus from './components/SalesStatus.vue';
 import SaleTable from './components/SaleTable.vue';
-import SaleModal from './components/SaleModal.vue';
+import CaixaBar from './caixa/components/CaixaBar.vue';
+import { useSessaoCaixaQuery } from './caixa/composables/queries/useSessaoCaixaQuery';
+import { useEsteTerminalQuery } from './caixa/composables/queries/useTerminaisQuery';
+import { useAberturaCaixa } from './caixa/composables/useAberturaCaixa';
 import SalePrintTemplate from './components/print/SalePrintTemplate.vue';
 import SalePrintCupom from './components/print/SalePrintCupom.vue';
 
@@ -36,6 +40,8 @@ import { useCreateOrcamentoMutation } from './composables/mutates/useCreateOrcam
 import { useDeleteOrcamentoMutation } from './composables/mutates/useDeleteOrcamentoMutation';
 import { useConverterOrcamentoMutation } from './composables/mutates/useConverterOrcamentoMutation';
 import { useAuthStore } from '@/shared/stores/auth.store';
+import { useBalcaoStore } from '@/shared/stores/balcao.store';
+import { useConfiguracoesStore } from '@/shared/stores/configuracoes.store';
 import { SALES_TAB_OPTIONS } from './constants';
 
 const activeTab = ref<'vendas' | 'orcamentos'>('vendas');
@@ -52,7 +58,106 @@ const pageDescription = computed(() =>
 
 const authStore = useAuthStore();
 
-const { openCustomerModal, openCustomerModalForConversion } = useCustomerSearchModal();
+const { openCustomerModal, openCustomerModalForConversion, iniciarVendaSemCliente } = useCustomerSearchModal();
+
+// Modo Balcao: chave desta MAQUINA (localStorage), desligada por padrao.
+const balcaoStore = useBalcaoStore();
+const { modoBalcao } = storeToRefs(balcaoStore);
+const { exigirClienteIdentificado, usarFilaDoCaixa } = storeToRefs(useConfiguracoesStore());
+
+/**
+ * O comeco da venda.
+ *
+ * Fora do Modo Balcao e com ele ligado numa loja que exige cliente, o caminho e
+ * o de sempre: o modal de cliente primeiro. So a adega (balcao ligado E sem
+ * exigencia de cliente) pula direto para o carrinho.
+ *
+ * A segunda condicao nao e detalhe: sem ela a venda nasceria sem cliente para
+ * ser recusada la na finalizacao por `venda.py`, com o carrinho ja montado.
+ */
+function comecarVenda() {
+  if (modoBalcao.value && !exigirClienteIdentificado.value) {
+    iniciarVendaSemCliente();
+    return;
+  }
+  openCustomerModal();
+}
+
+function handleNovaVenda() {
+  if (!avisarCaixaFechado.value) {
+    comecarVenda();
+    return;
+  }
+
+  // A AÇÃO OFERECIDA É ABRIR O CAIXA, e não "montar mesmo assim".
+  //
+  // Montar sem turno, nesta configuração, só leva a trabalho perdido: o operador
+  // digita o carrinho inteiro para ser recusado no checkout. Oferecer esse
+  // caminho como botão era convidar para o prejuízo que o aviso existe para
+  // evitar. Quem quiser mesmo assim ainda pode -- volta, abre o caixa, ou usa a
+  // fila; o que sumiu foi o atalho para o beco.
+  openConfirmModal({
+    title: 'Caixa fechado',
+    message:
+      'Sem um turno aberto a venda não pode ser finalizada. Abra o caixa agora e comece o atendimento.',
+    highlightText: 'Leva só o troco inicial.',
+    variant: 'primary',
+    // Maiúscula como as irmãs deste modal ('DESCARTAR'): o rótulo é o botão
+    // que age, e a caixa alta é o que o distingue do 'VOLTAR' ao lado.
+    label: 'ABRIR CAIXA',
+    action: () => {
+      closeConfirmModal();
+      solicitarAbertura();
+    },
+  });
+}
+
+// O CAIXA NAO BARRA MAIS A ENTRADA -- so o dinheiro.
+//
+// Ate 21/08/2026 este bloco desabilitava "Nova venda" (e o F2) quando as duas
+// chaves estavam ligadas e nao havia turno aberto. A trava saiu da criacao da
+// venda no backend por decisao do dono: montar carrinho nao move dinheiro, e
+// exigir turno para comecar impedia o atendente de montar a venda que o CAIXA
+// vai receber -- alem de deixar a maquina RETAGUARDA sem saida, porque nela o
+// botao de abrir caixa nem aparece.
+//
+// Quem avisa agora e a `CaixaBar`, logo acima: "voce pode montar vendas, mas
+// nao finaliza-las". Aviso, e nao trava. A garantia continua no `finish_sale`.
+//
+// O turno volta a ser consultado aqui -- mas para AVISAR, nao para travar.
+//
+// Tirar a trava da criacao devolveu ao operador a liberdade de montar a venda
+// sem turno, e junto tirou o unico ganho que aquela trava tinha: saber ANTES de
+// montar o carrinho inteiro. Quem trabalha sozinho descobria a recusa no
+// checkout, com o cliente na frente e os produtos ja digitados.
+//
+// O aviso e a forma de ter os dois: a venda continua podendo nascer, e ninguem
+// perde tempo sem saber.
+const { caixaAberto, caixaHabilitado, exigeCaixaAberto } = useSessaoCaixaQuery();
+const { eRetaguarda } = useEsteTerminalQuery();
+const { solicitarAbertura } = useAberturaCaixa();
+
+/**
+ * Avisar so faz sentido para quem VAI ficar sem saida.
+ *
+ * Com a fila ligada, montar sem turno e o fluxo NORMAL do atendente: ele monta e
+ * entrega ao caixa. Perguntar "tem certeza?" toda vez seria atrito no caminho
+ * principal do dia dele -- e o rodape do SaleModal ja explica para onde a venda
+ * vai. Sem a fila, montar leva a uma recusa no checkout: ai o aviso paga.
+ */
+const avisarCaixaFechado = computed(
+  () =>
+    caixaHabilitado.value &&
+    exigeCaixaAberto.value &&
+    !caixaAberto.value &&
+    !usarFilaDoCaixa.value &&
+    // Numa RETAGUARDA a barra do caixa não renderiza o convite de abertura --
+    // aquele PC não é um caixa. Oferecer "ABRIR CAIXA" ali seria um botão que
+    // não faz nada. Lá o aviso âmbar da barra já explica a situação, e a venda
+    // segue podendo ser montada.
+    !eRetaguarda.value,
+);
+
 const { openSaleEditModal, saleModalIsOpen } = useSaleModal();
 const { openFinishModal } = useFinishSaleModal();
 const { openOrcamentoModal, closeOrcamentoModal, orcamentoModalIsOpen } = useOrcamentoModal();
@@ -86,7 +191,8 @@ whenever(F2, () => {
   if (saleModalIsOpen.value || orcamentoModalIsOpen.value) return;
 
   if (activeTab.value === 'vendas') {
-    openCustomerModal();
+    // Sem trava aqui, pelo mesmo motivo do botao: quem barra e a finalizacao.
+    handleNovaVenda();
   } else {
     handleNewOrcamento();
   }
@@ -242,13 +348,35 @@ function handleOpenSaleFromOrcamento(saleId: number) {
 
       <div class="flex gap-5">
         <BaseTab2 :options="SALES_TAB_OPTIONS" v-model="activeTab" />
+
+        <!-- Modo Balcão: acelera o fluxo desta máquina. Fica ao lado de "Nova
+             venda" porque é ali que ele muda o comportamento. Desligado, o
+             módulo inteiro se comporta como sempre. -->
+        <button
+          v-if="activeTab === 'vendas'"
+          type="button"
+          :class="[
+            'flex items-center gap-1.5 px-3 rounded-lg border text-sm font-semibold transition-all cursor-pointer',
+            modoBalcao
+              ? 'border-brand-primary bg-brand-primary/10 text-brand-primary'
+              : 'border-zinc-200 bg-white text-zinc-400 hover:text-zinc-600 hover:border-zinc-300',
+          ]"
+          :title="modoBalcao
+            ? 'Modo Balcão ligado — a venda começa no produto e emenda a próxima. Clique para desligar.'
+            : 'Modo Balcão desligado — clique para vender no ritmo de balcão.'"
+          @click="balcaoStore.alternar()"
+        >
+          <Zap :size="16" />
+          Balcão
+        </button>
+
         <BaseButton
           v-if="activeTab === 'vendas'"
           variant="primary"
           size="md"
           type="button"
           class="flex gap-1"
-          @click="openCustomerModal"
+          @click="handleNovaVenda"
         >
           <Plus :size="20" />
           Nova venda
@@ -270,6 +398,10 @@ function handleOpenSaleFromOrcamento(saleId: number) {
 
     <!-- Tab: Vendas -->
     <template v-if="activeTab === 'vendas'">
+      <!-- Barra do caixa. Não renderiza NADA quando a loja não usa controle de
+           caixa (o padrão), e a query do turno nem chega a ser disparada — tela
+           e rede idênticas para quem não ligou a chave. -->
+      <CaixaBar />
       <SalesStatus />
       <SaleTable
         @cancel="handleCancelFromTable"
@@ -335,7 +467,11 @@ function handleOpenSaleFromOrcamento(saleId: number) {
     </BaseModal>
 
     <!-- Sale Modal -->
-    <SaleModal />
+    <!-- O <SaleModal /> NAO se monta aqui: ele ja vive no MainLayout, que e pai
+         desta rota. Montar nos dois punha DUAS instancias na tela ao mesmo tempo,
+         e como o estado da venda e global (refs de modulo), o mesmo Esc era
+         tratado duas vezes: a primeira fechava a modal de cima, a segunda via a
+         flag ja em false e fechava o PDV inteiro. Achado em 20/08/2026. -->
 
     <GerenteAprovacaoModal
       :is-open="gerenteReopen.isOpen.value"

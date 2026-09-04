@@ -8,6 +8,7 @@ import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
 import BaseModal from '@/shared/components/commons/BaseModal/BaseModal.vue';
 import ConfirmationTemplate from '@/shared/components/templates/ConfirmationTemplate.vue';
 import { getBackendBaseUrl } from '@/api/backendUrl';
+import { useCapacidades } from '@/modules/order-service/shared/segmento/useCapacidades';
 
 export interface PendingPhoto {
   file: File;
@@ -16,7 +17,13 @@ export interface PendingPhoto {
 }
 
 interface Props {
-  osNumero: string;
+  /**
+   * Opcional: numa OS ainda não salva não existe número.
+   *
+   * Só é usado para APAGAR foto já gravada no servidor — e numa OS em criação
+   * não há nenhuma: tudo ali é foto pendente, que sai da lista em memória.
+   */
+  osNumero?: string;
   fotos: OsImageReadDataType[];
   pendingPhotos?: PendingPhoto[];
   readOnly?: boolean;
@@ -35,19 +42,57 @@ const emit = defineEmits<{
 }>();
 
 const toast = useToast();
+
+/**
+ * "Fotos do Diagnóstico" pressupõe que houve diagnóstico. Em serigrafia estas
+ * fotos são a ARTE — o mockup que o cliente aprova pelo celular —, e chamá-las
+ * de diagnóstico manda o atendente procurar algo que não existe ali.
+ */
+const { temDiagnostico } = useCapacidades();
+
+const tituloGaleria = computed(() =>
+  temDiagnostico.value ? 'Fotos do Diagnóstico' : 'Fotos da Arte',
+);
+
+const vazioGaleria = computed(() =>
+  temDiagnostico.value
+    ? 'Fotos do objeto e diagnóstico aparecerão aqui.'
+    : 'Anexe aqui a arte que o cliente vai aprovar.',
+);
 const fileInput = ref<HTMLInputElement | null>(null);
 
 const deleteMutation = useDeleteFotoOSMutation();
 
+/**
+ * Aceita VÁRIAS imagens por seleção.
+ *
+ * Antes lia só `files[0]`, e o input nem abria em modo múltiplo: dava para
+ * juntar várias fotos clicando repetidamente, mas selecionar as três de uma vez
+ * era impossível. Não era regra de negócio — era o handler pegando o primeiro e
+ * descartando o resto em silêncio, que é o pior jeito de recusar um arquivo.
+ *
+ * Uma OS raramente tem uma foto só: a serigrafia manda variações da arte, a
+ * oficina fotografa cada avaria.
+ */
 function handleFileSelect(event: Event) {
   const target = event.target as HTMLInputElement;
-  if (!target.files || target.files.length === 0) return;
-  const file = target.files[0];
-  if (!file.type.startsWith('image/')) {
-    toast.error('Selecione apenas arquivos de imagem.');
-    return;
+  const selecionados = Array.from(target.files ?? []);
+  if (selecionados.length === 0) return;
+
+  const imagens = selecionados.filter((f) => f.type.startsWith('image/'));
+  const recusados = selecionados.length - imagens.length;
+
+  // Avisa o que ficou de fora em vez de sumir com o arquivo: quem selecionou um
+  // PDF junto precisa saber que ele não entrou.
+  if (recusados > 0) {
+    toast.error(
+      recusados === 1
+        ? 'Um arquivo não é imagem e foi ignorado.'
+        : `${recusados} arquivos não são imagens e foram ignorados.`,
+    );
   }
-  emit('add-photo', file);
+
+  for (const imagem of imagens) emit('add-photo', imagem);
   if (fileInput.value) fileInput.value.value = '';
 }
 
@@ -109,13 +154,15 @@ function closeDeleteModal() {
 }
 
 function confirmDelete() {
-  if (confirmDeleteModal.value.fotoId) {
+  // Sem `osNumero` não há foto salva para apagar (OS ainda em criação): foto
+  // pendente é removida da lista em memória, por `handleRemovePhoto`.
+  if (confirmDeleteModal.value.fotoId && props.osNumero) {
     deleteMutation.mutate(
       { osNumber: props.osNumero, fotoId: confirmDeleteModal.value.fotoId },
       { onSuccess: () => emit('deleted') },
     );
-    closeDeleteModal();
   }
+  closeDeleteModal();
 }
 
 // ─── Ações por tipo de foto ────────────────────────────────────────────────
@@ -142,7 +189,7 @@ function getPhotoSrc(photo: { url: string; isPending: boolean }) {
     <div class="flex items-center justify-between">
       <h3 class="text-sm font-semibold text-slate-700 flex items-center gap-2">
         <ImageIcon :size="16" class="text-slate-500" />
-        Fotos do Diagnóstico
+        {{ tituloGaleria }}
         <span class="text-xs font-normal text-slate-400">({{ totalCount }})</span>
       </h3>
 
@@ -151,7 +198,7 @@ function getPhotoSrc(photo: { url: string; isPending: boolean }) {
         Adicionar Foto
       </BaseButton>
 
-      <input ref="fileInput" type="file" accept="image/*" class="hidden" @change="handleFileSelect" />
+      <input ref="fileInput" type="file" accept="image/*" multiple class="hidden" @change="handleFileSelect" />
     </div>
 
     <div v-if="allPhotos.length > 0" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
@@ -190,7 +237,7 @@ function getPhotoSrc(photo: { url: string; isPending: boolean }) {
         <ImageIcon :size="24" class="text-slate-400" />
       </div>
       <p class="text-sm text-slate-500 font-medium">Nenhuma foto adicionada</p>
-      <p class="text-xs text-slate-400 mt-1">Fotos do objeto e diagnóstico aparecerão aqui.</p>
+      <p class="text-xs text-slate-400 mt-1">{{ vazioGaleria }}</p>
     </div>
 
     <!-- Slideshow -->
@@ -218,7 +265,7 @@ function getPhotoSrc(photo: { url: string; isPending: boolean }) {
       <ConfirmationTemplate :icon="Trash2" icon-bg-class="bg-brand-primary-light" icon-color-class="text-brand-primary">
         <template #description>
           <p class="text-sm text-slate-500 leading-relaxed">
-            Deseja realmente remover esta foto do diagnóstico? <br>
+            Deseja realmente remover esta foto? <br>
             <span class="text-xs text-red-500 font-semibold">Esta ação não poderá ser desfeita.</span>
           </p>
         </template>

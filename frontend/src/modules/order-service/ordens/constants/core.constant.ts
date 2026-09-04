@@ -18,6 +18,13 @@ export const OS_EMPLOYEE_QUERY_STALE_TIME = 1000 * 60
 export const OS_CUSTOMER_QUERY_KEY = [CLIENTES_KEY, 'os-lista'] as const
 export const OS_CUSTOMER_QUERY_STALE_TIME = 1000 * 60
 
+// Busca de objeto por placa / nº de série / código da arte — a outra metade do
+// mesmo seletor de cliente. Pende do MESMO prefixo que a lista de clientes de
+// propósito: as duas respondem "quem é o cliente" na mesma tela, então quem
+// invalida uma precisa alcançar a outra (cliente renomeado sai no rodapé da
+// linha do objeto).
+export const OS_OBJETO_BUSCA_QUERY_KEY = [CLIENTES_KEY, 'os-objeto-busca'] as const
+
 // Definição de campos por segmento (metadados): muda raramente -> stale time longo.
 export const OS_FIELD_DEFINITION_QUERY_KEY = "os-field-definition-query"
 export const OS_FIELD_DEFINITION_STALE_TIME = 1000 * 60 * 30

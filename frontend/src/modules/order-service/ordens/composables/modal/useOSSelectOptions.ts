@@ -6,10 +6,18 @@ import { OS_PRIORIDADE_OPTIONS, OS_STATUS_OPTIONS } from '../../constants/ordemS
 
 interface UseOSSelectOptionsParams {
   currentStatus: ComputedRef<string | undefined>;
+  /**
+   * O modal está aberto? Só então vale buscar a lista de funcionários.
+   *
+   * Opcional para não quebrar quem já chamava, mas o `OSFormModal` passa — sem
+   * isso a busca roda em toda tela do sistema, porque ele é montado sem condição
+   * no `MainLayout`.
+   */
+  ativo?: ComputedRef<boolean>;
 }
 
-export function useOSSelectOptions({ currentStatus }: UseOSSelectOptionsParams) {
-  const employeesQuery = useOsEmployeesGet();
+export function useOSSelectOptions({ currentStatus, ativo }: UseOSSelectOptionsParams) {
+  const employeesQuery = useOsEmployeesGet(ativo);
 
   const funcionariosOptions = computed<SelectOption[]>(() => {
     const raw = employeesQuery.data.value as unknown;

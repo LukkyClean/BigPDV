@@ -2,8 +2,9 @@ import { ref, computed, watch } from 'vue';
 import type { Ref, ComputedRef } from 'vue';
 import { refDebounced } from '@vueuse/core';
 
-import { useOsCustomersSearch } from './useOSRelationshipGet.queries';
+import { useOsCustomersSearch, useOsObjetosSearch } from './useOSRelationshipGet.queries';
 import type { CustomerUnionReadSchemaDataType } from '../../../schemas/relationship/customer/customer.schema';
+import type { ObjetoBuscaItemDataType } from '../../../schemas/relationship/objetoBusca.schema';
 
 /**
  * Busca de cliente do seletor da OS.
@@ -20,6 +21,7 @@ import type { CustomerUnionReadSchemaDataType } from '../../../schemas/relations
 export function useOSClientSearch(isOpen: Ref<boolean>): {
   searchQuery: Ref<string>;
   clientes: ComputedRef<CustomerUnionReadSchemaDataType[]>;
+  objetos: ComputedRef<ObjetoBuscaItemDataType[]>;
   isLoading: Ref<boolean>;
   lastCreatedId: Ref<number | null>;
 } {
@@ -28,6 +30,7 @@ export function useOSClientSearch(isOpen: Ref<boolean>): {
   const lastCreatedId = ref<number | null>(null);
 
   const { data, isFetching } = useOsCustomersSearch(debouncedQuery);
+  const { data: dataObjetos, isFetching: isFetchingObjetos } = useOsObjetosSearch(debouncedQuery);
 
   // Resetar pesquisa ao fechar
   watch(isOpen, (open) => {
@@ -40,6 +43,18 @@ export function useOSClientSearch(isOpen: Ref<boolean>): {
   });
 
   /**
+   * Objetos achados pelo identificador (placa, nº de série, código da arte).
+   *
+   * Mesma regra da lista de clientes: sem termo, lista vazia — a query fica em
+   * cache mas o modal recém-aberto não pode mostrar o resultado da busca
+   * anterior.
+   */
+  const objetos = computed<ObjetoBuscaItemDataType[]>(() => {
+    if (!debouncedQuery.value.trim()) return [];
+    return dataObjetos.value ?? [];
+  });
+
+  /**
    * `isFetching`, não `isLoading`: cada termo é uma chave de cache nova, e
    * `isLoading` só cobre a primeira carga de cada uma. Ao voltar para um termo
    * já visitado a lista revalida em silêncio — com `isLoading` a tela mostraria
@@ -48,5 +63,13 @@ export function useOSClientSearch(isOpen: Ref<boolean>): {
    * O período entre a tecla e o fim do debounce fica coberto porque o termo
    * debounced ainda é o anterior: a lista mostrada continua coerente com ele.
    */
-  return { searchQuery, clientes, isLoading: isFetching as Ref<boolean>, lastCreatedId };
+  /**
+   * As duas buscas somadas: enquanto qualquer uma responde, a lista está em
+   * carregamento. Mostrar "nenhum resultado" porque a busca de cliente chegou
+   * primeiro seria mentir por uma fração de segundo — e o atendente já teria
+   * clicado em "Cadastrar novo cliente".
+   */
+  const isLoading = computed(() => isFetching.value || isFetchingObjetos.value);
+
+  return { searchQuery, clientes, objetos, isLoading, lastCreatedId };
 }

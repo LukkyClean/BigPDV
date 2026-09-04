@@ -29,6 +29,7 @@ export function useOSCreateForm(opts?: { onSuccess?: (os: OrderServiceReadDataTy
   const [observacoes] = defineField('observacoes');
   const [desconto] = defineField('desconto');
   const [valor_entrada] = defineField('valor_entrada');
+  const [forma_pagamento_entrada_id] = defineField('forma_pagamento_entrada_id');
   const [garantia] = defineField('garantia');
   const [data_previsao] = defineField('data_previsao');
   const [senha_aparelho] = defineField('senha_aparelho');
@@ -111,6 +112,7 @@ export function useOSCreateForm(opts?: { onSuccess?: (os: OrderServiceReadDataTy
     observacoes,
     desconto,
     valor_entrada,
+    forma_pagamento_entrada_id,
     garantia,
     data_previsao,
     senha_aparelho,

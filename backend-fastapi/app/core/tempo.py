@@ -1,100 +1,130 @@
 # ---------------------------------------------------------------------------
 # ARQUIVO: app/core/tempo.py
-# DESCRIÇÃO: Fronteira entre o horário local da loja e o horário universal
-#            usado no banco.
-#
-# REGRA DO SISTEMA
-# ----------------
-# 1. Carimbos de registro (quando algo aconteceu) são gravados em UTC.
-#    Todos os modelos usam `func.now()`, que no SQLite é CURRENT_TIMESTAMP —
-#    UTC, e devolvido pelo SQLAlchemy como datetime ingênuo (sem fuso).
-#
-# 2. Datas de calendário e horários de parede escolhidos por uma pessoa
-#    (o dia consultado num relatório, o horário do backup, o prazo de uma OS)
-#    são LOCAIS. É o que o lojista enxerga no relógio da parede.
-#
-# 3. A conversão acontece aqui, na fronteira. Sem ela, um dia local vira um
-#    intervalo UTC deslocado e o movimento das últimas horas do expediente
-#    cai no dia seguinte.
-#
-# O QUE NÃO PASSA POR AQUI
-# ------------------------
-# Subsistemas que vivem inteiramente em horário local e nunca comparam com
-# colunas do banco — backup e diário de sincronização gravam o carimbo no
-# próprio nome do arquivo e comparam local com local. São coerentes como
-# estão; convertê-los faria o backup das 03:00 rodar em outro horário.
-#
-# Comparações de prazo (`data_previsao` de OS contra hoje) também ficam de
-# fora: prazo é data de calendário definida por pessoa, e o critério correto
-# é a data local.
+# DESCRICAO: Conversao entre o dia da LOJA e o instante gravado no banco.
 # ---------------------------------------------------------------------------
 
+# O PROBLEMA QUE ESTE ARQUIVO RESOLVE
+# ===========================================================================
+# O banco grava timestamps em UTC (`func.now()` no SQLite e CURRENT_TIMESTAMP,
+# que e UTC). Ja a pergunta que o usuario faz e sempre sobre o dia DELE:
+# "quanto vendi hoje?" quer dizer o dia do calendario da loja, nao o dia UTC.
+#
+# Enquanto os dois coincidem, ninguem percebe. No Brasil (UTC-3) eles deixam de
+# coincidir todo dia as 21h: uma venda feita as 21h30 de 15/08 e gravada como
+# 00h30 de 16/08. Filtrar "15/08" sem converter perde essa venda -- e ela
+# reaparece no relatorio do dia seguinte. Na pratica, ~3h de faturamento saem
+# do dia certo todas as noites.
+#
+# A regra deste modulo: as BORDAS do dia sao definidas no fuso da loja e
+# convertidas para UTC antes de irem ao banco.
+#
+# ATENCAO -- nem toda coluna de data e um instante:
+#   * `criado_em`, `data_criacao`, `data_pagamento`  -> INSTANTE em UTC.
+#     Comparar sempre com valores convertidos daqui.
+#   * `data_previsao`                                -> DATA PURA de calendario,
+#     escolhida por uma pessoa. NAO converter: 20/08 e 20/08 em qualquer fuso.
+#     Para essas, usar `hoje_local()` direto.
+
+import os
 from datetime import date, datetime, time, timedelta, timezone, tzinfo
+from typing import Optional, Tuple
+from zoneinfo import ZoneInfo
 
 
-def agora_utc() -> datetime:
+def _offset_fixo(valor: str) -> Optional[tzinfo]:
+    """Interpreta '-03:00', '+05:30', '-3' como deslocamento fixo."""
+    texto = valor.strip()
+    if not texto or texto[0] not in "+-":
+        return None
+    sinal = -1 if texto[0] == "-" else 1
+    corpo = texto[1:]
+    try:
+        if ":" in corpo:
+            horas_txt, minutos_txt = corpo.split(":", 1)
+            horas, minutos = int(horas_txt), int(minutos_txt)
+        else:
+            horas, minutos = int(corpo), 0
+    except ValueError:
+        return None
+    if not (0 <= horas <= 14 and 0 <= minutos < 60):
+        return None
+    return timezone(sinal * timedelta(hours=horas, minutes=minutos))
+
+
+def _fuso_configurado() -> Optional[tzinfo]:
+    """Fuso vindo da variavel STARTBIG_TZ, quando houver.
+
+    Existe por dois motivos: permitir corrigir uma maquina de loja com fuso de
+    sistema errado sem reinstalar nada, e permitir que o teste reproduza o
+    horario da noite (que e quando o bug aparece) sem depender do relogio da
+    maquina que roda a suite.
+
+    Aceita DUAS formas, e a ordem importa:
+      1. Deslocamento fixo: '-03:00'. Funciona em qualquer maquina.
+      2. Nome IANA: 'America/Sao_Paulo'. So funciona se o banco de fusos
+         estiver disponivel -- e o WINDOWS NAO O TRAZ. Sem o pacote `tzdata`,
+         `ZoneInfo` levanta ZoneInfoNotFoundError em toda maquina de loja.
+    Por isso o deslocamento fixo vem primeiro e e a forma recomendada: o Brasil
+    nao tem horario de verao desde 2019, entao '-03:00' e exato o ano inteiro e
+    nao custa uma dependencia nova no instalador.
     """
-    Instante atual em UTC, ingênuo — no mesmo formato das colunas do banco.
+    valor = os.getenv("STARTBIG_TZ")
+    if not valor:
+        return None
+    fixo = _offset_fixo(valor)
+    if fixo is not None:
+        return fixo
+    try:
+        return ZoneInfo(valor)
+    except Exception:
+        # Fuso invalido nao pode derrubar relatorio: cai no fuso do sistema.
+        return None
 
-    Substitui `datetime.utcnow()`, descontinuado desde o Python 3.12.
+
+def fuso_local() -> tzinfo:
+    """Fuso da loja. Padrao: o do proprio servidor, que fica dentro da loja."""
+    return _fuso_configurado() or (datetime.now().astimezone().tzinfo or timezone.utc)
+
+
+def para_utc(dt_local: datetime) -> datetime:
+    """datetime ingenuo no fuso da loja -> datetime ingenuo em UTC.
+
+    Devolve ingenuo (sem tzinfo) de proposito: e assim que as colunas do banco
+    estao gravadas, e misturar aware com naive numa comparacao do SQLAlchemy
+    levanta TypeError.
     """
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    configurado = _fuso_configurado()
+    if configurado is not None:
+        return dt_local.replace(tzinfo=configurado).astimezone(timezone.utc).replace(tzinfo=None)
+    # Sem override, `astimezone` interpreta o ingenuo como hora local do
+    # sistema -- e usa o deslocamento correto para AQUELA data, nao o de hoje.
+    return dt_local.astimezone(timezone.utc).replace(tzinfo=None)
 
 
 def hoje_local() -> date:
-    """Data de calendário da loja, pelo relógio do computador."""
-    return datetime.now().date()
+    """O dia de hoje no calendario da loja."""
+    return datetime.now(fuso_local()).date()
 
 
-def local_para_utc(momento_local: datetime, fuso: tzinfo | None = None) -> datetime:
+def agora_utc() -> datetime:
+    """Instante atual em UTC, ingenuo -- comparavel com as colunas do banco."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def inicio_do_dia_utc(dia: date) -> datetime:
+    """00:00:00 do dia na loja, expresso em UTC."""
+    return para_utc(datetime.combine(dia, time.min))
+
+
+def fim_do_dia_utc(dia: date) -> datetime:
+    """23:59:59.999999 do dia na loja, expresso em UTC."""
+    return para_utc(datetime.combine(dia, time.max))
+
+
+def intervalo_utc(inicio: date, fim: date) -> Tuple[datetime, datetime]:
+    """Intervalo fechado [inicio, fim] em dias da loja, convertido para UTC.
+
+    E a funcao que os relatorios usam: eles recebem duas datas do frontend (que
+    sao datas locais) e precisam de duas bordas em UTC.
     """
-    Converte um instante local ingênuo no equivalente em UTC, ingênuo.
-
-    Sem `fuso`, usa `astimezone`, que aplica o deslocamento vigente no próprio
-    instante convertido — respeita horário de verão sem precisar de tabela.
-    É o caminho de produção.
-
-    `fuso` existe para os testes fixarem um deslocamento conhecido sem depender
-    do relógio da máquina onde a suíte roda. A aplicação nunca o informa.
-    """
-    if fuso is not None:
-        return momento_local.replace(tzinfo=fuso).astimezone(timezone.utc).replace(tzinfo=None)
-    return momento_local.astimezone(timezone.utc).replace(tzinfo=None)
-
-
-def intervalo_utc(
-    inicio: date, fim: date, fuso: tzinfo | None = None,
-) -> tuple[datetime, datetime]:
-    """
-    Converte um intervalo de datas locais nos limites UTC correspondentes.
-
-    Recebe as datas como o usuário as entende (dias do calendário da loja) e
-    devolve o par de instantes para comparar com as colunas do banco.
-
-    Exemplo em UTC-3: o dia 02/09 local vai de 02/09 03:00 a 03/09 02:59:59
-    em UTC — que é exatamente onde estão as vendas daquele dia.
-    """
-    return (
-        local_para_utc(datetime.combine(inicio, time.min), fuso),
-        local_para_utc(datetime.combine(fim, time.max), fuso),
-    )
-
-
-def inicio_do_dia_utc(dia: date, fuso: tzinfo | None = None) -> datetime:
-    """Primeiro instante de um dia local, expresso em UTC."""
-    return local_para_utc(datetime.combine(dia, time.min), fuso)
-
-
-def fim_do_dia_utc(dia: date, fuso: tzinfo | None = None) -> datetime:
-    """Último instante de um dia local, expresso em UTC."""
-    return local_para_utc(datetime.combine(dia, time.max), fuso)
-
-
-def limite_utc_ha(dias: int = 0, horas: int = 0) -> datetime:
-    """
-    Instante de N dias/horas atrás, em UTC.
-
-    Para regras de expiração que comparam contra colunas do banco. Usar
-    `datetime.now()` aqui erraria pelo deslocamento do fuso.
-    """
-    return agora_utc() - timedelta(days=dias, hours=horas)
+    return inicio_do_dia_utc(inicio), fim_do_dia_utc(fim)

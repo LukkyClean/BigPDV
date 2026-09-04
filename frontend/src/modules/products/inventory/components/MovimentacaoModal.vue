@@ -16,6 +16,7 @@ import BaseSelect from '@/shared/components/ui/BaseSelect/BaseSelect.vue';
 import type { SelectOption } from '@/shared/components/ui/BaseSelect/BaseSelect.vue';
 import { useCreateMovimentacaoMutation } from '../composables/useMovimentacoesQuery';
 import type { MovimentacaoTipo, ProdutoRead } from '../types/products.types';
+import { formatarQuantidade } from '@/shared/utils/quantidade';
 
 interface Props {
   isOpen: boolean;
@@ -184,7 +185,9 @@ async function handleSubmit() {
         class="flex items-center gap-2 px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-lg text-sm text-zinc-600"
       >
         <span>Estoque atual:</span>
-        <span class="font-semibold text-zinc-800">{{ produtoSelecionado.estoque.quantidade }} un</span>
+        <span class="font-semibold text-zinc-800">
+          {{ formatarQuantidade(produtoSelecionado.estoque.quantidade, produtoSelecionado.unidade_medida) }}
+        </span>
       </div>
 
       <!-- Tipo -->

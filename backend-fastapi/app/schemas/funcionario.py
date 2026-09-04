@@ -66,7 +66,12 @@ class FuncionarioBase(BaseModel):
 class FuncionarioCreate(FuncionarioBase):
     """Payload para criação de novo funcionário."""
     
-    usuario: UsuarioCreate = Field(..., description="Dados para criar o login do funcionário.")
+    # OPCIONAL: ausente = funcionário registrado SEM acesso ao sistema (a ficha
+    # existe, aparece na venda, no ranking e na comissão, e ninguém consegue
+    # entrar com ela). Presente = cria o login, que é o comportamento de sempre.
+    usuario: Optional[UsuarioCreate] = Field(
+        None, description="Dados para criar o login do funcionário. Omitir para funcionário sem acesso ao sistema."
+    )
     cargo_id: Optional[int] = Field(None, description="ID do cargo inicial (opcional).")
     endereco: Optional[List[Endereco]] = Field(None, description="Lista de endereços residenciais.")
 
@@ -119,7 +124,11 @@ class FuncionarioRead(FuncionarioBase):
     ativo: bool = Field(..., description="Status do cadastro.")
     cargo_id: Optional[int] = Field(None)
 
-    usuario: UsuarioRead = Field(..., description="Dados do usuário de login associado.")
+    # None = funcionário sem acesso ao sistema. A ficha existe e e devolvida
+    # normalmente; o que nao existe e o login.
+    usuario: Optional[UsuarioRead] = Field(
+        None, description="Dados do usuário de login associado. Ausente para funcionário sem acesso."
+    )
     endereco: Optional[List[EnderecoRead]] = Field(None, description="Endereços vinculados.")
 
 # ===========================================================================

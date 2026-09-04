@@ -2,14 +2,8 @@ import { computed } from 'vue';
 
 import { useAuthStore } from '@/shared/stores/auth.store';
 
-/** Segmentos de negócio válidos (espelha o backend em auth.SEGMENTOS_VALIDOS). */
-export type Segmento =
-  | 'assistencia_tecnica'
-  | 'oficina_mecanica'
-  | 'mercado'
-  | 'marcenaria'
-  | 'eletricista'
-  | 'outros';
+/** Segmentos de negócio válidos — fonte única em `shared/constants/segmentos.ts`. */
+export type { Segmento } from '@/shared/constants/segmentos';
 
 /**
  * Expõe o segmento de negócio da empresa logada e helpers de conveniência.

@@ -23,6 +23,8 @@ from .local import (
     list_backups,
 )
 from .restore import (
+    LICENSE_TABLE,
+    _preserve_local_license,
     apply_pending_restore,
     compare_versions,
     confirm_restore,
@@ -53,6 +55,9 @@ __all__ = [
     "create_backup",
     "delete_old_backups",
     "check_backup",
+    # Preservacao da licenca no restore (invariante testada)
+    "LICENSE_TABLE",
+    "_preserve_local_license",
     # Pipeline de restauração
     "save_backup",
     "restore_from_chain",

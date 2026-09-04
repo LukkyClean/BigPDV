@@ -7,7 +7,7 @@ import BaseModal from '@/shared/components/commons/BaseModal/BaseModal.vue';
 import BaseConfirmModal from '@/shared/components/commons/BaseConfirmModal/BaseConfirmModal.vue';
 import BaseInput from '@/shared/components/ui/BaseInput/BaseInput.vue';
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
-import CropperFotoModal from './CropperFotoModal.vue';
+import CropperImagemModal from '@/shared/components/commons/CropperImagemModal/CropperImagemModal.vue';
 
 import { useAuthStore } from '@/shared/stores/auth.store';
 import { useConfirmacao } from '@/shared/composables/useConfirmacao';
@@ -299,9 +299,14 @@ function salvarSenha() {
     @close="confirmacao.cancelar"
   />
 
-  <CropperFotoModal
+  <CropperImagemModal
     :is-open="cropperAberto"
     :image-src="imagemParaCropar"
+    titulo="Ajustar foto de perfil"
+    formato="circulo"
+    tipo-saida="image/jpeg"
+    nome-arquivo="foto-perfil.jpg"
+    label-confirmar="Usar esta foto"
     @confirm="onCropConfirmado"
     @close="onCropCancelado"
   />

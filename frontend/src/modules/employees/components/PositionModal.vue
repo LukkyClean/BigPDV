@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useOrdemServico } from '@/shared/composables/useOrdemServico';
 /**
  * @component PositionModal
  * @description Modal for creating/editing cargos with permission matrix
@@ -20,6 +21,19 @@ import {
   getAccessLevel,
   getPermissionStats,
 } from '../constants/positions.constants';
+
+const { usaOrdemServico } = useOrdemServico();
+
+/**
+ * A matriz sem as linhas de modulos que a loja nao tem.
+ *
+ * Oferecer permissao de Servicos numa adega confunde quem cadastra funcionario:
+ * ele marca, salva, e nada acontece -- porque o modulo nao existe ali. A
+ * permissao continua existindo no banco; some so da tela.
+ */
+const matrizVisivel = computed(() =>
+  PERMISSION_MATRIX.filter((item) => item.id !== 'services' || usaOrdemServico.value),
+);
 
 const {
   isOpen,
@@ -372,7 +386,7 @@ watch(isOpen, (open) => {
                     </div>
 
                     <div
-                      v-for="item in PERMISSION_MATRIX"
+                      v-for="item in matrizVisivel"
                       :key="item.id"
                       class="grid grid-cols-[1fr_88px_88px_88px] items-center border-t border-zinc-100 px-4 py-3"
                     >

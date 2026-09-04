@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { computed } from 'vue';
+import { useOrdemServico } from '@/shared/composables/useOrdemServico';
 import { ArrowUpRight, ArrowDownRight } from 'lucide-vue-next';
 import { storeToRefs } from 'pinia';
 
@@ -23,6 +25,8 @@ import { useOSAtrasadasEmpresaQuery } from '../../composables/queries/useOSAtras
 import { useTendenciaQuery } from '../../composables/queries/useTendenciaQuery';
 
 import type { PeriodFilter } from '../../types/dashboard.types';
+
+const { usaOrdemServico } = useOrdemServico();
 
 const authStore = useAuthStore();
 const { userData, isLoading } = storeToRefs(authStore);
@@ -51,6 +55,18 @@ const rankingQuery   = useRankingFuncionariosQuery(activePeriod);
 const osPorStatusQuery = useOSPorStatusQuery();
 const formasQuery    = useFormasPagamentoQuery(activePeriod);
 const atrasadasQuery = useOSAtrasadasEmpresaQuery();
+
+/**
+ * As Formas de Pagamento aparecem em dois lugares do template (com e sem OS).
+ * Os props ficam aqui para os dois nunca divergirem — copiar quatro linhas de
+ * `v-bind` e o tipo de coisa que se conserta em um lado so.
+ */
+const formasPagamentoProps = computed(() => ({
+  items: formasQuery.data.value?.items ?? [],
+  total: formasQuery.data.value?.total ?? 0,
+  isLoading: formasQuery.isLoading.value,
+  isError: formasQuery.isError.value,
+}));
 const tendenciaQuery = useTendenciaQuery(activePeriod);
 
 const periods: { id: PeriodFilter; label: string }[] = [
@@ -71,7 +87,7 @@ const periods: { id: PeriodFilter; label: string }[] = [
     />
 
     <!-- Banner OS Atrasadas (só aparece quando há) -->
-    <OSAtrasadasEmpresaBanner
+    <OSAtrasadasEmpresaBanner v-if="usaOrdemServico"
       :items="atrasadasQuery.data.value?.items ?? []"
       :total="atrasadasQuery.data.value?.total ?? 0"
     />
@@ -190,7 +206,14 @@ const periods: { id: PeriodFilter; label: string }[] = [
       </div>
     </div>
 
-    <!-- Linha 1: Ranking (3/5) + OS por Status (2/5) -->
+    <!--
+      Linha 1: Ranking (3/5) + OS por Status (2/5).
+
+      SEM ORDEM DE SERVICO as duas linhas viram UMA: o vizinho do Ranking passa a
+      ser as Formas de Pagamento. Esconder os widgets de OS com `v-if` deixava
+      metade da largura vazia em duas linhas seguidas, e um painel cheio de buraco
+      parece quebrado — o dono acha que faltou carregar, nao que a loja nao tem OS.
+    -->
     <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
       <div class="lg:col-span-3">
         <RankingFuncionarios
@@ -200,24 +223,20 @@ const periods: { id: PeriodFilter; label: string }[] = [
         />
       </div>
       <div class="lg:col-span-2">
-        <OSPorStatusWidget
+        <OSPorStatusWidget v-if="usaOrdemServico"
           :items="osPorStatusQuery.data.value?.items ?? []"
           :total-ativas="osPorStatusQuery.data.value?.total_ativas ?? 0"
           :is-loading="osPorStatusQuery.isLoading.value"
           :is-error="osPorStatusQuery.isError.value"
         />
+        <FormasPagamentoWidget v-else v-bind="formasPagamentoProps" />
       </div>
     </div>
 
     <!-- Linha 2: Formas de Pagamento (2/5) + OS Vencendo (3/5) -->
-    <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+    <div v-if="usaOrdemServico" class="grid grid-cols-1 lg:grid-cols-5 gap-6">
       <div class="lg:col-span-2">
-        <FormasPagamentoWidget
-          :items="formasQuery.data.value?.items ?? []"
-          :total="formasQuery.data.value?.total ?? 0"
-          :is-loading="formasQuery.isLoading.value"
-          :is-error="formasQuery.isError.value"
-        />
+        <FormasPagamentoWidget v-bind="formasPagamentoProps" />
       </div>
       <div class="lg:col-span-3">
         <OSVencendoTable :items="osVencendo" :is-loading="isLoadingOS" :is-error="isErrorOS" />

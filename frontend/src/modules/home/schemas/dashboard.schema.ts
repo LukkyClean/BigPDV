@@ -9,6 +9,12 @@ export const DashboardStatsSchema = z.object({
   faturamento_total_variacao: z.number(),
   vendas_total: z.number(),
   vendas_total_variacao: z.number(),
+
+  // OPCIONAL de proposito: backend mais antigo que o frontend nao devolve o
+  // campo, e um `.default(0)` faria a tela afirmar "0 vendas" — mentira pior
+  // que a informacao que faltava. Ausente, o card volta a mostrar o valor.
+  vendas_count: z.number().optional(),
+  vendas_count_variacao: z.number().optional(),
   os_total: z.number(),
   os_total_variacao: z.number(),
   os_count: z.number(),

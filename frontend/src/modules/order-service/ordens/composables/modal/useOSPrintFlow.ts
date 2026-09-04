@@ -9,6 +9,7 @@ import { carregarLogoRaster } from '@/shared/services/escposImagem';
 import { useObjetoLabels } from '@/modules/order-service/shared/segmento/useObjetoLabels';
 import { useTextosImpressaoOS } from '@/modules/order-service/shared/segmento/textosImpressaoOS';
 import { useAtributosImpressaoOS } from '@/modules/order-service/shared/segmento/useAtributosImpressaoOS';
+import { useConfiguracoesStore } from '@/shared/stores/configuracoes.store';
 import type { OrderServiceReadDataType } from '../../schemas/orderServiceQuery.schema';
 import type { PrintFormat } from '@/shared/components/print/print.types';
 
@@ -25,10 +26,13 @@ export function useOSPrintFlow({ onClose, getOS }: UseOSPrintFlowParams) {
     printType,
     printFormat,
     isPrintSelectModalOpen,
+    openPrintSelect,
     printDirect,
     handlePrintFormatSelected: handlePrintFormatSelectedBase,
     closePrintSelectModal,
-  } = usePrintFlow<'ENTRADA' | 'SAIDA'>();
+  } = usePrintFlow<'ENTRADA' | 'SAIDA'>((tipo) =>
+    tipo === 'ENTRADA' ? 'os_entrada' : 'os_entrega',
+  );
 
   const isFinalizarModalOpen = ref(false);
 
@@ -36,8 +40,14 @@ export function useOSPrintFlow({ onClose, getOS }: UseOSPrintFlowParams) {
   const impressaoStore = useImpressaoStore();
   const { companyInfo } = useCompanyPrintInfo();
   const { labelSingular } = useObjetoLabels();
-  const { textos, identificadorCupom } = useTextosImpressaoOS();
+  // Termos variam com o tipo de trabalho (camisa x sacola). `getOS` já é a
+  // fonte da OS corrente neste fluxo — o getter mantém a resolução reativa.
+  const { textos, identificadorCupom } = useTextosImpressaoOS(
+    () => (getOS?.()?.dados_adicionais as Record<string, unknown> | undefined)
+      ?.tipo_trabalho as string | undefined,
+  );
   const { atributos } = useAtributosImpressaoOS();
+  const configuracoesStore = useConfiguracoesStore();
 
   /** Manda o cupom térmico direto pra impressora configurada; false = sem impressora/falhou */
   async function imprimirEscPosDireto(tipo: 'ENTRADA' | 'SAIDA'): Promise<boolean> {
@@ -53,6 +63,7 @@ export function useOSPrintFlow({ onClose, getOS }: UseOSPrintFlowParams) {
       rotuloObjeto: labelSingular.value,
       rotuloIdentificador: identificadorCupom.value,
       textos: textos.value.cupom,
+      prazoAbandonoDias: configuracoesStore.prazoAbandonoDias,
       atributos: atributos(os.objeto?.dados_adicionais, os.dados_adicionais),
     });
     return impressao.imprimirCupom(dados);
@@ -73,13 +84,18 @@ export function useOSPrintFlow({ onClose, getOS }: UseOSPrintFlowParams) {
   }
 
   /**
-   * Regra única de impressão (sem perguntar formato):
-   * - Impressora térmica configurada → cupom ESC/POS direto (silencioso).
-   * - Sem térmica (ou falha) → recibo A4 abrindo o diálogo do sistema.
-   * `imprimirEscPosDireto` já devolve false quando não há térmica configurada.
+   * Regra única de impressão (sem perguntar formato), obedecendo `formato_os`:
+   * - Formato Cupom + térmica configurada → ESC/POS direto (silencioso).
+   * - Formato A4 → recibo A4 abrindo o diálogo do sistema, SEM tentar ESC/POS.
+   * - Sem térmica (ou falha no envio) → cai no A4.
+   *
+   * O teste do formato existe porque ESC/POS sao bytes de comando, nao texto:
+   * despejados numa impressora comum, saem como uma folha de pontinhos. Antes
+   * daqui o ramo ESC/POS era tentado SEMPRE que houvesse impressora, e escolher
+   * A4 na tela nao tinha efeito nenhum — o `formato_os` era gravado e nunca lido.
    */
   async function imprimir(tipo: 'ENTRADA' | 'SAIDA', afterPrint?: () => void) {
-    if (await imprimirEscPosDireto(tipo)) {
+    if (impressaoStore.config.formato_os === 'cupom' && (await imprimirEscPosDireto(tipo))) {
       afterPrint?.();
       return;
     }
@@ -94,8 +110,17 @@ export function useOSPrintFlow({ onClose, getOS }: UseOSPrintFlowParams) {
     imprimir('SAIDA');
   }
 
-  /** Impressão automática pós-criação/finalização: segue a regra única e fecha. */
+  /**
+   * Impressão pós-criação/finalização, conforme `auto_imprimir_os`:
+   * 'perguntar' → o atendente escolhe o formato nesta OS;
+   * 'automatico' → segue a regra única (o formato configurado).
+   * O 'nao' é filtrado antes, por quem chama.
+   */
   async function imprimirAutomaticoEFechar(tipo: 'ENTRADA' | 'SAIDA') {
+    if (impressaoStore.config.auto_imprimir_os === 'perguntar') {
+      openPrintSelect(tipo, () => onClose());
+      return;
+    }
     await imprimir(tipo, () => onClose());
   }
 

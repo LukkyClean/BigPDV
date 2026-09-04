@@ -7,6 +7,13 @@ import type { SelectOption } from '@/shared/components/ui/BaseSelect/BaseSelect.
 import type { OsStatusEnumDataType, OsPriorityEnumDataType } from '../../schemas/enums/osEnums.schema';
 import LucideIcon from '@/shared/components/icons/LucideIcon.vue';
 import BaseDateInput from '@/shared/components/ui/BaseDateInput/BaseDateInput.vue';
+import { useObjetoLabels } from '@/modules/order-service/shared/segmento/useObjetoLabels';
+
+/**
+ * "Técnico" pressupõe conserto. Em serigrafia quem toca o pedido é o
+ * "Responsável" — vem do contrato, como o resto dos rótulos do segmento.
+ */
+const { labelResponsavel } = useObjetoLabels();
 
 const props = defineProps<{
   status?: OsStatusEnumDataType;
@@ -130,7 +137,7 @@ function getSelectedLabel(options: SelectOption[], value: string) {
 
       <!-- Técnico -->
       <div ref="tecnicoRef" class="relative flex flex-col px-4 py-2 hover:bg-slate-50 transition-colors">
-        <span class="text-[10px] font-bold uppercase tracking-wider mb-0.5" :class="errors?.funcionario_id ? 'text-red-500' : 'text-slate-400'">Técnico</span>
+        <span class="text-[10px] font-bold uppercase tracking-wider mb-0.5" :class="errors?.funcionario_id ? 'text-red-500' : 'text-slate-400'">{{ labelResponsavel }}</span>
         <template v-if="canSelectTecnico && !isLocked">
           <button
             type="button"

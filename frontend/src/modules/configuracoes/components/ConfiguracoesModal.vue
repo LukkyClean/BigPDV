@@ -9,6 +9,7 @@ import {
   ClipboardList,
   Users,
   Plug,
+  MonitorCog,
   Printer,
   Monitor,
   HardDrive,
@@ -44,8 +45,10 @@ import RegrasDeVendas from './sections/regras-de-vendas/components/RegrasDeVenda
 import Seguranca from './sections/seguranca/components/Seguranca.vue'
 import ProdutosEstoque from './sections/produtos-estoque/components/ProdutosEstoque.vue'
 import OrdensDeServico from './sections/ordens-de-servico/components/OrdensDeServico.vue'
+import { useOrdemServico } from '@/shared/composables/useOrdemServico'
 import ClientesCadastro from './sections/clientes-cadastro/components/ClientesCadastro.vue'
 import IntegracoesAPIs from './sections/integracoes-apis/components/IntegracoesAPIs.vue'
+import Terminais from './sections/terminais/components/Terminais.vue'
 import ImpressaoPeriferico from './sections/impressao/components/ImpressaoPeriferico.vue'
 import FormatosExibicao from './sections/formatos-exibicao/components/FormatosExibicao.vue'
 import BackupDados from './sections/backup-dados/components/BackupDados.vue'
@@ -68,6 +71,7 @@ const { mutate: salvarTema, isPending: isPendingTema } = useUpdateEmpresaMutatio
 const configuracoesStore = useConfiguracoesStore()
 const impressaoStore = useImpressaoStore()
 const { secoesProtegidas, temPinConfigurado } = storeToRefs(configuracoesStore)
+const { usaOrdemServico } = useOrdemServico()
 const gerenteConfig = useGerenteAprovacao()
 const confirmacao = useConfirmacao()
 const toast = useToast()
@@ -136,9 +140,45 @@ watch(() => props.isOpen, (aberto) => {
   if (aberto) {
     // Garante dados frescos mesmo se o carregamento do boot tiver falhado
     configuracoesStore.carregarConfiguracoes()
-    irPara(props.secaoInicial ?? 'regras-de-vendas')
+    void abrirSecaoInicial(props.secaoInicial ?? 'regras-de-vendas')
   }
 })
+
+/**
+ * A aba de ENTRADA passa pela mesma fechadura das outras.
+ *
+ * Aqui se chamava `irPara` direto — e `irPara` só troca a aba; quem confere o
+ * PIN e o `navegarParaSecao`. A fechadura estava na porta de dentro, nao na de
+ * entrada: a secao protegida que calhasse de ser a inicial (hoje "Regras de
+ * Vendas") abria de cara, com os dados na tela, e o PIN so era pedido quando o
+ * usuario clicava em OUTRA aba. Quem quisesse ver o que estava protegido nao
+ * precisava nem tentar burlar nada — bastava abrir Configuracoes.
+ *
+ * Vale tambem para quem chega por atalho (`secaoInicial`), que e o mesmo buraco
+ * por outra porta.
+ */
+async function abrirSecaoInicial(secaoId: SecaoId): Promise<void> {
+  if (!precisaPin(secaoId)) {
+    irPara(secaoId)
+    return
+  }
+
+  // Primeiro sair de cima do conteudo protegido, depois pedir o PIN: enquanto a
+  // senha nao vem, nada do que ela protege pode estar montado na tela.
+  const livre = secoesVisiveis.value.find((s) => !precisaPin(s.id))
+  if (livre) irPara(livre.id)
+
+  const pin = await gerenteConfig.pedirPin()
+  const autorizado = pin ? await verificarPinComRetry(pin) : false
+
+  if (autorizado) {
+    irPara(secaoId)
+    return
+  }
+
+  // Nenhuma aba livre para onde cair e sem autorizacao: nao ha o que mostrar.
+  if (!livre) emit('close')
+}
 
 const secoesFuncionais: SecaoId[] = ['seguranca', 'clientes-cadastro', 'produtos-estoque', 'ordens-de-servico', 'regras-de-vendas', 'impressao', 'formatos-exibicao', 'integracoes-apis', 'backup-dados']
 const secaoFuncional = computed(() => secoesFuncionais.includes(secaoAtiva.value))
@@ -170,6 +210,9 @@ async function salvar(): Promise<void> {
       break
     case 'seguranca':
       salvarSeguranca(comp.form as any, fecharAposSalvar)
+      break
+    case 'backup-dados':
+      salvarBackup(comp.form as any, fecharAposSalvar)
       break
     case 'impressao':
       // Config local deste PC (localStorage) — sem chamada ao backend
@@ -238,6 +281,7 @@ const secoes: SecaoConfiguracao[] = [
   { id: 'ordens-de-servico', label: 'Ordens de Serviço',     icone: ClipboardList },
   { id: 'clientes-cadastro', label: 'Clientes e Cadastro',   icone: Users },
   { id: 'integracoes-apis',  label: 'Integrações e APIs',    icone: Plug },
+  { id: 'terminais',         label: 'Computadores da Loja',  icone: MonitorCog },
   { id: 'impressao',         label: 'Impressão e Periféricos', icone: Printer },
   { id: 'formatos-exibicao', label: 'Formatos e Exibição',   icone: Monitor },
   { id: 'backup-dados',      label: 'Backup dos Dados',      icone: HardDrive },
@@ -251,11 +295,31 @@ const componenteMap: Record<SecaoId, Component> = {
   'ordens-de-servico': OrdensDeServico,
   'clientes-cadastro': ClientesCadastro,
   'integracoes-apis':  IntegracoesAPIs,
+  'terminais':         Terminais,
   'impressao':         ImpressaoPeriferico,
   'formatos-exibicao': FormatosExibicao,
   'backup-dados':      BackupDados,
   'suporte':           Suporte,
 }
+
+/**
+ * As secoes que esta loja realmente tem.
+ *
+ * "Ordens de Servico" numa adega e uma aba inteira de configuracao de um modulo
+ * que nao existe ali -- e das piores de esquecer, porque o dono entra em
+ * Configuracoes e encontra prazos e numeracao de OS.
+ */
+const { controlarCaixa } = storeToRefs(configuracoesStore)
+
+const secoesVisiveis = computed(() =>
+  secoes.filter((s) => {
+    if (s.id === 'ordens-de-servico') return usaOrdemServico.value
+    // Nomear maquina e marcar retaguarda so faz sentido onde ha turno de caixa.
+    // Loja que nao usa caixa nao ganha uma aba nova que nao explica nada.
+    if (s.id === 'terminais') return controlarCaixa.value
+    return true
+  }),
+)
 
 const componenteAtivo = computed(() => componenteMap[secaoAtiva.value])
 const labelSecaoAtiva = computed(() => secoes.find((s) => s.id === secaoAtiva.value)?.label ?? '')
@@ -311,7 +375,7 @@ const labelSecaoAtiva = computed(() => secoes.find((s) => s.id === secaoAtiva.va
         </p>
 
         <button
-          v-for="secao in secoes"
+          v-for="secao in secoesVisiveis"
           :key="secao.id"
           type="button"
           :class="[

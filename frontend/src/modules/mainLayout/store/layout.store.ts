@@ -34,6 +34,7 @@ export const useLayoutStore = defineStore('layout', () => {
   const isSettingsOpen = ref<boolean>(false);
   const isMinhaContaOpen = ref<boolean>(false);
   const isConfiguracoesOpen = ref<boolean>(false);
+  const isRenovarAssinaturaOpen = ref<boolean>(false);
   const secaoConfiguracoesAtiva = ref<string>('regras-de-vendas');
 
   //Listener
@@ -95,6 +96,15 @@ export const useLayoutStore = defineStore('layout', () => {
     isConfiguracoesOpen.value = false;
   }
 
+  function openRenovarAssinatura() {
+    isSettingsOpen.value = false;
+    isRenovarAssinaturaOpen.value = true;
+  }
+
+  function closeRenovarAssinatura() {
+    isRenovarAssinaturaOpen.value = false;
+  }
+
   watch(
     () => route.path,
     () => {
@@ -118,6 +128,7 @@ export const useLayoutStore = defineStore('layout', () => {
     isSettingsOpen,
     isMinhaContaOpen,
     isConfiguracoesOpen,
+    isRenovarAssinaturaOpen,
     secaoConfiguracoesAtiva,
 
     //Metodos
@@ -131,6 +142,8 @@ export const useLayoutStore = defineStore('layout', () => {
     closeMinhaConta,
     openConfiguracoes,
     closeConfiguracoes,
+    openRenovarAssinatura,
+    closeRenovarAssinatura,
 
     // Listeners
     init,

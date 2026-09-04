@@ -14,6 +14,12 @@ export interface Company {
   enderecos: EnderecoFormData[];
   url_logo: string;
   segmento?: string;
+  /**
+   * Se a loja trabalha com Ordem de Serviço. Derivado do segmento pelo registry
+   * do backend — ver `useOrdemServico`. Opcional porque backend mais antigo que
+   * o frontend não devolve o campo; nesse caso o padrão é TER OS.
+   */
+  usa_ordem_servico?: boolean;
   /** Chave PIX do recebedor. Vem do login junto do resto da identidade da empresa. */
   chave_pix?: string | null;
   pix_ativo?: boolean;

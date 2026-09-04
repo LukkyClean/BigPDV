@@ -117,6 +117,42 @@ def get_objetos_ativos_por_identificador(
     return db.scalars(stmt).all()
 
 
+def buscar_objetos_por_identificador(
+    db: Session,
+    termo: str,
+    limite: int = 20,
+) -> Sequence[OSEquipamentoModel]:
+    """
+    Objetos ativos cujo identificador (placa / n de serie / codigo da arte)
+    casa com o texto digitado -- de QUALQUER cliente.
+
+    Diferente de `get_objetos_ativos_por_identificador`, que compara por
+    igualdade normalizada para decidir dedup/aviso, aqui a comparacao e de
+    BUSCA: passa pelo `filtro_busca`, entao "1d23" acha "ABC1D23" e
+    "abc-1d23" acha "ABC1D23" (o ramo do termo colado cobre o hifen, que o
+    motor trata como separador de palavras).
+
+    Cliente inativo fica de fora: nao adianta oferecer no seletor da OS um
+    dono que o sistema nao deixa mais selecionar.
+    """
+    filtro = filtro_busca(termo, (OSEquipamentoModel.numero_serie,))
+    if filtro is None:
+        return []
+
+    stmt = (
+        select(OSEquipamentoModel)
+        .join(ClienteModel, ClienteModel.id == OSEquipamentoModel.cliente_id)
+        .where(
+            OSEquipamentoModel.ativo == True,  # noqa: E712
+            ClienteModel.ativo == True,  # noqa: E712
+            filtro,
+        )
+        .order_by(OSEquipamentoModel.data_atualizacao.desc())
+        .limit(limite)
+    )
+    return db.scalars(stmt).all()
+
+
 def get_ultima_os_do_objeto(db: Session, objeto_id: int) -> OSModel | None:
     """OS mais recente de um objeto — usada para datar o cadastro no aviso de
     duplicidade ('última OS em 12/03/2026')."""

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import { storeToRefs } from 'pinia';
 import {
   User,
@@ -33,6 +34,19 @@ function abrirMinhaConta() {
 
 function abrirConfiguracoes() {
   layoutStore.openConfiguracoes();
+}
+
+/**
+ * Renovar assinatura e coisa do dono: e a conta e o dinheiro dele.
+ *
+ * Funcionario que ve o botao ou tenta pagar a mensalidade da loja, ou liga para
+ * o patrao perguntando o que e aquilo -- nenhum dos dois ajuda. O backend
+ * tambem recusa quem nao e master; isto aqui e a metade visivel da mesma regra.
+ */
+const isMaster = computed(() => userData.value?.is_master === true);
+
+function abrirRenovarAssinatura() {
+  layoutStore.openRenovarAssinatura();
 }
 </script>
 
@@ -143,8 +157,9 @@ function abrirConfiguracoes() {
         </p>
 
         <button
-          class="w-full flex items-center gap-2 px-1.5 py-1.5 rounded-lg opacity-40 cursor-not-allowed"
-          disabled
+          v-if="isMaster"
+          class="w-full flex items-center gap-2 px-1.5 py-1.5 rounded-lg hover:bg-zinc-50 transition-colors cursor-pointer"
+          @click="abrirRenovarAssinatura"
         >
           <RefreshCw :size="14" class="text-zinc-500" />
           <span class="text-xs text-zinc-700">Renovar Assinatura</span>

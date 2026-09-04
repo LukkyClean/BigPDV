@@ -6,6 +6,7 @@
 # ---------------------------------------------------------------------------
 
 from datetime import datetime
+from typing import Optional
 from sqlalchemy import Integer, String, DateTime, func
 from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base
@@ -29,6 +30,26 @@ class TerminalConectado(Base):
         String(255), unique=True, nullable=False, index=True,
         doc="Hardware ID do terminal remoto",
     )
+    # --- Identidade para gente (não para a máquina) ---
+    # O HWID acima é a identidade real; estas duas existem para o dia a dia da
+    # loja com mais de um computador. O fechamento precisa dizer "Caixa 02 —
+    # João, diferença de R$ 5,00" — um hash não é acionável para o dono.
+    #
+    # Ambas nullable, e ausência tem significado: terminal sem papel definido se
+    # comporta como PDV. É o que faz a loja de um PC só funcionar sem configurar
+    # nada, e é por isso que estas colunas não mudam nada para quem já roda.
+    nome: Mapped[Optional[str]] = mapped_column(
+        String(60), nullable=True,
+        doc="Nome amigável do terminal (ex: 'Caixa 01', 'Balcão', 'Escritório')",
+    )
+    # 'PDV' abre caixa e é cobrado por exigir_caixa_aberto; 'RETAGUARDA' não.
+    # A máquina do dono não é um caixa: obrigá-la a abrir turno para consultar
+    # relatório criaria uma sessão fantasma que nunca fecha direito.
+    papel: Mapped[Optional[str]] = mapped_column(
+        String(20), nullable=True,
+        doc="Papel do terminal: 'PDV' ou 'RETAGUARDA'. NULL = comporta-se como PDV",
+    )
+
     ultima_sinc: Mapped[datetime] = mapped_column(
         DateTime, default=func.now(), nullable=False,
         doc="Timestamp do último heartbeat enviado com sucesso",

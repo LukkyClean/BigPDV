@@ -23,6 +23,19 @@ export const SALE_FILTER_CONFIG: Record<string, FilterOption> = {
     CANCELADA: { label: 'Cancelada', class: 'bg-red-50 text-red-700', color: 'bg-red-500' },
 };
 
+/**
+ * O mesmo, mais a fila do caixa. Usado só onde `controlar_caixa` está ligado.
+ *
+ * `NO_CAIXA` NÃO é um status: no banco a fila é uma coluna à parte e a venda
+ * continua `ATIVA`. Por isso ele mora aqui e não em `SALE_FILTERS`, que é o
+ * mapa consultado por `sale.status` para o selo de cada linha — pôr um valor
+ * inexistente lá criaria um quarto status fantasma.
+ */
+export const SALE_FILTER_CONFIG_COM_CAIXA: Record<string, FilterOption> = {
+    ...SALE_FILTER_CONFIG,
+    NO_CAIXA: { label: 'No caixa', class: 'bg-emerald-50 text-emerald-700', color: 'bg-emerald-500' },
+};
+
 export const ORCAMENTO_FILTER_CONFIG: Record<string, FilterOption> = {
     ATIVO: { label: 'Ativo', class: 'bg-blue-50 text-blue-700', color: 'bg-blue-500' },
     CONVERTIDO: { label: 'Convertido', class: 'bg-green-50 text-green-700', color: 'bg-green-500' },
@@ -33,16 +46,42 @@ export interface ShortcutItem {
     description: string;
 }
 
+/**
+ * A lista que o operador le no botao de teclado da venda.
+ *
+ * Ela e a UNICA documentacao do caminho de teclado, entao um atalho descrito
+ * errado custa mais caro que um atalho que falta: o operador tenta, nao
+ * acontece o que ele leu, e para de confiar na lista inteira.
+ *
+ * Ordem = ordem do fluxo, do produto ate o cupom. Onde a tecla so age em OUTRA
+ * tela, a descricao diz qual — a lista abre dentro da venda, e sem isso o
+ * `F6` parece quebrado (ele so tem efeito com o pagamento aberto).
+ */
 export const SALE_SHORTCUTS: ShortcutItem[] = [
-    { keys: 'F2', description: 'Nova venda' },
-    { keys: 'Ctrl+E', description: 'Focar entrega' },
-    { keys: 'Ctrl+D', description: 'Focar desconto' },
+    { keys: 'Enter', description: 'Adicionar o produto destacado' },
+    { keys: '↑+↓', description: 'Escolher na lista de produtos' },
+    // O ciclo do Tab é uma regra só, com três paradas fixas — descrever cada
+    // parada numa linha faria parecer três atalhos diferentes.
+    { keys: 'Tab', description: 'Quantidade do item → Finalizar → busca' },
+    { keys: 'Ctrl+F', description: 'Voltar para a busca de produto' },
+    // O nome e o do BOTAO e o do titulo da modal ("Adicionar Produto"); o que
+    // vem entre parenteses e o motivo de ela existir, ja que a busca rapida da
+    // venda sempre soma 1. Descrever so o motivo deixava a tecla sem dono: a
+    // palavra que o operador ve na tela nao aparecia na lista.
+    { keys: 'F3', description: 'Adicionar Produto (quantidade e desconto)' },
     { keys: 'F4', description: 'Produto avulso' },
-    { keys: 'F6', description: 'Focar pagamentos' },
-    { keys: 'Ctrl+F', description: 'Buscar produto' },
-    { keys: 'Ctrl+Enter', description: 'Finalizar venda' },
-    { keys: 'Ctrl+Backspace', description: 'Cancelar venda' },
-    { keys: 'Esc', description: 'Fechar modal atual' },
+    { keys: 'Ctrl+D', description: 'Focar desconto' },
+    { keys: 'Ctrl+E', description: 'Focar entrega' },
+    // NAO finaliza: abre a tela de pagamento. Quem finaliza e o Enter no botao
+    // Finalizar Venda, ja com o troco na tela.
+    { keys: 'Ctrl+Enter', description: 'Ir para o pagamento' },
+    { keys: '←+↑+↓+→', description: 'Pagamento: escolher a forma' },
+    { keys: 'F6', description: 'Pagamento: focar as formas' },
+    { keys: 'Ctrl+Backspace', description: 'Descartar a venda' },
+    { keys: 'Esc', description: 'Fechar a tela atual' },
+    // Vive na LISTA de vendas (`SalesView`), nao aqui dentro: com a venda
+    // aberta o F2 e inerte de proposito.
+    { keys: 'F2', description: 'Nova venda (na lista de vendas)' },
 ];
 
 export const PRODUCT_TYPES = [

@@ -11,9 +11,16 @@ from app.core.validators import validar_cnpj, validar_cpf
 from app.schemas.endereco import Endereco
 
 # Tipos válidos para enums do setup
+# ESPELHO de `shared/constants/segmentos.ts`, e o TypeScript nao alcanca este
+# lado: acrescentar um segmento la e esquecer aqui produz o erro classico
+# "Invalid enum value ... received 'x'" no cadastro. Mexer nos dois sempre.
+#
+# 'mercado' virou 'pdv': o produto atende adega, mercearia, distribuidora e
+# qualquer loja de balcao, e o nome do valor tem que dizer o que ele e. A
+# migration b3c4d5e6f7a8 converte as empresas ja gravadas.
 SEGMENTOS_VALIDOS = Literal[
-    'assistencia_tecnica', 'oficina_mecanica',
-    'mercado', 'marcenaria', 'eletricista', 'outros'
+    'assistencia_tecnica', 'oficina_mecanica', 'serigrafia',
+    'pdv', 'marcenaria', 'eletricista', 'outros'
 ]
 GENEROS_VALIDOS = Literal['MASCULINO', 'FEMININO', 'OUTRO']
 

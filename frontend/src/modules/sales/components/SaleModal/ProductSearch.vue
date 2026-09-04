@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue';
+import { computed, ref } from 'vue';
 import { ArchiveX, Keyboard } from 'lucide-vue-next';
 
 import ShortcutsModal from './ShortcutsModal.vue';
@@ -9,7 +9,9 @@ import AvisoEstoqueNegativoModal from './AvisoEstoqueNegativoModal.vue';
 
 import { useProductSearch } from '../../composables/flows/useProductSearch';
 import { useItemModal } from '../../composables/flows/useItemModal';
+import { useAddProductModal } from '../../composables/flows/useAddProductModal';
 import { SALE_SHORTCUTS, ORCAMENTO_SHORTCUTS } from '../../constants';
+import { pareceCodigoDeBarras } from '../../leitorCodigoBarras.util';
 
 import type { ProductSaleRead } from '../../schemas/productSale.schema';
 
@@ -27,74 +29,140 @@ const {
   isSearching,
   products,
   isLoading,
-  canAddItem,
   highlightedIndex,
-  selectedProduct,
   handleInputChange,
-  handleKeydown: composableKeydown,
-  selectProduct,
-  addItemToSale,
+  handleKeydown: navegarNaLista,
   resetSelection,
+  aplicarBuscaAgora,
+  tentarAdicionarProduto,
+  avisarResultado,
+  avisoEstoqueAberto,
+  avisoEstoqueDados,
+  confirmarAvisoEstoque,
+  cancelarAvisoEstoque,
 } = useProductSearch(props.isOrcamento, currentItemsRef, searchContainerRef);
 
 const { openCreateItemModal } = useItemModal();
 
 const shortcutsModalIsOpen = ref(false);
 
-type PendingAutoAdd = { saleId: number | null; nome: string; estoqueAtual: number; qtdDesejada: number };
-const avisoEstoqueOpen = ref(false);
-const pendingAutoAdd = ref<PendingAutoAdd | null>(null);
-
 function handleAddAvulso() {
+  const termo = searchTerm.value.trim();
   resetSelection();
-  openCreateItemModal();
+  openCreateItemModal(termo);
 }
 
-function tryAutoAdd(saleId: number | null, produtoId: number, nome: string, estoque: number) {
-  const existingQty = currentItemsRef.value?.find(i => i.produto_id === produtoId)?.quantidade ?? 0;
-  const novaQtd = existingQty + 1;
-  if (novaQtd > estoque) {
-    pendingAutoAdd.value = { saleId, nome, estoqueAtual: estoque, qtdDesejada: novaQtd };
-    avisoEstoqueOpen.value = true;
+/** Clique na lista: a mesma porta do teclado e do leitor. */
+async function handleAutoAdd(product: { id: number }) {
+  const produto = products.value.find((p) => p.id === product.id);
+  if (!produto) return;
+  avisarResultado(await tentarAdicionarProduto({ saleId: props.saleId, produto }));
+}
+
+/**
+ * A ponte para a tela de quantidade.
+ *
+ * Esta busca sempre soma 1 — é o ritmo do balcão. Quando o caso é "3 unidades
+ * com desconto", o lugar é a modal Adicionar Produto, que abre já buscando o
+ * produto que a pessoa tinha na frente.
+ */
+const addProductModal = useAddProductModal();
+
+function handleSelectForQuantity(product: { nome: string }) {
+  resetSelection();
+  addProductModal.openAddProductModal(product.nome);
+}
+
+/**
+ * O atalho do LEITOR de código de barras.
+ *
+ * O leitor digita o código todo em milissegundos e manda Enter na sequência —
+ * antes da busca debounced (300 ms) sair. Por isso este caminho consulta o
+ * serviço DIRETO, sem esperar o debounce.
+ *
+ * O que mudou: quando ele NÃO resolve, o Enter deixou de morrer. Antes o fluxo
+ * caía numa lista que ainda não existia (o debounce nem tinha disparado) e o
+ * operador ficava sem resposta nenhuma. Agora a busca é publicada na hora
+ * (`aplicarBuscaAgora`) e o primeiro resultado já nasce destacado — então o
+ * Enter seguinte escolhe, sem seta e sem mouse.
+ */
+const bipando = ref(false);
+
+async function handleKeydown(e: KeyboardEvent) {
+  // Tab vai para a quantidade do ÚLTIMO item — o que acabou de ser bipado.
+  //
+  // "Bipei, agora são 3" é o passo seguinte mais comum do balcão, e ele só
+  // existia no mouse: o Tab andava para os botões da barra e a quantidade era
+  // um texto, sem onde pousar. Com o carrinho vazio não há o que ajustar, então
+  // o Tab segue o caminho normal.
+  if (e.key === 'Tab' && !e.shiftKey) {
+    const qtd = document.querySelector<HTMLInputElement>('[data-qtd-ultimo]');
+    if (qtd) {
+      e.preventDefault();
+      qtd.focus();
+    }
     return;
   }
-  addItemToSale(saleId, true);
-}
 
-function confirmarAutoAdd() {
-  if (!pendingAutoAdd.value) return;
-  addItemToSale(pendingAutoAdd.value.saleId, true);
-  avisoEstoqueOpen.value = false;
-  pendingAutoAdd.value = null;
-}
+  if (e.key === 'Enter') {
+    const termo = searchTerm.value.trim();
+    const pareceBipada = pareceCodigoDeBarras(searchTerm.value);
 
-function handleAutoAdd(product: { nome: string; id: number; estoque: number }) {
-  selectProduct(product.nome, product.id);
-  tryAutoAdd(props.saleId, product.id, product.nome, product.estoque);
-}
+    // Com a lista na tela e um item destacado, o Enter é ESCOLHA, não busca.
+    // Ir ao servidor aqui atrasaria o que já está resolvido na frente do
+    // operador — e é esse caminho que a seta + Enter usa.
+    const temEscolhaNaTela = (products.value?.length ?? 0) > 0 && highlightedIndex.value >= 0;
 
-// Enter no teclado: seleciona e já adiciona com qtde 1 (sem campo de quantidade)
-function handleKeydown(e: KeyboardEvent) {
-  const wasSearching = isSearching.value;
-  composableKeydown(e);
-  if (e.key === 'Enter' && wasSearching) {
-    nextTick(() => {
-      if (canAddItem.value && selectedProduct.value) {
-        tryAutoAdd(props.saleId, selectedProduct.value.id, selectedProduct.value.nome, selectedProduct.value.estoque);
+    // Resolver por código EXATO é seguro para qualquer texto: `impressora` não
+    // bate literalmente com nenhum `codigo_barras` nem `sku`. Antes esta porta
+    // só abria para código só-de-dígitos, e um código alfanumérico bipado caía
+    // no caminho de quem digita: o Enter do leitor chegava antes da busca sair e
+    // morria, obrigando um segundo Enter. Mesmo gesto, dois comportamentos, e
+    // nada na tela explicando — o operador conclui que "o leitor às vezes falha".
+    if (termo && (pareceBipada || !temEscolhaNaTela)) {
+      e.preventDefault();
+      if (bipando.value) return;
+
+      bipando.value = true;
+      let resultado;
+      try {
+        resultado = await tentarAdicionarProduto({ saleId: props.saleId, termo });
+      } finally {
+        bipando.value = false;
       }
-    });
+
+      // O toast de "não achei" continua sendo só do ramo numérico, onde a
+      // intenção de bipar é inequívoca. Quem digitou um pedaço do nome e apertou
+      // Enter cedo demais não errou nada — ali a LISTA é a resposta, e um aviso
+      // de erro por cima dela seria mentira. Falha de rede e recusa de estoque
+      // falam sempre, nos dois ramos.
+      const silenciar =
+        !pareceBipada && (resultado.tipo === 'not_found' || resultado.tipo === 'ambiguous');
+      if (!silenciar) avisarResultado(resultado);
+
+      // Sem certeza sobre o código: a lista assume, e assume AGORA.
+      if (resultado.tipo === 'not_found' || resultado.tipo === 'ambiguous') {
+        aplicarBuscaAgora();
+      }
+      return;
+    }
+  }
+
+  const escolhido = navegarNaLista(e);
+  if (escolhido) {
+    avisarResultado(await tentarAdicionarProduto({ saleId: props.saleId, produto: escolhido }));
   }
 }
 </script>
 
 <template>
   <AvisoEstoqueNegativoModal
-    :is-open="avisoEstoqueOpen"
-    :nome-produto="pendingAutoAdd?.nome ?? ''"
-    :estoque-atual="pendingAutoAdd?.estoqueAtual ?? 0"
-    :quantidade-desejada="pendingAutoAdd?.qtdDesejada ?? 1"
-    @confirmar="confirmarAutoAdd"
-    @cancelar="avisoEstoqueOpen = false; pendingAutoAdd = null"
+    :is-open="avisoEstoqueAberto"
+    :nome-produto="avisoEstoqueDados?.nome ?? ''"
+    :estoque-atual="avisoEstoqueDados?.estoqueAtual ?? 0"
+    :quantidade-desejada="avisoEstoqueDados?.quantidadeDesejada ?? 1"
+    @confirmar="confirmarAvisoEstoque"
+    @cancelar="cancelarAvisoEstoque"
   />
   <div class="flex items-center gap-2 w-full">
     <!-- Campo de busca + dropdown -->
@@ -140,7 +208,7 @@ function handleKeydown(e: KeyboardEvent) {
               :highlighted="highlightedIndex === index"
               :data-product-index="index"
               @click="handleAutoAdd(product)"
-              @select-for-quantity="selectProduct(product.nome, product.id)"
+              @select-for-quantity="handleSelectForQuantity(product)"
             />
           </div>
         </div>

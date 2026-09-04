@@ -83,7 +83,16 @@ export function useUpdateEmpresaMutation() {
       authStore.revalidateUser()
     },
     onError: (error) => {
-      const message = (error.response?.data as any)?.detail || MESSAGES.error.save;
+      // Um 422 devolve `detail` como LISTA de {field, message}. O toast espera
+      // texto: recebendo o array cru, ele não mostra nada de útil e a falha volta
+      // a ser invisível. Reduz ao primeiro item.
+      const detail = (error.response?.data as any)?.detail;
+      const message =
+        (typeof detail === 'string'
+          ? detail
+          : Array.isArray(detail)
+            ? detail[0]?.message
+            : null) || MESSAGES.error.save;
       toast.error(message);
     },
   });

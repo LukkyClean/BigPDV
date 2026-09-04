@@ -14,6 +14,7 @@ const view = useOSFormView();
       :valor-desconto="view.displayValorDesconto.value"
       :valor-total="view.displayValorTotal.value"
       :valor-entrada="view.displayValorEntrada.value"
+      :forma-pagamento-entrada-id="view.displayFormaPagamentoEntradaId.value"
       :valor-acrescimo="view.displayValorAcrescimo.value"
       :is-locked="view.isStructureLocked.value"
       :is-finalizada="view.isFinalizada.value"
@@ -27,6 +28,7 @@ const view = useOSFormView();
       :data-finalizacao="view.currentOSData.value?.data_finalizacao"
       @update:valor-entrada="view.handleValorEntradaUpdate"
       @update:valor-entrega="view.handleValorEntregaUpdate"
+      @update:forma-pagamento-entrada-id="view.handleFormaPagamentoEntradaUpdate"
       @usar-credito="view.handleUsarCredito"
     />
 

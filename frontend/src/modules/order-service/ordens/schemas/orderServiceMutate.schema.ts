@@ -60,6 +60,7 @@ export const OrderServiceUpdateSchema = z.object({
   // Financeiro
   desconto: z.number().int().optional(),
   valor_entrada: z.number().int().optional(),
+  forma_pagamento_entrada_id: z.number().int().positive().optional(),
   taxa_entrega: z.number().int().min(0).optional(),
 
   // Relações

@@ -37,6 +37,27 @@ export function useOSObjetoHistory({
   const wasObjetoSelectShown = ref(false);
   const lastShownClientId = ref<number | null>(null);
 
+  /**
+   * O formulário já veio com um objeto dentro.
+   *
+   * Olhava só `tipo_equipamento`, e isso deixava a pergunta escapar: quem chega
+   * aqui vindo da busca por placa / nº de série já escolheu o bem, mas aquele
+   * campo continua vazio de propósito (o valor guardado — "Veículo",
+   * "Equipamento" — não é opção de select em segmento nenhum, e campo fora do
+   * enum reprova no Zod calado). O identificador e a marca são o sinal honesto
+   * de "já escolhido"; o tipo é acessório.
+   *
+   * Vale para os dois caminhos que preenchem o objeto antes do form: a busca
+   * pelo identificador e a seleção no modal do fluxo.
+   */
+  function objetoJaEscolhido(): boolean {
+    return Boolean(
+      createObjetoTipo.value
+      || createObjetoNumeroSerie.value
+      || createObjetoMarca.value,
+    );
+  }
+
   async function fetchObjetosHistorico() {
     const clienteId = selectedCliente.value?.id ?? ordemServicoCliente.value?.id;
     if (!clienteId) {
@@ -53,7 +74,7 @@ export function useOSObjetoHistory({
         isCreateMode.value &&
         isFormOpen.value &&
         !temOSCarregada.value &&
-        !createObjetoTipo.value &&
+        !objetoJaEscolhido() &&
         !wasObjetoSelectShown.value
       ) {
         isObjetoSelectModalOpen.value = true;

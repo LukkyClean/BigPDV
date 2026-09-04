@@ -51,7 +51,7 @@ class OSItemBase(BaseModel):
     tipo: OrdemServicoItemTipo = Field(..., description="Tipo do item: PRODUTO ou SERVICO")
     nome: str = Field(..., max_length=255, min_length=3, description="Descrição do item")
     unidade_medida: UnidadeMedida = Field(..., description="Unidade de medida")
-    quantidade: int = Field(..., gt=0, description="Quantidade")
+    quantidade: float = Field(..., gt=0, description="Quantidade (fracionada para unidades de peso, ex: 2.5 kg)")
     valor_unitario: int = Field(
         ...,
         ge=0,
@@ -125,7 +125,7 @@ class OSItemUpdate(BaseModel):
     """Payload para atualização parcial de um item de OS. Todos os campos são opcionais."""
     nome: Optional[str] = Field(None, max_length=255, min_length=3, description="Nova descrição")
     unidade_medida: Optional[UnidadeMedida] = Field(None, description="Nova unidade de medida")
-    quantidade: Optional[int] = Field(None, gt=0, description="Nova quantidade")
+    quantidade: Optional[float] = Field(None, gt=0, description="Nova quantidade (fracionada para unidades de peso)")
     valor_unitario: Optional[int] = Field(None, ge=0, description="Novo valor unitário em centavos")
     status_aprovacao: Optional[OrdemServicoItemAprovacao] = Field(None, description="Novo status de aprovação do item")
     garantia_dias: Optional[int] = Field(None, ge=0, description="Nova garantia do item em dias")
@@ -183,15 +183,54 @@ class OSIdentificadorCheck(BaseModel):
 
 
 # ===========================================================================
+# BUSCA DE OBJETO POR IDENTIFICADOR (seletor de cliente da OS)
+# ===========================================================================
+
+class OSObjetoBuscaItem(BaseModel):
+    """
+    Objeto encontrado pela placa / nº de série / código da arte, com o dono
+    junto — é a linha que o seletor de cliente da OS mostra quando o atendente
+    digita o identificador em vez do nome.
+
+    Carrega os campos do objeto (não só o id) porque quem clica nesta linha já
+    disse qual é o bem: a OS abre com ele preenchido, sem passar pela tela de
+    "objeto já cadastrado?".
+    """
+    objeto_id: int = Field(..., description="ID do objeto encontrado")
+    cliente_id: int = Field(..., description="ID do cliente dono do objeto")
+    cliente_nome: Optional[str] = Field(None, description="Nome de exibição do dono")
+    tipo_equipamento: Optional[str] = Field(None, description="Tipo do objeto (livre por segmento)")
+    marca: Optional[str] = Field(None, description="Marca registrada no objeto")
+    modelo: Optional[str] = Field(None, description="Modelo registrado no objeto")
+    numero_serie: Optional[str] = Field(None, description="Identificador como foi gravado")
+    cor: Optional[str] = Field(None, description="Cor registrada no objeto")
+    dados_adicionais: Optional[dict] = Field(
+        default_factory=dict,
+        description="Campos dinâmicos do segmento (chassi, ano, IMEI...)"
+    )
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ===========================================================================
 # EQUIPAMENTO DA OS
 # ===========================================================================
 
 class OSObjetoCreate(BaseModel):
     """Payload para registrar um objeto de serviço ao abrir uma OS."""
     tipo_equipamento: Optional[TipoEquipamento] = Field(None, description="Tipo do equipamento (opcional - compatibilidade)")
-    marca: str = Field(..., max_length=100, description="Marca do objeto (ex: Fiat, Samsung)")
-    modelo: str = Field(..., max_length=100, description="Modelo do objeto (ex: Uno, S20)")
-    numero_serie: str = Field(..., max_length=100, description="Número de série ou identificador principal (ex: Placa, Serial)")
+    # marca/modelo tambem sao opcionais aqui pela MESMA razao de numero_serie:
+    # no segmento que gera identificador, o formulario pergunta so o nome da
+    # arte, e o servico preenche o resto. Continuam exigidos para os demais --
+    # ver _exigir_campos_do_objeto em services/ordem_servico.py.
+    marca: Optional[str] = Field(None, max_length=100, description="Marca do objeto (ex: Fiat, Samsung)")
+    modelo: Optional[str] = Field(None, max_length=100, description="Modelo do objeto (ex: Uno, S20)")
+    # Opcional no schema porque ha segmento em que o SISTEMA gera o
+    # identificador (serigrafia: "ART-0042"), e o formulario nem pergunta.
+    # Para quem NAO gera, a exigencia continua existindo -- ela so mudou de
+    # lugar, para o servico, que sabe qual e o segmento. Ver
+    # _preencher_identificador_gerado em services/ordem_servico.py.
+    numero_serie: Optional[str] = Field(None, max_length=100, description="Número de série ou identificador principal (ex: Placa, Serial). Gerado pelo sistema em segmentos que o declaram.")
     imei: Optional[str] = Field(None, max_length=20, description="IMEI (opcional - compatibilidade)")
     cor: Optional[str] = Field(None, max_length=50, description="Cor do objeto")
     proxima_revisao_data: Optional[date] = Field(None, description="Data agendada da próxima revisão (oficina)")
@@ -332,6 +371,7 @@ class OrdemServicoBase(BaseModel):
     # Financeiro
     desconto: Optional[int] = Field(None, ge=0, description="Desconto aplicado em centavos")
     valor_entrada: Optional[int] = Field(None, ge=0, description="Valor de entrada/adiantamento em centavos")
+    forma_pagamento_entrada_id: Optional[int] = Field(None, description="Forma de pagamento usada no adiantamento")
     taxa_entrega: Optional[int] = Field(None, ge=0, description="Taxa de entrega/frete em centavos")
     acrescimo: Optional[int] = Field(None, ge=0, description="Acréscimo de juros/cartão em centavos")
 
@@ -395,6 +435,7 @@ class OrdemServicoUpdate(BaseModel):
     # Financeiro e datas
     desconto: Optional[int] = Field(None, ge=0, description="Novo desconto em centavos (recalcula valor_total automaticamente)")
     valor_entrada: Optional[int] = Field(None, ge=0, description="Novo valor de entrada/adiantamento em centavos")
+    forma_pagamento_entrada_id: Optional[int] = Field(None, description="Nova forma de pagamento do adiantamento")
     garantia: Optional[str] = Field(None, max_length=20, description="Nova garantia")
     data_previsao: Optional[datetime] = Field(None, description="Nova data prevista")
     funcionario_id: Optional[int] = Field(None, description="ID do novo funcionário responsável")
@@ -435,6 +476,11 @@ class OrdemServicoRead(OrdemServicoBase):
     equipamento: Optional[OSEquipamentoRead] = Field(None, description="Equipamento em serviço (retrocompatibilidade)")
     itens: Sequence[OSItemRead] = Field(..., description="Itens e serviços da OS")
     pagamentos: Sequence[OSPagamentoRead] = Field(default=[], description="Pagamentos registrados (populado após finalização)")
+    # O adiantamento nao vive em `pagamentos` (ver models/ordem_servico.py), entao
+    # a forma dele vem por fora. None em OS aberta antes deste campo existir.
+    forma_pagamento_entrada: Optional[FormaPagamentoRead] = Field(
+        None, description="Forma de pagamento usada no adiantamento"
+    )
     fotos: Sequence[OSFotoRead] = Field(default=[], description="Fotos de diagnóstico da OS")
 
 

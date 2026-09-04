@@ -104,6 +104,65 @@ def test_criar_funcionario_completo(client: TestClient, header_with_token, funci
     assert len(data["endereco"]) == 1
     assert data["ativo"] is True
 
+def test_criar_funcionario_sem_acesso_ao_sistema(client: TestClient, header_with_token, funcionario_payload):
+    """Ficha de RH e credencial de acesso sao coisas diferentes.
+
+    Loja que so precisa registrar o entregador era obrigada a inventar um e-mail
+    e uma senha para alguem que nunca vai entrar — e essa credencial passava a
+    existir de verdade, com login funcionando.
+    """
+    payload = funcionario_payload()
+    payload.pop("usuario")
+
+    response = client.post(f"{PREFIX}/", json=payload, headers=header_with_token)
+
+    assert response.status_code == status.HTTP_201_CREATED, response.text
+    data = response.json()
+    assert data["nome"] == payload["nome"]
+    assert data["usuario"] is None
+    # A ficha vale por si: continua ativa e aparece na busca, entao pode ser
+    # escolhida como vendedor de uma venda e entrar no ranking e na comissao.
+    assert data["ativo"] is True
+    busca = client.get(f"{PREFIX}/?buscar={payload['cpf']}", headers=header_with_token)
+    assert len(busca.json()) == 1
+
+
+def test_varios_funcionarios_sem_acesso_convivem(client: TestClient, header_with_token, funcionario_payload):
+    """`usuario_id` e UNIQUE, e e por isso que este teste existe.
+
+    Em SQL varios NULL convivem numa coluna unica — mas isso e o tipo de detalhe
+    que alguem "corrige" trocando por um default, e a segunda ficha sem acesso
+    passaria a estourar conflito.
+    """
+    for _ in range(2):
+        payload = funcionario_payload()
+        payload.pop("usuario")
+        r = client.post(f"{PREFIX}/", json=payload, headers=header_with_token)
+        assert r.status_code == status.HTTP_201_CREATED, r.text
+
+
+def test_conceder_acesso_a_quem_foi_cadastrado_sem_login(client: TestClient, header_with_token, funcionario_payload):
+    """O caminho de volta: o entregador virou caixa.
+
+    Sem ele, "funcionario sem usuario" seria porta sem saida — a ficha teria que
+    ser apagada e refeita, e com ela iriam embora as vendas e a comissao que
+    apontam para o `funcionario_id`.
+    """
+    payload = funcionario_payload()
+    dados_de_acesso = payload.pop("usuario")
+    func_id = client.post(f"{PREFIX}/", json=payload, headers=header_with_token).json()["id"]
+
+    resposta = client.post(f"{PREFIX}/{func_id}/acesso", json=dados_de_acesso, headers=header_with_token)
+
+    assert resposta.status_code == status.HTTP_201_CREATED, resposta.text
+    assert resposta.json()["usuario"]["email"] == dados_de_acesso["email"]
+
+    # Segunda vez recusa: trocar credencial de quem ja trabalha e outro assunto,
+    # e esta porta sobrescreveria a senha sem ninguem pedir.
+    de_novo = client.post(f"{PREFIX}/{func_id}/acesso", json=dados_de_acesso, headers=header_with_token)
+    assert de_novo.status_code == status.HTTP_409_CONFLICT
+
+
 def test_buscar_funcionarios_com_filtro(client: TestClient, header_with_token, funcionario_payload):
     """Verifica a busca filtrada por CPF."""
     payload = funcionario_payload()
@@ -156,8 +215,14 @@ def test_erro_cpf_invalido_formato(client: TestClient, header_with_token, funcio
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
 def test_erro_campos_obrigatorios_faltando(client: TestClient, header_with_token):
-    """Testa envio de JSON incompleto."""
-    payload = {"nome": "Incompleto"} # Falta CPF, Usuario, etc.
+    """Testa envio de JSON incompleto.
+
+    O payload antigo era `{"nome": "Incompleto"}` — e ele DEIXOU de ser
+    incompleto: com o bloco `usuario` opcional, nome sozinho e um cadastro
+    valido de funcionario sem acesso ao sistema, que e justamente a feature.
+    O campo que segue obrigatorio e o `nome`, entao e ele que sai daqui.
+    """
+    payload = {"cpf": "12345678901"} # Falta o nome, que e o unico obrigatorio
     response = client.post(f"{PREFIX}/", json=payload, headers=header_with_token)
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 

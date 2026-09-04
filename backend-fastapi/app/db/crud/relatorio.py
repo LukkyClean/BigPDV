@@ -11,8 +11,8 @@
 from datetime import datetime
 from typing import Sequence
 
-from sqlalchemy.orm import Session
-from sqlalchemy import select, func, and_, or_
+from sqlalchemy.orm import Session, aliased
+from sqlalchemy import select, func, and_, or_, literal
 
 from app.db.models.venda import Venda
 from app.db.models.venda_pagamento import PagamentoVenda
@@ -24,6 +24,8 @@ from app.db.models.ordem_servico import OrdemServico as OSModel
 from app.db.models.ordem_servico_item import OrdemServicoItem
 from app.db.models.ordem_servico_pagamento import OrdemServicoPagamento
 from app.db.models.funcionario import Funcionario
+from app.db.models.objeto_servico import ObjetoServico
+from app.db.models.cliente import Cliente, ClientePF, ClientePJ
 from app.db.models.cargo import Cargo
 from app.core.enum import (
     VendaStatus,
@@ -31,6 +33,7 @@ from app.core.enum import (
     MovimentacaoOrigem,
     MovimentacaoTipo,
     OrdemServicoItemAprovacao,
+    OrdemServicoItemTipo,
 )
 
 
@@ -497,6 +500,71 @@ def get_os_finalizadas_periodo(
                 ),
             )
         )
+    )
+    return db.execute(stmt).all()
+
+
+def get_servicos_do_funcionario(
+    db: Session,
+    data_inicio: datetime,
+    data_fim: datetime,
+    empresa_id: int,
+    funcionario_id: int,
+) -> Sequence:
+    """Os SERVICOS executados por um funcionario nas OS finalizadas do periodo.
+
+    Uma linha por ITEM, nao por OS: a OS com tres servicos devolve tres linhas.
+    Quem conta OS distintas e o service, com um `set` -- somar linhas diria "3 OS"
+    e o numero nao bateria com o ranking, que e o primeiro lugar onde alguem vai
+    conferir este extrato.
+
+    ANCORA = `data_finalizacao`, como todo o resto do modulo: o que foi concluido
+    no periodo conta no periodo.
+
+    SO OS FINALIZADA. Servico em OS aberta ainda pode mudar ou sair, e extrato
+    com linha que some depois e pior que extrato incompleto.
+
+    ITEM REPROVADO FICA DE FORA -- ele nao foi executado, e ja nao entra no total
+    da OS. O criterio e `!= REPROVADO`, o mesmo que a consulta de CMV deste
+    arquivo usa: PENDENTE nao precisa ser tratado porque finalizar OS com item
+    pendente ja e barrado, entao numa OS finalizada ele nao existe.
+    """
+    client_pf = aliased(ClientePF)
+    client_pj = aliased(ClientePJ)
+
+    stmt = (
+        select(
+            OSModel.id.label("os_id"),
+            OSModel.numero_os,
+            OSModel.data_finalizacao,
+            ObjetoServico.marca,
+            ObjetoServico.modelo,
+            ObjetoServico.numero_serie,
+            func.coalesce(client_pf.nome, client_pj.razao_social).label("cliente_nome"),
+            OrdemServicoItem.nome.label("servico"),
+            OrdemServicoItem.quantidade,
+            OrdemServicoItem.valor_total,
+        )
+        .join(OrdemServicoItem, OrdemServicoItem.ordem_servico_id == OSModel.id)
+        .outerjoin(ObjetoServico, ObjetoServico.id == OSModel.objeto_id)
+        .outerjoin(Cliente, Cliente.id == ObjetoServico.cliente_id)
+        .outerjoin(client_pf, Cliente.id == client_pf.id)
+        .outerjoin(client_pj, Cliente.id == client_pj.id)
+        .join(Funcionario, Funcionario.id == OSModel.funcionario_id)
+        .where(
+            and_(
+                OSModel.status == OrdemServicoStatus.FINALIZADA,
+                OSModel.data_finalizacao.isnot(None),
+                OSModel.data_finalizacao >= data_inicio,
+                OSModel.data_finalizacao <= data_fim,
+                OSModel.funcionario_id == funcionario_id,
+                Funcionario.empresa_id == empresa_id,
+                OrdemServicoItem.tipo == OrdemServicoItemTipo.SERVICO,
+                OrdemServicoItem.status_aprovacao != OrdemServicoItemAprovacao.REPROVADO,
+            )
+        )
+        # O papel e lido de cima para baixo como uma linha do tempo do mes.
+        .order_by(OSModel.data_finalizacao.asc(), OSModel.numero_os.asc(), OrdemServicoItem.id.asc())
     )
     return db.execute(stmt).all()
 

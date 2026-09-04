@@ -451,6 +451,10 @@ def _tentar_conexao_remota(
         licenca.data_vencimento = resposta.dataVencimento
         licenca.limite = resposta.limite
         licenca.grace_period = resposta.gracePeriodDias
+        # Carencia: o servidor manda, a loja guarda. Guardar e o que permite
+        # honrar os dias de folga tambem quando a internet cair no meio deles.
+        licenca.em_carencia = resposta.emCarencia
+        licenca.data_limite_carencia = resposta.dataLimiteCarencia
 
         licenca_crud.update_licenca(db, licenca)
         db.commit()
@@ -463,8 +467,27 @@ def _tentar_conexao_remota(
         vencimento = licenca.data_vencimento
         if vencimento.tzinfo is None:
             vencimento = vencimento.replace(tzinfo=timezone.utc)
-        dias_restantes = (vencimento - datetime.now(timezone.utc)).days
-        return {"status": "online_valid", "dias_restantes": dias_restantes}
+        agora_online = datetime.now(timezone.utc)
+        em_carencia = _carencia_vigente(licenca, agora_online)
+
+        # Em carencia o vencimento ja passou: o numero util para a tela e
+        # quanto falta da folga, nao um negativo do plano.
+        if em_carencia:
+            limite = licenca.data_limite_carencia
+            if limite.tzinfo is None:
+                limite = limite.replace(tzinfo=timezone.utc)
+            dias_carencia = (limite - agora_online).days
+            dias_restantes = dias_carencia
+        else:
+            dias_carencia = None
+            dias_restantes = (vencimento - agora_online).days
+
+        return {
+            "status": "online_valid",
+            "dias_restantes": dias_restantes,
+            "em_carencia": em_carencia,
+            "dias_restantes_carencia": dias_carencia,
+        }
 
     # Erro 4xx do servidor (licença inválida/suspensa)
     if 400 <= response.status_code < 500:
@@ -478,6 +501,30 @@ def _tentar_conexao_remota(
 
     # Erro 5xx — tratar como offline (fallback)
     raise httpx.ConnectError(f"Servidor retornou status {response.status_code}")
+
+
+def _carencia_vigente(licenca, agora: datetime) -> bool:
+    """A licenca venceu, mas o pagamento ainda esta sendo re-tentado?
+
+    So vale com as DUAS coisas: a flag ligada e uma data limite no futuro.
+    Flag sozinha nao basta de proposito -- um servidor que mandasse
+    `emCarencia` e esquecesse a data daria uso ilimitado de graca, e o sintoma
+    seria o sistema funcionar, que ninguem reporta.
+
+    Nulos (instalacao que ainda nao sincronizou depois da atualizacao, ou
+    licenca no PIX) respondem False e o comportamento e o de sempre.
+    """
+    if not getattr(licenca, "em_carencia", None):
+        return False
+
+    limite = getattr(licenca, "data_limite_carencia", None)
+    if limite is None:
+        return False
+
+    if limite.tzinfo is None:
+        limite = limite.replace(tzinfo=timezone.utc)
+
+    return agora < limite
 
 
 def _validar_offline(
@@ -519,7 +566,10 @@ def _validar_offline(
     if data_vencimento.tzinfo is None:
         data_vencimento = data_vencimento.replace(tzinfo=timezone.utc)
 
-    if agora >= data_vencimento:
+    # A carencia afrouxa ESTE limite e so ele. Os dois seguintes -- validade
+    # offline e proxima validacao obrigatoria -- continuam valendo iguais, senao
+    # a carencia viraria uma porta para rodar desconectado o tempo que quisesse.
+    if agora >= data_vencimento and not _carencia_vigente(licenca, agora):
         raise _erro_licenca(
             "LICENCA_EXPIRADA",
             "Sua licença expirou. Entre em contato com o suporte para renovação.",
@@ -550,7 +600,17 @@ def _validar_offline(
         )
 
     # 5. Calcular dias restantes
-    dias_ate_vencimento = (data_vencimento - agora).days
+    # Em carencia o vencimento ja passou, entao `dias_ate_vencimento` e
+    # NEGATIVO -- e a tela mostraria "-3 dias restantes". Nesse estado quem
+    # conta e o prazo da carencia, que e o que de fato resta.
+    if _carencia_vigente(licenca, agora):
+        limite_carencia = licenca.data_limite_carencia
+        if limite_carencia.tzinfo is None:
+            limite_carencia = limite_carencia.replace(tzinfo=timezone.utc)
+        dias_ate_vencimento = (limite_carencia - agora).days
+    else:
+        dias_ate_vencimento = (data_vencimento - agora).days
+
     dias_ate_grace = licenca.grace_period - dias_offline
     dias_ate_validacao = (proxima_validacao - agora).days
     dias_restantes = min(dias_ate_vencimento, dias_ate_grace, dias_ate_validacao)
@@ -558,7 +618,13 @@ def _validar_offline(
     logger.info(
         "[licenca] Validação offline aceita. Dias restantes: %d", dias_restantes
     )
-    return {"status": "offline_valid", "dias_restantes": dias_restantes}
+    em_carencia = _carencia_vigente(licenca, agora)
+    return {
+        "status": "offline_valid",
+        "dias_restantes": dias_restantes,
+        "em_carencia": em_carencia,
+        "dias_restantes_carencia": dias_ate_vencimento if em_carencia else None,
+    }
 
 
 def verificar_licenca_ativa(db: Session) -> dict:
@@ -578,6 +644,23 @@ def verificar_licenca_ativa(db: Session) -> dict:
     Raises:
         HTTPException 403: Com código estruturado em caso de falha.
     """
+    # 0. Simulacao de licenca vencida (DESENVOLVIMENTO)
+    #
+    # A tela de "somente renovacao" so aparece com a licenca vencida -- e uma
+    # licenca de verdade nao vence na hora que se quer testar. Sem isto, aquela
+    # tela estrearia em producao, na frente do cliente que menos pode receber
+    # surpresa: o que acabou de perder o acesso.
+    #
+    # So por variavel de ambiente, nunca por configuracao de loja. Nao ha
+    # caminho pelo qual uma instalacao real ligue isto sem alguem editar o
+    # ambiente do servico a mao.
+    if os.getenv("STARTBIG_LICENCA_EXPIRADA_SIMULADA", "").strip().lower() in {"1", "true", "sim"}:
+        logger.warning("[licenca] SIMULACAO de licenca vencida ligada por variavel de ambiente.")
+        raise _erro_licenca(
+            "LICENCA_EXPIRADA",
+            "Sua assinatura expirou (simulacao de desenvolvimento).",
+        )
+
     # 1. Obter HWID
     try:
         hwid = obter_hwid()

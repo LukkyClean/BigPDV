@@ -2,6 +2,7 @@ import gc
 import json
 import logging
 import os
+import sqlite3
 import time
 import zipfile
 from datetime import datetime
@@ -229,6 +230,109 @@ def confirm_restore(cycle: str, pre_restore_backup_path: str) -> ConfirmRestoreR
     )
 
 
+# ---------------------------------------------------------------------------
+# PRESERVACAO DA LICENCA
+#
+# INVARIANTE: a licenca NUNCA viaja dentro de um restore.
+#
+# `configuracoes_licenca.chave_ativacao` e gravada cifrada em AES-256-GCM com
+# uma chave derivada do HWID da maquina (services/licenca.py: _derivar_chave).
+# No boot, verificar_licenca_ativa decifra esse campo com o HWID LOCAL e, se
+# falhar, levanta CLONAGEM_DETECTADA — ANTES de consultar a nuvem, que nem
+# chega a ser chamada.
+#
+# Como o restore troca o ARQUIVO inteiro do banco, a linha de licenca do backup
+# entraria junto. Restaurar na mesma maquina funcionaria (mesmo HWID), mas
+# restaurar num servidor novo — o unico caso em que backup em nuvem existe para
+# salvar alguem — deixaria o cliente bloqueado, acusado de ter copiado o banco.
+#
+# A licenca do cliente e UMA so e vive na nuvem; o que muda entre maquinas e
+# apenas como ela fica cifrada no disco. Entao a linha local (gravada pelo
+# login/reconnect com o HWID desta maquina) e sempre a correta, e a do backup
+# e sempre descartavel.
+# ---------------------------------------------------------------------------
+
+LICENSE_TABLE = "configuracoes_licenca"
+
+
+def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
+    row = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,)
+    ).fetchone()
+    return row is not None
+
+
+def _table_columns(conn: sqlite3.Connection, table: str) -> list[str]:
+    # PRAGMA nao aceita parametro vinculado; `table` e constante do modulo.
+    return [row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()]
+
+
+def _preserve_local_license(staged_db_path: str) -> str:
+    """
+    Reescreve a licenca do banco EM STAGING com a licenca da maquina atual.
+
+    Roda antes do swap: se algo falhar aqui, producao ainda nao foi tocada e a
+    restauracao inteira e abortada com o banco antigo intacto.
+
+    Se a maquina atual nao tiver licenca, a do backup e apenas REMOVIDA — o
+    sistema cai em LICENCA_NAO_ENCONTRADA e pede o login normalmente, em vez de
+    subir bloqueado por CLONAGEM_DETECTADA.
+
+    As colunas sao lidas via PRAGMA e cruzadas entre os dois bancos: um backup
+    antigo pode ter sido feito antes de uma migracao que mexeu nesta tabela.
+
+    Returns:
+        str: descricao do que foi feito, para o log do boot.
+    """
+    local_rows: list[tuple] = []
+    local_columns: list[str] = []
+
+    if os.path.exists(database_path):
+        conn = sqlite3.connect(database_path)
+        try:
+            if _table_exists(conn, LICENSE_TABLE):
+                local_columns = _table_columns(conn, LICENSE_TABLE)
+                local_rows = conn.execute(f"SELECT * FROM {LICENSE_TABLE}").fetchall()
+        finally:
+            conn.close()
+
+    conn = sqlite3.connect(staged_db_path)
+    try:
+        if not _table_exists(conn, LICENSE_TABLE):
+            # Backup anterior a existencia da tabela: as migracoes a criam
+            # vazia logo depois, no proprio boot. Nada a preservar.
+            return "banco restaurado nao tem a tabela de licenca"
+
+        staged_columns = _table_columns(conn, LICENSE_TABLE)
+
+        # A licenca do backup sai SEMPRE, mesmo que nao haja local para repor.
+        conn.execute(f"DELETE FROM {LICENSE_TABLE}")
+
+        if not local_rows:
+            conn.commit()
+            return "sem licenca local; a licenca do backup foi descartada"
+
+        shared = [c for c in local_columns if c in staged_columns]
+        if not shared:
+            raise BackupError(
+                "Tabela de licenca do backup e incompativel com a local "
+                "(nenhuma coluna em comum); restauracao abortada."
+            )
+
+        position = {name: i for i, name in enumerate(local_columns)}
+        sql = (
+            f"INSERT INTO {LICENSE_TABLE} ({', '.join(shared)}) "
+            f"VALUES ({', '.join('?' * len(shared))})"
+        )
+        for row in local_rows:
+            conn.execute(sql, [row[position[name]] for name in shared])
+
+        conn.commit()
+        return f"licenca local preservada ({len(local_rows)} registro(s))"
+    finally:
+        conn.close()
+
+
 def apply_pending_restore() -> Optional[dict]:
     if not os.path.exists(MARKER_RESTORE_PATH):
         return None
@@ -265,6 +369,23 @@ def apply_pending_restore() -> Optional[dict]:
 
     staged_db = os.path.join(staging_dir, DB_NAME)
     staged_static = os.path.join(staging_dir, STATIC_DIR_NO_ZIP)
+
+    # A licenca do backup e substituida pela desta maquina AINDA no staging.
+    # Feito antes dos swaps de proposito: se falhar, producao continua intacta
+    # e o boot segue com o banco antigo em vez de subir bloqueado.
+    license_status = "sem banco em staging"
+    if os.path.exists(staged_db):
+        try:
+            license_status = _preserve_local_license(staged_db)
+        except (BackupError, sqlite3.Error) as e:
+            try:
+                os.remove(MARKER_RESTORE_PATH)
+            except OSError:
+                pass
+            raise BackupError(
+                f"Falha ao preservar a licenca desta maquina; restauracao abortada "
+                f"(banco atual preservado): {e}"
+            )
 
     # Intervenção profunda no SQLAlchemy e SQLite
     try:
@@ -308,4 +429,5 @@ def apply_pending_restore() -> Optional[dict]:
         "restored_cycle": cycle,
         "old_db": old_db if os.path.exists(old_db) else None,
         "old_static": old_static if os.path.isdir(old_static) else None,
+        "license": license_status,
     }

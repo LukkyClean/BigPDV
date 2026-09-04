@@ -40,7 +40,7 @@ async function carregarCiclos() {
   isCarregandoCiclos.value = true
   try {
     ciclos.value = await listarCiclosNuvem()
-  } catch (e) {
+  } catch (e: any) {
     toast.error('Erro ao buscar backups na nuvem', getErrorMessage(e))
     ciclos.value = []
   } finally {
@@ -75,7 +75,7 @@ async function iniciarRestauracao() {
       isProcessando.value = false
       return
     }
-  } catch (e) {
+  } catch (e: any) {
     toast.error('Erro ao baixar backup da nuvem', getErrorMessage(e))
     voltarParaSelecao()
     isProcessando.value = false
@@ -87,7 +87,7 @@ async function iniciarRestauracao() {
   try {
     prepareResult.value = await prepararRestauracao(cicloSelecionado.value)
     etapa.value = 'decisao'
-  } catch (e) {
+  } catch (e: any) {
     toast.error('Erro ao preparar restauração', getErrorMessage(e))
     voltarParaSelecao()
   } finally {
@@ -109,7 +109,7 @@ async function confirmar() {
     } else {
       toast.error('Erro ao confirmar restauração', resultado.details ?? 'Tente novamente.')
     }
-  } catch (e) {
+  } catch (e: any) {
     toast.error('Erro ao confirmar restauração', getErrorMessage(e))
   } finally {
     isProcessando.value = false

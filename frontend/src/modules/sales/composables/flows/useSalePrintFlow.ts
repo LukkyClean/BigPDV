@@ -18,10 +18,11 @@ export function useSalePrintFlow() {
     printType,
     printFormat,
     isPrintSelectModalOpen,
+    openPrintSelect,
     printDirect,
     handlePrintFormatSelected: handlePrintFormatSelectedBase,
     closePrintSelectModal,
-  } = usePrintFlow<SalePrintType>();
+  } = usePrintFlow<SalePrintType>(() => 'venda_recibo');
 
   const saleForPrint = ref<SaleRead | null>(null);
   const { formasPagamento } = usePaymentMethodsQuery();
@@ -97,11 +98,30 @@ export function useSalePrintFlow() {
   }
 
   /**
+   * A gaveta abre pelo pulso ESC/POS, que normalmente viaja DENTRO do cupom.
+   * Quando o cupom não é impresso (formato A4, ou o caixa escolhe o formato no
+   * modal), o pulso precisa ir sozinho — senão trocar o formato do recibo, que
+   * é decisão de papel, apagaria em silêncio a abertura da gaveta, que é
+   * decisão de dinheiro. Falhar aqui não pode derrubar a venda já finalizada.
+   */
+  async function abrirGavetaAvulsa(sale: SaleRead) {
+    const config = impressaoStore.config;
+    const deveAbrir =
+      config.gaveta_ativa && config.abrir_gaveta_na_venda && vendaTemPagamentoDinheiro(sale);
+    if (!deveAbrir || !impressao.podeImprimirDireto.value) return;
+    try {
+      await impressao.abrirGaveta();
+    } catch (e) {
+      console.error('[Impressão] Falha ao abrir a gaveta:', e);
+    }
+  }
+
+  /**
    * Impressão pós-finalização da venda conforme a configuração local:
    * automático + cupom → ESC/POS silencioso na térmica;
    * automático + A4 → abre o diálogo do Windows direto com o recibo pronto;
    * perguntar → modal de formato; não imprimir → só executa o callback.
-   * Falha no ESC/POS cai no modal de formato.
+   * Falha no ESC/POS cai no A4.
    */
   async function imprimirAposFinalizar(sale: SaleRead, afterPrint?: () => void) {
     const config = impressaoStore.config;
@@ -111,8 +131,24 @@ export function useSalePrintFlow() {
       return;
     }
 
-    // Térmica configurada → cupom direto (abre a gaveta quando for pagamento em dinheiro).
-    if (impressao.podeImprimirDireto.value) {
+    const finalizar = () => {
+      saleForPrint.value = null;
+      afterPrint?.();
+    };
+
+    // 'perguntar' → o caixa decide o papel nesta venda. A gaveta vai à parte,
+    // porque o pulso não pode depender do formato que ele vai escolher.
+    if (config.auto_imprimir_venda === 'perguntar') {
+      await abrirGavetaAvulsa(sale);
+      saleForPrint.value = sale;
+      openPrintSelect('VENDA', finalizar);
+      return;
+    }
+
+    // Formato Cupom + térmica configurada → cupom direto (com o pulso da gaveta
+    // embutido). Com formato A4 este ramo é PULADO: ESC/POS são bytes de
+    // comando, e numa impressora comum saem como uma folha de pontinhos.
+    if (config.formato_venda === 'cupom' && impressao.podeImprimirDireto.value) {
       const logoRaster = await carregarLogoRaster(companyInfo.value.logo, DOTS[config.bobina]);
       const dados = saleToEscPos(sale, {
         bobina: config.bobina,
@@ -125,14 +161,14 @@ export function useSalePrintFlow() {
         afterPrint?.();
         return;
       }
+    } else {
+      // Nenhum cupom sairá: o pulso da gaveta não tem carona e vai sozinho.
+      await abrirGavetaAvulsa(sale);
     }
 
-    // Sem térmica (ou falha na impressão) → recibo A4 abrindo o diálogo do sistema.
+    // Formato A4, sem térmica, ou falha no ESC/POS → recibo A4 abrindo o diálogo.
     saleForPrint.value = sale;
-    printDirect('VENDA', 'A4', () => {
-      saleForPrint.value = null;
-      afterPrint?.();
-    });
+    printDirect('VENDA', 'A4', finalizar);
   }
 
   return {

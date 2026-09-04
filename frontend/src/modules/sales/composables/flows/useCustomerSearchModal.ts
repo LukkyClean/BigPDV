@@ -60,16 +60,11 @@ export function useCustomerSearchModal() {
     changeCallback = null
   }
 
-  function selectCustomer(customerId: number | null) {
-    if (modalMode.value === 'change' || modalMode.value === 'converter') {
-      changeCallback?.(customerId)
-      closeCustomerModal()
-      return
-    }
-
+  /** Cria a venda e abre o carrinho. Único lugar que dispara a criação. */
+  function abrirVendaNova(clienteId: number | null) {
     createSaleMutation.mutate(
       {
-        cliente_id: customerId,
+        cliente_id: clienteId,
         funcionario_id: authStore.userData?.funcionario_id as number,
       },
       {
@@ -79,6 +74,34 @@ export function useCustomerSearchModal() {
         },
       },
     )
+  }
+
+  function selectCustomer(customerId: number | null) {
+    if (modalMode.value === 'change' || modalMode.value === 'converter') {
+      changeCallback?.(customerId)
+      closeCustomerModal()
+      return
+    }
+
+    abrirVendaNova(customerId)
+  }
+
+  /**
+   * Abre a venda direto, sem passar pelo modal de cliente. É o começo de venda
+   * do Modo Balcão.
+   *
+   * Numa adega quase toda venda é sem cliente, e escolher "Venda sem cliente"
+   * antes de bipar o primeiro item é um passo repetido a cada atendimento, com
+   * a fila esperando. Aqui a venda nasce no produto.
+   *
+   * O caller é quem decide se pode chamar isto (ver `SalesView.vue`): loja que
+   * exige cliente identificado continua passando pelo modal, senão a venda
+   * nasceria só para ser recusada na finalização por `venda.py`.
+   *
+   * O cliente ainda pode ser posto depois, pelo `CustomerCard` dentro da venda.
+   */
+  function iniciarVendaSemCliente() {
+    abrirVendaNova(null)
   }
 
   function openCreateCustomerModal() {
@@ -111,5 +134,6 @@ export function useCustomerSearchModal() {
     closeCustomerModal,
     openCreateCustomerModal,
     selectCustomer,
+    iniciarVendaSemCliente,
   }
 }

@@ -18,6 +18,8 @@ from app.api.v1.endpoints import cargo
 from app.api.v1.endpoints import usuario
 from app.api.v1.endpoints import ordem_servico
 from app.api.v1.endpoints import forma_pagamento
+from app.api.v1.endpoints import sessao_caixa
+from app.api.v1.endpoints import terminal
 from app.api.v1.endpoints import venda
 from app.api.v1.endpoints import orcamento
 from app.api.v1.endpoints import dashboard
@@ -28,6 +30,7 @@ from app.api.v1.endpoints import comunicado
 from app.api.v1.endpoints import licenca
 from app.api.v1.endpoints import backup
 from app.api.v1.endpoints import checklist_mobile
+from app.api.v1.endpoints import backup
 from app.api.v1.endpoints import fiscal
 
 # Cria a instância principal do roteador para a V1
@@ -85,6 +88,16 @@ router.include_router(forma_pagamento.router, prefix="/formas-pagamento", tags=[
 # Contém sub-recursos: itens do carrinho e ações de status (cancelar, finalizar)
 router.include_router(venda.router, prefix="/vendas", tags=["Vendas"])
 
+# Turno de caixa (abrir, sangria, suprimento, fechar).
+# So responde quando a empresa liga `controlar_caixa`; sem isso o service
+# recusa toda operacao -- a rota existir nao muda nada para quem nao usa.
+router.include_router(sessao_caixa.router, prefix="/caixa", tags=["Caixa"])
+
+# Cadastro duravel das maquinas. Separado de /licenca (que cuida da PRESENCA
+# por HWID) porque sao dois tempos de vida: presenca some no logout, cadastro
+# fica.
+router.include_router(terminal.router, prefix="/terminais", tags=["Terminais"])
+
 # Inclui o roteador de orcamentos sob o prefixo /orcamentos
 router.include_router(orcamento.router, prefix="/orcamentos", tags=["Orcamentos"])
 
@@ -109,6 +122,9 @@ router.include_router(backup.router, prefix="/backup", tags=["Backup"])
 # Endpoints publicos autenticados por token HMAC + gerador de token via JWT
 router.include_router(checklist_mobile.router, prefix="/checklist", tags=["Checklist Mobile"])
 
+# Inclui o roteador de backup sob o prefixo /backup
+# Restauracao de cadeia vinda da nuvem — exclusivo do Master
+router.include_router(backup.router, prefix="/backup", tags=["Backup"])
 # Inclui o roteador do Centro Fiscal sob o prefixo /fiscal
 # Endpoints de documentos fiscais, resumo e pendências globais
 router.include_router(fiscal.router, prefix="/fiscal", tags=["Fiscal"])

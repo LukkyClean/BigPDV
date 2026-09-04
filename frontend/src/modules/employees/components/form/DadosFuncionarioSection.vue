@@ -54,6 +54,8 @@ const {
   mae,
   pai,
   carteira_trabalho,
+  sem_acesso,
+  funcionarioSemAcesso,
   usuario_nome,
   usuario_email,
   usuario_senha,
@@ -277,7 +279,43 @@ const selectedCargo = computed({
         <h3 class="text-lg font-semibold text-zinc-800">Dados de Acesso</h3>
       </div>
 
-      <div class="grid grid-cols-12 gap-4">
+      <!--
+        Nem todo funcionário usa o sistema. Entregador e ajudante precisam ter
+        ficha — para aparecer na venda, no ranking e na comissão —, mas não
+        precisam de login. Obrigar um cria uma credencial de verdade, com senha
+        que funciona, para alguém que nunca vai usá-la.
+      -->
+      <!--
+        Na edicao de quem foi cadastrado so com ficha, nao ha chavinha: o que ha
+        e o convite para dar acesso. Preencher e salvar cria o login.
+      -->
+      <div
+        v-if="funcionarioSemAcesso"
+        class="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3"
+      >
+        <p class="text-sm font-medium text-amber-800">Este funcionário não tem acesso ao sistema</p>
+        <p class="text-xs text-amber-700 mt-0.5">
+          Ele foi cadastrado só como ficha. Preencha os campos abaixo e salve para criar o login —
+          o histórico de vendas e comissão dele é preservado.
+        </p>
+      </div>
+
+      <label v-else class="flex items-start gap-3 mb-6 cursor-pointer select-none">
+        <input
+          v-model="sem_acesso"
+          type="checkbox"
+          class="mt-0.5 h-4 w-4 rounded border-zinc-300 text-brand-primary focus:ring-brand-primary/30 cursor-pointer"
+        />
+        <span>
+          <span class="block text-sm font-medium text-zinc-800">Este funcionário não usa o sistema</span>
+          <span class="block text-xs text-zinc-500">
+            Cadastra só a ficha, sem login. Ele continua aparecendo como vendedor, no ranking e na
+            comissão — e você pode dar acesso depois, quando precisar.
+          </span>
+        </span>
+      </label>
+
+      <div v-if="funcionarioSemAcesso || !sem_acesso" class="grid grid-cols-12 gap-4">
         <div class="col-span-12 md:col-span-4">
           <BaseInput
             v-model="usuario_nome"

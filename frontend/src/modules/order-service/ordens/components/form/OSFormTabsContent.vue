@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref, computed, watch, type Component } from 'vue';
-import { ClipboardCheck, ClipboardList, FileText, Package } from 'lucide-vue-next';
+import { ClipboardCheck, ClipboardList, Image as ImageIcon, Package, FileText } from 'lucide-vue-next';
 
 import OSObjetoTab from './OSObjetoTab.vue';
+import OSObjetoDinamicoTab from './OSObjetoDinamicoTab.vue';
 import OSVistoriaTab from './OSVistoriaTab.vue';
 import OSDiagnosticoTab from './OSDiagnosticoTab.vue';
 import OSServicesTab from './OSServicesTab.vue';
@@ -11,6 +12,7 @@ import type { ObjetoFormData } from '../../composables/modal/useOSFormAdapter';
 import { useOSFormView } from '../../context/useOSFormView.context';
 import { useObjetoLabels } from '@/modules/order-service/shared/segmento/useObjetoLabels';
 import { useCapacidades } from '@/modules/order-service/shared/segmento/useCapacidades';
+import { useTiposDeTrabalho } from '@/modules/order-service/shared/segmento/useTiposDeTrabalho';
 import { recursoDisponivel } from '@/shared/config/planos';
 
 type TabType = 'objeto' | 'vistoria' | 'diagnostico' | 'servicos' | 'fiscal';
@@ -19,7 +21,12 @@ const view = useOSFormView();
 
 // Rótulo e ícone da aba do objeto vêm do contrato (Veículo/Equipamento).
 const { labelSingular, objetoIcon } = useObjetoLabels();
-const { temVistoria } = useCapacidades();
+const { temVistoria, temDiagnostico, temImagemNaEntrada } = useCapacidades();
+
+// Qual aba de objeto usar. `temTipos` só é verdadeiro para segmento que declara
+// tipos de trabalho no registry — oficina e informática não declaram, então
+// continuam na tab curada, pelo mesmo caminho de sempre.
+const { temTipos } = useTiposDeTrabalho();
 const nfeDisponivel = recursoDisponivel('nfe');
 
 const activeTab = ref<TabType>('objeto');
@@ -39,7 +46,12 @@ const allTabs = computed<{ id: TabType; label: string; icon: Component }[]>(() =
     tabs.push({ id: 'vistoria', label: 'Vistoria', icon: ClipboardCheck });
   }
   tabs.push(
-    { id: 'diagnostico', label: 'Diagnóstico', icon: ClipboardList },
+    // Sem diagnóstico a aba não some: ela guarda a galeria de fotos, e em
+    // serigrafia a foto É a arte que o cliente aprova pelo celular. Muda só o
+    // nome, para não prometer laudo onde não há o que laudar.
+    temDiagnostico.value
+      ? { id: 'diagnostico', label: 'Diagnóstico', icon: ClipboardList }
+      : { id: 'diagnostico', label: 'Imagens', icon: ImageIcon },
     { id: 'servicos', label: 'Serviços e Peças', icon: Package },
   );
   if (nfeDisponivel && !view.isCreateMode.value) {
@@ -48,9 +60,21 @@ const allTabs = computed<{ id: TabType; label: string; icon: Component }[]>(() =
   return tabs;
 });
 
-const visibleTabs = computed(() =>
-  view.isCreateMode.value ? allTabs.value.filter((tab) => tab.id !== 'diagnostico') : allTabs.value,
-);
+/**
+ * Na criação a aba de imagens some — a foto de oficina/informática é prova do
+ * estado do bem e nasce depois, com o aparelho na bancada.
+ *
+ * Onde a imagem é o PEDIDO (serigrafia: a foto é a arte a estampar), ela precisa
+ * entrar já no primeiro cadastro. Quem decide é a capacidade do registry, não o
+ * nome do segmento — as fotos ficam pendentes em memória e sobem assim que a OS
+ * nasce (useOSPendingPhotos).
+ */
+const visibleTabs = computed(() => {
+  const escondeImagens = view.isCreateMode.value && !temImagemNaEntrada.value;
+  return escondeImagens
+    ? allTabs.value.filter((tab) => tab.id !== 'diagnostico')
+    : allTabs.value;
+});
 
 const objetoModel = computed<ObjetoFormData>({
   get: () => view.objetoFormData.value,
@@ -79,9 +103,25 @@ const objetoModel = computed<ObjetoFormData>({
     </div>
 
     <div class="min-h-125">
-      <fieldset v-if="activeTab !== 'diagnostico' && activeTab !== 'fiscal'" :disabled="view.isStructureLocked.value" class="contents">
+      <fieldset v-if="activeTab !== 'diagnostico'" :disabled="view.isStructureLocked.value" class="contents">
+        <OSObjetoDinamicoTab
+          v-if="activeTab === 'objeto' && temTipos"
+          v-model="objetoModel"
+          :objeto-dados="view.objetoDados.value"
+          :os-dados="view.osDados.value"
+          :errors="view.formErrors.value"
+          :is-locked="view.isStructureLocked.value"
+          :is-create-mode="view.isCreateMode.value"
+          :objetos-historico="view.objetosHistorico.value"
+          :selected-historico="view.selectedHistorico.value"
+          @update:objeto-dados="view.setObjetoDados"
+          @update:os-dados="view.setOsDados"
+          @update:selected-historico="view.setSelectedHistorico"
+          @apply-historico="view.applyObjetoHistorico"
+        />
+
         <OSObjetoTab
-          v-if="activeTab === 'objeto'"
+          v-else-if="activeTab === 'objeto'"
           v-model="objetoModel"
           :objeto-dados="view.objetoDados.value"
           :os-dados="view.osDados.value"

@@ -13,10 +13,11 @@ from alembic import command
 from alembic.config import Config
 from alembic.migration import MigrationContext
 from alembic.script import ScriptDirectory
-from sqlalchemy import inspect
-from sqlalchemy.exc import OperationalError
+from sqlalchemy import inspect, text
+from sqlalchemy.exc import OperationalError, SQLAlchemyError
 
 from app.core.config import settings
+from app.db.base import Base
 from app.db.session import engine
 
 logger = logging.getLogger(__name__)

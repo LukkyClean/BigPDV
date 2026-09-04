@@ -10,4 +10,8 @@ export const reportKeys = {
     [...reportKeys.all, 'estoque', inicio, fim] as const,
   osPerformance: (inicio: string, fim: string) =>
     [...reportKeys.all, 'os-performance', inicio, fim] as const,
+  // Pende do mesmo prefixo das irmãs: o funcionário entra na chave porque cada
+  // pessoa tem seu extrato, e trocar de pessoa não pode reaproveitar o cache.
+  extratoFuncionario: (funcionarioId: number, inicio: string, fim: string) =>
+    [...reportKeys.all, 'extrato-funcionario', funcionarioId, inicio, fim] as const,
 };

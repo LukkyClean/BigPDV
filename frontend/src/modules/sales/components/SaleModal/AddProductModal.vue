@@ -18,6 +18,8 @@ const props = defineProps<{
   saleId: number | null;
   isOrcamento?: boolean;
   currentItems?: ProductSaleRead[];
+  /** Termo com que a modal abre já buscando, vindo da busca rápida. */
+  termoInicial?: string;
 }>();
 
 const emit = defineEmits<{
@@ -27,13 +29,11 @@ const emit = defineEmits<{
 const currentItemsRef = computed(() => props.currentItems);
 const searchContainerRef = ref<HTMLElement | null>(null);
 
-const avisoEstoqueOpen = ref(false);
-const pendingSaleId = ref<number | null>(null);
-
 const {
   searchTerm,
   products,
   isLoading,
+  highlightedIndex,
   selectedProductId,
   selectedProductName,
   selectedProduct,
@@ -43,11 +43,17 @@ const {
   desconto,
   totalItem,
   handleInputChange,
+  handleKeydown: navegarNaLista,
   selectProduct,
   increaseQuantity,
   decreaseQuantity,
-  addItemToSale,
   resetSelection,
+  tentarAdicionarProduto,
+  avisarResultado,
+  avisoEstoqueAberto,
+  avisoEstoqueDados,
+  confirmarAvisoEstoque,
+  cancelarAvisoEstoque,
 } = useProductSearch(props.isOrcamento, currentItemsRef, searchContainerRef);
 
 watch(
@@ -55,14 +61,113 @@ watch(
   (open) => {
     if (!open) {
       resetSelection();
-    } else {
-      nextTick(() => {
-        const input = searchContainerRef.value?.querySelector('input');
-        input?.focus();
-      });
+      return;
     }
+    // Chegou pela ponte da busca rápida: já vem com o termo, não faz o
+    // operador digitar de novo.
+    if (props.termoInicial) searchTerm.value = props.termoInicial;
+    focarBusca();
   },
 );
+
+/**
+ * Põe o cursor na busca — e confere que ele ficou lá.
+ *
+ * O `BaseModal` abre dentro de um `<Transition>`, e o atalho que traz até aqui
+ * é uma tecla que o WebView2 também escuta. Entre uma coisa e outra, houve mais
+ * de um jeito de a tela abrir com o foco em lugar nenhum — e uma tela de busca
+ * sem cursor obriga a mão a sair do teclado, que é justamente o que este atalho
+ * existe para evitar.
+ *
+ * Por isso a segunda tentativa no quadro seguinte: barata, e cobre o caso em que
+ * o `nextTick` chegou antes de o elemento estar focável.
+ */
+function focarBusca() {
+  const tentar = () => {
+    const input = searchContainerRef.value?.querySelector('input');
+    if (!input) return false;
+    input.focus();
+    return document.activeElement === input;
+  };
+
+  nextTick(() => {
+    if (tentar()) return;
+    requestAnimationFrame(() => void tentar());
+  });
+}
+
+/**
+ * O teclado que esta tela nunca teve.
+ *
+ * Ela nasceu para o caso "3 unidades com desconto" e saiu só com mouse: sem
+ * seta, sem Enter. Quem abria aqui era obrigado a largar o teclado no meio da
+ * venda — e o atalho que traz até aqui (F3) não valeria nada se a tela do outro
+ * lado exigisse a mão no mouse.
+ *
+ * Enter na LISTA seleciona (e não adiciona): aqui a quantidade é o motivo de a
+ * tela existir, então pular direto para o carrinho passaria por cima dela. Com
+ * o produto já selecionado, Enter adiciona.
+ */
+async function handleSearchKeydown(e: KeyboardEvent) {
+  if (e.key === 'Enter' && selectedProductId.value) {
+    e.preventDefault();
+    await handleAdd();
+    return;
+  }
+
+  const escolhido = navegarNaLista(e);
+  if (escolhido) selectProduct(escolhido.nome, escolhido.id);
+}
+
+/**
+ * Do painel do item, o Tab vai direto para o "Adicionar ao Carrinho".
+ *
+ * Sozinho, o Tab andava pela ORDEM DO HTML: da quantidade ele caía no botão
+ * "+", e do desconto ainda passava por "Produto avulso" e "Fechar" antes de
+ * chegar no que o operador quer. Digitou a quantidade, a próxima ação é
+ * confirmar — o resto é caminho.
+ *
+ * Shift+Tab continua o de sempre, e é ele que mantém o desconto alcançável:
+ * voltando do botão, o campo anterior é justamente o desconto. Por isso aqui
+ * só o Tab para FRENTE é desviado.
+ *
+ * Se o botão estiver desabilitado (desconto maior que o total, por exemplo),
+ * o Tab segue o caminho normal — desviar o foco para um botão que não aceita
+ * seria devolver o operador ao mouse, que é o oposto do que isto faz.
+ */
+function avancarParaConfirmar(e: KeyboardEvent) {
+  if (e.key !== 'Tab' || e.shiftKey) return;
+
+  const btn = document.querySelector<HTMLButtonElement>('[data-adicionar-carrinho]');
+  if (!btn || btn.disabled) return;
+
+  e.preventDefault();
+  btn.focus();
+}
+
+/**
+ * O Tab do último botão volta para a busca, fechando o ciclo da tela.
+ *
+ * Sem isto o foco SAÍA da modal: o Tab seguia para a venda que está atrás e o
+ * marcador simplesmente sumia da vista. Quem estava adicionando três itens
+ * seguidos perdia o lugar e voltava ao mouse para achar a busca de novo.
+ *
+ * Com o ciclo fechado a tela inteira cabe num dedo: busca → quantidade →
+ * Adicionar → busca de novo, na ordem em que se adiciona item atrás de item.
+ *
+ * O "Fechar" só assume a volta quando o "Adicionar ao Carrinho" não está na
+ * tela (nenhum produto selecionado) — com ele visível, o Tab do Fechar segue
+ * para lá, que é o passo seguinte de verdade.
+ */
+function ciclarParaBusca(e: KeyboardEvent) {
+  if (e.key !== 'Tab' || e.shiftKey) return;
+
+  const confirmar = document.querySelector<HTMLButtonElement>('[data-adicionar-carrinho]');
+  if (confirmar && e.currentTarget !== confirmar) return;
+
+  e.preventDefault();
+  focarBusca();
+}
 
 function getEstoqueStatus(product: { estoque: number; quantidade_minima?: number | null }) {
   if (product.estoque <= 0) return 'sem_estoque';
@@ -70,35 +175,32 @@ function getEstoqueStatus(product: { estoque: number; quantidade_minima?: number
   return 'normal';
 }
 
-function handleProductClick(product: { nome: string; id: number; estoque: number }) {
-  if (product.estoque <= 0) return;
+// Selecionar não é adicionar: aqui a seleção só abre o painel de quantidade.
+// Produto zerado passa a poder ser selecionado — quem decide se ele entra no
+// carrinho é `tentarAdicionarProduto`, com a configuração da loja na mão.
+function handleProductClick(product: { nome: string; id: number }) {
   selectProduct(product.nome, product.id);
 }
 
-function handleAdd() {
-  if (!props.saleId) return;
+/**
+ * Adicionar ao carrinho — pela mesma porta do leitor e da busca rápida.
+ *
+ * A regra de estoque que morava aqui era uma segunda escrita da mesma decisão,
+ * e as duas já tinham deixado de ser idênticas. Agora esta função só junta o
+ * que a tela sabe (produto, quantidade, desconto) e entrega.
+ */
+async function handleAdd() {
+  const produto = products.value?.find((p) => p.id === selectedProductId.value) ?? selectedProduct.value;
+  if (!produto) return;
 
-  const produtoAtual = products.value?.find(p => p.id === selectedProductId.value) ?? selectedProduct.value;
-  const estoque = produtoAtual?.estoque;
-
-  if (estoque !== undefined && estoque !== null) {
-    const existingItem = props.currentItems?.find(i => i.produto_id === selectedProductId.value);
-    const qtdTotal = existingItem ? existingItem.quantidade + quantity.value : quantity.value;
-
-    if (qtdTotal > estoque) {
-      pendingSaleId.value = props.saleId;
-      avisoEstoqueOpen.value = true;
-      return;
-    }
-  }
-
-  addItemToSale(props.saleId, false);
-}
-
-function confirmarVendaNegativa() {
-  avisoEstoqueOpen.value = false;
-  addItemToSale(pendingSaleId.value, false);
-  pendingSaleId.value = null;
+  avisarResultado(
+    await tentarAdicionarProduto({
+      saleId: props.saleId,
+      produto,
+      quantidade: quantity.value,
+      desconto: desconto.value,
+    }),
+  );
 }
 
 // Saída para item fora do catálogo. Sem isto, este modal era beco sem saída:
@@ -124,6 +226,7 @@ function handleAddAvulso() {
         v-model="searchTerm"
         placeholder="Buscar por nome, código ou SKU..."
         @focusChange="handleInputChange"
+        @keydown="handleSearchKeydown"
       />
 
       <!-- Lista de produtos -->
@@ -175,15 +278,17 @@ function handleAddAvulso() {
 
         <!-- Linhas de produto -->
         <div
-          v-for="product in products"
+          v-for="(product, index) in products"
           :key="product.id"
+          :data-product-index="index"
           :class="[
-            'flex items-center gap-4 px-4 py-3 border-b border-zinc-100 last:border-b-0 transition-colors select-none',
-            product.estoque <= 0
-              ? 'opacity-50 cursor-not-allowed bg-zinc-50'
-              : selectedProductId === product.id
-              ? 'bg-brand-primary/5 cursor-pointer'
-              : 'hover:bg-zinc-50 cursor-pointer',
+            'flex items-center gap-4 px-4 py-3 border-b border-zinc-100 last:border-b-0 transition-colors select-none cursor-pointer',
+            selectedProductId === product.id
+              ? 'bg-brand-primary/5'
+              : highlightedIndex === index
+              ? 'bg-brand-primary/5 ring-1 ring-inset ring-brand-primary/40'
+              : 'hover:bg-zinc-50',
+            product.estoque <= 0 ? 'bg-zinc-50/70' : '',
           ]"
           @click="handleProductClick(product)"
         >
@@ -279,6 +384,7 @@ function handleAddAvulso() {
             <div class="flex items-center border border-zinc-200 rounded-lg overflow-hidden bg-white h-9">
               <button
                 type="button"
+                tabindex="-1"
                 :disabled="quantity <= 1"
                 class="w-8 h-full flex items-center justify-center text-zinc-400 hover:bg-zinc-100 disabled:opacity-30 transition-colors"
                 @click="decreaseQuantity"
@@ -289,10 +395,12 @@ function handleAddAvulso() {
                 v-model.number="quantity"
                 type="number"
                 min="1"
+                @keydown="avancarParaConfirmar"
                 class="flex-1 min-w-0 text-center text-sm font-bold text-zinc-800 bg-transparent outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               />
               <button
                 type="button"
+                tabindex="-1"
                 class="w-8 h-full flex items-center justify-center text-zinc-400 hover:bg-zinc-100 transition-colors"
                 @click="increaseQuantity"
               >
@@ -314,6 +422,7 @@ function handleAddAvulso() {
                 type="number"
                 min="0"
                 step="0.01"
+                @keydown="avancarParaConfirmar"
                 class="flex-1 min-w-0 text-sm text-zinc-700 bg-transparent outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               />
             </div>
@@ -352,11 +461,13 @@ function handleAddAvulso() {
           </p>
         </div>
 
-        <div class="flex justify-end gap-3"><BaseButton variant="secondary" class="px-5" @click="emit('close')">Fechar</BaseButton>
+        <div class="flex justify-end gap-3"><BaseButton variant="secondary" class="px-5" @keydown="ciclarParaBusca" @click="emit('close')">Fechar</BaseButton>
         <BaseButton
           v-if="selectedProductId"
           variant="primary"
+          data-adicionar-carrinho
           :is-loading="isAddingItem"
+          @keydown="ciclarParaBusca"
           :disabled="!canAddItem"
           class="gap-2"
           @click="handleAdd"
@@ -370,11 +481,11 @@ function handleAddAvulso() {
   </BaseModal>
 
   <AvisoEstoqueNegativoModal
-    :is-open="avisoEstoqueOpen"
-    :nome-produto="selectedProductName ?? ''"
-    :estoque-atual="selectedProduct?.estoque ?? 0"
-    :quantidade-desejada="quantity"
-    @confirmar="confirmarVendaNegativa()"
-    @cancelar="avisoEstoqueOpen = false"
+    :is-open="avisoEstoqueAberto"
+    :nome-produto="avisoEstoqueDados?.nome ?? ''"
+    :estoque-atual="avisoEstoqueDados?.estoqueAtual ?? 0"
+    :quantidade-desejada="avisoEstoqueDados?.quantidadeDesejada ?? 1"
+    @confirmar="confirmarAvisoEstoque"
+    @cancelar="cancelarAvisoEstoque"
   />
 </template>

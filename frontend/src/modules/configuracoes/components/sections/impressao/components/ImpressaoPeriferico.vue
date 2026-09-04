@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useOrdemServico } from '@/shared/composables/useOrdemServico';
 import { computed, onMounted, ref, watch } from 'vue'
 import { AlertTriangle, Printer, RefreshCw } from 'lucide-vue-next'
 import { storeToRefs } from 'pinia'
@@ -15,6 +16,8 @@ import {
 } from '@/shared/services/impressao.service'
 import type { ImpressoraInfo, ServidorDescoberto } from '@/shared/services/impressao.service'
 import type { ConfigImpressao } from '@/shared/stores/impressao.store'
+
+const { usaOrdemServico } = useOrdemServico();
 
 const impressaoStore = useImpressaoStore()
 const { config } = storeToRefs(impressaoStore)
@@ -393,7 +396,8 @@ function usarServidor(servidor: ServidorDescoberto) {
         </div>
       </div>
 
-      <div class="py-2 border-b border-zinc-100">
+      <!-- Loja sem OS nao tem documento de OS para imprimir. -->
+      <div v-if="usaOrdemServico" class="py-2 border-b border-zinc-100">
         <p class="text-sm font-medium text-zinc-800 mb-1.5">Ordens de Serviço</p>
         <div class="flex gap-2">
           <div class="flex-1">

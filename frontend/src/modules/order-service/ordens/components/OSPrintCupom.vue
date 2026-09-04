@@ -23,6 +23,7 @@ import { useObjetoLabels } from '@/modules/order-service/shared/segmento/useObje
 import { useTextosImpressaoOS } from '@/modules/order-service/shared/segmento/textosImpressaoOS';
 import { useAtributosImpressaoOS } from '@/modules/order-service/shared/segmento/useAtributosImpressaoOS';
 import { formatGarantiaItem } from '@/modules/order-service/shared/utils/formatters';
+import { useConfiguracoesStore } from '@/shared/stores/configuracoes.store';
 
 interface PrintCupomProps {
   orderService: OrderServiceReadDataType | null;
@@ -33,11 +34,19 @@ const props = defineProps<PrintCupomProps>();
 
 const { companyInfo } = useCompanyPrintInfo();
 const { labelSingular } = useObjetoLabels();
-const { textos, identificadorCupom } = useTextosImpressaoOS();
+// Termos variam com o tipo de trabalho: sacola não tem peça entregue pelo
+// cliente nem cláusula de lavagem.
+const { textos, identificadorCupom } = useTextosImpressaoOS(
+  () => (props.orderService?.dados_adicionais as Record<string, unknown> | undefined)
+    ?.tipo_trabalho as string | undefined,
+);
 const { atributos } = useAtributosImpressaoOS();
 
 /** Termos desta via — condensados e sem acento, como o resto do cupom. */
 const t = computed(() => textos.value.cupom);
+
+/** Prazo de abandono configurado pela loja (Configurações → Ordens de Serviço). */
+const configuracoesStore = useConfiguracoesStore();
 
 /** Atributos do segmento (oficina: Ano, Chassi, KM). Vazio em informática. */
 const atributosObjeto = computed(() =>
@@ -124,6 +133,10 @@ const temGarantiaPorItem = computed(() =>
 );
 
 const adiantamento = computed(() => props.orderService?.valor_entrada ?? 0);
+// Null em OS anterior a este campo: o cupom sai só com o valor, como antes.
+const formaEntradaNome = computed(
+  () => props.orderService?.forma_pagamento_entrada?.nome ?? null,
+);
 
 const adiantamentoUtilizado = computed(() => {
   const entrada = adiantamento.value;
@@ -265,6 +278,10 @@ const pix = computed(() =>
             <span>Recebido na entrada:</span>
             <span class="font-bold">{{ formatCurrency(adiantamento) }}</span>
           </div>
+          <div v-if="formaEntradaNome" class="flex justify-between">
+            <span>Forma:</span>
+            <span>{{ formaEntradaNome }}</span>
+          </div>
         </div>
       </template>
 
@@ -372,12 +389,12 @@ const pix = computed(() =>
       </div>
       <div class="separator">{{ SEPARATOR }}</div>
       <div class="section text-justify">
-        {{ t.prazoRetirada }}
+        {{ t.prazoRetirada(configuracoesStore.prazoAbandonoDias) }}
       </div>
     </template>
 
     <PrintCupomSignatures
-      left-label="Tecnico Responsavel"
+      :left-label="textos.cupom.assinaturaLoja"
       right-label="Assinatura do Cliente"
       :right-name="orderService.cliente ? getClienteNome(orderService.cliente) : undefined"
     />

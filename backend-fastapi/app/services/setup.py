@@ -120,11 +120,15 @@ def setup_sistema(db: Session, setup_data: SetupCreate) -> str:
         )
 
     # 3. Criar Empresa (is_pj já definido no passo 1.5)
+    # Em PF, quem assina a loja é a própria pessoa: o CPF e o nome do responsável
+    # SÃO o documento e a razão social da empresa. Deixá-los nulos aqui fazia o
+    # cadastro nascer sem documento — os cupons saíam sem a linha "CPF:" e a tela
+    # de empresa não deixava salvar nada até o campo ser preenchido à mão.
     empresa_to_db = EmpresaModel(
-        razao_social=setup_data.razao_social if is_pj else None,
+        razao_social=setup_data.razao_social if is_pj else setup_data.nome_responsavel,
         nome_fantasia=setup_data.nome_loja,
         is_cnpj=is_pj,
-        documento=setup_data.cnpj if is_pj else None,
+        documento=setup_data.cnpj if is_pj else setup_data.cpf,
         segmento=setup_data.segmento,
         celular=setup_data.celular,
         email=setup_data.email_loja,

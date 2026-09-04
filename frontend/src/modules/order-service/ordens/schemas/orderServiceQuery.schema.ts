@@ -13,6 +13,7 @@ import { EmployeeReadSchema } from './relationship/employee/employee.schema';
 import { OsObjetoReadSchema } from './relationship/osObjeto.schema';
 import { OsItemReadSchema } from './relationship/osItem.schema';
 import { OsPaymentReadSchema } from './relationship/osPayment.schema';
+import { PaymentFormReadSchema } from '@/shared/schemas/payments/payment.schema';
 import { OsImageReadSchema } from './relationship/osPhoto.schema';
 import { PaginationBaseSchema } from '@/shared/schemas/pagination/pagination.schema';
 
@@ -60,6 +61,10 @@ export const OrderServiceReadSchema = z.object({
   objeto: OsObjetoReadSchema,
   itens: z.array(OsItemReadSchema),
   pagamentos: z.array(OsPaymentReadSchema),
+  // O adiantamento não gera linha em `pagamentos` (a trava de finalização é
+  // soma(pagamentos) + valor_entrada), então a forma dele vem por fora.
+  // Nula em OS aberta antes deste campo existir.
+  forma_pagamento_entrada: PaymentFormReadSchema.optional().nullable(),
   fotos: z.array(OsImageReadSchema),
 }).passthrough();
 

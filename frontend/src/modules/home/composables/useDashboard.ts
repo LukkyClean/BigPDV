@@ -7,6 +7,8 @@ import { useOSVencendoQuery } from './queries/useOSVencendoQuery';
 import { useEstoqueBaixoQuery } from './queries/useEstoqueBaixoQuery';
 import { useUltimasVendasQuery } from './queries/useUltimasVendasQuery';
 
+import { useOrdemServico } from '@/shared/composables/useOrdemServico';
+
 import type { StatCardData, PeriodFilter } from '../types/dashboard.types';
 
 const PERIOD_LABELS: Record<PeriodFilter, string> = {
@@ -17,6 +19,7 @@ const PERIOD_LABELS: Record<PeriodFilter, string> = {
 
 export function useDashboard() {
   const activePeriod = ref<PeriodFilter>('hoje');
+  const { usaOrdemServico } = useOrdemServico();
 
   // Queries
   const statsQuery = useDashboardStatsQuery(activePeriod);
@@ -29,15 +32,28 @@ export function useDashboard() {
     const data = statsQuery.data.value;
     if (!data) return [];
 
-    return [
+    const cards: StatCardData[] = [
       {
         id: 'vendas-totais',
         icon: TrendingUp,
-        label: 'Vendas Totais',
-        value: formatCurrency(data.vendas_total),
-        change: formatVariacao(data.vendas_total_variacao),
-        isPositive: data.vendas_total_variacao >= 0,
-        isEmpty: data.vendas_total === 0,
+        // QUANTAS vendas, não quanto venderam.
+        //
+        // O valor ja aparece inteiro no numero-heroi de faturamento, logo
+        // abaixo, com a quebra "Vendas R$ X · Servicos R$ Y". Repetir o mesmo
+        // R$ aqui gastava um dos quatro cards do painel sem acrescentar nada —
+        // e a contagem e a informacao que faltava para o dono ler o movimento
+        // do dia (dez vendas de R$ 33 e um dia diferente de uma de R$ 330).
+        //
+        // Backend antigo nao manda `vendas_count`: nesse caso o card volta a
+        // mostrar o valor, em vez de afirmar "0 vendas".
+        label: data.vendas_count === undefined ? 'Vendas Totais' : 'Vendas Finalizadas',
+        value:
+          data.vendas_count === undefined
+            ? formatCurrency(data.vendas_total)
+            : String(data.vendas_count),
+        change: formatVariacao(data.vendas_count_variacao ?? data.vendas_total_variacao),
+        isPositive: (data.vendas_count_variacao ?? data.vendas_total_variacao) >= 0,
+        isEmpty: data.vendas_count === undefined ? data.vendas_total === 0 : data.vendas_count === 0,
         emptyLabel: 'Sem vendas',
       },
       {
@@ -73,6 +89,12 @@ export function useDashboard() {
         emptyLabel: 'Sem movimento',
       },
     ];
+
+    // Numa loja sem Ordem de Servico, "OS Finalizadas: 0" nao e informacao — e
+    // um lembrete diario de um modulo que ela nao tem. O padrao de
+    // `usaOrdemServico` e TRUE, entao para oficina, informatica e serigrafia o
+    // painel continua exatamente igual.
+    return usaOrdemServico.value ? cards : cards.filter((c) => c.id !== 'ordens-servico');
   });
 
   // Dados crus das metricas — usados pelo numero-heroi (Faturamento total).

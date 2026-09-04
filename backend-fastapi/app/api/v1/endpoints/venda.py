@@ -69,7 +69,11 @@ def criar_venda(
     return _handle_db_transaction(
         db,
         venda_service.create_sale,
-        payload
+        payload,
+        # Sem `operador_funcionario_id` aqui: abrir a venda deixou de consultar
+        # o turno de quem opera (ver `create_sale`). A distincao entre operador
+        # e vendedor continua importando -- mas so no momento do dinheiro, e la
+        # ela esta, em `finalizar_venda`.
     )
 
 
@@ -288,12 +292,51 @@ def finalizar_venda(
         venda_service.finish_sale,
         venda_id,
         payload.pagamentos,
-        payload.acrescimo or 0
+        payload.acrescimo or 0,
+        # Quem esta finalizando e quem esta NO CAIXA -- e nem sempre e o mesmo
+        # que `venda.funcionario_id`, que e o VENDEDOR (o que conta comissao).
+        # Numa loja onde um atende e outro recebe, o dinheiro cai no turno de
+        # quem recebeu. Opcional: sem controle de caixa ligado, e ignorado.
+        user_token.get("funcionario_id"),
     )
 
-# ===========================================================================
-# LEITURA (GET) — estáticas antes das dinâmicas
-# ===========================================================================
+@router.post(
+    "/{venda_id}/enviar-ao-caixa",
+    response_model=VendaRead,
+    summary="Entregar a venda ao caixa",
+    description=(
+        "Marca a venda como pronta para o caixa receber. O status NAO muda -- ela "
+        "continua ATIVA; o que muda e o carimbo que separa, na lista, a venda "
+        "pronta da que ainda esta sendo montada. Idempotente: reenviar mantem o "
+        "lugar original na fila."
+    ),
+)
+def enviar_ao_caixa(
+    user_token: dict = Depends(check_permission(required_permission=module_permission)),
+    *,
+    db: Session = Depends(get_db),
+    venda_id: int = Path(..., description="ID da venda"),
+):
+    return _handle_db_transaction(db, venda_service.enviar_ao_caixa, venda_id)
+
+
+@router.post(
+    "/{venda_id}/devolver-para-montagem",
+    response_model=VendaRead,
+    summary="Tirar a venda da fila do caixa",
+    description=(
+        "Devolve a venda para montagem. Qualquer operador pode: o atendente que "
+        "se arrependeu e o caixa que viu problema."
+    ),
+)
+def devolver_para_montagem(
+    user_token: dict = Depends(check_permission(required_permission=module_permission)),
+    *,
+    db: Session = Depends(get_db),
+    venda_id: int = Path(..., description="ID da venda"),
+):
+    return _handle_db_transaction(db, venda_service.devolver_para_montagem, venda_id)
+
 
 @router.get(
     "/",
@@ -311,7 +354,16 @@ def listar_vendas(
     page: int = Query(1, ge=1, description="Número da página para paginação"),
     filters: VendaSearchFilters = Depends()
 ):
-    if not is_visao_gerencial(user_token):
+    # A FILA DO CAIXA E COMPARTILHADA -- e a unica coisa que fura o recorte
+    # pessoal desta lista.
+    #
+    # Fora dela, quem nao tem visao gerencial ve so as proprias vendas. Isso
+    # continua igual: carrinho em montagem e assunto de quem esta montando.
+    #
+    # Mas entregar a venda ao caixa E o ato de compartilha-la. Sem esta excecao
+    # a funcionalidade nao existiria: o caixa e um funcionario comum, e a venda
+    # que o atendente acabou de entregar simplesmente nao apareceria para ele.
+    if not is_visao_gerencial(user_token) and filters.na_fila is not True:
         filters.funcionario_id = user_token.get("funcionario_id")
 
     sales_in_db, total_sales, total_pages, links = venda_service.get_sales(

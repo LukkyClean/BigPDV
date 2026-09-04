@@ -49,6 +49,7 @@ from app.services.segmentos import (
     get_segmento_atual,
 )
 from app.core import segmentos as reg
+from app.core.busca import compactar
 from app.services import movimentacao_estoque as mov_service
 
 from app.core.enum import (
@@ -96,6 +97,24 @@ os_fechada_exce = HTTPException(
     status_code=status.HTTP_409_CONFLICT,
     detail="Esta operação não é permitida para OS com status FINALIZADA ou CANCELADA"
 )
+
+
+def _assert_forma_pagamento_entrada(db: Session, fp_id: int | None) -> None:
+    """
+    Valida a forma de pagamento do adiantamento.
+
+    Mesma regra dos pagamentos da finalizacao (existir e estar ativa). A coluna
+    e um FK sem constraint no SQLite (ver a migration d3e4f5a6b7c8), entao um id
+    invalido passaria direto e so apareceria como forma vazia no resumo.
+
+    None e valido: adiantamento sem forma declarada e o estado de toda OS
+    anterior a este campo.
+    """
+    if fp_id is None:
+        return
+    forma_pagamento = fp_crud.get_forma_pagamento_by_id(db, fp_id=fp_id)
+    if not forma_pagamento or not forma_pagamento.ativo:
+        raise forma_pagamento_not_found_exce
 
 os_nao_pode_reabrir_exce = HTTPException(
     status_code=status.HTTP_409_CONFLICT,
@@ -199,6 +218,70 @@ def _recalcular_valor_total_os(os_in_db: OSModel) -> None:
 # CRIAÇÃO (CREATE)
 # ===========================================================================
 
+def _preencher_identificador_gerado(
+    db: Session,
+    objeto_data: dict,
+    numero_os: str,
+    cliente,
+) -> None:
+    """Preenche, para segmentos que declaram identificador GERADO, o que o
+    usuário não tem como saber.
+
+    Muda `objeto_data` no lugar. É no-op para oficina e informática, que pedem
+    o identificador ao usuário porque ele existe no mundo (placa, nº de série).
+
+    Preenche também `marca`/`modelo` quando vierem vazios: são colunas NOT NULL
+    herdadas do desenho de veículo/equipamento, e numa serigrafia a "marca" da
+    arte, no caso comum, é o próprio cliente que está pedindo. Exigir que ele
+    redigite o nome do cliente ali seria atrito sem informação nova.
+    """
+    segmento = get_segmento_atual(db)
+    if not reg.identificador_e_gerado(segmento):
+        return
+
+    if not (objeto_data.get("numero_serie") or "").strip():
+        objeto_data["numero_serie"] = reg.gerar_identificador(segmento, numero_os)
+
+    if not (objeto_data.get("marca") or "").strip():
+        objeto_data["marca"] = (getattr(cliente, "nome", None) or "").strip() or "—"
+
+    if not (objeto_data.get("modelo") or "").strip():
+        objeto_data["modelo"] = objeto_data["numero_serie"]
+
+
+def _exigir_campos_do_objeto(db: Session, objeto_data: dict) -> None:
+    """Repõe, no serviço, as exigências que saíram do schema.
+
+    `marca`, `modelo` e `numero_serie` viraram opcionais no schema para o
+    segmento que gera o próprio identificador e preenche o resto. Sem esta
+    guarda, informática e oficina — que contavam com o `Field(...)` obrigatório
+    — passariam a aceitar OS sem esses dados, e o objeto do cliente ficaria
+    inencontrável. São colunas NOT NULL, então o banco explodiria com um 500
+    feio em vez de um 422 explicando o que falta.
+
+    Esta função é o que protege os dois segmentos que já estão em produção.
+    Coberta por test/api/v1/test_os_identificador_gerado.py.
+    """
+    identificador = reg.get_identificador_segmento(get_segmento_atual(db)) or {}
+
+    faltando = [
+        rotulo
+        for campo, rotulo in (
+            ("marca", "Marca"),
+            ("modelo", "Modelo"),
+            ("numero_serie", identificador.get("label") or "Número de série"),
+        )
+        if not (objeto_data.get(campo) or "").strip()
+    ]
+    if not faltando:
+        return
+
+    raise HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        detail=f"{', '.join(faltando)}: obrigatório para abrir uma OS.",
+    )
+
+
 def create_ordem_servico(db: Session, os_to_create: OrdemServicoCreate) -> OSModel:
     """
     Cria uma nova OS com equipamento e itens em uma única transação.
@@ -221,7 +304,7 @@ def create_ordem_servico(db: Session, os_to_create: OrdemServicoCreate) -> OSMod
     itens_model = []
 
     for item in os_to_create.itens:
-        valor_item = item.quantidade * item.valor_unitario
+        valor_item = round(item.quantidade * item.valor_unitario)
         # Itens REPROVADO não entram no total (default APROVADO conta, como hoje).
         if _item_conta_no_total(item.status_aprovacao):
             valor_bruto_os += valor_item
@@ -263,6 +346,17 @@ def create_ordem_servico(db: Session, os_to_create: OrdemServicoCreate) -> OSMod
 
     objeto_data["dados_adicionais"] = obj_dados_adicionais
 
+    # --- Identificador gerado pelo sistema (ex: serigrafia) ---
+    # Placa e numero de serie existem no mundo: estao escritos no bem, e o
+    # atendente so copia. Codigo de arte nao existe ate alguem inventar -- e
+    # campo obrigatorio que o usuario nao tem como preencher vira lixo ("1",
+    # "teste"), que e como dois notebooks ja colapsaram num cadastro so.
+    #
+    # Aqui o codigo nasce do numero da OS, que ja e sequencial e unico: nao ha
+    # contador novo para manter nem corrida entre terminais para tratar.
+    _preencher_identificador_gerado(db, objeto_data, next_number, cliente_in_db)
+    _exigir_campos_do_objeto(db, objeto_data)
+
     # Validacao especifica de segmento (ex: placa para oficina). Gated: e no-op
     # para segmentos sem regra dedicada, entao o fluxo de informatica permanece intacto.
     validar_objeto_por_segmento(
@@ -301,6 +395,7 @@ def create_ordem_servico(db: Session, os_to_create: OrdemServicoCreate) -> OSMod
         equipamento_to_db = OSEquipamentoModel(**objeto_data, cliente=cliente_in_db)
 
     valor_entrada = os_to_create.valor_entrada or 0
+    _assert_forma_pagamento_entrada(db, os_to_create.forma_pagamento_entrada_id)
     if os_to_create.usar_credito_cliente and valor_entrada > 0:
         if (cliente_in_db.saldo_credito or 0) < valor_entrada:
             raise HTTPException(
@@ -460,6 +555,13 @@ def update_ordem_servico(db: Session, numero_os: str, data: OrdemServicoUpdate) 
     new_status = update_data.get("status")
     if new_status in (OrdemServicoStatus.FINALIZADA, OrdemServicoStatus.CANCELADA):
         raise status_invalido_exce
+
+    if "forma_pagamento_entrada_id" in update_data:
+        _assert_forma_pagamento_entrada(db, update_data["forma_pagamento_entrada_id"])
+
+    # Adiantamento zerado nao pode manter forma de pagamento pendurada.
+    if update_data.get("valor_entrada") == 0:
+        update_data["forma_pagamento_entrada_id"] = None
 
     # Valida novo funcionário se informado
     novo_funcionario_id = update_data.pop("funcionario_id", None)
@@ -693,6 +795,75 @@ def verificar_identificador_objeto(
     return resultado
 
 
+# Teto da lista devolvida ao seletor da OS. Busca por identificador que devolve
+# vinte linhas ja errou o alvo -- quem digita placa quer UM bem.
+BUSCA_OBJETO_LIMITE = 20
+
+# Piso de caracteres para BUSCAR -- proposital que seja MENOR que o
+# `IDENTIFICADOR_MIN_CARACTERES` (4) do registry.
+#
+# Os dois pisos respondem perguntas diferentes. La: "este texto identifica um
+# bem?", e errar custa dedup errado, entao 4 e sensato. Aqui: "vale ir ao banco
+# procurar?", e errar custa uma consulta que nao acha nada. Com 4, digitar as
+# tres primeiras letras da placa ("ABC") nao devolvia o carro -- que e
+# exatamente como se comeca a digitar uma placa.
+BUSCA_OBJETO_MIN_CARACTERES = 3
+
+
+def buscar_objetos_por_identificador(
+    db: Session,
+    termo: str,
+    limite: int = BUSCA_OBJETO_LIMITE,
+) -> list[dict]:
+    """
+    Objetos cujo identificador casa com o texto digitado, com o nome do dono
+    junto -- o que permite ao seletor da OS achar o cliente pela placa, pelo
+    numero de serie ou pelo codigo da arte, e nao so por nome/CPF.
+
+    NAO usa `identificador_pesquisavel` para aprovar o termo, e isso e
+    deliberado: aquela funcao cobra o regex do segmento, que na oficina e a
+    placa INTEIRA (`^...$`). Quem lembra so o final da placa e digita "1D23"
+    seria recusado justamente no segmento que mais precisa desta busca. Ali o
+    regex esta certo -- decide o que vale como CHAVE de dedup; aqui seria
+    errado, porque busca boa aceita pedaco.
+
+    Ficam os dois filtros que a busca de fato precisa:
+      - minimo de caracteres (ver BUSCA_OBJETO_MIN_CARACTERES), para "ab" nao
+        varrer a loja inteira;
+      - identificador generico, para "S/N" nao devolver todo mundo que nao
+        tinha o numero em maos (ver IDENTIFICADORES_GENERICOS no registry).
+    """
+    compacto = compactar(termo)
+
+    if len(compacto) < BUSCA_OBJETO_MIN_CARACTERES:
+        return []
+    if compacto in reg.IDENTIFICADORES_GENERICOS:
+        return []
+
+    encontrados: list[dict] = []
+    for objeto in os_crud.buscar_objetos_por_identificador(db, termo, limite):
+        nome_cliente, _ = _cliente_contato(objeto.cliente)
+        encontrados.append({
+            "objeto_id": objeto.id,
+            "cliente_id": objeto.cliente_id,
+            # Sai em cinza embaixo do objeto na lista. E o que distingue duas
+            # linhas iguais quando o bem foi VENDIDO e existe no nome de dois
+            # clientes -- o mesmo caso que o aviso de duplicidade ja trata.
+            "cliente_nome": nome_cliente,
+            "tipo_equipamento": str(objeto.tipo_equipamento),
+            "marca": objeto.marca,
+            "modelo": objeto.modelo,
+            "numero_serie": objeto.numero_serie,
+            "cor": objeto.cor,
+            # Vao para o formulario junto com o resto: e o que faz a OS abrir
+            # com chassi/ano/IMEI ja preenchidos, sem passar pela tela de
+            # "objeto ja cadastrado?".
+            "dados_adicionais": objeto.dados_adicionais or {},
+        })
+
+    return encontrados
+
+
 # ===========================================================================
 # ITENS (CREATE / UPDATE / DELETE)
 # ===========================================================================
@@ -707,7 +878,7 @@ def add_item_to_os(db: Session, numero_os: str, item_data: OSItemCreate) -> OSMo
     os_in_db = _get_os_or_raise(db, numero_os)
     _assert_os_editavel(os_in_db)
 
-    valor_item = item_data.quantidade * item_data.valor_unitario
+    valor_item = round(item_data.quantidade * item_data.valor_unitario)
     item_dict = item_data.model_dump(exclude={"item_id"}, exclude_unset=True)
 
     novo_item = OSItemModel(
@@ -745,7 +916,7 @@ def update_item_os(db: Session, numero_os: str, item_id: int, data: OSItemUpdate
 
     # Recalcula valor_total do item se quantidade ou valor_unitario mudarem
     if "quantidade" in update_data or "valor_unitario" in update_data:
-        item_in_db.valor_total = item_in_db.quantidade * item_in_db.valor_unitario
+        item_in_db.valor_total = round(item_in_db.quantidade * item_in_db.valor_unitario)
 
     # Visibilidade e valor precisam continuar coerentes DEPOIS do patch — os dois
     # campos podem vir em requisições separadas, e só aqui dá para ver o estado
@@ -870,6 +1041,10 @@ def finalizar_ordem_servico(
         os_in_db.desconto = (os_in_db.desconto or 0) + data.desconto
     if data.valor_entrada is not None:
         os_in_db.valor_entrada = data.valor_entrada
+        # Adiantamento zerado nao pode manter forma de pagamento pendurada:
+        # sobraria "pago em PIX" sem valor algum por tras.
+        if data.valor_entrada == 0:
+            os_in_db.forma_pagamento_entrada_id = None
     if data.taxa_entrega is not None:
         os_in_db.taxa_entrega = data.taxa_entrega
     if data.acrescimo is not None:
@@ -985,6 +1160,7 @@ def cancelar_ordem_servico(
 
     if data.zerar_adiantamento:
         os_in_db.valor_entrada = 0
+        os_in_db.forma_pagamento_entrada_id = None
     elif os_in_db.valor_entrada > 0:
         cliente = os_in_db.equipamento.cliente if os_in_db.equipamento else None
         if cliente:
@@ -1046,6 +1222,7 @@ def reabrir_ordem_servico(
         os_in_db.credito_anterior = None
 
     os_in_db.valor_entrada = 0
+    os_in_db.forma_pagamento_entrada_id = None
     os_in_db.status = OrdemServicoStatus.EM_ANDAMENTO
     os_in_db.data_finalizacao = None
 

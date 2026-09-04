@@ -27,7 +27,19 @@ const estoqueStatus = computed<EstoqueStatus>(() => {
   return 'normal';
 });
 
-const isDisabled = computed(() => estoqueStatus.value === 'sem_estoque');
+/**
+ * Sem estoque NÃO é o mesmo que indisponível.
+ *
+ * Esta linha decidia sozinha que produto zerado não se vende — e decidia
+ * diferente do leitor de código de barras, que abria o aviso e deixava o
+ * operador escolher, e diferente da empresa, que tem `permitir_venda_estoque_
+ * zerado` na configuração e não era consultada por ninguém aqui.
+ *
+ * Agora a linha só PINTA o estado. Quem decide se entra no carrinho é
+ * `tentarAdicionarProduto`, que lê a configuração da loja e usa o mesmo limiar
+ * do backend — um lugar só, para as três portas.
+ */
+const semEstoque = computed(() => estoqueStatus.value === 'sem_estoque');
 
 const estoqueClasses = computed(() => {
   switch (estoqueStatus.value) {
@@ -38,12 +50,10 @@ const estoqueClasses = computed(() => {
 });
 
 function handleClick() {
-  if (isDisabled.value) return;
   emit('click');
 }
 
 function handleSelectForQuantity() {
-  if (isDisabled.value) return;
   emit('selectForQuantity');
 }
 
@@ -56,11 +66,9 @@ const imgUrl = computed(() => {
 <template>
   <div
     :class="[
-      'py-2 px-6 border-b-2 flex justify-between group transition-colors',
-      isDisabled
-        ? 'bg-zinc-50 opacity-50 cursor-not-allowed'
-        : 'bg-white hover:bg-zinc-100 cursor-pointer',
-      highlighted && !isDisabled ? 'bg-brand-primary/5 border-2 border-brand-primary' : 'border-zinc-200',
+      'py-2 px-6 border-b-2 flex justify-between group transition-colors cursor-pointer',
+      semEstoque ? 'bg-zinc-50/80' : 'bg-white hover:bg-zinc-100',
+      highlighted ? 'bg-brand-primary/5 border-2 border-brand-primary' : 'border-zinc-200',
     ]"
     @click="handleClick"
   >
@@ -92,10 +100,8 @@ const imgUrl = computed(() => {
       </div>
       <button
         type="button"
-        :disabled="isDisabled"
-        class="p-2 rounded-lg text-zinc-400 hover:text-brand-primary hover:bg-brand-primary/10 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-        :class="isDisabled ? 'cursor-not-allowed' : 'cursor-pointer'"
-        title="Selecionar quantidade"
+        class="p-2 rounded-lg text-zinc-400 hover:text-brand-primary hover:bg-brand-primary/10 transition-colors cursor-pointer"
+        title="Escolher quantidade e desconto"
         @click.stop="handleSelectForQuantity"
       >
         <SlidersHorizontal :size="18" />

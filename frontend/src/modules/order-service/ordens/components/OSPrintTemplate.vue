@@ -6,9 +6,11 @@ import {
   CreditCard,
   Receipt,
   Banknote,
+  Image as ImageIcon,
 } from 'lucide-vue-next';
 import type { OrderServiceReadDataType } from '../schemas/orderServiceQuery.schema';
 import { formatCurrency } from '@/shared/utils/finance';
+import { usePerfilComprovante } from '@/shared/composables/usePerfilComprovante';
 import {
   useCompanyPrintInfo,
   getClienteNome,
@@ -21,6 +23,7 @@ import {
   formatPrintDoc,
   tipoObjetoRelevante,
   pixParaImpressao,
+  getImageUrl,
 } from '@/shared/utils/print.utils';
 
 import PixQrPrint from '@/shared/components/print/PixQrPrint.vue';
@@ -28,8 +31,11 @@ import PrintCompanyHeader from '@/shared/components/print/a4/PrintCompanyHeader.
 import PrintSignatures from '@/shared/components/print/a4/PrintSignatures.vue';
 import PrintFooter from '@/shared/components/print/a4/PrintFooter.vue';
 import { useObjetoLabels } from '@/modules/order-service/shared/segmento/useObjetoLabels';
-import { useTextosImpressaoOS } from '@/modules/order-service/shared/segmento/textosImpressaoOS';
+import { useTextosImpressaoOS, prazoPorExtenso } from '@/modules/order-service/shared/segmento/textosImpressaoOS';
+import { useConfiguracoesStore } from '@/shared/stores/configuracoes.store';
+import { useTiposDeTrabalho } from '@/modules/order-service/shared/segmento/useTiposDeTrabalho';
 import { useAtributosImpressaoOS } from '@/modules/order-service/shared/segmento/useAtributosImpressaoOS';
+import { useCapacidades } from '@/modules/order-service/shared/segmento/useCapacidades';
 import { formatGarantiaItem } from '@/modules/order-service/shared/utils/formatters';
 
 const props = defineProps<{
@@ -38,9 +44,96 @@ const props = defineProps<{
 }>();
 
 const { companyInfo } = useCompanyPrintInfo();
-const { labelSingular, objetoIcon } = useObjetoLabels();
-const { textos, identificadorA4 } = useTextosImpressaoOS();
+
+// Densidade do layout. O documento é passado porque entrada e entrega podem
+// querer apresentações diferentes (a Fase 4 do plano declara por documento).
+const { classeDensidade } = usePerfilComprovante(
+  props.type === 'ENTRADA' ? 'os_entrada' : 'os_entrega',
+);
+const { labelSingular, objetoIcon, labelDaColuna } = useObjetoLabels();
+const { tipoPorId } = useTiposDeTrabalho();
+// Gate das imagens na via: capacidade do registry, não nome de segmento.
+const { temImagemNaEntrada, temGarantiaPrazo } = useCapacidades();
+// Os termos mudam com o tipo de trabalho: a cláusula de "peças entregues pelo
+// cliente" é de camisa e não vale para sacola, que a loja produz do zero.
+const { textos, identificadorA4 } = useTextosImpressaoOS(
+  () => (props.ordemServico?.dados_adicionais as Record<string, unknown> | undefined)
+    ?.tipo_trabalho as string | undefined,
+);
 const { atributos } = useAtributosImpressaoOS();
+
+/**
+ * Prazo de abandono vindo de Configurações → Ordens de Serviço. Estava chumbado
+ * em "90 (noventa)" aqui: a loja mudava a configuração, o relatório de abandono
+ * obedecia e o papel entregue ao cliente continuava prometendo 90.
+ */
+const configuracoesStore = useConfiguracoesStore();
+const prazoAbandonoTexto = computed(() =>
+  prazoPorExtenso(configuracoesStore.prazoAbandonoDias),
+);
+
+/**
+ * A cláusula do Termo de Garantia sempre escreveu o prazo sem o por extenso
+ * ("90 dias", não "90 (noventa) dias"). Mantido como estava.
+ */
+const prazoAbandonoSimples = computed(
+  () => `${configuracoesStore.prazoAbandonoDias} dias`,
+);
+
+/**
+ * Imagens que saem na via de entrada, já com a URL absoluta do backend.
+ *
+ * Teto de 4: a via de entrada é uma folha só e precisa caber com os termos e as
+ * assinaturas. Quem anexou mais continua vendo tudo na galeria da OS.
+ */
+const MAX_FOTOS_IMPRESSAS = 4;
+
+const fotosImpressas = computed(() =>
+  (props.ordemServico?.fotos ?? [])
+    .slice(0, MAX_FOTOS_IMPRESSAS)
+    .map((foto) => ({ ...foto, src: getImageUrl(foto.url) ?? '' }))
+    .filter((foto) => foto.src !== ''),
+);
+
+/**
+ * Densidade do layout desta via.
+ *
+ * A via de entrada que LEVA ARTE é **sempre compacta**, por mais que a empresa
+ * tenha escolhido Normal. Não é preferência de forma: é a diferença entre a
+ * arte sair utilizável ou não. Medido nesta mesma via (foto de celular, folha
+ * A4, uma página): no Normal a via fecha em 291mm de 293mm disponíveis e a arte
+ * cabe em 34x45mm; no compacto a via cai para 286mm e a arte sobe para 90x120mm
+ * — sete vezes a área, na mesma folha única.
+ *
+ * O compacto não tira informação nenhuma (§4 do plano): encolhe moldura e
+ * espaçamento. Numa via cujo motivo de existir é a arte que o cliente aprovou e
+ * o estampador vai reproduzir, gastar esses milímetros com respiro é o mesmo
+ * que imprimir a via errada.
+ *
+ * Repare no `fotosImpressas.length`: a condição é a arte ESTAR NA VIA, não o
+ * segmento poder ter arte. Numa OS sem foto anexada o bloco nem é renderizado —
+ * não há o que espremer, e sobrescrever a escolha da empresa ali seria mudar o
+ * comprovante dela sem nada em troca.
+ */
+const classeImpressao = computed(() =>
+  props.type === 'ENTRADA' && temImagemNaEntrada.value && fotosImpressas.value.length
+    ? 'compacto'
+    : classeDensidade.value,
+);
+
+/**
+ * Divide a cláusula no prazo para manter o número em negrito, como as vias em
+ * produção sempre imprimiram. Determinístico: as duas pontas do corte são
+ * strings que nós mesmos montamos. Se o prazo não for encontrado (pacote
+ * reescrito sem ele), imprime a frase inteira sem negrito em vez de sumir.
+ */
+const prazoRetiradaPartes = computed(() => {
+  const prazo = prazoAbandonoTexto.value;
+  const frase = textos.value.prazoRetiradaEntradaA4(prazo);
+  const corte = frase.indexOf(prazo);
+  if (corte === -1) return { antes: frase, depois: '' };
+  return { antes: frase.slice(0, corte), depois: frase.slice(corte + prazo.length) };
+});
 
 /**
  * Atributos do segmento além das linhas fixas (oficina: Ano, Chassi, KM de
@@ -58,6 +151,24 @@ const atributosObjeto = computed(() =>
 const mostrarTipoObjeto = computed(() =>
   tipoObjetoRelevante(props.ordemServico?.objeto?.tipo_equipamento, labelSingular.value),
 );
+
+/**
+ * Linha em destaque sob o cabeçalho do quadro.
+ *
+ * Em segmento com tipos de trabalho, é o TIPO ("Camisa (pintura)", "Sacola de
+ * papel") — que é o que quem vai produzir precisa ler primeiro. Antes saía
+ * "Equipamento" ali, herdado do shim de compatibilidade: uma palavra que não
+ * diz nada numa OS de arte.
+ *
+ * Nos demais segmentos, continua sendo o `tipo_equipamento` de sempre.
+ */
+const subtituloObjeto = computed<string | null>(() => {
+  const tipo = tipoPorId(props.ordemServico?.dados_adicionais?.tipo_trabalho as string | undefined);
+  if (tipo) return tipo.label;
+  return mostrarTipoObjeto.value
+    ? (props.ordemServico?.objeto?.tipo_equipamento ?? null)
+    : null;
+});
 
 const situacao = computed(() => props.ordemServico?.situacao_equipamento ?? null);
 
@@ -134,6 +245,10 @@ const temGarantiaPorItem = computed(() =>
 );
 
 const adiantamento = computed(() => props.ordemServico?.valor_entrada ?? 0);
+// Null em OS anterior a este campo: a via sai só com o valor, como antes.
+const formaEntradaNome = computed(
+  () => props.ordemServico?.forma_pagamento_entrada?.nome ?? null,
+);
 
 const adiantamentoUtilizado = computed(() => {
   const entrada = adiantamento.value;
@@ -163,7 +278,11 @@ const pix = computed(() =>
 
 <template>
   <Teleport to="body">
-  <div v-if="ordemServico" class="print-container hidden print:block bg-white text-black font-sans leading-tight">
+  <div
+    v-if="ordemServico"
+    class="print-container hidden print:block bg-white text-black font-sans leading-tight"
+    :class="classeImpressao"
+  >
     <PrintCompanyHeader
       :company="companyInfo"
       document-label="Número da O.S."
@@ -197,22 +316,34 @@ const pix = computed(() =>
       <div class="border border-neutral-300 rounded-lg overflow-hidden">
         <div class="bg-neutral-100 px-3 py-1.5 border-b border-neutral-200 flex items-center gap-2">
           <component :is="objetoIcon" :size="14" class="text-neutral-600" />
-          <h3 class="text-xs font-bold uppercase text-neutral-800">Dados do {{ labelSingular }}</h3>
+          <h3 class="text-xs font-bold uppercase text-neutral-800">{{ textos.tituloObjeto }}</h3>
         </div>
         <div class="p-3 text-xs space-y-1.5">
-          <div v-if="mostrarTipoObjeto || situacaoConfig" class="flex items-center gap-2">
-            <p v-if="mostrarTipoObjeto" class="text-sm font-bold text-neutral-900">{{ ordemServico.objeto.tipo_equipamento }}</p>
+          <div v-if="subtituloObjeto || situacaoConfig" class="flex items-center gap-2">
+            <p v-if="subtituloObjeto" class="text-sm font-bold text-neutral-900">{{ subtituloObjeto }}</p>
             <span v-if="situacaoConfig" :class="['px-2 py-0.5 rounded-full text-[10px] font-bold', situacaoConfig.cls]">
               {{ situacaoConfig.label }}
             </span>
           </div>
+          <!-- Rótulos das colunas vêm do contrato: em serigrafia, "Marca" e
+               "Modelo" são "Empresa / Marca da estampa" e "Nome da arte". -->
           <div class="grid grid-cols-2 gap-2">
-            <p><span class="font-bold text-neutral-700">Marca:</span> {{ ordemServico.objeto.marca || '-' }}</p>
-            <p><span class="font-bold text-neutral-700">Modelo:</span> {{ ordemServico.objeto.modelo || '-' }}</p>
+            <p v-if="ordemServico.objeto.marca">
+              <span class="font-bold text-neutral-700">{{ labelDaColuna('marca', 'Marca') }}:</span>
+              {{ ordemServico.objeto.marca }}
+            </p>
+            <p v-if="ordemServico.objeto.modelo">
+              <span class="font-bold text-neutral-700">{{ labelDaColuna('modelo', 'Modelo') }}:</span>
+              {{ ordemServico.objeto.modelo }}
+            </p>
           </div>
           <div class="grid grid-cols-2 gap-2">
             <p><span class="font-bold text-neutral-700">{{ identificadorA4 }}:</span> {{ ordemServico.objeto.numero_serie || '-' }}</p>
-            <p><span class="font-bold text-neutral-700">Cor:</span> {{ ordemServico.objeto.cor || '-' }}</p>
+            <!-- "Cor: -" ocupava linha sem dizer nada; a arte nem tem cor. -->
+            <p v-if="ordemServico.objeto.cor">
+              <span class="font-bold text-neutral-700">{{ labelDaColuna('cor', 'Cor') }}:</span>
+              {{ ordemServico.objeto.cor }}
+            </p>
           </div>
           <!-- Atributos do segmento (oficina: Ano, Chassi, KM de entrada). -->
           <div v-if="atributosObjeto.length" class="grid grid-cols-2 gap-2">
@@ -226,12 +357,47 @@ const pix = computed(() =>
 
     <div class="mb-4 space-y-2">
       <div class="border border-neutral-300 rounded-lg p-3 bg-neutral-50/50">
-        <p class="text-[10px] font-bold text-neutral-600 uppercase mb-1">Defeito Relatado / Solicitação</p>
+        <p class="text-[10px] font-bold text-neutral-600 uppercase mb-1">{{ textos.defeito }}</p>
         <p class="text-xs text-neutral-900 font-medium">{{ ordemServico.defeito_relatado }}</p>
       </div>
       <div v-if="ordemServico.observacoes" class="border border-dashed border-neutral-300 rounded-lg p-3">
         <p class="text-[10px] font-bold text-neutral-600 uppercase mb-1">Observações / Acessórios</p>
         <p class="text-xs text-neutral-800 whitespace-pre-line">{{ ordemServico.observacoes }}</p>
+      </div>
+    </div>
+
+    <!--
+      Imagens na via de ENTRADA — só onde a imagem é o pedido (serigrafia: a
+      foto é a arte a estampar, e é dela que quem pinta trabalha). Em oficina e
+      informática a foto é prova do estado do bem e não vai para o papel: por
+      isso o gate é a capacidade, não o segmento.
+    -->
+    <div
+      v-if="type === 'ENTRADA' && temImagemNaEntrada && fotosImpressas.length"
+      class="mb-3 border border-neutral-300 rounded-lg overflow-hidden print-fotos"
+      :class="{ varias: fotosImpressas.length > 1 }"
+    >
+      <div class="bg-neutral-100 px-3 py-1 border-b border-neutral-200 flex items-center gap-2">
+        <ImageIcon :size="14" class="text-neutral-800" />
+        <h3 class="text-xs font-bold uppercase text-neutral-800">
+          {{ fotosImpressas.length === 1 ? 'Arte para Produção' : 'Artes para Produção' }}
+        </h3>
+      </div>
+      <div class="p-2" :class="fotosImpressas.length === 1 ? '' : 'grid grid-cols-2 gap-2'">
+        <figure
+          v-for="foto in fotosImpressas"
+          :key="foto.id"
+          class="border border-neutral-200 rounded overflow-hidden bg-white"
+        >
+          <!--
+            Sem `w-full`, sem `object-contain` e sem tamanho aqui: o tamanho
+            impresso está no CSS (`.print-fotos img`), em MILÍMETROS, e a classe
+            `foto-retrato` é posta por `classificarOrientacaoDasFotos`
+            (print.utils.ts) na hora de imprimir — quando as imagens já
+            carregaram e `naturalWidth/Height` valem alguma coisa.
+          -->
+          <img :src="foto.src" :alt="foto.nome_arquivo" />
+        </figure>
       </div>
     </div>
 
@@ -289,7 +455,9 @@ const pix = computed(() =>
           <div v-if="adiantamento > 0" class="flex justify-between items-center text-xs bg-neutral-50 p-1.5 rounded border border-neutral-200 mb-1.5">
             <div class="flex items-center gap-2">
               <Banknote :size="12" class="text-neutral-800" />
-              <span class="font-semibold text-neutral-900">Adiantamento (entrada)</span>
+              <span class="font-semibold text-neutral-900">
+                Adiantamento (entrada)<template v-if="formaEntradaNome"> — {{ formaEntradaNome }}</template>
+              </span>
             </div>
             <span class="font-bold text-neutral-900">{{ formatCurrency(adiantamento) }}</span>
           </div>
@@ -358,8 +526,16 @@ const pix = computed(() =>
         <PixQrPrint :payload="pix.payload" :valor-centavos="pix.valorCentavos" lado="30mm" />
       </div>
 
-      <!-- Termo de Garantia (só para REPARADO) -->
-      <div v-if="!isSemReparo" class="border border-neutral-300 bg-neutral-50 rounded-lg p-3 text-[10px] text-neutral-800 text-justify leading-relaxed mb-6">
+      <!--
+        Termo de Garantia — só para REPARADO e só onde há PRAZO de garantia.
+
+        O texto abaixo cai em '90 (noventa) dias' quando `garantia` está vazia.
+        Isso é correto onde a garantia é obrigatória (oficina, informática:
+        sempre preenchida). Num segmento sem prazo — serigrafia, em que a
+        estampa se mede em lavagens — o fallback faria a via PROMETER 90 dias de
+        garantia que a loja nunca deu.
+      -->
+      <div v-if="!isSemReparo && temGarantiaPrazo" class="border border-neutral-300 bg-neutral-50 rounded-lg p-3 text-[10px] text-neutral-800 text-justify leading-relaxed mb-6">
         <div class="flex items-center gap-2 mb-1 font-bold text-neutral-900 uppercase">
           <Receipt :size="12" />
           Termo de Garantia
@@ -369,7 +545,7 @@ const pix = computed(() =>
         <template v-else>cobrindo exclusivamente os serviços prestados e peças substituídas descritos neste documento.</template>
         A garantia <strong>NÃO COBRE</strong>: {{ textos.garantiaExclusoes }}
         <br/>
-        IMPORTANTE: {{ textos.objetoPlural }} não retirados no prazo de 90 dias após notificação de conclusão serão considerados abandonados e poderão ser vendidos para custeio das despesas, conforme Art. 1.275 do Código Civil Brasileiro.
+        IMPORTANTE: {{ textos.prazoRetiradaGarantiaA4(prazoAbandonoSimples) }}
       </div>
 
       <!-- Declaração de entrega sem reparo (SEM_REPARO / CONDENADO) -->
@@ -408,12 +584,12 @@ const pix = computed(() =>
       </p>
       <p class="border-t border-neutral-200 pt-2">
         <strong class="text-neutral-800 uppercase">⚠ Prazo de Retirada:</strong>
-        {{ textos.objetoPlural }} com serviço concluído que não forem retirados no prazo de <strong class="text-neutral-800">90 (noventa) dias</strong> após notificação serão considerados abandonados e poderão ser destinados para cobrir as despesas do serviço, conforme Art. 1.275 do Código Civil Brasileiro.
+        {{ prazoRetiradaPartes.antes }}<strong class="text-neutral-800">{{ prazoAbandonoTexto }}</strong>{{ prazoRetiradaPartes.depois }}
       </p>
     </div>
 
     <PrintSignatures
-      left-label="Técnico Responsável"
+      :left-label="textos.assinaturaLoja"
       right-label="Assinatura do Cliente"
       :right-name="ordemServico.cliente ? getClienteNome(ordemServico.cliente) : undefined"
     />
@@ -425,4 +601,63 @@ const pix = computed(() =>
 
 <style>
 @import '@/shared/components/print/styles/print-a4.css';
+
+/* =====================================================================
+   ARTE PARA PRODUÇÃO (via de entrada, segmentos com imagem no pedido)
+
+   A imagem NÃO usa `w-full`/`object-contain`. Aquela combinação dava à foto
+   uma caixa da largura inteira do bloco e encaixava o retrato no meio dela:
+   uma foto de celular saía com ~31mm de largura cercada de branco, pequena
+   demais para produzir. Aqui a imagem é limitada pelos dois lados e a caixa
+   encolhe até ela — o branco em volta some.
+
+   Alturas em MILÍMETROS: o papel é medido em mm, e é o que decide se a via
+   fecha em uma folha. Histórico do teto da arte deitada: 90mm empurrava termos
+   e assinaturas para a segunda folha, 55mm ainda deixava o rodapé transbordar
+   sozinho, 45mm fecha a via.
+
+   O retrato tem teto maior de propósito. Não é privilégio: a 45mm uma foto 3:4
+   ocupa 34x45mm, contra os ~155x45mm da arte deitada — um quarto da área. Os
+   68mm igualam as duas em tamanho aparente (51x68mm), e custam altura só na OS
+   que tem foto de celular.
+   ===================================================================== */
+.print-fotos img {
+  display: block;
+  margin: 0 auto;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 45mm;
+}
+
+/* A moldura acompanha a foto em vez de atravessar a via.
+   Com a moldura em largura total, um retrato de 25mm ficava no meio de um
+   retângulo vazio de 175mm — o branco em volta parecia defeito de impressão, e
+   era a maior parte do bloco.
+
+   `fit-content` + `margin-inline: auto` e não `inline-block` + `text-align` do
+   pai: assim a centralização mora inteira na própria moldura e não depende de
+   classe nenhuma no elemento de cima. Só no caso de arte única — com duas ou
+   mais, cada célula da grade já tem metade da largura. */
+.print-fotos:not(.varias) figure {
+  width: fit-content;
+  margin-inline: auto;
+}
+
+/* O teto do retrato é o único tamanho ELÁSTICO da via: quando a folha inteira
+   não fecha em uma página, `ajustarArteParaCaber` (print.utils.ts) baixa esta
+   variável degrau a degrau até caber. A arte é o que dá para ceder — o resto do
+   comprovante é conteúdo que protege o cliente. */
+.print-fotos img.foto-retrato {
+  max-height: var(--arte-retrato, 68mm);
+}
+
+/* Duas ou mais artes dividem a linha: cada uma cabe em metade do espaço. */
+.print-fotos.varias img {
+  max-height: 30mm;
+}
+
+.print-fotos.varias img.foto-retrato {
+  max-height: 45mm;
+}
 </style>

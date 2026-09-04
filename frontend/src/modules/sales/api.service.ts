@@ -92,6 +92,21 @@ export const saleService = {
     return parseSchema(SaleReadSchema, data, 'saleService.reopenSale.response');
   },
 
+  /**
+   * Entrega a venda ao caixa. Não muda o status — ela continua ATIVA.
+   * Idempotente no backend: reenviar mantém o lugar original na fila.
+   */
+  async enviarAoCaixa(sale_id: number): Promise<SaleRead> {
+    const { data } = await api.post<SaleRead>(`${SALE_ENDPOINT}/${sale_id}/enviar-ao-caixa`);
+    return parseSchema(SaleReadSchema, data, 'saleService.enviarAoCaixa.response');
+  },
+
+  /** Tira a venda da fila. Qualquer operador pode. */
+  async devolverParaMontagem(sale_id: number): Promise<SaleRead> {
+    const { data } = await api.post<SaleRead>(`${SALE_ENDPOINT}/${sale_id}/devolver-para-montagem`);
+    return parseSchema(SaleReadSchema, data, 'saleService.devolverParaMontagem.response');
+  },
+
   async getSale(sale_id: number): Promise<SaleRead> {
     const { data } = await api.get<SaleRead>(`${SALE_ENDPOINT}/${sale_id}`);
     return parseSchema(SaleReadSchema, data, 'saleService.getSale.response');

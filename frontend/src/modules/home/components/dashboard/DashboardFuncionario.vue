@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useOrdemServico } from '@/shared/composables/useOrdemServico';
 import { ref, computed } from 'vue';
 import { TrendingUp, ShoppingCart, Wrench, CheckCircle } from 'lucide-vue-next';
 import { storeToRefs } from 'pinia';
@@ -24,6 +25,8 @@ import { useMinhaTendenciaQuery } from '../../composables/queries/useMinhaTenden
 
 import type { PeriodFilter } from '../../types/dashboard.types';
 
+const { usaOrdemServico } = useOrdemServico();
+
 const authStore = useAuthStore();
 const { userData, isLoading: isLoadingUser } = storeToRefs(authStore);
 
@@ -35,6 +38,17 @@ const vendasQuery        = useMinhasUltimasVendasQuery();
 const filaQuery          = useMinhaFilaQuery();
 const atrasadasQuery     = useMinhasOSAtrasadasQuery();
 const retiradaQuery      = useOSAguardandoRetiradaQuery();
+
+/**
+ * As Ultimas Vendas aparecem em dois lugares do template (com e sem OS). Os
+ * props ficam aqui para os dois nunca divergirem.
+ */
+const ultimasVendasProps = computed(() => ({
+  vendas: minhasVendas.value,
+  isLoading: vendasQuery.isLoading.value,
+  isError: vendasQuery.isError.value,
+  showTime: true,
+}));
 const atividadeQuery     = useMinhaAtividadeHojeQuery();
 
 const periods: { id: PeriodFilter; label: string }[] = [
@@ -116,7 +130,7 @@ const atividade      = computed(() => atividadeQuery.data.value?.items ?? []);
     />
 
     <!-- Banner OS Atrasadas (só aparece quando há) -->
-    <OSAtrasadasBanner :items="osAtrasadas" :total="totalAtrasadas" />
+    <OSAtrasadasBanner v-if="usaOrdemServico" :items="osAtrasadas" :total="totalAtrasadas" />
 
     <!-- Stats Section -->
     <div class="space-y-4">
@@ -203,8 +217,15 @@ const atividade      = computed(() => atividadeQuery.data.value?.items ?? []);
       </div>
     </div>
 
-    <!-- Linha 1: Minha Fila (3/5) + Últimas Vendas (2/5) -->
-    <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+    <!--
+      Linha 1: Minha Fila (3/5) + Últimas Vendas (2/5).
+
+      SEM ORDEM DE SERVICO esta linha inteira desaparece e as Ultimas Vendas
+      descem para a linha de baixo, ao lado da Atividade de Hoje. Manter a linha
+      com o lado esquerdo vazio deixava a tela do operador — que numa adega e a
+      mais usada do dia — com um buraco de 3/5 de largura logo no topo.
+    -->
+    <div v-if="usaOrdemServico" class="grid grid-cols-1 lg:grid-cols-5 gap-6">
       <div class="lg:col-span-3">
         <MinhaFilaTable
           :items="minhaFila"
@@ -213,23 +234,19 @@ const atividade      = computed(() => atividadeQuery.data.value?.items ?? []);
         />
       </div>
       <div class="lg:col-span-2">
-        <RecentTransactions
-          :vendas="minhasVendas"
-          :is-loading="vendasQuery.isLoading.value"
-          :is-error="vendasQuery.isError.value"
-          :show-time="true"
-        />
+        <RecentTransactions v-bind="ultimasVendasProps" />
       </div>
     </div>
 
     <!-- Linha 2: OS Aguardando Retirada (2/5) + Atividade de Hoje (3/5) -->
     <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
       <div class="lg:col-span-2">
-        <OSAguardandoRetiradaTable
+        <OSAguardandoRetiradaTable v-if="usaOrdemServico"
           :items="retirada"
           :is-loading="retiradaQuery.isLoading.value"
           :is-error="retiradaQuery.isError.value"
         />
+        <RecentTransactions v-else v-bind="ultimasVendasProps" />
       </div>
       <div class="lg:col-span-3">
         <AtividadeHoje
