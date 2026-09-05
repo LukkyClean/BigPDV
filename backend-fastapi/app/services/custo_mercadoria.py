@@ -19,7 +19,7 @@ from typing import Tuple
 from sqlalchemy.orm import Session
 
 from app.core.enum import MovimentacaoTipo
-from app.db.crud import relatorio as relatorio_crud
+from app.db.crud import relatorio_custo as custo_crud
 
 
 def calcular_cmv(
@@ -52,15 +52,15 @@ def calcular_cmv(
     saidas_sem_custo = 0
 
     for linhas in (
-        relatorio_crud.get_cmv_vendas(db, dt_inicio, dt_fim, empresa_id),
-        relatorio_crud.get_cmv_os(db, dt_inicio, dt_fim, empresa_id),
+        custo_crud.get_cmv_vendas(db, dt_inicio, dt_fim, empresa_id),
+        custo_crud.get_cmv_os(db, dt_inicio, dt_fim, empresa_id),
     ):
         for linha in linhas:
             valor = linha.total or 0
             cmv += valor if linha.tipo == MovimentacaoTipo.SAIDA else -valor
             saidas_sem_custo += linha.sem_custo or 0
 
-    cmv += relatorio_crud.get_custo_manual_os(db, dt_inicio, dt_fim, empresa_id)
-    cmv += relatorio_crud.get_custo_manual_vendas(db, dt_inicio, dt_fim, empresa_id)
+    cmv += custo_crud.get_custo_manual_os(db, dt_inicio, dt_fim, empresa_id)
+    cmv += custo_crud.get_custo_manual_vendas(db, dt_inicio, dt_fim, empresa_id)
 
     return max(0, cmv), saidas_sem_custo

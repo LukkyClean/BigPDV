@@ -82,7 +82,7 @@ class OrdemServicoItem(Base):
     #
     # So vale para item SEM `produto_id`. Quando a peca vem do catalogo, o custo
     # e o do livro de estoque (congelado na baixa) e contar os dois dobraria o
-    # CMV — ver crud/relatorio.get_custo_manual_os.
+    # CMV — ver crud/relatorio_custo.get_custo_manual_os.
     custo_unitario: Mapped[Optional[int]] = mapped_column(
         Integer,
         nullable=True,
