@@ -1176,6 +1176,19 @@ def cancelar_ordem_servico(
     if os_in_db.status == OrdemServicoStatus.FINALIZADA:
         _movimentar_estoque_os(db, os_in_db, saida=False, usuario_token=usuario_token)
 
+    from app.services import financeiro_receber as financeiro_receber_service
+
+    # A COBRANÇA MORRE COM A OS. Cancelar mexia no estoque e no livro do
+    # dinheiro, mas deixava a conta a receber PENDENTE para sempre -- a loja
+    # seguia esperando um dinheiro de um serviço que não vai acontecer, e a
+    # Conciliação prometia o depósito no dia. Só as em aberto: cobrança já
+    # recebida virou dinheiro no livro e se desfaz por estorno, não por aqui.
+    financeiro_receber_service.cancelar_promessas_do_documento(
+        db,
+        empresa_id=getattr(os_in_db.funcionario, "empresa_id", None),
+        ordem_servico_pagamentos=list(os_in_db.pagamentos or []),
+    )
+
     os_in_db.status = OrdemServicoStatus.CANCELADA
 
     if data.motivo:
@@ -1253,6 +1266,18 @@ def reabrir_ordem_servico(
             os_in_db,
             list(os_in_db.pagamentos),
             operador_funcionario_id=(usuario_token or {}).get("funcionario_id"),
+        )
+        from app.services import financeiro_receber as financeiro_receber_service
+
+        # ANTES DO CLEAR, obrigatoriamente: a FK da conta a receber é
+        # `ondelete=SET NULL`, então depois de apagar os pagamentos a cobrança
+        # perde o vínculo e vira órfã -- PENDENTE para sempre e exibida como
+        # "lançada à mão", sem forma de rastrear de onde veio. Foi o defeito que
+        # o dono achou na loja em 05/09/2026, numa OS cancelada e refeita.
+        financeiro_receber_service.cancelar_promessas_do_documento(
+            db,
+            empresa_id=getattr(os_in_db.funcionario, "empresa_id", None),
+            ordem_servico_pagamentos=list(os_in_db.pagamentos or []),
         )
         os_in_db.pagamentos.clear()
         os_in_db.credito_anterior = None

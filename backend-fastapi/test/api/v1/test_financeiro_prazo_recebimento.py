@@ -338,3 +338,90 @@ def test_prazo_absurdo_e_recusado(client, db_session):
     r = client.put(f"/api/v1/formas-pagamento/{fp_id}",
                      json={"dias_para_receber": 3650}, headers=header)
     assert r.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY, r.text
+
+
+# ===========================================================================
+# A COBRANÇA MORRE COM O DOCUMENTO
+#
+# Defeito achado pelo dono na loja, em 05/09/2026: ele cancelou uma OS e refez.
+# A Conciliação passou a prometer os DOIS valores no mesmo dia, e o "a receber
+# em aberto" somou uma dívida que não existia. Cancelar e reabrir mexiam no
+# estoque e no livro do dinheiro, e não no contas a receber.
+# ===========================================================================
+
+def _receber(client, header, status_filtro=None):
+    q = f"?status={status_filtro}" if status_filtro else ""
+    return client.get(f"/api/v1/financeiro/contas-receber{q}", headers=header).json()
+
+
+def test_cancelar_a_os_derruba_a_cobranca_que_ela_criou(client, db_session):
+    """A loja não pode seguir esperando dinheiro de um serviço que não vai ser
+    feito -- nem a Conciliação prometer o depósito no dia."""
+    header = _auth(client)
+    forma_id = _forma(client, header, "Cartão de Crédito", dias=30)
+    func_id = _funcionario(client, header)
+    cliente_id = _cliente(client, header)
+
+    numero = _os_finalizada(client, header, cliente_id, func_id,
+                            valor=29036, forma_id=forma_id)
+    assert _receber(client, header, "PENDENTE")["total_itens"] == 1
+
+    r = client.put(f"/api/v1/ordens-servico/{numero}/cancelar",
+                   json={"motivo": "cliente desistiu"}, headers=header)
+    assert r.status_code == 200, r.text
+
+    assert _receber(client, header, "PENDENTE")["total_itens"] == 0
+    # CANCELA, não apaga: "sumiu uma cobrança de R$ 290" precisa ter resposta.
+    assert _receber(client, header, "CANCELADA")["total_itens"] == 1
+
+
+def test_reabrir_sem_pagamento_derruba_a_cobranca(client, db_session):
+    """O caso exato do dono: OS cancelada, refeita, e a Conciliação prometendo
+    o dobro.
+
+    Na reabertura os pagamentos são APAGADOS e a FK é `ondelete=SET NULL` — sem
+    o conserto a cobrança perdia até o vínculo com a origem e passava a aparecer
+    como "lançada à mão", sem forma de rastrear de onde tinha vindo.
+    """
+    header = _auth(client)
+    forma_id = _forma(client, header, "Cartão de Crédito", dias=30)
+    func_id = _funcionario(client, header)
+    cliente_id = _cliente(client, header)
+
+    numero = _os_finalizada(client, header, cliente_id, func_id,
+                            valor=29039, forma_id=forma_id)
+    assert _receber(client, header, "PENDENTE")["total_itens"] == 1
+
+    r = client.put(f"/api/v1/ordens-servico/{numero}/reabrir",
+                   json={"cliente_pagou": False}, headers=header)
+    assert r.status_code == 200, r.text
+
+    pendentes = _receber(client, header, "PENDENTE")
+    assert pendentes["total_itens"] == 0, pendentes["itens"]
+    assert pendentes["total_pendente"] == 0, "o 'a receber em aberto' não pode contar isso"
+
+
+def test_refinalizar_depois_de_reabrir_cobra_uma_vez_so(client, db_session):
+    """O fecho do caso: reabrir e finalizar de novo deixa UMA cobrança, não duas.
+
+    É o que o dono viu errado na tela -- duas linhas de ~R$ 290 no mesmo dia
+    para o mesmo cliente, sendo que só uma OS existe de verdade.
+    """
+    header = _auth(client)
+    forma_id = _forma(client, header, "Cartão de Crédito", dias=30)
+    func_id = _funcionario(client, header)
+    cliente_id = _cliente(client, header)
+
+    numero = _os_finalizada(client, header, cliente_id, func_id,
+                            valor=29039, forma_id=forma_id)
+    client.put(f"/api/v1/ordens-servico/{numero}/reabrir",
+               json={"cliente_pagou": False}, headers=header)
+    r = client.put(f"/api/v1/ordens-servico/{numero}/finalizar", json={
+        "situacao_equipamento": "REPARADO", "garantia": "90 dias",
+        "pagamentos": [{"forma_pagamento_id": forma_id, "valor": 29039}],
+    }, headers=header)
+    assert r.status_code == 200, r.text
+
+    pendentes = _receber(client, header, "PENDENTE")
+    assert pendentes["total_itens"] == 1, pendentes["itens"]
+    assert pendentes["total_pendente"] == 29039, "só o valor da OS que existe"

@@ -726,3 +726,36 @@ def prazo_medio_recebimento(db: Session, empresa_id: int, inicio, fim):
     if not dias:
         return None
     return round(sum(dias) / len(dias))
+
+
+def listar_receber_pendentes_do_documento(
+    db: Session,
+    empresa_id: int,
+    *,
+    venda_pagamento_ids: Optional[Sequence[int]] = None,
+    ordem_servico_pagamento_ids: Optional[Sequence[int]] = None,
+) -> Sequence[ContaReceber]:
+    """As promessas AINDA EM ABERTO geradas por estes pagamentos.
+
+    Serve ao cancelamento do documento que as criou. So PENDENTE de proposito:
+    cobranca ja RECEBIDA virou dinheiro no livro, e apaga-la faria o caixa
+    fechar com falta -- para desfazer aquela existe o estorno.
+    """
+    ids = list(venda_pagamento_ids or ordem_servico_pagamento_ids or [])
+    if not ids:
+        return []
+
+    coluna = (
+        ContaReceber.venda_pagamento_id
+        if venda_pagamento_ids
+        else ContaReceber.ordem_servico_pagamento_id
+    )
+    return (
+        db.query(ContaReceber)
+        .filter(
+            ContaReceber.empresa_id == empresa_id,
+            coluna.in_(ids),
+            ContaReceber.status == ContaReceberStatus.PENDENTE.value,
+        )
+        .all()
+    )

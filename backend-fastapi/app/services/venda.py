@@ -479,6 +479,15 @@ def cancel_sale(db: Session, sale_id: int, motivo: str, codigo_gerente: str | No
                 venda_id=sale_in_db.id,
             )
 
+    # Mesmo buraco da OS, mesmo conserto: sem isto a venda fiado cancelada
+    # continuava cobrando o cliente no contas a receber.
+    from app.services import financeiro_receber as financeiro_receber_service
+    financeiro_receber_service.cancelar_promessas_do_documento(
+        db,
+        empresa_id=empresa_id,
+        venda_pagamentos=list(sale_in_db.pagamentos or []),
+    )
+
     sale_in_db.status = VendaStatus.CANCELADA
     sale_in_db.motivo_cancelamento = motivo
     return venda_crud.update_sale(db, sale_in_db)
