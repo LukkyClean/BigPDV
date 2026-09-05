@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional, Sequence
 from sqlalchemy.orm import Session
 
 from app.core.enum import (
+    JurosResponsavel,
     MovimentacaoFinanceiraOrigem,
     MovimentacaoFinanceiraTipo,
     SessaoCaixaStatus,
@@ -546,6 +547,38 @@ def montar_resumo(
 # INTEGRAÇÃO COM A VENDA
 # ===========================================================================
 
+def valor_que_entra(pagamento) -> int:
+    """Do valor cobrado do cliente, quanto de fato chega na loja.
+
+    O juros de parcelamento REPASSADO (`juros_responsavel == CLIENTE`) esta
+    embutido em `pagamento.valor`, mas quem fica com ele e a operadora. Nas
+    palavras do dono: "vendo 1.000, o juros da 150, o cliente paga 1.150 e so
+    cai 1.000 na minha conta, pois a empresa do cartao ja desconta o dela".
+    Lancar 1.150 no livro fazia o Extrato e o "Entrou de fato" mostrarem
+    dinheiro que a conta bancaria nunca viu.
+
+    Com `LOJA` o valor ja vem sem o juros (a loja absorveu, o cliente pagou o
+    preco combinado) e nao ha nada a descontar -- por isso o filtro e pelo
+    responsavel, e nao por `juros_valor > 0`.
+
+    NAO ENCOSTA NA QUEBRA DE CAIXA: ela soma apenas as formas em especie
+    (`somar_dinheiro_em_especie`), e juros de parcelamento so existe em cartao.
+    O que muda no fechamento e a linha "por forma", que passa a mostrar o
+    liquido -- decisao do dono em 05/09/2026, por coerencia com o resto da tela.
+
+    A REGRA JA EXISTIA no sistema, so nao aqui: `juros_destino == OPERADORA` no
+    recebimento em atraso ja fazia o caixa receber `valor_recebido - juros`
+    (services/financeiro_receber.py). Isto e a mesma regra no fechamento.
+    """
+    valor = pagamento.valor or 0
+    if getattr(pagamento, "juros_responsavel", None) == JurosResponsavel.CLIENTE.value:
+        valor -= pagamento.juros_valor or 0
+    # Piso em zero: um juros maior que o proprio valor so sairia de dado
+    # corrompido, mas um movimento negativo viraria "saida" na leitura do
+    # Extrato e sujaria o saldo em vez de acusar o problema.
+    return max(0, valor)
+
+
 def registrar_pagamentos_de_venda(
     db: Session,
     venda,
@@ -610,7 +643,7 @@ def registrar_pagamentos_de_venda(
             db,
             tipo=MovimentacaoFinanceiraTipo.ENTRADA,
             origem=MovimentacaoFinanceiraOrigem.VENDA,
-            valor=pagamento.valor,
+            valor=valor_que_entra(pagamento),
             sessao_caixa_id=sessao.id if sessao else None,
             conta_bancaria_id=conta_id,
             forma_pagamento_id=pagamento.forma_pagamento_id,
@@ -704,7 +737,7 @@ def registrar_pagamentos_de_os(
             db,
             tipo=MovimentacaoFinanceiraTipo.ENTRADA,
             origem=MovimentacaoFinanceiraOrigem.ORDEM_SERVICO,
-            valor=pagamento.valor,
+            valor=valor_que_entra(pagamento),
             sessao_caixa_id=sessao.id if sessao else None,
             conta_bancaria_id=conta_id,
             forma_pagamento_id=pagamento.forma_pagamento_id,
@@ -762,7 +795,7 @@ def estornar_pagamentos_de_os(
             db,
             tipo=MovimentacaoFinanceiraTipo.SAIDA,
             origem=MovimentacaoFinanceiraOrigem.ORDEM_SERVICO,
-            valor=pagamento.valor,
+            valor=valor_que_entra(pagamento),
             sessao_caixa_id=sessao.id if sessao else None,
             # A MESMA conta em que a entrada caiu. Devolver noutro lugar deixaria
             # o saldo derivado com sobra numa conta e falta na outra.

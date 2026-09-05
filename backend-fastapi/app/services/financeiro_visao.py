@@ -31,6 +31,8 @@ from app.core.tempo import agora_utc, fim_do_dia_utc, hoje_local, inicio_do_dia_
 from app.db.crud import dashboard as dashboard_crud
 from app.db.crud import financeiro as financeiro_crud
 from app.db.crud import financeiro_receber as receber_crud
+from app.db.crud import relatorio as relatorio_crud
+from app.db.crud import relatorio_custo as custo_crud
 from app.db.crud import sessao_caixa as caixa_crud
 from app.db.models.conta_receber import ContaReceber
 from app.helpers.exceptions import BadRequestException, NotFoundException
@@ -406,7 +408,38 @@ def get_resumo(
     # aqui abriria a porta para o financeiro mostrar um número e o relatório
     # outro, para o mesmo mês.
     stats = dashboard_crud.get_stats_agregados(db, dt_inicio, dt_fim, empresa_id)
-    faturamento = int(stats.vendas_total or 0) + int(stats.os_soma or 0)
+    bruto = int(stats.vendas_total or 0) + int(stats.os_soma or 0)
+
+    # FORA O JUROS DA MAQUININHA. `Venda.total` e `OS.valor_total` sao gravados
+    # com o `acrescimo` somado dentro, e o acrescimo e o juros de parcelamento
+    # que o cliente desembolsa e a OPERADORA retem. Nas palavras do dono, em
+    # 05/09/2026: "vendo 1.000, o juros da 150, o cliente paga 1.150 e so cai
+    # 1.000 na minha conta". O card mostrava 1.150 -- dinheiro que a loja nunca
+    # viu, inflando o Faturado e, por tabela, o lucro.
+    #
+    # SO O REPASSADO (CLIENTE) sai daqui. O absorvido (LOJA) nao esta no total
+    # de venda nenhuma -- com ele o cliente paga o preco combinado --, entao nao
+    # ha o que subtrair, e subtrair assim mesmo derrubaria o Faturado abaixo do
+    # que a loja vendeu. Ele e custo, e o Relatorio de faturamento ja o desconta
+    # no `faturamento_liquido` dele.
+    #
+    # REUSA O HELPER DO RELATORIO em vez de somar `acrescimo` aqui: os filtros
+    # de periodo e empresa ja foram escritos para cair exatamente sobre o mesmo
+    # conjunto que formou o bruto (ver o cabecalho "JUROS DE CARTAO" no
+    # crud/relatorio.py), e uma segunda copia divergiria no primeiro ajuste.
+    juros_operadora = 0
+    for linha in relatorio_crud.get_juros_vendas_por_responsavel(
+        db, dt_inicio, dt_fim, empresa_id
+    ):
+        if (linha.responsavel or "CLIENTE") == "CLIENTE":
+            juros_operadora += int(linha.total or 0)
+    for linha in relatorio_crud.get_juros_os_por_responsavel(
+        db, dt_inicio, dt_fim, empresa_id
+    ):
+        if (linha.responsavel or "CLIENTE") == "CLIENTE":
+            juros_operadora += int(linha.total or 0)
+
+    faturamento = bruto - juros_operadora
 
     # DESPESA, e não "tudo que saiu": compra de mercadoria fica de fora (ela é
     # categoria de tipo CUSTO no plano de contas). O dinheiro dela saiu do caixa
@@ -746,3 +779,26 @@ def listar_extrato(
             for m in itens
         ],
     )
+
+
+def get_detalhe_custo(
+    db: Session, empresa_id: int, inicio: date, fim: date
+) -> Dict[str, Any]:
+    """Abre o card "Custo do que vendeu": cada linha que formou o CMV.
+
+    Só leitura, e de propósito no mesmo arquivo das outras três leituras.
+
+    O TOTAL DAQUI TEM QUE BATER com `custo_mercadorias` do resumo. As duas somas
+    saem das mesmas quatro parcelas com os mesmos filtros (ver o cabeçalho de
+    `crud/relatorio_custo.get_detalhe_cmv`), e há teste amarrando os dois números --
+    um detalhe que não fecha com o total piora a desconfiança em vez de
+    resolvê-la, que é exatamente o problema que ele veio consertar.
+    """
+    dt_inicio, dt_fim = inicio_do_dia_utc(inicio), fim_do_dia_utc(fim)
+    linhas = custo_crud.get_detalhe_cmv(db, dt_inicio, dt_fim, empresa_id)
+    return {
+        "periodo_inicio": inicio,
+        "periodo_fim": fim,
+        "total": sum(l["custo"] for l in linhas),
+        "linhas": linhas,
+    }

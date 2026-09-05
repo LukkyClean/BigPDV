@@ -33,6 +33,10 @@ from app.db.crud import financeiro as financeiro_crud
 from app.db.crud import financeiro_receber as receber_crud
 from app.db.crud import sessao_caixa as caixa_crud
 from app.db.models.conta_receber import ContaReceber
+# O caixa e o dono da regra "quanto do que o cliente pagou chega na loja". O
+# contas a receber a REUSA em vez de reescrever: duas copias divergiriam, e a
+# divergencia apareceria como dinheiro sumido entre o Extrato e o Fluxo.
+from app.services import sessao_caixa as caixa_service
 from app.helpers.exceptions import BadRequestException, NotFoundException
 from app.schemas.conta_receber import ContaReceberBaixa
 from app.schemas.financeiro import (
@@ -63,6 +67,16 @@ def _nome_do_cliente(cliente) -> Optional[str]:
 def _prazo_da_forma(pagamento) -> int:
     forma = getattr(pagamento, "forma_pagamento", None)
     return int(getattr(forma, "dias_para_receber", 0) or 0)
+
+
+def _juros_da_operadora(pagamento) -> int:
+    """Quanto do valor cobrado a operadora fica -- o complemento exato de
+    `caixa_service.valor_que_entra`, para `bruto = valor + taxa` fechar.
+
+    Derivado da outra em vez de recalculado: se um dia a regra de "quanto
+    chega na loja" mudar, as duas mudam juntas e a conta continua fechando.
+    """
+    return (pagamento.valor or 0) - caixa_service.valor_que_entra(pagamento)
 
 
 def aplicar_prazo_de_recebimento(db: Session, pagamentos) -> None:
@@ -107,6 +121,7 @@ def _criar_promessa(
     cliente_id: Optional[int],
     valor: int,
     vencimento: date,
+    taxa: int = 0,
     venda_pagamento_id: Optional[int] = None,
     ordem_servico_pagamento_id: Optional[int] = None,
     baixa_automatica: bool = False,
@@ -136,6 +151,7 @@ def _criar_promessa(
             descricao=descricao,
             cliente_id=cliente_id,
             valor=valor,
+            taxa=taxa,
             vencimento=vencimento,
             status=ContaReceberStatus.PENDENTE.value,
             venda_pagamento_id=venda_pagamento_id,
@@ -175,7 +191,13 @@ def registrar_promessas_de_venda(db: Session, venda) -> None:
             empresa_id,
             descricao=f"Venda {referencia}" + (f" — {nome}" if nome else ""),
             cliente_id=venda.cliente_id,
-            valor=pagamento.valor,
+            # LIQUIDO, com o juros da operadora em `taxa`. É o contrato que o
+            # model sempre pediu ("`valor` é o que a operadora repassa, já sem a
+            # taxa dela"; `bruto = valor + taxa`) e que ninguém cumpria: até
+            # 05/09/2026 gravava-se o bruto aqui, e o Fluxo de Caixa prometia em
+            # "Vai entrar" um dinheiro que a operadora nunca ia depositar.
+            valor=caixa_service.valor_que_entra(pagamento),
+            taxa=_juros_da_operadora(pagamento),
             vencimento=pagamento.vencimento,
             venda_pagamento_id=pagamento.id,
             # Prazo declarado na forma = dinheiro de operadora, que cai sozinho.
@@ -210,7 +232,9 @@ def registrar_promessas_de_os(db: Session, ordem_servico, pagamentos) -> None:
             empresa_id,
             descricao=f"OS {ordem_servico.numero_os}" + (f" — {nome}" if nome else ""),
             cliente_id=cliente_id,
-            valor=pagamento.valor,
+            # Líquido + taxa, igual à gêmea da venda. Ver o comentário de lá.
+            valor=caixa_service.valor_que_entra(pagamento),
+            taxa=_juros_da_operadora(pagamento),
             vencimento=pagamento.vencimento,
             ordem_servico_pagamento_id=pagamento.id,
             baixa_automatica=_prazo_da_forma(pagamento) > 0,
@@ -769,3 +793,58 @@ def baixar_lote(
         total_recebido=int(dados.valor_recebido),
         diferenca=int(dados.valor_recebido) - total_previsto,
     )
+
+
+def cancelar_promessas_do_documento(
+    db: Session,
+    *,
+    empresa_id: Optional[int],
+    venda_pagamentos: Optional[Sequence[Any]] = None,
+    ordem_servico_pagamentos: Optional[Sequence[Any]] = None,
+) -> int:
+    """Derruba as cobrancas em aberto que este documento tinha gerado.
+
+    O BURACO QUE ELA FECHA (achado pelo dono em 05/09/2026, na loja): cancelar
+    uma OS ou reabri-la sem pagamento mexia no estoque e no livro do dinheiro,
+    mas NAO no contas a receber. A promessa ficava PENDENTE para sempre.
+
+    O sintoma na tela foi uma OS cancelada e refeita: a Conciliacao passou a
+    prometer os dois valores no mesmo dia, e o "a receber em aberto" somou uma
+    divida que nao existia. Pior, na reabertura os pagamentos sao apagados e a
+    FK e `ondelete=SET NULL` -- a cobranca perdia ate o vinculo com a origem e
+    passava a aparecer como "lancada a mao", sem forma de rastrear de onde veio.
+
+    ⚠️ CHAMAR ANTES DE `pagamentos.clear()`. Depois do clear o vinculo ja foi a
+    zero e nao ha mais como achar as linhas.
+
+    SO PENDENTE. Cobranca ja RECEBIDA virou dinheiro no livro: cancela-la faria
+    o caixa fechar com falta. Para desfazer aquela existe o estorno.
+
+    CANCELA, nao apaga -- mesma regra do resto do modulo. "Sumiu uma cobranca de
+    R$ 290" precisa ter resposta, e a linha cancelada continua no historico.
+    """
+    if not empresa_id:
+        return 0
+
+    ids = [p.id for p in (venda_pagamentos or ordem_servico_pagamentos or []) if p.id]
+    if not ids:
+        return 0
+
+    contas = receber_crud.listar_receber_pendentes_do_documento(
+        db,
+        empresa_id,
+        venda_pagamento_ids=ids if venda_pagamentos else None,
+        ordem_servico_pagamento_ids=ids if ordem_servico_pagamentos else None,
+    )
+    for conta in contas:
+        financeiro_crud.registrar_historico(
+            db, empresa_id=empresa_id, entidade=ENTIDADE_CONTA_RECEBER,
+            entidade_id=conta.id, campo="status",
+            valor_antigo=conta.status, valor_novo=ContaReceberStatus.CANCELADA.value,
+            funcionario_id=None, funcionario_nome=None,
+        )
+        conta.status = ContaReceberStatus.CANCELADA.value
+
+    if contas:
+        db.flush()
+    return len(contas)
