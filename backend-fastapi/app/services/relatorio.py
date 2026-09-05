@@ -462,6 +462,7 @@ def get_extrato_funcionario(
     itens: list[ExtratoServicoItem] = []
     os_distintas: set[int] = set()
     total = 0
+    total_mao_de_obra = 0
 
     for linha in linhas:
         os_distintas.add(linha.os_id)
@@ -477,6 +478,9 @@ def get_extrato_funcionario(
         elif not descricao and linha.numero_serie:
             descricao = linha.numero_serie
 
+        # O custo e por UNIDADE; a mao de obra multiplica pela quantidade,
+        # senao dois servicos iguais na mesma linha descontariam so uma peca.
+        custo_linha = round((linha.quantidade or 0) * (linha.custo_unitario or 0))
         itens.append(
             ExtratoServicoItem(
                 numero_os=linha.numero_os,
@@ -486,8 +490,11 @@ def get_extrato_funcionario(
                 servico=linha.servico,
                 quantidade=linha.quantidade,
                 valor_total=linha.valor_total or 0,
+                custo=custo_linha,
+                mao_de_obra=max(0, (linha.valor_total or 0) - custo_linha),
             )
         )
+        total_mao_de_obra += max(0, (linha.valor_total or 0) - custo_linha)
 
     return RelatorioExtratoFuncionario(
         inicio=inicio,
@@ -497,6 +504,7 @@ def get_extrato_funcionario(
         qtd_os=len(os_distintas),
         qtd_servicos=len(itens),
         valor_total=total,
+        total_mao_de_obra=total_mao_de_obra,
         itens=itens,
     )
 

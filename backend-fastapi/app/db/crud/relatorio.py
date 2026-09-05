@@ -12,7 +12,7 @@ from datetime import datetime
 from typing import Sequence
 
 from sqlalchemy.orm import Session, aliased
-from sqlalchemy import select, func, and_, or_, literal
+from sqlalchemy import select, func, and_, or_, case, literal
 
 from app.db.models.venda import Venda
 from app.db.models.venda_pagamento import PagamentoVenda
@@ -164,10 +164,78 @@ def get_comissao_base(
     Percentuais em basis points (500 = 5,00%). Meta em centavos. O calculo em si
     (aplicar a taxa) fica no service.
     """
-    vendas_sub = (
+    # ===================================================================
+    # A BASE E O LUCRO, NAO O FATURAMENTO (decisao do dono, 05/09/2026)
+    #
+    # "O dono acaba pagando comissao em uma coisa que nao e lucro no servico."
+    # O caso que abriu isto: OS de "Troca de Tela R$ 240" onde a tela custou
+    # R$ 165. A loja ganhou R$ 75 de mao de obra e pagava comissao sobre 240.
+    #
+    # Nesta loja a peca vai EMBUTIDA no preco do servico -- o cliente ve
+    # "Troca de Tela R$ 240" e nunca o preco da tela. O padrao de mercado e
+    # itemizar (servico R$ 75 + peca R$ 165) e comissionar so a linha de
+    # servico; aqui isso exporia a peca na via do cliente, o que a loja nao
+    # quer. Por isso a base desconta o `custo_unitario` DECLARADO no item, que
+    # e interno e nunca impresso (ver db/models/ordem_servico_item.py).
+    #
+    # ⚠️ DEPENDE DO CUSTO ESTAR PREENCHIDO. Item de servico sem
+    # `custo_unitario` e lido como 100% mao de obra e comissiona sobre o valor
+    # cheio -- que e exatamente o comportamento antigo. O erro, quando houver,
+    # e a favor do funcionario e nunca contra, o que e o lado certo de errar.
+    #
+    # ⚠️ TROCAR A BASE SEM RECALIBRAR O PERCENTUAL E CORTE DE SALARIO. 5% de
+    # 240 = R$ 12,00; 5% de 75 = R$ 3,75. Para o tecnico manter o que ganhava,
+    # a taxa precisa subir (~16% no exemplo). Margem e um numero menor, entao o
+    # percentual sobre ela e maior -- isso e a mecanica do modelo, nao um
+    # detalhe de implementacao.
+    # ===================================================================
+
+    # --- OS: so item de SERVICO, e so a mao de obra dele -------------------
+    #
+    # Item de PRODUTO fica de fora inteiro: peca e repasse, nao trabalho.
+    # REPROVADO fica de fora porque o servico nao foi feito -- mesma regra que
+    # o total da OS e o CMV ja usam.
+    os_sub = (
+        select(
+            OSModel.funcionario_id.label("fid"),
+            func.coalesce(
+                func.sum(
+                    OrdemServicoItem.valor_total
+                    - OrdemServicoItem.quantidade
+                    * func.coalesce(OrdemServicoItem.custo_unitario, 0)
+                ),
+                0,
+            ).label("os_valor"),
+        )
+        .join(OSModel, OSModel.id == OrdemServicoItem.ordem_servico_id)
+        .where(
+            and_(
+                OSModel.status == OrdemServicoStatus.FINALIZADA,
+                OSModel.data_finalizacao.isnot(None),
+                OSModel.data_finalizacao >= data_inicio,
+                OSModel.data_finalizacao <= data_fim,
+                OrdemServicoItem.tipo == OrdemServicoItemTipo.SERVICO,
+                OrdemServicoItem.status_aprovacao
+                != OrdemServicoItemAprovacao.REPROVADO,
+            )
+        )
+        .group_by(OSModel.funcionario_id)
+        .subquery()
+    )
+
+    # --- Venda: a MARGEM (o que sobrou depois do custo da mercadoria) ------
+    #
+    # Tres parcelas, espelhando `services/custo_mercadoria.calcular_cmv` para
+    # que a comissao e o lucro do mes falem do mesmo numero:
+    #   receita  Venda.total ja pos-desconto, menos o juros da operadora
+    #   custo 1  peca do catalogo, custo congelado no livro de estoque
+    #   custo 2  item avulso, custo declarado a mao (nao passa pelo estoque)
+    venda_receita_sub = (
         select(
             Venda.funcionario_id.label("fid"),
-            func.coalesce(func.sum(Venda.total), 0).label("vendas_valor"),
+            func.coalesce(
+                func.sum(Venda.total - func.coalesce(Venda.acrescimo, 0)), 0
+            ).label("receita"),
         )
         .where(
             and_(
@@ -179,25 +247,78 @@ def get_comissao_base(
         .group_by(Venda.funcionario_id)
         .subquery()
     )
-    os_sub = (
+
+    # SAIDA soma, ENTRADA subtrai: a venda cancelada devolve o custo sozinha,
+    # sem ninguem cacar estorno na mao (mesma regra do CMV).
+    venda_custo_estoque_sub = (
         select(
-            OSModel.funcionario_id.label("fid"),
-            func.coalesce(func.sum(OSModel.valor_total), 0).label("os_valor"),
+            Venda.funcionario_id.label("fid"),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (
+                            MovimentacaoEstoque.tipo == MovimentacaoTipo.SAIDA,
+                            MovimentacaoEstoque.quantidade
+                            * func.coalesce(MovimentacaoEstoque.custo_unitario, 0),
+                        ),
+                        else_=-MovimentacaoEstoque.quantidade
+                        * func.coalesce(MovimentacaoEstoque.custo_unitario, 0),
+                    )
+                ),
+                0,
+            ).label("custo"),
         )
+        .join(Venda, Venda.id == MovimentacaoEstoque.venda_id)
         .where(
             and_(
-                OSModel.status == OrdemServicoStatus.FINALIZADA,
-                OSModel.data_finalizacao.isnot(None),
-                OSModel.data_finalizacao >= data_inicio,
-                OSModel.data_finalizacao <= data_fim,
+                MovimentacaoEstoque.origem == MovimentacaoOrigem.VENDA.value,
+                MovimentacaoEstoque.tipo.in_(
+                    [MovimentacaoTipo.ENTRADA, MovimentacaoTipo.SAIDA]
+                ),
+                Venda.status == VendaStatus.FINALIZADA,
+                Venda.criado_em >= data_inicio,
+                Venda.criado_em <= data_fim,
             )
         )
-        .group_by(OSModel.funcionario_id)
+        .group_by(Venda.funcionario_id)
         .subquery()
     )
 
-    vendas_valor = func.coalesce(vendas_sub.c.vendas_valor, 0)
-    os_valor = func.coalesce(os_sub.c.os_valor, 0)
+    venda_custo_avulso_sub = (
+        select(
+            Venda.funcionario_id.label("fid"),
+            func.coalesce(
+                func.sum(ProdutoVenda.quantidade * ProdutoVenda.custo_unitario), 0
+            ).label("custo"),
+        )
+        .join(Venda, Venda.id == ProdutoVenda.venda_id)
+        .where(
+            and_(
+                ProdutoVenda.custo_unitario.isnot(None),
+                # Item COM produto_id ja tem custo congelado no livro; somar os
+                # dois dobraria o custo e zeraria a comissao do vendedor.
+                ProdutoVenda.produto_id.is_(None),
+                Venda.status == VendaStatus.FINALIZADA,
+                Venda.criado_em >= data_inicio,
+                Venda.criado_em <= data_fim,
+            )
+        )
+        .group_by(Venda.funcionario_id)
+        .subquery()
+    )
+
+    # Piso em zero: venda no prejuizo (liquidacao abaixo do custo) daria margem
+    # negativa, e margem negativa viraria comissao negativa -- descontando do
+    # que o funcionario ganhou nas outras vendas. Prejuizo e risco do dono.
+    _margem_venda = (
+        func.coalesce(venda_receita_sub.c.receita, 0)
+        - func.coalesce(venda_custo_estoque_sub.c.custo, 0)
+        - func.coalesce(venda_custo_avulso_sub.c.custo, 0)
+    )
+    _mao_de_obra = func.coalesce(os_sub.c.os_valor, 0)
+
+    vendas_valor = case((_margem_venda < 0, 0), else_=_margem_venda)
+    os_valor = case((_mao_de_obra < 0, 0), else_=_mao_de_obra)
 
     stmt = (
         select(
@@ -216,7 +337,13 @@ def get_comissao_base(
             # Modo pela mesma cascata; NULL vira 'direto' no service.
             func.coalesce(Funcionario.comissao_modo, Cargo.comissao_modo).label("modo"),
         )
-        .outerjoin(vendas_sub, vendas_sub.c.fid == Funcionario.id)
+        .outerjoin(venda_receita_sub, venda_receita_sub.c.fid == Funcionario.id)
+        .outerjoin(
+            venda_custo_estoque_sub, venda_custo_estoque_sub.c.fid == Funcionario.id
+        )
+        .outerjoin(
+            venda_custo_avulso_sub, venda_custo_avulso_sub.c.fid == Funcionario.id
+        )
         .outerjoin(os_sub, os_sub.c.fid == Funcionario.id)
         .outerjoin(Cargo, Cargo.id == Funcionario.cargo_id)
         .where(and_(Funcionario.empresa_id == empresa_id, Funcionario.ativo == True))
@@ -266,174 +393,6 @@ def get_vendas_por_produto(
     )
     return db.execute(stmt).all()
 
-
-# ---------------------------------------------------------------------------
-# CMV — custo da mercadoria vendida
-#
-# Sai do livro de estoque, nao do cadastro do produto: o que interessa e quanto
-# a peca custava NO DIA em que ela saiu, e esse numero esta congelado em
-# `movimentacoes_estoque.custo_unitario`.
-#
-# Ancoragem de data: NAO usa `movimentacao.created_at`, e sim a mesma data que
-# ancora a receita (Venda.criado_em e OS.data_finalizacao). Uma venda criada
-# ontem e fechada hoje teria a receita num dia e o custo no outro, e a margem
-# do dia sairia errada nos dois. Amarrando na data da receita, CMV e faturamento
-# sempre fecham no mesmo periodo.
-#
-# ENTRADA aqui e ESTORNO (venda cancelada, OS reaberta) e entra como credito: a
-# peca voltou para a prateleira, entao o custo dela sai do CMV. Por isso o
-# agrupamento e por tipo, e nao um `sum` unico.
-#
-# AJUSTE fica DE FORA de proposito: contagem de inventario nao e venda. Sobra e
-# falta de estoque sao ganho ou perda operacional, e jogar isso no CMV faria a
-# margem despencar todo mes de inventario, justamente quando a loja foi mais
-# caprichosa.
-# ---------------------------------------------------------------------------
-
-def _custo_movimentado():
-    """Σ (quantidade × custo congelado) e quantas linhas ficaram sem custo."""
-    return (
-        func.coalesce(
-            func.sum(MovimentacaoEstoque.quantidade * MovimentacaoEstoque.custo_unitario), 0
-        ).label("total"),
-        func.count(MovimentacaoEstoque.id)
-        .filter(MovimentacaoEstoque.custo_unitario.is_(None))
-        .label("sem_custo"),
-    )
-
-
-def get_cmv_vendas(
-    db: Session, data_inicio: datetime, data_fim: datetime, empresa_id: int
-) -> Sequence:
-    """Custo das peças movimentadas por venda no período, agrupado por tipo."""
-    total, sem_custo = _custo_movimentado()
-    stmt = (
-        select(MovimentacaoEstoque.tipo, total, sem_custo)
-        .join(Venda, Venda.id == MovimentacaoEstoque.venda_id)
-        .join(Funcionario, Funcionario.id == Venda.funcionario_id)
-        .where(
-            and_(
-                MovimentacaoEstoque.origem == MovimentacaoOrigem.VENDA.value,
-                MovimentacaoEstoque.tipo.in_(
-                    [MovimentacaoTipo.ENTRADA, MovimentacaoTipo.SAIDA]
-                ),
-                Venda.status == VendaStatus.FINALIZADA,
-                Venda.criado_em >= data_inicio,
-                Venda.criado_em <= data_fim,
-                Funcionario.empresa_id == empresa_id,
-            )
-        )
-        .group_by(MovimentacaoEstoque.tipo)
-    )
-    return db.execute(stmt).all()
-
-
-def get_cmv_os(
-    db: Session, data_inicio: datetime, data_fim: datetime, empresa_id: int
-) -> Sequence:
-    """Custo das peças movimentadas por OS no período, agrupado por tipo."""
-    total, sem_custo = _custo_movimentado()
-    stmt = (
-        select(MovimentacaoEstoque.tipo, total, sem_custo)
-        .join(OSModel, OSModel.id == MovimentacaoEstoque.ordem_servico_id)
-        .outerjoin(Funcionario, Funcionario.id == OSModel.funcionario_id)
-        .where(
-            and_(
-                MovimentacaoEstoque.origem == MovimentacaoOrigem.ORDEM_SERVICO.value,
-                MovimentacaoEstoque.tipo.in_(
-                    [MovimentacaoTipo.ENTRADA, MovimentacaoTipo.SAIDA]
-                ),
-                OSModel.status == OrdemServicoStatus.FINALIZADA,
-                OSModel.data_finalizacao >= data_inicio,
-                OSModel.data_finalizacao <= data_fim,
-                # OS sem técnico atribuído pertence à empresa — é o mesmo escopo
-                # que o faturamento usa (dashboard.get_stats_agregados). Com
-                # INNER JOIN, a receita dessas OS entrava e o custo NÃO, e o
-                # lucro saía inflado exatamente nelas.
-                or_(
-                    Funcionario.empresa_id == empresa_id,
-                    OSModel.funcionario_id.is_(None),
-                ),
-            )
-        )
-        .group_by(MovimentacaoEstoque.tipo)
-    )
-    return db.execute(stmt).all()
-
-
-def get_custo_manual_os(
-    db: Session, data_inicio: datetime, data_fim: datetime, empresa_id: int
-) -> int:
-    """Gasto declarado a mão nos itens de OS finalizadas no período (centavos).
-
-    Existe porque na OS o comum é NÃO cadastrar a peça: lança-se só o serviço. O
-    custo dela não passa pelo livro de estoque, então precisa de um lugar próprio
-    — senão o lucro do mês sai maior do que foi.
-
-    Duas exclusões que evitam contar errado:
-      - item COM `produto_id` fica de fora: esse saiu do estoque e já tem custo
-        congelado no livro; somar os dois dobraria o CMV.
-      - item REPROVADO fica de fora: o cliente recusou, o serviço não foi feito
-        e o gasto não aconteceu.
-
-    Ancorado em `data_finalizacao`, igual à receita da OS, para o custo cair no
-    mesmo período do faturamento que ele produziu.
-    """
-    stmt = (
-        select(
-            func.coalesce(
-                func.sum(OrdemServicoItem.quantidade * OrdemServicoItem.custo_unitario), 0
-            )
-        )
-        .join(OSModel, OSModel.id == OrdemServicoItem.ordem_servico_id)
-        .outerjoin(Funcionario, Funcionario.id == OSModel.funcionario_id)
-        .where(
-            and_(
-                OrdemServicoItem.custo_unitario.isnot(None),
-                OrdemServicoItem.produto_id.is_(None),
-                OrdemServicoItem.status_aprovacao != OrdemServicoItemAprovacao.REPROVADO,
-                OSModel.status == OrdemServicoStatus.FINALIZADA,
-                OSModel.data_finalizacao >= data_inicio,
-                OSModel.data_finalizacao <= data_fim,
-                # Mesmo escopo do faturamento: OS sem técnico é da empresa.
-                or_(
-                    Funcionario.empresa_id == empresa_id,
-                    OSModel.funcionario_id.is_(None),
-                ),
-            )
-        )
-    )
-    return db.scalar(stmt) or 0
-
-
-def get_custo_manual_vendas(
-    db: Session, data_inicio: datetime, data_fim: datetime, empresa_id: int
-) -> int:
-    """Gasto declarado a mão nos itens AVULSOS de vendas finalizadas (centavos).
-
-    Item avulso não movimenta estoque (services/venda.py só baixa o CADASTRADO),
-    então o custo dele não passa pelo livro. Sem isto, um avulso vendido por 80
-    que custou 30 entrava como receita pura.
-
-    Exclui item com `produto_id`: esse deu baixa e já tem custo congelado no
-    livro — somar os dois dobraria o CMV.
-    """
-    stmt = (
-        select(func.coalesce(func.sum(ProdutoVenda.quantidade * ProdutoVenda.custo_unitario), 0))
-        .join(Venda, Venda.id == ProdutoVenda.venda_id)
-        .join(Funcionario, Funcionario.id == Venda.funcionario_id)
-        .where(
-            and_(
-                ProdutoVenda.custo_unitario.isnot(None),
-                ProdutoVenda.produto_id.is_(None),
-                Venda.status == VendaStatus.FINALIZADA,
-                Venda.criado_em >= data_inicio,
-                Venda.criado_em <= data_fim,
-                Funcionario.empresa_id == empresa_id,
-            )
-        )
-    )
-    return db.scalar(stmt) or 0
 
 
 def get_produtos_estoque(db: Session) -> Sequence:
@@ -544,6 +503,12 @@ def get_servicos_do_funcionario(
             OrdemServicoItem.nome.label("servico"),
             OrdemServicoItem.quantidade,
             OrdemServicoItem.valor_total,
+            # O custo da peca embutida, para o extrato poder mostrar a MAO DE
+            # OBRA -- que desde 05/09/2026 e a base da comissao. Sem esta
+            # coluna o tecnico conferia um numero (o valor cheio do servico) e
+            # recebia sobre outro, e um funcionario que nao consegue conferir o
+            # proprio pagamento desconfia dele.
+            func.coalesce(OrdemServicoItem.custo_unitario, 0).label("custo_unitario"),
         )
         .join(OrdemServicoItem, OrdemServicoItem.ordem_servico_id == OSModel.id)
         .outerjoin(ObjetoServico, ObjetoServico.id == OSModel.objeto_id)

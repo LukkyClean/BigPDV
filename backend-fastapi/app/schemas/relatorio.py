@@ -203,6 +203,21 @@ class ExtratoServicoItem(BaseModel):
     servico: str
     quantidade: float
     valor_total: int = Field(..., description="Valor do item (centavos)")
+    custo: int = Field(
+        0,
+        description=(
+            "Custo da peça embutida no preço deste serviço (centavos). Interno "
+            "— nunca sai na via do cliente, só no extrato de quem executou"
+        ),
+    )
+    mao_de_obra: int = Field(
+        0,
+        description=(
+            "valor_total − custo (centavos). É a base da comissão de serviço; "
+            "o extrato mostra este número para o técnico conferir o próprio "
+            "pagamento"
+        ),
+    )
 
 
 class RelatorioExtratoFuncionario(BaseModel):
@@ -214,6 +229,14 @@ class RelatorioExtratoFuncionario(BaseModel):
     qtd_os: int = Field(..., description="OS DISTINTAS, nao linhas: tres servicos numa OS contam 1")
     qtd_servicos: int
     valor_total: int = Field(..., description="Soma dos servicos (centavos)")
+    total_mao_de_obra: int = Field(
+        0,
+        description=(
+            "Soma da mão de obra — `valor_total` menos o custo das peças "
+            "embutidas (centavos). É a BASE DA COMISSÃO de serviço. Quando não "
+            "há peça embutida ele é igual ao `valor_total`"
+        ),
+    )
     itens: list[ExtratoServicoItem] = Field(default_factory=list)
 
 

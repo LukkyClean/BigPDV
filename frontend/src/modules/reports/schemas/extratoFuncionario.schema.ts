@@ -8,6 +8,10 @@ export const ExtratoServicoItemSchema = z.object({
   servico: z.string(),
   quantidade: z.number(),
   valor_total: z.number(),
+  /** Custo da peça embutida no preço do serviço. Interno: nunca sai na via do cliente. */
+  custo: z.number().default(0),
+  /** valor_total − custo. É a base da comissão de serviço. */
+  mao_de_obra: z.number().default(0),
 });
 
 export const RelatorioExtratoFuncionarioSchema = z.object({
@@ -19,6 +23,8 @@ export const RelatorioExtratoFuncionarioSchema = z.object({
   qtd_os: z.number(),
   qtd_servicos: z.number(),
   valor_total: z.number(),
+  /** Soma da mão de obra — o que a comissão de serviço realmente paga. */
+  total_mao_de_obra: z.number().default(0),
   itens: z.array(ExtratoServicoItemSchema),
 });
 

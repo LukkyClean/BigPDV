@@ -33,6 +33,16 @@ const { data, isLoading, isError } = useExtratoFuncionarioQuery(
 
 const temItens = computed(() => (data.value?.itens.length ?? 0) > 0);
 
+/**
+ * Loja que lança a peça como item separado nunca preenche `custo` no serviço —
+ * ali mão de obra e valor são o mesmo número, e mostrar as duas colunas seria
+ * repetir a informação. As colunas só nascem quando há peça embutida em alguma
+ * linha.
+ */
+const temPecaEmbutida = computed(
+  () => (data.value?.itens ?? []).some((i) => (i.custo ?? 0) > 0),
+);
+
 /** "12/08" — o ano já está no cabeçalho do período. */
 function diaMes(iso: string): string {
   const [, m, d] = iso.split('-');
@@ -106,6 +116,15 @@ async function imprimir() {
           <p class="text-[10px] font-bold uppercase tracking-widest text-slate-400">Total</p>
           <p class="text-xl font-bold text-emerald-700 tabular-nums">{{ formatCurrency(data.valor_total) }}</p>
         </div>
+        <!-- A BASE DA COMISSAO, e nao um detalhe: o tecnico confere aqui o que
+             ele de fato recebe. So aparece quando ha peca embutida -- numa loja
+             que lanca peca separada os dois numeros sao iguais e o segundo card
+             seria ruido. -->
+        <div v-if="temPecaEmbutida">
+          <p class="text-[10px] font-bold uppercase tracking-widest text-slate-400">Mão de obra</p>
+          <p class="text-xl font-bold text-slate-800 tabular-nums">{{ formatCurrency(data.total_mao_de_obra) }}</p>
+          <p class="text-[10px] text-slate-400">base da comissão</p>
+        </div>
 
         <button
           type="button"
@@ -131,7 +150,9 @@ async function imprimir() {
               <th class="py-2 px-3 text-left font-medium">Objeto / Cliente</th>
               <th class="py-2 px-3 text-left font-medium">Serviço</th>
               <th class="py-2 px-3 text-right font-medium">Qtd</th>
-              <th class="py-2 pl-3 text-right font-medium">Valor</th>
+              <th class="py-2 px-3 text-right font-medium">Valor</th>
+              <th v-if="temPecaEmbutida" class="py-2 px-3 text-right font-medium">Peça</th>
+              <th v-if="temPecaEmbutida" class="py-2 pl-3 text-right font-medium">Mão de obra</th>
             </tr>
           </thead>
           <tbody>
@@ -150,8 +171,14 @@ async function imprimir() {
               </td>
               <td class="py-2 px-3 text-slate-700">{{ i.servico }}</td>
               <td class="py-2 px-3 text-right text-slate-500 tabular-nums">{{ fmtQtd(i.quantidade) }}</td>
-              <td class="py-2 pl-3 text-right font-semibold text-slate-800 tabular-nums">
+              <td class="py-2 px-3 text-right text-slate-500 tabular-nums">
                 {{ formatCurrency(i.valor_total) }}
+              </td>
+              <td v-if="temPecaEmbutida" class="py-2 px-3 text-right text-amber-600 tabular-nums">
+                {{ i.custo > 0 ? `− ${formatCurrency(i.custo)}` : '—' }}
+              </td>
+              <td v-if="temPecaEmbutida" class="py-2 pl-3 text-right font-semibold text-slate-800 tabular-nums">
+                {{ formatCurrency(i.mao_de_obra) }}
               </td>
             </tr>
           </tbody>
