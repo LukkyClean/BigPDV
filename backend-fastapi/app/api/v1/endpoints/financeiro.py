@@ -49,6 +49,7 @@ from app.schemas.financeiro import (
     Conciliacao,
     ConciliacaoBaixaLote,
     ConciliacaoResultado,
+    CustoDetalhe,
     Extrato,
     FluxoCaixa,
     Projecao,
@@ -302,6 +303,29 @@ def cancelar_conta_pagar(
     """
     return _handle_db_transaction(
         db, financeiro_service.cancelar_conta_pagar,
+        usuario_token["empresa_id"], conta_id, usuario_token,
+    )
+
+
+@router.post(
+    "/contas-pagar/{conta_id}/reativar",
+    response_model=ContaPagarRead,
+    summary="Desfaz o cancelamento: a conta volta para em aberto",
+)
+def reativar_conta_pagar(
+    conta_id: int = Path(..., gt=0),
+    usuario_token: dict = Depends(check_permission(required_permission=PERMISSAO_GERIR)),
+    db: Session = Depends(get_db),
+):
+    """Cancelar era porta de mao unica.
+
+    Um clique errado tirava a conta da lista de "em aberto" para sempre -- e
+    numa parcela de emprestimo em 72x isso significa perder a linha 9/72 do
+    controle inteiro. A conta volta com o mesmo id, valor e vencimento; so o
+    status muda, e as duas passagens ficam no historico.
+    """
+    return _handle_db_transaction(
+        db, financeiro_service.reativar_conta_pagar,
         usuario_token["empresa_id"], conta_id, usuario_token,
     )
 
@@ -772,4 +796,30 @@ def get_projecao(
     return _handle_db_transaction(
         db,
         lambda db_: analise_service.get_projecao(db_, usuario_token["empresa_id"]),
+    )
+
+
+@router.get(
+    "/custo-detalhe",
+    response_model=CustoDetalhe,
+    summary="De onde vem cada centavo do Custo do que vendeu",
+)
+def get_custo_detalhe(
+    usuario_token: dict = Depends(check_permission(required_permission=PERMISSAO_VER)),
+    db: Session = Depends(get_db),
+    inicio: date = Query(..., description="Inicio do periodo (YYYY-MM-DD)"),
+    fim: date = Query(..., description="Fim do periodo (YYYY-MM-DD)"),
+):
+    """O card "Custo do que vendeu" aberto, linha a linha.
+
+    Cada peca que saiu, de qual venda ou OS, com o custo congelado na baixa --
+    mais os custos declarados a mao, que ate 05/09/2026 nao tinham NENHUMA tela
+    onde aparecer depois que a OS fechava. O total tem que bater com
+    `custo_mercadorias` do resumo.
+    """
+    return _handle_db_transaction(
+        db,
+        lambda db_: visao_service.get_detalhe_custo(
+            db_, usuario_token["empresa_id"], inicio, fim
+        ),
     )

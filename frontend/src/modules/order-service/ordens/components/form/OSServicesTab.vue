@@ -1,6 +1,9 @@
 <script setup lang="ts">
-import { Plus, Trash2, Package, Wrench, ShoppingBag, Pencil } from 'lucide-vue-next';
+import { computed } from 'vue';
+import { storeToRefs } from 'pinia';
+import { Plus, Trash2, Package, Wrench, ShoppingBag, Pencil, Lock } from 'lucide-vue-next';
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
+import { useAuthStore } from '@/shared/stores/auth.store';
 import { formatCurrency } from '@/shared/utils/finance';
 import type { OsItemCreateSchemaDataType, OsItemReadSchemaDataType } from '../../schemas/relationship/osItem.schema';
 import { useCapacidades } from '@/modules/order-service/shared/segmento/useCapacidades';
@@ -51,6 +54,37 @@ function getItemIconClass(item: OsItem) {
 function getItemTotal(item: OsItem): number {
   if ('valor_total' in item && item.valor_total !== undefined) return item.valor_total;
   return item.quantidade * item.valor_unitario;
+}
+
+/**
+ * O CUSTO INTERNO NA LINHA DO ITEM.
+ *
+ * O campo "Custo para a loja" só existia dentro do modal de editar item, e a
+ * aba trava quando a OS finaliza -- ou seja, depois de fechada NÃO HAVIA COMO
+ * VER o custo declarado. O dono passou uma tarde conferindo R$ 846 de CMV no
+ * papel sem ter onde abrir o número, e a diferença que ele procurava era
+ * justamente um custo lançado num item avulso.
+ *
+ * ⚠️ AQUI E SÓ AQUI. Custo é tratamento INTERNO, por decisão explícita do dono
+ * em 05/09/2026: não entra no resumo da OS, não entra no resumo de pagamento e
+ * nunca sai em via impressa. Quem for mexer nisto depois, a regra é essa.
+ *
+ * Só o master vê. Não é permissão fina de propósito: é o mesmo critério que o
+ * Relatório de faturamento já usa para os blocos de custo e margem.
+ */
+const authStore = useAuthStore();
+const { userData } = storeToRefs(authStore);
+const podeVerCusto = computed(() => userData.value?.is_master === true);
+
+function custoDoItem(item: OsItem): number {
+  return Math.round(item.quantidade * (item.custo_unitario ?? 0));
+}
+
+/** Nulo quando não há custo declarado — item sem custo não ganha linha nenhuma. */
+function margemDoItem(item: OsItem): { custo: number; sobra: number } | null {
+  const custo = custoDoItem(item);
+  if (custo <= 0) return null;
+  return { custo, sobra: getItemTotal(item) - custo };
 }
 </script>
 
@@ -109,6 +143,19 @@ function getItemTotal(item: OsItem): number {
               <p class="text-xs text-slate-500 truncate">
                 {{ item.unidade_medida }}
                 <span v-if="temGarantiaItens && garantiaLabel(item)"> · Garantia {{ garantiaLabel(item) }}</span>
+              </p>
+              <!-- Custo interno: só master, nunca em via impressa nem em resumo. -->
+              <p
+                v-if="podeVerCusto && margemDoItem(item)"
+                class="mt-0.5 flex items-center gap-1 text-[11px] text-slate-400"
+              >
+                <Lock :size="10" class="shrink-0" />
+                <span>
+                  Custo {{ formatCurrency(margemDoItem(item)!.custo) }} · sobra
+                  <strong :class="margemDoItem(item)!.sobra >= 0 ? 'text-emerald-600' : 'text-red-600'">
+                    {{ formatCurrency(margemDoItem(item)!.sobra) }}
+                  </strong>
+                </span>
               </p>
             </div>
           </div>
