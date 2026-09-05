@@ -480,3 +480,25 @@ def listar_historico(
         .order_by(HistoricoFinanceiro.criado_em.desc(), HistoricoFinanceiro.id.desc())
         .all()
     )
+
+
+def listar_parcelas_seguintes(
+    db: Session, empresa_id: int, parcelamento_id: int, numero_atual: int
+) -> Sequence[ContaPagar]:
+    """As parcelas DEPOIS desta, do MESMO parcelamento, que ainda estao em aberto.
+
+    Os tres recortes existem para a correcao em massa nao causar estrago: outra
+    divida do mesmo fornecedor nao e alcancada, o passado nao se reescreve, e
+    parcela paga fica congelada porque ja virou lancamento no livro.
+    """
+    return (
+        db.query(ContaPagar)
+        .filter(
+            ContaPagar.empresa_id == empresa_id,
+            ContaPagar.parcelamento_id == parcelamento_id,
+            ContaPagar.parcela_numero > numero_atual,
+            ContaPagar.status == ContaPagarStatus.PENDENTE.value,
+        )
+        .order_by(ContaPagar.parcela_numero.asc())
+        .all()
+    )

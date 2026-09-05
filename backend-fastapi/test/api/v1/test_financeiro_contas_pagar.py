@@ -907,3 +907,141 @@ def test_receber_baixado_sai_do_a_receber_sem_mexer_no_resultado(client, db_sess
     assert depois["a_receber_pendente"] == 0, "saiu da rua"
     assert depois["faturamento"] == antes["faturamento"], "não é venda nova"
     assert depois["resultado"] == antes["resultado"]
+
+
+# ===========================================================================
+# DESFAZER O CANCELAMENTO, E CORRIGIR O PARCELAMENTO INTEIRO
+#
+# Os dois vieram do mesmo dia de uso real (05/09/2026), num emprestimo em 30x:
+# o dono cancelou uma parcela sem querer e nao tinha como voltar, e descobriu
+# que corrigir a data significava abrir 30 telas -- 72, na outra conta dele.
+# ===========================================================================
+
+def _todas(client, header, **params):
+    q = "&".join(f"{k}={v}" for k, v in params.items())
+    return client.get(f"/api/v1/financeiro/contas-pagar?{q}", headers=header).json()
+
+
+def test_conta_cancelada_por_engano_volta_para_em_aberto(client, db_session):
+    """Cancelar era porta de mão única: a conta saía da lista e não voltava."""
+    header = _auth(client)
+    conta = _criar_conta(client, header, descricao="Energia Solar", valor=32000)
+    base = f"/api/v1/financeiro/contas-pagar/{conta['id']}"
+
+    client.delete(base, headers=header)
+    assert client.get(base, headers=header).json()["status"] == "CANCELADA"
+
+    r = client.post(f"{base}/reativar", headers=header)
+    assert r.status_code == status.HTTP_200_OK, r.text
+    assert r.json()["status"] == "PENDENTE"
+    # A MESMA linha: reativar não recria nada, senão o histórico se perderia.
+    assert r.json()["id"] == conta["id"]
+    assert r.json()["valor"] == 32000
+
+
+def test_reativar_so_vale_para_conta_cancelada(client, db_session):
+    """Numa conta em aberto o botão não faz sentido, e o backend precisa dizer
+    isso — a tela pode falhar em esconder o botão, o contrato não."""
+    header = _auth(client)
+    conta = _criar_conta(client, header)
+    r = client.post(
+        f"/api/v1/financeiro/contas-pagar/{conta['id']}/reativar", headers=header
+    )
+    assert r.status_code == status.HTTP_400_BAD_REQUEST, r.text
+
+
+def test_corrigir_o_vencimento_arruma_as_parcelas_seguintes(client, db_session):
+    """Errou o dia numa compra em 6x: corrige uma e as outras acompanham.
+
+    RE-ANCORA, não copia: cada parcela seguinte recebe o mesmo DIA, mês a mês.
+    Copiar a data faria as cinco restantes vencerem todas no mesmo dia.
+    """
+    header = _auth(client)
+    _criar_conta(client, header, descricao="Empréstimo", valor=70000,
+                 vencimento=date(2027, 5, 3).isoformat(), parcelas=6)
+
+    itens = sorted(_todas(client, header, limit=50)["itens"],
+                   key=lambda c: c["parcela_numero"])
+    assert [c["vencimento"] for c in itens[:3]] == [
+        "2027-05-03", "2027-06-03", "2027-07-03",
+    ]
+
+    # O dono corrige a PRIMEIRA: era dia 3, o certo é 22.
+    r = client.patch(
+        f"/api/v1/financeiro/contas-pagar/{itens[0]['id']}",
+        json={"vencimento": "2027-05-22", "aplicar_nas_proximas": True},
+        headers=header,
+    )
+    assert r.status_code == status.HTTP_200_OK, r.text
+
+    depois = sorted(_todas(client, header, limit=50)["itens"],
+                    key=lambda c: c["parcela_numero"])
+    assert [c["vencimento"] for c in depois] == [
+        "2027-05-22", "2027-06-22", "2027-07-22",
+        "2027-08-22", "2027-09-22", "2027-10-22",
+    ]
+
+
+def test_dia_30_encolhe_em_fevereiro_e_volta_em_marco(client, db_session):
+    """A pergunta do dono: "tem mês que é de 28 dias, e aí?".
+
+    Encolhe só no mês curto e VOLTA — porque a âncora é a primeira parcela, não
+    a parcela anterior. Ancorar na anterior faria 30/jan virar 28/fev e depois
+    ficar 28 para sempre, e o erro cresceria em silêncio ao longo das 72.
+    """
+    header = _auth(client)
+    _criar_conta(client, header, descricao="Prestação", valor=70000,
+                 vencimento=date(2027, 12, 30).isoformat(), parcelas=4)
+
+    itens = sorted(_todas(client, header, limit=50)["itens"],
+                   key=lambda c: c["parcela_numero"])
+    assert [c["vencimento"] for c in itens] == [
+        "2027-12-30",
+        "2028-01-30",
+        "2028-02-29",  # ano bissexto: encolhe para o último dia
+        "2028-03-30",  # e VOLTA para 30
+    ]
+
+
+def test_propagacao_nao_encosta_no_que_ja_foi_pago(client, db_session):
+    """Parcela paga já virou lançamento no livro. Mexer nela faria o relatório
+    do mês discordar do movimento."""
+    header = _auth(client)
+    _criar_conta(client, header, descricao="Financiamento", valor=50000,
+                 vencimento=date(2027, 5, 10).isoformat(), parcelas=4)
+
+    itens = sorted(_todas(client, header, limit=50)["itens"],
+                   key=lambda c: c["parcela_numero"])
+    # Paga a 3ª, depois corrige a 1ª pedindo propagação.
+    client.post(f"/api/v1/financeiro/contas-pagar/{itens[2]['id']}/pagar",
+                json={}, headers=header)
+    client.patch(
+        f"/api/v1/financeiro/contas-pagar/{itens[0]['id']}",
+        json={"vencimento": "2027-05-25", "aplicar_nas_proximas": True},
+        headers=header,
+    )
+
+    depois = {c["parcela_numero"]: c for c in _todas(client, header, limit=50)["itens"]}
+    assert depois[1]["vencimento"] == "2027-05-25"
+    assert depois[2]["vencimento"] == "2027-06-25"
+    assert depois[3]["vencimento"] == "2027-07-10", "a paga fica congelada"
+    assert depois[4]["vencimento"] == "2027-08-25"
+
+
+def test_sem_a_flag_so_a_conta_editada_muda(client, db_session):
+    """O padrão continua sendo mexer numa só — prorrogar UM boleto é rotina, e
+    ninguém quer que isso arraste o parcelamento inteiro."""
+    header = _auth(client)
+    _criar_conta(client, header, descricao="Compra", valor=30000,
+                 vencimento=date(2027, 5, 10).isoformat(), parcelas=3)
+
+    itens = sorted(_todas(client, header, limit=50)["itens"],
+                   key=lambda c: c["parcela_numero"])
+    client.patch(f"/api/v1/financeiro/contas-pagar/{itens[0]['id']}",
+                 json={"vencimento": "2027-05-25"}, headers=header)
+
+    depois = sorted(_todas(client, header, limit=50)["itens"],
+                    key=lambda c: c["parcela_numero"])
+    assert [c["vencimento"] for c in depois] == [
+        "2027-05-25", "2027-06-10", "2027-07-10",
+    ]

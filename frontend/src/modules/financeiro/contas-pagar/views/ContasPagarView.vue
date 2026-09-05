@@ -8,7 +8,7 @@
  */
 import { computed, ref } from 'vue';
 import { useRoute } from 'vue-router';
-import { Filter, ChevronLeft, ChevronRight, Plus, Undo2 } from 'lucide-vue-next';
+import { Filter, ChevronLeft, ChevronRight, Plus, Undo2, RotateCcw } from 'lucide-vue-next';
 
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
 import BaseSearchInput from '@/shared/components/ui/BaseSearchInput/BaseSearchInput.vue';
@@ -26,6 +26,7 @@ import ContaPagarFormModal from '../components/ContaPagarFormModal.vue';
 import { usePeriodoMes } from '../../shared/composables/usePeriodoMes';
 import {
   useCancelarContaPagar,
+  useReativarContaPagar,
   useContasPagarQuery,
 } from '../../shared/composables/useFinanceiro';
 import type { ContaPagar } from '../../shared/schemas/financeiro.schema';
@@ -63,6 +64,7 @@ const filtros = computed(() => ({
 
 const { data: listagem, isLoading } = useContasPagarQuery(filtros);
 const cancelar = useCancelarContaPagar();
+const reativar = useReativarContaPagar();
 const confirmacao = useConfirmacao();
 
 const formAberto = ref(false);
@@ -101,6 +103,24 @@ function editar(conta: ContaPagar) {
  * O diálogo nativo do navegador aparece como "localhost:1420 diz" — fora do
  * visual do sistema, e num app desktop denuncia que ali dentro é uma página web.
  */
+/**
+ * Confirma antes de reativar pelo mesmo motivo do cancelamento: a conta volta a
+ * contar no "a pagar em aberto" e no Fluxo de Caixa, e num parcelamento ela
+ * reaparece no meio da fila.
+ */
+async function confirmarReativacao(conta: ContaPagar) {
+  const ok = await confirmacao.pedirConfirmacao({
+    titulo: 'Reativar esta conta?',
+    descricao:
+      `<strong>${conta.descricao}</strong> volta para <strong>em aberto</strong> e passa a ` +
+      'contar de novo no que a loja deve, no vencimento original.',
+    confirmLabel: 'Reativar',
+    cancelLabel: 'Voltar',
+  });
+  if (!ok) return;
+  reativar.mutate(conta.id);
+}
+
 async function confirmarCancelamento(conta: ContaPagar) {
   const ok = await confirmacao.pedirConfirmacao({
     titulo: 'Cancelar esta conta?',
@@ -298,6 +318,19 @@ function rotuloStatus(conta: ContaPagar): string {
                     @click="contaParaEstorno = conta"
                   >
                     <Undo2 :size="13" /> Estornar
+                  </button>
+                </template>
+                <!-- CANCELADA tinha um "—" e nada mais: a conta saía da lista
+                     de "em aberto" e não voltava nunca. Numa parcela 9/72 de um
+                     empréstimo, o controle inteiro ficava furado por um clique
+                     errado. -->
+                <template v-else-if="conta.status === 'CANCELADA'">
+                  <button
+                    type="button"
+                    class="flex items-center gap-1 text-xs font-medium text-brand-primary cursor-pointer"
+                    @click="confirmarReativacao(conta)"
+                  >
+                    <RotateCcw :size="13" /> Reativar
                   </button>
                 </template>
                 <span v-else class="text-xs text-gray-300">—</span>

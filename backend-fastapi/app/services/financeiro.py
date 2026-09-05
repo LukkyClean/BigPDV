@@ -580,6 +580,8 @@ def atualizar_conta_pagar(
     func_id, func_nome = _funcionario_do_token(usuario_token)
 
     alteracoes = dados.model_dump(exclude_unset=True)
+    propagar = bool(alteracoes.pop("aplicar_nas_proximas", False))
+
     for campo, novo in alteracoes.items():
         antigo = getattr(conta, campo)
         if antigo == novo:
@@ -596,6 +598,113 @@ def atualizar_conta_pagar(
 
         setattr(conta, campo, novo.strip() if isinstance(novo, str) else novo)
 
+    if propagar:
+        _propagar_nas_proximas_parcelas(
+            db, empresa_id, conta, alteracoes, func_id, func_nome
+        )
+
+    db.flush()
+    db.refresh(conta)
+    return _serializar_conta(conta, hoje_local())
+
+
+# Só estes se repetem. `descricao` fica de fora porque ela carrega o "9/72" da
+# parcela; `recorrente` porque parcelado e recorrente se excluem (ver o modelo).
+CAMPOS_PROPAGAVEIS = ("valor", "vencimento", "plano_conta_id", "fornecedor_id", "observacao")
+
+
+def _propagar_nas_proximas_parcelas(
+    db: Session,
+    empresa_id: int,
+    conta,
+    alteracoes: Dict[str, Any],
+    func_id: Optional[int],
+    func_nome: Optional[str],
+) -> int:
+    """Repete a correção nas parcelas seguintes que ainda estão em aberto.
+
+    Nasceu de um empréstimo em 30x cadastrado com a data errada: corrigir mês a
+    mês são 30 telas, e em 72x ninguém corrige -- desiste do módulo.
+
+    TRÊS RECORTES, e cada um evita um estrago:
+      - só o MESMO parcelamento (nunca outra dívida do mesmo fornecedor);
+      - só as parcelas DEPOIS desta (o passado não se reescreve);
+      - só as PENDENTES -- parcela paga já virou lançamento no livro, e mexer
+        nela faria o relatório do mês discordar do movimento.
+
+    O VENCIMENTO RE-ANCORA em vez de copiar. Copiar a data faria as 63 parcelas
+    restantes vencerem todas no mesmo dia; aqui cada uma recebe o mesmo DIA do
+    novo vencimento, mês a mês, pela mesma `_somar_meses` que criou o
+    parcelamento -- e por isso dia 30 continua encolhendo só em fevereiro e
+    voltando para 30 em março.
+    """
+    if not conta.parcelamento_id or not conta.parcela_numero:
+        return 0
+
+    campos = {c: v for c, v in alteracoes.items() if c in CAMPOS_PROPAGAVEIS}
+    if not campos:
+        return 0
+
+    seguintes = financeiro_crud.listar_parcelas_seguintes(
+        db, empresa_id, conta.parcelamento_id, conta.parcela_numero
+    )
+
+    for parcela in seguintes:
+        for campo, novo in campos.items():
+            if campo == "vencimento":
+                novo = _somar_meses(
+                    conta.vencimento, (parcela.parcela_numero or 0) - conta.parcela_numero
+                )
+            antigo = getattr(parcela, campo)
+            if antigo == novo:
+                continue
+            if campo in CAMPOS_AUDITADOS:
+                financeiro_crud.registrar_historico(
+                    db, empresa_id=empresa_id, entidade=ENTIDADE_CONTA_PAGAR,
+                    entidade_id=parcela.id, campo=campo,
+                    valor_antigo=str(antigo) if antigo is not None else None,
+                    valor_novo=str(novo) if novo is not None else None,
+                    funcionario_id=func_id, funcionario_nome=func_nome,
+                )
+            setattr(parcela, campo, novo.strip() if isinstance(novo, str) else novo)
+
+    db.flush()
+    return len(seguintes)
+
+
+def reativar_conta_pagar(
+    db: Session, empresa_id: int, conta_id: int, usuario_token: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Desfaz um cancelamento -- CANCELADA volta para PENDENTE.
+
+    Faltava, e o buraco aparecia na primeira vez que alguém errava o clique: o
+    cancelamento era porta de mão única, e a conta ficava para sempre fora da
+    lista de "em aberto" sem forma de voltar. Numa parcela de um empréstimo em
+    72x isso significava perder a linha 9/72 do controle inteiro.
+
+    NÃO cancela recorrência nem recria nada: a conta é a mesma linha, com o
+    mesmo id, vencimento e valor. Só o status volta.
+
+    O rastro fica: cancelar gravou uma linha no histórico e reativar grava
+    outra. "Cancelaram e voltaram atrás" continua sendo uma pergunta que o
+    módulo responde.
+    """
+    conta = financeiro_crud.get_conta_pagar(db, empresa_id, conta_id)
+    if not conta:
+        raise NotFoundException(detail="Conta não encontrada")
+    if conta.status != ContaPagarStatus.CANCELADA.value:
+        raise BadRequestException(
+            detail="Só uma conta cancelada pode ser reativada."
+        )
+
+    func_id, func_nome = _funcionario_do_token(usuario_token)
+    financeiro_crud.registrar_historico(
+        db, empresa_id=empresa_id, entidade=ENTIDADE_CONTA_PAGAR, entidade_id=conta.id,
+        campo="status", valor_antigo=ContaPagarStatus.CANCELADA.value,
+        valor_novo=ContaPagarStatus.PENDENTE.value,
+        funcionario_id=func_id, funcionario_nome=func_nome,
+    )
+    conta.status = ContaPagarStatus.PENDENTE.value
     db.flush()
     db.refresh(conta)
     return _serializar_conta(conta, hoje_local())

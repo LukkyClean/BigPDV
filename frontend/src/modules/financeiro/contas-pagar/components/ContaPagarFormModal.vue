@@ -82,6 +82,7 @@ watch(
     observacao.value = c?.observacao ?? '';
     repeticao.value = c?.recorrente ? 'MENSAL' : 'UNICA';
     parcelas.value = 2;
+    aplicarNasProximas.value = false;
   },
   { immediate: true },
 );
@@ -95,6 +96,26 @@ watch(
  * foram pagas não têm como voltar atrás.
  */
 const podeParcelar = computed(() => !editando.value);
+
+/**
+ * Corrigir o parcelamento inteiro de uma vez.
+ *
+ * Reparcelar continua fora do formulário (ver acima), mas CORRIGIR não é
+ * reparcelar: o número de parcelas não muda, só a data ou o valor das que ainda
+ * estão em aberto. Sem isto, errar a data de um empréstimo em 72x significa
+ * abrir 72 telas — e ninguém abre: desiste do módulo.
+ *
+ * Só aparece quando há o que propagar: parcela isolada e última parcela não
+ * ganham a opção.
+ */
+const parcelaDeGrupo = computed(
+  () =>
+    editando.value &&
+    !!props.conta?.parcela_numero &&
+    !!props.conta?.parcela_total &&
+    props.conta.parcela_numero < props.conta.parcela_total,
+);
+const aplicarNasProximas = ref(false);
 
 /** Meses somados ao vencimento, ancorados no dia original (igual ao backend). */
 function somarMeses(iso: string, meses: number): Date | null {
@@ -155,6 +176,9 @@ function salvar() {
     recorrente: repeticao.value === 'MENSAL',
     parcelas: parcelado ? parcelas.value : 1,
     observacao: observacao.value.trim() || null,
+    ...(parcelaDeGrupo.value && aplicarNasProximas.value
+      ? { aplicar_nas_proximas: true }
+      : {}),
   };
 
   const aoErrar = (e: any) =>
@@ -186,6 +210,28 @@ function salvar() {
         <BaseMoneyInput v-model="valorReais" label="Valor" />
         <BaseInput v-model="vencimento" type="date" label="Vencimento" required />
       </div>
+
+      <!-- CORRIGIR O PARCELAMENTO INTEIRO. Só em parcela que tem parcelas
+           depois dela; a última e a conta avulsa não ganham a opção. -->
+      <label
+        v-if="parcelaDeGrupo"
+        class="flex cursor-pointer items-start gap-2.5 rounded-xl border px-3 py-2.5 transition"
+        :class="aplicarNasProximas
+          ? 'border-brand-primary bg-brand-primary/5 ring-1 ring-brand-primary'
+          : 'border-gray-200 hover:border-gray-300'"
+      >
+        <input v-model="aplicarNasProximas" type="checkbox" class="mt-0.5 accent-brand-primary" />
+        <span>
+          <span class="block text-sm font-medium text-gray-800">
+            Corrigir também as próximas parcelas
+          </span>
+          <span class="block text-[11px] text-gray-500">
+            Vale da {{ (conta?.parcela_numero ?? 0) + 1 }}ª à {{ conta?.parcela_total }}ª, só as
+            que ainda estão em aberto. A data mantém o mesmo dia mês a mês; parcela já paga
+            não é tocada.
+          </span>
+        </span>
+      </label>
 
       <BaseSelect v-model="planoContaId" :options="opcoesCategoria" label="Categoria" placeholder="Sem categoria" />
 

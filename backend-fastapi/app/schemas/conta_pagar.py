@@ -76,6 +76,28 @@ class ContaPagarUpdate(BaseModel):
     recorrente: Optional[bool] = None
     observacao: Optional[str] = None
 
+    # --- Corrigir de uma vez o resto do parcelamento ---
+    #
+    # Errar a data de uma compra em 72x e ter de corrigir 72 telas, uma por uma,
+    # nao e conserto: e motivo para o lojista desistir do modulo. O caso real
+    # veio de um emprestimo em 30x cadastrado com o vencimento errado.
+    #
+    # SO PARA FRENTE, e so no que ainda esta PENDENTE. Parcela paga ja virou
+    # lancamento no livro, e mexer nela faria o relatorio discordar do
+    # movimento; parcela anterior a esta ja aconteceu e nao se reescreve.
+    #
+    # No vencimento a propagacao RE-ANCORA em vez de copiar: as proximas
+    # recebem o mesmo DIA do novo vencimento, mes a mes, pela mesma conta que
+    # criou o parcelamento (`_somar_meses`). Copiar a data faria as 63 parcelas
+    # restantes vencerem todas no mesmo dia.
+    aplicar_nas_proximas: bool = Field(
+        False,
+        description=(
+            "Repete a alteração nas parcelas seguintes que ainda estão em "
+            "aberto. Ignorado em conta não parcelada"
+        ),
+    )
+
 
 # ===========================================================================
 # BAIXA
