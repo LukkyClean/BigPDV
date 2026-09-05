@@ -131,6 +131,25 @@ export function useResumoQuery(inicio: MaybeRef<string>, fim: MaybeRef<string>) 
   });
 }
 
+/**
+ * O detalhamento do custo. `enabled` amarrado ao modal: a consulta varre
+ * movimentacoes de estoque e itens de OS do periodo inteiro, e nao ha por que
+ * pagar isso enquanto ninguem abriu o card.
+ */
+export function useCustoDetalheQuery(
+  inicio: MaybeRef<string>,
+  fim: MaybeRef<string>,
+  habilitado: MaybeRef<boolean>,
+) {
+  return useQuery({
+    queryKey: computed(() =>
+      financeiroKeys.custoDetalhe({ inicio: unref(inicio), fim: unref(fim) }),
+    ),
+    queryFn: () => service.getCustoDetalhe(unref(inicio), unref(fim)),
+    enabled: computed(() => !!unref(habilitado) && !!unref(inicio) && !!unref(fim)),
+  });
+}
+
 export function useHistoricoRecebimentoQuery(contaId: MaybeRef<number | null>) {
   return useQuery({
     queryKey: computed(() => [...financeiroKeys.todos, 'historico-receber', unref(contaId)]),
@@ -189,6 +208,24 @@ export function useCancelarContaPagar() {
       // "Cancelada", nunca "excluída": a linha continua no banco, e chamar de
       // exclusão faria o usuário procurá-la na lixeira que não existe.
       toast.success('Conta cancelada');
+    },
+  });
+}
+
+/**
+ * Desfaz o cancelamento. Cancelar era porta de mão única: um clique errado
+ * tirava a conta da lista para sempre — e numa parcela de empréstimo em 72x
+ * isso significa perder a linha 9/72 do controle inteiro.
+ */
+export function useReativarContaPagar() {
+  const invalidar = useInvalidarFinanceiro();
+  const toast = useToast();
+
+  return useMutation({
+    mutationFn: (id: number) => service.reativarContaPagar(id),
+    onSuccess: () => {
+      invalidar();
+      toast.success('Conta reativada');
     },
   });
 }

@@ -17,10 +17,17 @@ function isoLocal(d: Date): string {
   return `${y}-${m}-${dia}`;
 }
 
-export function usePeriodoMes() {
+/**
+ * `mesInicial` no formato YYYY-MM. Existe para o clique num card da Visão Geral
+ * abrir a outra tela NO MESMO MÊS que o dono estava olhando -- sem isto ele
+ * conferia agosto, clicava em "Entrou" e caía em setembro, com outros números.
+ * Valor ausente ou inválido cai no mês atual, que é o padrão de sempre.
+ */
+export function usePeriodoMes(mesInicial?: string) {
   const hoje = new Date();
-  const ano = ref(hoje.getFullYear());
-  const mes = ref(hoje.getMonth()); // 0-11
+  const casa = /^(\d{4})-(\d{2})/.exec(mesInicial ?? '');
+  const ano = ref(casa ? Number(casa[1]) : hoje.getFullYear());
+  const mes = ref(casa ? Number(casa[2]) - 1 : hoje.getMonth()); // 0-11
 
   // Dia 0 do mês SEGUINTE é o último dia deste — a única forma que não erra em
   // fevereiro nem em ano bissexto.

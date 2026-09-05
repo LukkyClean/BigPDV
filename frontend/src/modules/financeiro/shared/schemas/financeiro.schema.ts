@@ -196,6 +196,15 @@ export interface ContaPagarPayload {
    */
   parcelas?: number;
   observacao?: string | null;
+  /**
+   * Só na EDIÇÃO de uma parcela: repete a correção nas parcelas seguintes que
+   * ainda estão em aberto. Existe porque corrigir a data de um empréstimo em
+   * 72x significaria abrir 72 telas — e ninguém abre.
+   *
+   * O vencimento RE-ANCORA (mesmo dia, mês a mês), não é copiado; parcela paga
+   * e parcela anterior não são tocadas.
+   */
+  aplicar_nas_proximas?: boolean;
 }
 
 export interface ContaPagarBaixaPayload {
@@ -415,6 +424,12 @@ export interface ExtratoFiltros {
   fim?: string;
   tipo?: string;
   origem?: string;
+  /**
+   * A tela usa o padrão do backend (200). A IMPRESSÃO pede o teto (500), senão
+   * um mês movimentado sairia cortado no papel sem ninguém perceber — e um
+   * extrato incompleto é pior que nenhum, porque ele parece completo.
+   */
+  limit?: number;
 }
 
 // --- Série mensal (Análise) ---
@@ -483,3 +498,34 @@ export const ProjecaoSchema = z.object({
   meses: z.array(ProjecaoMesSchema),
 });
 export type Projecao = z.infer<typeof ProjecaoSchema>;
+
+/**
+ * O card "Custo do que vendeu" aberto, linha a linha.
+ *
+ * Existe porque o card mostrava um total e nada mais: em 05/09/2026 o dono
+ * passou uma tarde conferindo R$ 846 de CMV no papel, OS por OS, e o que
+ * faltava era um custo lançado num item avulso — invisível depois que a OS
+ * finaliza. Número que não se consegue abrir não se consegue confiar.
+ */
+export const CustoDetalheLinhaSchema = z.object({
+  data: z.string().nullable(),
+  /** VENDA ou OS. */
+  origem: z.string(),
+  referencia: z.string(),
+  descricao: z.string(),
+  quantidade: z.number(),
+  /** Negativo em estorno: a peça voltou pra prateleira e o custo sai da conta. */
+  custo: z.number(),
+  /** ESTOQUE (congelado na baixa), DECLARADO (digitado à mão) ou ESTORNO. */
+  fonte: z.string(),
+});
+
+export const CustoDetalheSchema = z.object({
+  periodo_inicio: z.string(),
+  periodo_fim: z.string(),
+  total: z.number(),
+  linhas: z.array(CustoDetalheLinhaSchema).default([]),
+});
+
+export type CustoDetalhe = z.infer<typeof CustoDetalheSchema>;
+export type CustoDetalheLinha = z.infer<typeof CustoDetalheLinhaSchema>;

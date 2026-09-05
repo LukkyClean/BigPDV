@@ -11,8 +11,9 @@
  * inclusive a parte que alguém preferiria esquecer. Um extrato que "limpa" o
  * erro não serve para conferir nada.
  */
-import { computed, ref } from 'vue';
-import { ChevronLeft, ChevronRight, ArrowDownLeft, ArrowUpRight } from 'lucide-vue-next';
+import { computed, nextTick, ref } from 'vue';
+import { useRoute } from 'vue-router';
+import { ChevronLeft, ChevronRight, ArrowDownLeft, ArrowUpRight, Printer } from 'lucide-vue-next';
 
 import { formatCurrency } from '@/shared/utils/finance';
 import { formatData } from '@/shared/utils/date.utils';
@@ -21,11 +22,26 @@ import { useOrdemServico } from '@/shared/composables/useOrdemServico';
 
 import { usePeriodoMes } from '../../shared/composables/usePeriodoMes';
 import { useExtratoQuery } from '../../shared/composables/useFinanceiro';
+import * as service from '../../shared/services/financeiro.service';
+import type { Extrato } from '../../shared/schemas/financeiro.schema';
+import { imprimirComPagina } from '@/shared/utils/print.utils';
+import { useToast } from '@/shared/composables/useToast';
+import ExtratoFinanceiroPrint from '../components/ExtratoFinanceiroPrint.vue';
 
-const { range, rotulo, ehMesAtual, anterior, proximo } = usePeriodoMes();
+const toast = useToast();
+
+const route = useRoute();
+const { range, rotulo, ehMesAtual, anterior, proximo } = usePeriodoMes(
+  route.query.mes as string | undefined,
+);
 const { usaOrdemServico } = useOrdemServico();
 
-const tipo = ref('');
+/**
+ * Recorte vindo do clique num card da Visão Geral: `?tipo=ENTRADA&mes=2026-09`
+ * abre o livro já filtrado no mesmo mês que o dono estava conferindo. Sem
+ * query, nada muda -- a tela abre como sempre abriu.
+ */
+const tipo = ref<string>((route.query.tipo as string) ?? '');
 const origem = ref('');
 
 const filtros = computed(() => ({
@@ -36,6 +52,59 @@ const filtros = computed(() => ({
 }));
 
 const { data: extrato, isLoading } = useExtratoQuery(filtros);
+
+// ===========================================================================
+// IMPRESSÃO — a primeira do módulo Financeiro
+//
+// As oito telas dele não imprimiam nada: o dono conferia o mês na tela e
+// anotava no papel à mão.
+// ===========================================================================
+
+/**
+ * Teto do backend. A tela lista 200 por página, mas o papel precisa do período
+ * inteiro -- imprimir só a página faria um mês movimentado sair cortado, e um
+ * extrato incompleto engana justamente por parecer completo.
+ */
+const TETO_IMPRESSAO = 500;
+
+const folha = ref<Extrato | null>(null);
+const imprimindo = ref(false);
+
+/** O recorte da tela, em português, para ir impresso no papel. */
+const rotuloFiltro = computed(() => {
+  const partes: string[] = [];
+  if (tipo.value) partes.push(tipo.value === 'ENTRADA' ? 'apenas ENTRADAS' : 'apenas SAÍDAS');
+  if (origem.value) partes.push(`apenas a origem "${rotuloOrigem(origem.value)}"`);
+  return partes.length ? partes.join(' e ') : null;
+});
+
+async function imprimir() {
+  if (imprimindo.value) return;
+  imprimindo.value = true;
+  try {
+    // Busca própria, e não o cache da tela: aqui o `limit` é outro.
+    folha.value = await service.listarExtrato({ ...filtros.value, limit: TETO_IMPRESSAO });
+  } catch {
+    toast.error('Não foi possível montar o extrato para impressão');
+    imprimindo.value = false;
+    return;
+  }
+  await nextTick();
+
+  // Mesmo desmonte da folha de comissão: `afterprint` não dispara em todo
+  // cenário (diálogo cancelado de certas formas, impressora virtual), então o
+  // timeout evita a folha montada para sempre.
+  let fallback: ReturnType<typeof setTimeout>;
+  const limpar = () => {
+    folha.value = null;
+    imprimindo.value = false;
+    window.removeEventListener('afterprint', limpar);
+    clearTimeout(fallback);
+  };
+  window.addEventListener('afterprint', limpar);
+  fallback = setTimeout(limpar, 60000);
+  imprimirComPagina('A4');
+}
 
 /**
  * Rótulo humano de cada origem.
@@ -141,6 +210,18 @@ function limparFiltros() {
         >
           Limpar
         </button>
+
+        <!-- O papel respeita o recorte da tela, e o diz impresso: uma folha só
+             de entradas sem avisar faria o leitor concluir que a loja não teve
+             despesa no mês. -->
+        <button
+          type="button"
+          :disabled="imprimindo || !extrato?.itens?.length"
+          class="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-brand-primary px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-brand-primary/90 disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
+          @click="imprimir"
+        >
+          <Printer :size="14" /> {{ imprimindo ? 'Montando…' : 'Imprimir extrato' }}
+        </button>
       </div>
     </div>
 
@@ -243,5 +324,17 @@ function limparFiltros() {
         as duas ficam — é o que permite auditar o mês depois.
       </p>
     </template>
+
+    <ExtratoFinanceiroPrint
+      v-if="folha"
+      :itens="folha.itens"
+      :total-entradas="folha.total_entradas"
+      :total-saidas="folha.total_saidas"
+      :saldo="folha.saldo"
+      :total-itens="folha.total_itens"
+      :rotulo-periodo="rotulo"
+      :rotulo-filtro="rotuloFiltro"
+      :rotulo-origem="rotuloOrigem"
+    />
   </div>
 </template>

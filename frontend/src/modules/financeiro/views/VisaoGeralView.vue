@@ -34,6 +34,7 @@ import { useOrdemServico } from '@/shared/composables/useOrdemServico';
 
 import PainelAtencao from '../shared/components/PainelAtencao.vue';
 import SaldoContasModal from '../fluxo-caixa/components/SaldoContasModal.vue';
+import CustoDetalheModal from '../shared/components/CustoDetalheModal.vue';
 import { usePeriodoMes } from '../shared/composables/usePeriodoMes';
 import { useResumoQuery } from '../shared/composables/useFinanceiro';
 
@@ -47,6 +48,19 @@ const { usaOrdemServico } = useOrdemServico();
 // Fluxo de Caixa só para clicar em "Atualizar saldo" seria uma volta inteira
 // para digitar um número.
 const modalSaldo = ref(false);
+/** O detalhamento do CMV. A consulta só sai quando o card é clicado. */
+const custoAberto = ref(false);
+
+/**
+ * Abre o Extrato no MESMO MÊS que está na tela e já filtrado por entrada ou
+ * saída. Sem o mês, o dono conferia agosto, clicava e caía em setembro.
+ */
+function verExtrato(tipo: 'ENTRADA' | 'SAIDA') {
+  router.push({
+    name: 'finance-statement',
+    query: { tipo, mes: inicio.value.slice(0, 7) },
+  });
+}
 
 const inicio = computed(() => range.value.inicio);
 const fim = computed(() => range.value.fim);
@@ -114,12 +128,20 @@ const diferencaCaixa = computed(
                passado. Mostrar os dois é o que impede a tela de prometer
                dinheiro que ainda está na rua. -->
           <div class="mt-3 border-t border-gray-100 pt-3">
-            <div class="flex items-baseline justify-between gap-2">
-              <span class="text-xs text-gray-500">Entrou de fato</span>
+            <!-- Mesmo destino do "Entrou" da faixa abaixo: é o mesmo número, e
+                 um deles clicável e o outro não pareceria defeito. -->
+            <button
+              type="button"
+              class="flex w-full items-baseline justify-between gap-2 cursor-pointer group/entrou"
+              @click="verExtrato('ENTRADA')"
+            >
+              <span class="text-xs text-gray-500 group-hover/entrou:text-emerald-700 transition-colors">
+                Entrou de fato →
+              </span>
               <span class="text-sm font-bold text-gray-800 tabular-nums">
                 {{ formatCurrency(resumo.entrou_caixa) }}
               </span>
-            </div>
+            </button>
             <p v-if="diferencaCaixa > 0" class="mt-1 text-xs text-amber-600">
               {{ formatCurrency(diferencaCaixa) }} faturado ainda não passou pelo caixa
             </p>
@@ -136,7 +158,13 @@ const diferencaCaixa = computed(
              aparecia — até 02/09/2026 ele não estava em lugar nenhum desta
              tela, e um serviço de R$ 160 com peça de R$ 60 saía como R$ 160 de
              lucro. -->
-        <div class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+        <!-- CLICAVEL: o card mostrava um total e nada mais, e conferir o CMV
+             virava uma tarde de papel. Ver CustoDetalheModal. -->
+        <button
+          type="button"
+          class="text-left rounded-2xl border border-gray-100 bg-white p-5 shadow-sm transition-colors hover:border-amber-200 cursor-pointer"
+          @click="custoAberto = true"
+        >
           <div class="flex items-center gap-2 text-gray-500 text-xs font-semibold uppercase tracking-wide">
             <Package :size="15" class="text-amber-500" /> Custo do que vendeu
           </div>
@@ -154,7 +182,8 @@ const diferencaCaixa = computed(
             {{ resumo.custo_sem_registro === 1 ? 'saída saiu' : 'saídas saíram' }} sem custo
             cadastrado — o custo real é maior que este.
           </p>
-        </div>
+          <p class="mt-2 text-xs font-semibold text-amber-600">Ver de onde vem →</p>
+        </button>
 
         <div class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
           <div class="flex items-center gap-2 text-gray-500 text-xs font-semibold uppercase tracking-wide">
@@ -204,12 +233,24 @@ const diferencaCaixa = computed(
             No caixa, neste mês
           </p>
           <div class="flex flex-wrap items-baseline gap-x-6 gap-y-1 text-sm">
-            <span class="text-gray-500">
+            <!-- Levam ao Extrato JÁ FILTRADO e no mesmo mês: o card diz o
+                 total, o livro diz de onde ele veio, linha a linha. -->
+            <button
+              type="button"
+              class="text-gray-500 hover:text-emerald-700 transition-colors cursor-pointer"
+              @click="verExtrato('ENTRADA')"
+            >
               Entrou <strong class="text-gray-800 tabular-nums">{{ formatCurrency(resumo.entrou_caixa) }}</strong>
-            </span>
-            <span class="text-gray-500">
+              <span class="text-gray-300"> →</span>
+            </button>
+            <button
+              type="button"
+              class="text-gray-500 hover:text-rose-600 transition-colors cursor-pointer"
+              @click="verExtrato('SAIDA')"
+            >
               Saiu <strong class="text-gray-800 tabular-nums">{{ formatCurrency(resumo.saiu_caixa) }}</strong>
-            </span>
+              <span class="text-gray-300"> →</span>
+            </button>
             <span :class="resumo.sobrou_caixa < 0 ? 'text-rose-600' : 'text-emerald-700'">
               Sobrou
               <strong class="tabular-nums">{{ formatCurrency(resumo.sobrou_caixa) }}</strong>
@@ -233,7 +274,11 @@ const diferencaCaixa = computed(
 
       <!-- Em aberto dos dois lados: o que ainda não entrou e o que ainda não saiu -->
       <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+        <button
+          type="button"
+          class="text-left rounded-2xl border border-gray-100 bg-white p-5 shadow-sm transition-colors hover:border-brand-primary/30 cursor-pointer"
+          @click="router.push({ name: 'finance-receivable' })"
+        >
           <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">A receber em aberto</p>
           <p class="mt-2 text-xl font-bold text-gray-800">{{ formatCurrency(resumo.a_receber_pendente) }}</p>
           <!-- Duas coisas que o card precisa dizer: ignora o mês visto (fiado
@@ -241,10 +286,12 @@ const diferencaCaixa = computed(
                fechou, o que não chegou foi o pagamento. Sem a linha, é somar
                duas vezes. -->
           <p class="mt-1 text-xs text-gray-400">De qualquer vencimento, já contado em Entrou</p>
-        </div>
-        <div
-          class="rounded-2xl border p-5 shadow-sm"
-          :class="resumo.a_receber_vencido > 0 ? 'border-rose-200 bg-rose-50' : 'border-gray-100 bg-white'"
+        </button>
+        <button
+          type="button"
+          class="text-left rounded-2xl border p-5 shadow-sm transition-colors cursor-pointer"
+          :class="resumo.a_receber_vencido > 0 ? 'border-rose-200 bg-rose-50 hover:border-rose-300' : 'border-gray-100 bg-white hover:border-brand-primary/30'"
+          @click="router.push({ name: 'finance-receivable', query: { filtro: 'vencidas' } })"
         >
           <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide"
              :class="resumo.a_receber_vencido > 0 ? 'text-rose-600' : 'text-gray-500'">
@@ -253,14 +300,20 @@ const diferencaCaixa = computed(
           <p class="mt-2 text-xl font-bold" :class="resumo.a_receber_vencido > 0 ? 'text-rose-700' : 'text-gray-800'">
             {{ formatCurrency(resumo.a_receber_vencido) }}
           </p>
-        </div>
-        <div class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+        </button>
+        <button
+          type="button"
+          class="text-left rounded-2xl border border-gray-100 bg-white p-5 shadow-sm transition-colors hover:border-brand-primary/30 cursor-pointer"
+          @click="router.push({ name: 'finance-payable' })"
+        >
           <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">A pagar em aberto</p>
           <p class="mt-2 text-xl font-bold text-gray-800">{{ formatCurrency(resumo.a_pagar_pendente) }}</p>
-        </div>
-        <div
-          class="rounded-2xl border p-5 shadow-sm"
-          :class="resumo.a_pagar_vencido > 0 ? 'border-amber-200 bg-amber-50' : 'border-gray-100 bg-white'"
+        </button>
+        <button
+          type="button"
+          class="text-left rounded-2xl border p-5 shadow-sm transition-colors cursor-pointer"
+          :class="resumo.a_pagar_vencido > 0 ? 'border-amber-200 bg-amber-50 hover:border-amber-300' : 'border-gray-100 bg-white hover:border-brand-primary/30'"
+          @click="router.push({ name: 'finance-payable', query: { filtro: 'vencidas' } })"
         >
           <!-- "A pagar vencido", e não só "Vencido": com o card do receber ao
                lado, um rótulo solto deixa de dizer de quem é a dívida. -->
@@ -271,7 +324,7 @@ const diferencaCaixa = computed(
           <p class="mt-2 text-xl font-bold" :class="resumo.a_pagar_vencido > 0 ? 'text-amber-800' : 'text-gray-800'">
             {{ formatCurrency(resumo.a_pagar_vencido) }}
           </p>
-        </div>
+        </button>
       </div>
 
       <div class="grid gap-6 lg:grid-cols-2">
@@ -331,5 +384,12 @@ const diferencaCaixa = computed(
     </template>
 
     <SaldoContasModal :aberto="modalSaldo" @fechar="modalSaldo = false" />
+    <CustoDetalheModal
+      :aberto="custoAberto"
+      :inicio="inicio"
+      :fim="fim"
+      :total-esperado="resumo?.custo_mercadorias ?? 0"
+      @fechar="custoAberto = false"
+    />
   </div>
 </template>

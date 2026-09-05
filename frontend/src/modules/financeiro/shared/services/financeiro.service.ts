@@ -14,6 +14,8 @@ import {
   ConciliacaoResultadoSchema,
   FluxoCaixaSchema,
   ResumoFinanceiroSchema,
+  CustoDetalheSchema,
+  type CustoDetalhe,
   type ContaBancaria,
   type ContaPagar,
   type ContaPagarBaixaPayload,
@@ -148,6 +150,11 @@ export async function cancelarContaPagar(id: number): Promise<ContaPagar> {
   return safeParseResponse(ContaPagarSchema, data, 'cancelarContaPagar');
 }
 
+export async function reativarContaPagar(id: number): Promise<ContaPagar> {
+  const { data } = await api.post(`/financeiro/contas-pagar/${id}/reativar`);
+  return safeParseResponse(ContaPagarSchema, data, 'reativarContaPagar');
+}
+
 export async function pagarConta(
   id: number,
   payload: ContaPagarBaixaPayload,
@@ -182,6 +189,11 @@ export async function getFluxoCaixa(dias: number): Promise<FluxoCaixa> {
 export async function getResumo(inicio: string, fim: string): Promise<ResumoFinanceiro> {
   const { data } = await api.get('/financeiro/resumo', { params: { inicio, fim } });
   return safeParseResponse(ResumoFinanceiroSchema, data, 'getResumo');
+}
+
+export async function getCustoDetalhe(inicio: string, fim: string): Promise<CustoDetalhe> {
+  const { data } = await api.get('/financeiro/custo-detalhe', { params: { inicio, fim } });
+  return safeParseResponse(CustoDetalheSchema, data, 'getCustoDetalhe');
 }
 
 // ===========================================================================
