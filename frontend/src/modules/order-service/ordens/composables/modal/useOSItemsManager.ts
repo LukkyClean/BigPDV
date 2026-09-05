@@ -1,5 +1,12 @@
 import { computed, ref, type ComputedRef } from 'vue';
 
+import { useToast } from '@/shared/composables/useToast';
+import {
+  mesmaLinha,
+  somarQuantidade,
+  vinculoCatalogo,
+} from '@/modules/order-service/shared/utils/itensOs';
+
 import type { OSFormContext } from '../../types/context.type';
 import type { OrderServiceReadDataType } from '../../schemas/orderServiceQuery.schema';
 import type { OsItemCreateSchemaDataType, OsItemReadSchemaDataType } from '../../schemas/relationship/osItem.schema';
@@ -36,11 +43,6 @@ interface UseOSItemsManagerParams {
  * depois de salva (resposta de leitura). É o mesmo dado — o backend converte um
  * no outro. Sem esta ponte, editar um item de OS salva perderia o vínculo na tela.
  */
-function vinculoCatalogo(item: OsItemCreateSchemaDataType | OsItemReadSchemaDataType): number | undefined {
-  const i = item as Partial<OsItemCreateSchemaDataType & OsItemReadSchemaDataType>;
-  return i.item_id ?? i.produto_id ?? i.servico_id ?? undefined;
-}
-
 export function useOSItemsManager({
   isCreateMode,
   osNumber,
@@ -52,6 +54,8 @@ export function useOSItemsManager({
   refreshCurrentOSData,
   setCurrentOSData,
 }: UseOSItemsManagerParams) {
+  const toast = useToast();
+
   const isItemModalOpen = ref(false);
   const editingItemIndex = ref<number | null>(null);
   const editingItem = ref<OsItemCreateSchemaDataType | null>(null);
@@ -104,10 +108,31 @@ export function useOSItemsManager({
     editingItemId.value = null;
   }
 
+  /**
+   * O índice da linha idêntica já lançada, quando ADICIONANDO um item novo.
+   *
+   * Só vale ao adicionar: editando, o item se compara consigo mesmo e cairia
+   * numa mesclagem com ele próprio.
+   */
+  function indiceDaLinhaIgual(item: OsItemCreateSchemaDataType): number {
+    if (editingItemIndex.value !== null || editingItemId.value !== null) return -1;
+    return displayItems.value.findIndex((existente) => mesmaLinha(existente, item));
+  }
+
   function handleSaveItem(item: OsItemCreateSchemaDataType) {
+    const iguais = indiceDaLinhaIgual(item);
+
     if (isCreateMode.value) {
       if (editingItemIndex.value !== null) {
         form.criar.handleUpdateItem(editingItemIndex.value, item);
+      } else if (iguais >= 0) {
+        // SOMA na linha que já existe em vez de empilhar outra igual embaixo.
+        const atual = displayItems.value[iguais] as OsItemCreateSchemaDataType;
+        form.criar.handleUpdateItem(iguais, {
+          ...atual,
+          quantidade: somarQuantidade(atual.quantidade, item.quantidade),
+        });
+        toast.success('Quantidade somada ao item que já estava na lista');
       } else {
         form.criar.handleAddItem(item);
       }
@@ -117,6 +142,22 @@ export function useOSItemsManager({
 
     const currentOsNumber = osNumber.value;
     if (!currentOsNumber) return;
+
+    // OS JÁ SALVA: a mesclagem vira um PATCH da quantidade, não um POST de item
+    // novo. Reusa o mesmo caminho da edição normal -- inclusive o `onSuccess`
+    // que recarrega a OS, que é quem devolve o total certo para a tela.
+    if (iguais >= 0) {
+      const atual = displayItems.value[iguais] as OsItemReadSchemaDataType & { id: number };
+      if (atual?.id) {
+        form.item.setEditingItem(atual.id, {
+          ...atual,
+          quantidade: somarQuantidade(atual.quantidade, item.quantidade),
+        });
+        form.item.onSubmit();
+        toast.success('Quantidade somada ao item que já estava na lista');
+        return;
+      }
+    }
 
     if (editingItemId.value !== null) {
       form.item.setEditingItem(editingItemId.value, item);
