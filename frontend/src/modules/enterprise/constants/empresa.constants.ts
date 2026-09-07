@@ -61,10 +61,25 @@ export const AMBIENTE_EMISSAO_OPTIONS: SelectOptionWithVariant[] = [
 // Opções de regime tributário
 // =============================================
 
+/**
+ * O rótulo escolhido aqui vira o CRT da nota (helpers.crt_efetivo, no backend),
+ * e é ele que decide se a emissão sai com CST ou com CSOSN.
+ *
+ * MEI existe porque o backend já mapeava "mei" para CRT 4 e a opção nunca foi
+ * oferecida: quem se cadastrava como MEI caía em Regime Normal e emitia com CST
+ * no lugar de CSOSN. Lucro Presumido e Lucro Real são ambos CRT 3 — a diferença
+ * entre eles é o regime de apuração do PIS/COFINS (0,65/3,00 vs 1,65/7,60).
+ *
+ * "Regime Normal" continua na lista para não invalidar cadastros antigos; quem
+ * o mantiver é tratado como cumulativo (o default conservador).
+ */
 export const REGIME_TRIBUTARIO_OPTIONS: SelectOption[] = [
   { value: 'Simples Nacional', label: '1 - Simples Nacional' },
   { value: 'Simples Nacional (Excesso de Sublimite)', label: '2 - Simples Nacional (Excesso de Sublimite)' },
-  { value: 'Regime Normal', label: '3 - Regime Normal' },
+  { value: 'MEI', label: '4 - MEI (Microempreendedor Individual)' },
+  { value: 'Lucro Presumido', label: '3 - Regime Normal (Lucro Presumido)' },
+  { value: 'Lucro Real', label: '3 - Regime Normal (Lucro Real)' },
+  { value: 'Regime Normal', label: '3 - Regime Normal (não especificado)' },
 ] as const;
 
 // =============================================

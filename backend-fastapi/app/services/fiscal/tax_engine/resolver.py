@@ -19,7 +19,13 @@ from app.db.models.aliquota_uf import AliquotaUF
 from app.db.models.produto_fiscal import ProdutoFiscal
 from app.db.models.venda import Venda
 
-from .constants import COFINS_PADRAO, CST_PIS_COFINS_SIMPLES, PIS_PADRAO
+from .constants import (
+    COFINS_CUMULATIVO,
+    COFINS_NAO_CUMULATIVO,
+    CST_PIS_COFINS_SIMPLES,
+    PIS_CUMULATIVO,
+    PIS_NAO_CUMULATIVO,
+)
 from .exceptions import (
     AliquotaNaoEncontradaError,
     DadosFiscaisAusentesError,
@@ -86,6 +92,7 @@ def resolver_aliquotas_venda(
     uf_emitente: str,
     simples_nacional: bool,
     excluir_icms_base_pis_cofins: bool = False,
+    regime_apuracao: str = "CUMULATIVO",
 ) -> tuple[list[ItemEntrada], DadosNota]:
     """
     Converte uma Venda (ORM) em DTOs puros para o tax_engine.
@@ -98,6 +105,8 @@ def resolver_aliquotas_venda(
         uf_emitente: UF do emitente (ex: "SP").
         simples_nacional: Se empresa é do Simples Nacional.
         excluir_icms_base_pis_cofins: Flag STF Tema 69.
+        regime_apuracao: "CUMULATIVO" (Lucro Presumido) ou "NAO_CUMULATIVO"
+            (Lucro Real). Decide o default de PIS/COFINS. Ignorado no Simples.
 
     Returns:
         Tupla (itens_entrada, dados_nota) pronta para calcular_impostos().
@@ -139,16 +148,20 @@ def resolver_aliquotas_venda(
             campo="uf_emitente",
         )
 
-    # Defaults da UF (fallbacks se aliq_uf não existir)
+    # ICMS é estadual: o default vem da UF.
     icms_padrao = _centesimos_para_decimal(
         aliq_uf.aliquota_icms_interna if aliq_uf else None, ZERO,
     )
-    pis_padrao = _centesimos_para_decimal(
-        aliq_uf.aliquota_pis_padrao if aliq_uf else None, PIS_PADRAO,
-    )
-    cofins_padrao = _centesimos_para_decimal(
-        aliq_uf.aliquota_cofins_padrao if aliq_uf else None, COFINS_PADRAO,
-    )
+
+    # PIS/COFINS são FEDERAIS: o default vem do regime de apuração, nunca da UF.
+    # As colunas `aliquota_pis_padrao`/`aliquota_cofins_padrao` de `aliquota_uf`
+    # existem por engano histórico (as 27 UFs foram semeadas com o mesmo valor)
+    # e deixaram de ser lidas aqui. Não remova a leitura achando que é fallback:
+    # enquanto elas eram consultadas, corrigir a constante não surtia efeito
+    # nenhum, porque o valor semeado vencia.
+    nao_cumulativo = regime_apuracao == "NAO_CUMULATIVO"
+    pis_padrao = PIS_NAO_CUMULATIVO if nao_cumulativo else PIS_CUMULATIVO
+    cofins_padrao = COFINS_NAO_CUMULATIVO if nao_cumulativo else COFINS_CUMULATIVO
 
     # 2. Montar itens
     itens_entrada: list[ItemEntrada] = []

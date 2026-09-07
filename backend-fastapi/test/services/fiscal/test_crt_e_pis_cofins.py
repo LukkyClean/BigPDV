@@ -26,8 +26,10 @@ from app.services.fiscal.helpers import (
     CRT_SIMPLES_EXCESSO,
     CRT_SIMPLES_NACIONAL,
     crt_do_rotulo,
+    crt_efetivo,
     obter_crt,
     pis_cofins_por_fora,
+    regime_apuracao,
     usa_csosn,
 )
 from app.services.fiscal.tax_engine.resolver import resolver_aliquotas_venda
@@ -66,12 +68,45 @@ def db():
     ("MEI", CRT_MEI),
     ("  simples nacional  ", CRT_SIMPLES_NACIONAL),   # espaços e caixa
     ("SIMPLES NACIONAL", CRT_SIMPLES_NACIONAL),
-    ("Lucro Presumido", None),                        # rótulo antigo
+    # Presumido e Real são os dois sabores do Regime Normal: ambos CRT 3.
+    # O que os separa é o regime de apuração do PIS/COFINS, não o CRT.
+    ("Lucro Presumido", CRT_REGIME_NORMAL),
+    ("Lucro Real", CRT_REGIME_NORMAL),
+    ("Microempreendedor Individual", CRT_MEI),
     ("", None),
     (None, None),
+    ("Coisa Que Não Existe", None),
 ])
 def test_traduz_rotulo_da_interface_para_crt(rotulo, esperado):
     assert crt_do_rotulo(rotulo) == esperado
+
+
+# =========================
+# 1b. CRT a persistir no save — o MEI que ninguém conseguia cadastrar
+# =========================
+
+@pytest.mark.parametrize("regime, natureza, esperado", [
+    # O rótulo manda quando é reconhecido.
+    ("Simples Nacional", None, CRT_SIMPLES_NACIONAL),
+    ("MEI", None, CRT_MEI),
+    ("Lucro Real", None, CRT_REGIME_NORMAL),
+    # Sem rótulo útil, a natureza jurídica ainda revela o MEI.
+    (None, "MEI", CRT_MEI),
+    ("", "mei", CRT_MEI),
+    ("Coisa Que Não Existe", "MEI", CRT_MEI),
+    # O rótulo tem precedência sobre a natureza jurídica.
+    ("Simples Nacional", "MEI", CRT_SIMPLES_NACIONAL),
+    # Sem nenhum dos dois, Regime Normal.
+    (None, None, CRT_REGIME_NORMAL),
+    (None, "LTDA", CRT_REGIME_NORMAL),
+])
+def test_crt_efetivo_no_momento_do_save(regime, natureza, esperado):
+    """
+    Regressão do achado que motivou esta fase: a coluna `crt` existia e nenhum
+    serviço a escrevia, então todo MEI caía em Regime Normal e emitia com CST
+    no lugar de CSOSN.
+    """
+    assert crt_efetivo(regime, natureza) == esperado
 
 
 # =========================
@@ -210,16 +245,77 @@ def test_regime_normal_mantem_aliquotas_do_cadastro(db):
     assert itens[0].aliquota_cofins == Decimal("7.60")
 
 
-def test_regime_normal_sem_cadastro_cai_no_default_do_lucro_presumido(db):
-    """O fallback 1,65/7,60 continua válido — mas só fora do Simples."""
+def test_sem_cadastro_o_default_vem_do_regime_de_apuracao(db):
+    """
+    Correção de 05/09/2026: o default era 1,65/7,60 para todo mundo, rotulado
+    como "Lucro Presumido cumulativo" — que é justamente o regime onde esses
+    números NÃO valem. Cumulativo é 0,65/3,00.
+    """
+    venda = _montar_venda(cst_pis=None, cst_cofins=None,
+                          aliquota_pis=None, aliquota_cofins=None)
+
+    itens, _ = resolver_aliquotas_venda(
+        db, venda, "SP", simples_nacional=False, regime_apuracao="CUMULATIVO",
+    )
+
+    assert itens[0].cst_pis == "01"
+    assert itens[0].aliquota_pis == Decimal("0.65")
+    assert itens[0].aliquota_cofins == Decimal("3.00")
+
+
+def test_lucro_real_usa_as_aliquotas_nao_cumulativas(db):
+    venda = _montar_venda(cst_pis=None, cst_cofins=None,
+                          aliquota_pis=None, aliquota_cofins=None)
+
+    itens, _ = resolver_aliquotas_venda(
+        db, venda, "SP", simples_nacional=False,
+        regime_apuracao="NAO_CUMULATIVO",
+    )
+
+    assert itens[0].aliquota_pis == Decimal("1.65")
+    assert itens[0].aliquota_cofins == Decimal("7.60")
+
+
+def test_default_do_resolver_e_o_cumulativo(db):
+    """Sem informar o regime, assume-se o mais conservador (Presumido)."""
     venda = _montar_venda(cst_pis=None, cst_cofins=None,
                           aliquota_pis=None, aliquota_cofins=None)
 
     itens, _ = resolver_aliquotas_venda(db, venda, "SP", simples_nacional=False)
 
-    assert itens[0].cst_pis == "01"
-    assert itens[0].aliquota_pis == Decimal("1.65")
-    assert itens[0].aliquota_cofins == Decimal("7.60")
+    assert itens[0].aliquota_pis == Decimal("0.65")
+
+
+def test_aliquota_uf_nao_manda_mais_em_pis_cofins(db):
+    """
+    A armadilha desta correção: enquanto o resolver consultava
+    `aliquota_uf.aliquota_pis_padrao`, trocar a constante não surtia efeito
+    nenhum — as 27 UFs estavam semeadas em 165/760 e o valor semeado vencia.
+
+    A fixture semeia SP com 165/760 de propósito. Se este teste voltar a ver
+    1,65, é porque alguém religou a leitura por UF.
+    """
+    venda = _montar_venda(cst_pis=None, cst_cofins=None,
+                          aliquota_pis=None, aliquota_cofins=None)
+
+    itens, _ = resolver_aliquotas_venda(
+        db, venda, "SP", simples_nacional=False, regime_apuracao="CUMULATIVO",
+    )
+
+    assert itens[0].aliquota_pis == Decimal("0.65")   # regime, não os 165 da UF
+
+
+@pytest.mark.parametrize("regime, esperado", [
+    ("Lucro Real", "NAO_CUMULATIVO"),
+    ("lucro real", "NAO_CUMULATIVO"),
+    ("Lucro Presumido", "CUMULATIVO"),
+    ("Regime Normal", "CUMULATIVO"),     # rótulo antigo, genérico
+    ("Simples Nacional", "CUMULATIVO"),  # não chega a ser usado (CST 49)
+    (None, "CUMULATIVO"),
+    ("", "CUMULATIVO"),
+])
+def test_regime_de_apuracao_por_rotulo(regime, esperado):
+    assert regime_apuracao(_empresa(regime=regime)) == esperado
 
 
 def test_acrescimo_da_venda_vira_outras_despesas(db):

@@ -27,6 +27,7 @@ from app.db.crud import empresa as empresa_crud
 from app.db.models.funcionario import Funcionario as FuncionarioModel
 from app.db.crud import funcionario as funcionario_crud
 from app.core.imagem import salvar_imagem
+from app.services.fiscal.helpers import crt_efetivo
 from app.core.config import data_dir, secure_dir
 from app.core.security import encrypt_data
 
@@ -91,6 +92,13 @@ def create_empresa(
     # 2. Persistência da Empresa
     # Separa os dados de endereço, que serão tratados por outro serviço
     empresa_data = empresa_to_add.model_dump(exclude={"endereco"})
+    # O CRT é derivado, nunca digitado: é ele que decide CST vs CSOSN na nota.
+    # Sem isto a coluna nascia vazia e todo emitente caía no Regime Normal —
+    # inclusive o MEI, que emitia com CST no lugar de CSOSN.
+    empresa_data["crt"] = crt_efetivo(
+        empresa_data.get("regime_tributario"),
+        empresa_data.get("natureza_juridica"),
+    )
     empresa_to_db = EmpresaModel(**empresa_data)
     empresa_in_db = empresa_crud.create_empresa(db, empresa_to_add=empresa_to_db)
    
@@ -195,6 +203,14 @@ def update_empresa(db: Session, empresa_id: int, update_empresa: EmpresaUpdate) 
     for key, value in data_to_update.items():
         setattr(empresa_in_db, key, value)
 
+    # Rederiva o CRT a partir do estado final — o regime pode ter mudado nesta
+    # mesma requisição, e `exclude_unset` faz com que nem sempre ele venha no
+    # payload. Ler do objeto já atualizado cobre os dois casos.
+    empresa_in_db.crt = crt_efetivo(
+        empresa_in_db.regime_tributario,
+        empresa_in_db.natureza_juridica,
+    )
+
     return empresa_crud.update_empresa(db, empresa_to_update=empresa_in_db)
 
 
@@ -246,6 +262,23 @@ def update_fiscal_settings(
     settings = get_or_create_fiscal_settings(db, empresa_id)
 
     update_dict = update_data.model_dump(exclude_unset=True)
+
+    # O CSC é o segredo que autentica o QR Code da NFC-e: quem o tem consegue
+    # forjar cupom em nome da loja. Vai para o banco cifrado, como a senha do
+    # certificado A1 — ver `cifrar_csc_token`.
+    #
+    # A tela recebe o token MASCARADO e o devolve inteiro no salvamento. Gravar
+    # a máscara destruiria o CSC configurado sem ninguém perceber — o erro só
+    # apareceria na primeira venda, com o cupom sem QR Code válido. Por isso a
+    # máscara é descartada aqui, e não tratada como "apagar o campo".
+    if "csc_token" in update_dict:
+        from app.services.fiscal.helpers import cifrar_csc_token, e_csc_mascarado
+
+        if e_csc_mascarado(update_dict["csc_token"]):
+            update_dict.pop("csc_token")
+        else:
+            update_dict["csc_token"] = cifrar_csc_token(update_dict["csc_token"])
+
     for field, value in update_dict.items():
         setattr(settings, field, value)
 

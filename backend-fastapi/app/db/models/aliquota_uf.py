@@ -27,13 +27,19 @@ class AliquotaUF(Base):
         Integer, nullable=False,
         doc="Alíquota ICMS interna padrão em centésimos de pp (1800 = 18,00%)"
     )
+    # DEPRECADAS — não são mais lidas pelo resolver desde 05/09/2026.
+    # PIS e COFINS são tributos federais: a alíquota depende do regime de
+    # apuração da empresa (cumulativo vs não-cumulativo), não do estado. As 27
+    # UFs foram semeadas com o mesmo valor, o que confirma que a chave por UF
+    # nunca fez sentido. Mantidas apenas para não exigir um DROP COLUMN no
+    # SQLite (que recria a tabela inteira); remover numa limpeza futura.
     aliquota_pis_padrao: Mapped[int] = mapped_column(
         Integer, nullable=False, default=165,
-        doc="Alíquota PIS padrão em centésimos de pp (165 = 1,65%)"
+        doc="DEPRECADO — não lido. Ver tax_engine/constants.py (PIS_CUMULATIVO)"
     )
     aliquota_cofins_padrao: Mapped[int] = mapped_column(
         Integer, nullable=False, default=760,
-        doc="Alíquota COFINS padrão em centésimos de pp (760 = 7,60%)"
+        doc="DEPRECADO — não lido. Ver tax_engine/constants.py (COFINS_CUMULATIVO)"
     )
 
     def __repr__(self) -> str:
