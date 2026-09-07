@@ -47,5 +47,6 @@ from app.db.models.contador_venda import ContadorVenda  # noqa: F401
 from app.db.models.terminal_conectado import TerminalConectado  # noqa: F401
 from app.db.models.terminal import Terminal  # noqa: F401
 from app.db.models.documento_fiscal import DocumentoFiscal  # noqa: F401
+from app.db.models.documento_fiscal_item import DocumentoFiscalItem  # noqa: F401
 from app.db.models.inutilizacao_fiscal import InutilizacaoFiscal  # noqa: F401
 from app.db.models.aliquota_uf import AliquotaUF  # noqa: F401

@@ -20,6 +20,7 @@ from sqlalchemy.sql import func
 from app.db.base import Base
 
 if TYPE_CHECKING:
+    from app.db.models.documento_fiscal_item import DocumentoFiscalItem
     from app.db.models.documento_fiscal import DocumentoFiscal as _Self
 
 
@@ -100,6 +101,17 @@ class DocumentoFiscal(Base):
     tentativa_anterior_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("documento_fiscal.id"), nullable=True, index=True,
         doc="ID da tentativa anterior (reemissão cria nova linha)"
+    )
+
+    itens: Mapped[list["DocumentoFiscalItem"]] = relationship(
+        "DocumentoFiscalItem",
+        back_populates="documento",
+        cascade="all, delete-orphan",
+        order_by="DocumentoFiscalItem.numero_item",
+        doc=(
+            "Snapshot do que foi enviado à SEFAZ. Vazio em documentos anteriores "
+            "a 05/09/2026 — aí o serviço reconstrói do cadastro, como fazia antes."
+        ),
     )
 
     tentativa_anterior: Mapped[Optional["DocumentoFiscal"]] = relationship(

@@ -31,6 +31,7 @@ from .payload_builder import (
 )
 from .tax_engine import calcular_impostos
 from .tax_engine.resolver import resolver_aliquotas_venda
+from .snapshot import gravar_snapshot
 from .tributos_xml import extrair_valor_tributos
 
 logger = logging.getLogger(__name__)
@@ -332,6 +333,9 @@ def emitir_nfe_venda(db: Session, venda_id: int, empresa_id: int) -> DocumentoFi
         valor_total=venda.total,
         data_emissao=datetime.now(timezone.utc),
     )
+    # Congela o que vai ser transmitido, ANTES de transmitir: assim existe
+    # registro mesmo se a resposta da SEFAZ se perder no caminho.
+    gravar_snapshot(doc, payload, venda=venda)
     crud.salvar_documento(db, doc)
 
     # 6. Chamar client fiscal
@@ -566,6 +570,9 @@ def emitir_nfce_venda(db: Session, venda_id: int, empresa_id: int) -> DocumentoF
         valor_total=venda.total,
         data_emissao=datetime.now(timezone.utc),
     )
+    # Congela o que vai ser transmitido, ANTES de transmitir: assim existe
+    # registro mesmo se a resposta da SEFAZ se perder no caminho.
+    gravar_snapshot(doc, payload, venda=venda)
     crud.salvar_documento(db, doc)
 
     token = crud.get_licenca_token(db)
