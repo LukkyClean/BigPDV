@@ -3,7 +3,10 @@
 # DESCRIÇÃO: Endpoints do Centro Fiscal — documentos emitidos, pendências
 #            e emissão de NF-e (real e teste/homologação).
 #
-# Todos os endpoints exigem módulo fiscal ativo (EmpresaFiscalSettings).
+# Tres camadas de acesso (ver app/core/depends.py):
+#   leitura/regularizacao -> get_current_active_user
+#   configuracao          -> requer_configuracao_fiscal (master, sem plano)
+#   emissao               -> requer_modulo_fiscal (exige plano contratado)
 # ---------------------------------------------------------------------------
 
 from datetime import date, datetime
@@ -13,7 +16,13 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.depends import get_db, requer_modulo_fiscal, _handle_db_transaction
+from app.core.depends import (
+    get_current_active_user,
+    get_db,
+    requer_configuracao_fiscal,
+    requer_modulo_fiscal,
+    _handle_db_transaction,
+)
 from app.db.crud import fiscal as fiscal_crud
 from app.schemas.documento_fiscal import (
     DocumentoFiscalHistorico,
@@ -52,7 +61,7 @@ router = APIRouter()
     description="Retorna contadores operacionais agrupados por status.",
 )
 def obter_resumo(
-    user_token: dict = Depends(requer_modulo_fiscal),
+    user_token: dict = Depends(get_current_active_user),
     *,
     db: Session = Depends(get_db),
     tipo: Optional[str] = Query(
@@ -77,7 +86,7 @@ def obter_resumo(
     ),
 )
 def obter_pendencias(
-    user_token: dict = Depends(requer_modulo_fiscal),
+    user_token: dict = Depends(get_current_active_user),
     *,
     db: Session = Depends(get_db),
 ):
@@ -96,7 +105,7 @@ def obter_pendencias(
     description="Retorna lista paginada de documentos fiscais com filtros.",
 )
 def listar_documentos(
-    user_token: dict = Depends(requer_modulo_fiscal),
+    user_token: dict = Depends(get_current_active_user),
     *,
     db: Session = Depends(get_db),
     status_filtro: Optional[str] = Query(None, alias="status", description="Filtrar por status"),
@@ -132,7 +141,7 @@ def listar_documentos(
     description="Retorna os dados completos de um documento fiscal.",
 )
 def obter_documento(
-    user_token: dict = Depends(requer_modulo_fiscal),
+    user_token: dict = Depends(get_current_active_user),
     *,
     db: Session = Depends(get_db),
     documento_id: int = Path(..., ge=1, description="ID do documento fiscal"),
@@ -350,7 +359,7 @@ def emitir_teste_nfe(
     description="Consulta o status atualizado do documento na API de emissão.",
 )
 def consultar_documento(
-    user_token: dict = Depends(requer_modulo_fiscal),
+    user_token: dict = Depends(get_current_active_user),
     *,
     db: Session = Depends(get_db),
     documento_id: int = Path(..., ge=1, description="ID do documento fiscal"),
@@ -374,7 +383,7 @@ def consultar_documento(
     description="Solicita cancelamento de documento autorizado (justificativa mínima: 15 caracteres).",
 )
 def cancelar_documento(
-    user_token: dict = Depends(requer_modulo_fiscal),
+    user_token: dict = Depends(get_current_active_user),
     *,
     db: Session = Depends(get_db),
     documento_id: int = Path(..., ge=1, description="ID do documento fiscal"),
@@ -403,7 +412,7 @@ def cancelar_documento(
     description="Retorna a cadeia completa de tentativas de emissão (do mais recente ao mais antigo).",
 )
 def obter_historico(
-    user_token: dict = Depends(requer_modulo_fiscal),
+    user_token: dict = Depends(get_current_active_user),
     *,
     db: Session = Depends(get_db),
     documento_id: int = Path(..., ge=1, description="ID do documento fiscal"),
@@ -422,7 +431,7 @@ def obter_historico(
     description="Retorna o ambiente atual (homologação/produção) e status do módulo.",
 )
 def obter_configuracao(
-    user_token: dict = Depends(requer_modulo_fiscal),
+    user_token: dict = Depends(get_current_active_user),
     *,
     db: Session = Depends(get_db),
 ):
@@ -461,6 +470,44 @@ from app.schemas.empresa import FiscalSettingsUpdate
 from app.services.empresa import update_fiscal_settings, upload_certificado_focus
 from fastapi import UploadFile, File, Form
 
+# ===========================================================================
+# ATIVAÇÃO DO MÓDULO (onboarding)
+# ===========================================================================
+
+@router.post(
+    "/ativar",
+    status_code=status.HTTP_200_OK,
+    summary="Ativar o Módulo Fiscal",
+    description=(
+        "Libera a emissão fiscal para a empresa. Caminho de onboarding de quem "
+        "acabou de contratar o módulo. Vira desnecessário quando o servidor de "
+        "licenças passar a mandar o claim `recursos` no JWT."
+    ),
+)
+def ativar_modulo_fiscal(
+    user_token: dict = Depends(requer_configuracao_fiscal),
+    *,
+    db: Session = Depends(get_db),
+):
+    """
+    Liga a flag local do módulo fiscal.
+
+    Por que master basta, e por que isto não é uma porta dos fundos: a recusa
+    definitiva de emissão acontece na API remota, que valida o plano fora da
+    máquina do cliente. Ligar a flag aqui libera as TELAS, não a emissão — quem
+    não contratou continua sem conseguir emitir nota, só que agora recebe a
+    recusa no lugar certo, com mensagem clara.
+
+    Endurecer esta porta não compraria segurança nenhuma e custaria uma ligação
+    de suporte a cada cliente novo.
+    """
+    from app.services.plano import ativar_recurso_local
+
+    empresa_id = user_token["empresa_id"]
+    _handle_db_transaction(db, ativar_recurso_local, empresa_id)
+    return {"message": "Módulo fiscal ativado para esta empresa."}
+
+
 @router.put(
     "/configuracao",
     response_model=FiscalConfiguracao,
@@ -468,7 +515,7 @@ from fastapi import UploadFile, File, Form
     description="Atualiza configurações fiscais da empresa.",
 )
 def atualizar_configuracao(
-    user_token: dict = Depends(requer_modulo_fiscal),
+    user_token: dict = Depends(requer_configuracao_fiscal),
     *,
     db: Session = Depends(get_db),
     payload: FiscalSettingsUpdate = Body(...)
@@ -510,7 +557,7 @@ def atualizar_configuracao(
     description="Envia o certificado para a API da Focus NFe (simulado) e atualiza o status."
 )
 def upload_certificado_focus_endpoint(
-    user_token: dict = Depends(requer_modulo_fiscal),
+    user_token: dict = Depends(requer_configuracao_fiscal),
     *,
     db: Session = Depends(get_db),
     file: UploadFile = File(...),
@@ -535,7 +582,7 @@ def upload_certificado_focus_endpoint(
     ),
 )
 def listar_gaps_numeracao(
-    user_token: dict = Depends(requer_modulo_fiscal),
+    user_token: dict = Depends(get_current_active_user),
     *,
     db: Session = Depends(get_db),
 ):
@@ -551,7 +598,7 @@ def listar_gaps_numeracao(
     description="Histórico de pedidos de inutilização de faixa de numeração.",
 )
 def listar_inutilizacoes(
-    user_token: dict = Depends(requer_modulo_fiscal),
+    user_token: dict = Depends(get_current_active_user),
     *,
     db: Session = Depends(get_db),
 ):
@@ -570,7 +617,7 @@ def listar_inutilizacoes(
     ),
 )
 def inutilizar_numeracao(
-    user_token: dict = Depends(requer_modulo_fiscal),
+    user_token: dict = Depends(get_current_active_user),
     *,
     db: Session = Depends(get_db),
     payload: InutilizacaoRequest = Body(...),

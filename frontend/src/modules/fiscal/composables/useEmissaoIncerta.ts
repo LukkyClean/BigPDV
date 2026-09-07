@@ -33,13 +33,17 @@ export async function resolverEmissaoIncerta(
     // A API não filtra por `origem_id` — só por origem, status, tipo, busca e
     // data. Como a emissão que ficou incerta acabou de acontecer, a primeira
     // página de VENDA basta, e o recorte fino fica no cliente.
-    const { documentos } = await fiscalService.listarDocumentos({ origem: 'VENDA' });
+    const { items } = await fiscalService.listarDocumentos({ origem: 'VENDA' });
 
-    const daVenda = (documentos ?? []).filter((d) => d.origem_id === vendaId);
+    const daVenda = (items ?? []).filter(
+      (d: DocumentoFiscalRead) => d.origem_id === vendaId,
+    );
     if (!daVenda.length) return null;
 
     // O maior id é a tentativa desta emissão.
-    return daVenda.reduce((mais, atual) => (atual.id > mais.id ? atual : mais));
+    return daVenda.reduce((mais: DocumentoFiscalRead, atual: DocumentoFiscalRead) =>
+      (atual.id > mais.id ? atual : mais),
+    );
   } catch {
     // Se nem a consulta passa, a rede ainda está ruim. O chamador trata como
     // indeterminado — que é a verdade, e é melhor que afirmar qualquer coisa.

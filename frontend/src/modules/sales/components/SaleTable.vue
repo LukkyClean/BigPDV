@@ -31,7 +31,7 @@ const filtrosDisponiveis = computed(() =>
 );
 const nfeDisponivel = recursoDisponivel('nfe');
 const router = useRouter();
-const { pendencias, pendenciasModalOpen, isVerificando } = useEmitirFiscal();
+const { pendencias, pendenciasModalOpen } = useEmitirFiscal();
 
 /**
  * O Centro Fiscal é onde a emissão de NF-e realmente acontece (preview +

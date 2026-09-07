@@ -105,10 +105,16 @@ def test_upload_certificado_focus_invalid_password(client: TestClient, header_wi
 #
 # Os dois testes abaixo fixam as duas metades da correção.
 
-def test_modulo_fiscal_bloqueado_sem_ativacao(
+def test_emissao_bloqueada_sem_contratacao(
     client: TestClient, header_with_token: dict, db_session: Session
 ):
-    """Linha existente mas NÃO contratada: o gate tem que recusar."""
+    """
+    Linha existente mas NÃO contratada: a EMISSÃO tem que ser recusada.
+
+    O alvo é um endpoint de emissão, não de leitura: desde o re-tiering, ler a
+    configuração é liberado (o caixa precisa saber se o certificado vale) e só
+    emitir exige plano.
+    """
     from app.db.models.empresa import Empresa
 
     empresa = db_session.query(Empresa).first()
@@ -121,9 +127,62 @@ def test_modulo_fiscal_bloqueado_sem_ativacao(
     )
     db_session.commit()
 
-    response = client.get("/api/v1/fiscal/configuracao", headers=header_with_token)
+    response = client.post(
+        "/api/v1/fiscal/emitir/nfce",
+        headers=header_with_token,
+        json={"venda_id": 1},
+    )
 
     assert response.status_code == 403
+
+
+def test_configuracao_e_legivel_sem_contratacao(
+    client: TestClient, header_with_token: dict, db_session: Session
+):
+    """
+    Ler a configuração NÃO exige plano — de propósito.
+
+    O bloco fiscal do PDV consulta este endpoint para decidir se mostra
+    "Emitir Fiscal" ou "Sem cupom", e quem opera o caixa não é master nem
+    necessariamente tem o módulo contratado. Exigir plano aqui deixava o
+    fechamento de venda cego.
+    """
+    from app.db.models.empresa import Empresa
+
+    empresa = db_session.query(Empresa).first()
+    db_session.add(
+        EmpresaFiscalSettings(
+            empresa_id=empresa.id, modulo_fiscal_ativo=False, ambiente_emissao=2,
+        )
+    )
+    db_session.commit()
+
+    response = client.get("/api/v1/fiscal/configuracao", headers=header_with_token)
+
+    assert response.status_code == 200
+
+
+def test_ativar_libera_a_emissao(
+    client: TestClient, header_with_token: dict, db_session: Session
+):
+    """
+    O caminho de onboarding: sem ele, um cliente novo não teria como sair do
+    zero — a configuração também depende do direito, e nada escrevia a flag.
+    """
+    negado = client.post(
+        "/api/v1/fiscal/emitir/nfce", headers=header_with_token, json={"venda_id": 1},
+    )
+    assert negado.status_code == 403
+
+    ativacao = client.post("/api/v1/fiscal/ativar", headers=header_with_token)
+    assert ativacao.status_code == 200
+
+    # Passou do gate: o 403 não aparece mais (a venda 1 não existe, então o
+    # que vem agora é erro de negócio, não de permissão).
+    depois = client.post(
+        "/api/v1/fiscal/emitir/nfce", headers=header_with_token, json={"venda_id": 1},
+    )
+    assert depois.status_code != 403
 
 
 def test_get_empresas_nao_cria_fiscal_settings(
@@ -141,6 +200,8 @@ def test_get_empresas_nao_cria_fiscal_settings(
     assert response.json()["fiscal_settings"] is None
     assert db_session.query(EmpresaFiscalSettings).count() == 0
 
-    # E o módulo continua trancado depois da visita.
-    fiscal = client.get("/api/v1/fiscal/configuracao", headers=header_with_token)
+    # E a emissão continua trancada depois da visita.
+    fiscal = client.post(
+        "/api/v1/fiscal/emitir/nfce", headers=header_with_token, json={"venda_id": 1},
+    )
     assert fiscal.status_code == 403

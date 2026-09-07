@@ -183,7 +183,7 @@ const statusBadge = computed(() => {
 // =============================================
 
 const router = useRouter();
-const { pendencias, pendenciasModalOpen, isVerificando } = useEmitirFiscal();
+const { pendencias, pendenciasModalOpen } = useEmitirFiscal();
 
 /** O preview e a confirmação de NF-e vivem no Centro Fiscal. */
 function irParaEmissaoNFe() {

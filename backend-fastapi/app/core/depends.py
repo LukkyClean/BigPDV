@@ -252,24 +252,37 @@ def requer_modulo_fiscal(
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     """
-    Garante que a empresa do usuário TEM DIREITO ao módulo fiscal.
+    Garante o direito de EMITIR documentos fiscais.
 
-    São duas perguntas distintas, que até 05/09/2026 estavam confundidas numa só:
+    O acesso ao módulo fiscal tem três camadas, e confundi-las foi o que criou
+    um beco sem saída na primeira versão desta correção:
 
-      1. A empresa contratou o módulo?  → `modulo_fiscal_ativo`
-      2. A empresa já o configurou?     → existência da linha
+      LEITURA E REGULARIZAÇÃO  (listar, consultar, XML/PDF, cancelar, inutilizar)
+          → só autenticação. Documento fiscal é registro legal do cliente, com
+            guarda de 5 anos, e a janela de cancelamento da NFC-e é de 30 min:
+            travar isso por questão comercial cria passivo fiscal para ele.
 
-    O gate antigo usava só a (2). Como o `GET /empresas/` criava essa linha para
-    qualquer usuário autenticado — e ele é chamado ao abrir configurações ou ao
-    vender no PIX —, o módulo se destrancava sozinho na operação normal. A (1)
-    é a que decide direito, e é o ponto onde o billing vai entrar.
+      CONFIGURAÇÃO  (certificado, CSC, séries)
+          → `requer_configuracao_fiscal`, master, SEM exigir plano. Certificado
+            instalado e CSC preenchido são inertes sem direito de emitir. Exigir
+            plano aqui fechava o círculo: para configurar era preciso já estar
+            liberado, e nada liberava.
+
+      EMISSÃO  (emitir, reemitir, lote, teste)  ← esta função
+          → `plano_tem_recurso`. É a única camada que custa dinheiro.
+
+    Vale lembrar o que esta barreira é: a recusa definitiva acontece na API
+    remota, que valida o plano fora da máquina do cliente. Aqui é defesa em
+    profundidade e UX — falhar cedo, com mensagem clara.
 
     Raises:
-        HTTPException 403: Se o módulo fiscal não estiver contratado/ativo.
+        HTTPException 403: Se o módulo de emissão não estiver contratado.
 
     Returns:
         Dict[str, Any]: O payload do token (passthrough para encadeamento de depends).
     """
+    from app.services.plano import RECURSO_NFE, plano_tem_recurso
+
     empresa_id = usuario_token.get("empresa_id")
     if not empresa_id:
         raise HTTPException(
@@ -277,17 +290,37 @@ def requer_modulo_fiscal(
             detail="Usuário sem empresa vinculada. Acesso negado.",
         )
 
-    fiscal_settings = (
-        db.query(EmpresaFiscalSettings)
-        .filter(EmpresaFiscalSettings.empresa_id == empresa_id)
-        .first()
-    )
-    if not fiscal_settings or not fiscal_settings.modulo_fiscal_ativo:
+    if not plano_tem_recurso(db, RECURSO_NFE, empresa_id=empresa_id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Módulo de emissão fiscal não contratado para esta empresa.",
         )
 
+    return usuario_token
+
+
+def requer_configuracao_fiscal(
+    usuario_token: Dict[str, Any] = Depends(get_current_master_user),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    """
+    Garante o direito de CONFIGURAR o módulo fiscal — sem exigir o plano.
+
+    Deliberadamente mais frouxo que `requer_modulo_fiscal`: configuração é
+    inerte sem emissão. Um lojista pode deixar certificado, CSC e séries
+    prontos antes de contratar; a nota só sai quando o plano existir, e é o
+    servidor remoto que dá a palavra final.
+
+    Só master, porque envolve certificado digital e credencial de SEFAZ.
+
+    Returns:
+        Dict[str, Any]: O payload do token (passthrough para encadeamento).
+    """
+    if not usuario_token.get("empresa_id"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Usuário sem empresa vinculada. Acesso negado.",
+        )
     return usuario_token
 
 

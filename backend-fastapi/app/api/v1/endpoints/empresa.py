@@ -21,7 +21,7 @@ from app.schemas.empresa import (
 )
 from app.db.models.usuario import Usuario as UsuarioModel
 from app.core.config import BASE_DIR
-from app.core.depends import get_current_master_user, get_current_user, _handle_db_transaction, requer_modulo_fiscal
+from app.core.depends import get_current_master_user, get_current_user, _handle_db_transaction, requer_configuracao_fiscal
 from app.db.session import get_db
 from app.services import empresa as empresa_service
 from app.db.crud import empresa as empresa_crud
@@ -237,7 +237,7 @@ def update_empresa(
 )
 def upload_certificado_a1(
     user_token: dict = Depends(get_current_master_user),
-    _fiscal: dict = Depends(requer_modulo_fiscal),
+    _fiscal: dict = Depends(requer_configuracao_fiscal),
     file: UploadFile = File(..., description="Arquivo .pfx ou .p12"),
     senha: str = Form(..., description="Senha do certificado"),
     db: Session = Depends(get_db)
@@ -293,7 +293,7 @@ def list_certificados_windows(
 )
 def vincular_certificado_windows(
     user_token: dict = Depends(get_current_master_user),
-    _fiscal: dict = Depends(requer_modulo_fiscal),
+    _fiscal: dict = Depends(requer_configuracao_fiscal),
     payload: CertificadoWindowsVincular = ...,
     db: Session = Depends(get_db)
 ):
