@@ -428,6 +428,11 @@ def _montar_totais_pagamentos(
     return totais, formas_pagamento, valor_troco
 
 
+# indPres 1 = operação presencial. Default da NFC-e: e o caso do balcao, que
+# e o uso dominante. O 4 (entrega a domicilio) so existe para NFC-e.
+INDPRES_BALCAO = 1
+
+
 def montar_payload_nfce(
     empresa: Empresa,
     endereco_empresa: Endereco,
@@ -441,8 +446,12 @@ def montar_payload_nfce(
 
     Diferenças em relação à NF-e que NÃO são cosméticas:
 
-    * `modelo` 65 e `presenca_comprador` 1 — a NFC-e só existe para operação
-      presencial no balcão; qualquer outro indicador é rejeitado.
+    * `modelo` 65 — NFC-e.
+    * `presenca_comprador` vem do que o caixa escolheu no fechamento; cai em 1
+      (balcão) quando não informado. Estava CHUMBADO em 1, com a justificativa
+      de que "a NFC-e só existe para operação presencial" — o que é falso: o
+      indPres 4 (entrega a domicílio) existe justamente e apenas para NFC-e.
+      Toda entrega saía com o indicador errado.
     * `consumidor_final` sempre 1: é venda a consumidor, por definição.
     * Destinatário OPCIONAL (ver `_montar_destinatario_nfce`).
     * `csc_id`/`csc_token`: é com eles que o provedor monta o QR Code impresso
@@ -470,6 +479,13 @@ def montar_payload_nfce(
     documento_consumidor = getattr(nota_fiscal, "documento_consumidor", None)
     destinatario = _montar_destinatario_nfce(venda.cliente, documento_consumidor)
 
+    # Balcão é o default: cobre a esmagadora maioria das vendas e é o que o
+    # PDV grava sozinho. `or` em vez de `is not None` é seguro aqui porque 0
+    # não é indPres válido (o schema aceita só 1, 2, 3, 4 e 9).
+    presenca_comprador = (
+        getattr(nota_fiscal, "indicador_presenca", None) or INDPRES_BALCAO
+    )
+
     payload = {
         "modelo": 65,
         "natureza_operacao": natureza,
@@ -478,7 +494,7 @@ def montar_payload_nfce(
         "modalidade_frete": 9,  # sem transporte: o cliente leva a mercadoria
         "finalidade_emissao": 1,
         "consumidor_final": 1,
-        "presenca_comprador": 1,
+        "presenca_comprador": presenca_comprador,
         "numero": numero,
         "serie": fiscal_settings.serie_nfce,
         "emitente": _montar_emitente(empresa, endereco_empresa, fiscal_settings),

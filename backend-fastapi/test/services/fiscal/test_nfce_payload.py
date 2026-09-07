@@ -395,3 +395,47 @@ def test_documento_sem_autorizacao_nao_e_barrado():
                           status="PENDENTE", data_autorizacao=None)
 
     _assert_dentro_da_janela_de_cancelamento(doc)
+
+
+# =========================
+# Indicador de presença na NFC-e
+# =========================
+#
+# `presenca_comprador` estava CHUMBADO em 1 no montar_payload_nfce, com a
+# justificativa de que "a NFC-e só existe para operação presencial". É falso:
+# o indPres 4 (entrega a domicílio) existe justamente e apenas para NFC-e, e
+# toda entrega saía com o indicador errado. O PDV agora pergunta no
+# fechamento e grava em venda_nota_fiscal.indicador_presenca.
+
+def test_nfce_sem_escolha_assume_balcao():
+    """Caminho dominante: o operador não mexeu em nada."""
+    payload = _montar_nfce(_venda_simples())
+
+    assert payload["presenca_comprador"] == 1
+
+
+def test_nfce_respeita_a_entrega_a_domicilio():
+    """Regressão do chumbado: o 4 é o motivo de este campo existir na NFC-e."""
+    nota = VendaNotaFiscal(venda_id=1, indicador_presenca=4)
+
+    payload = _montar_nfce(_venda_simples(), nota_fiscal=nota)
+
+    assert payload["presenca_comprador"] == 4
+
+
+@pytest.mark.parametrize("indicador", [1, 2, 3, 4, 9])
+def test_nfce_repassa_o_indicador_escolhido(indicador):
+    nota = VendaNotaFiscal(venda_id=1, indicador_presenca=indicador)
+
+    payload = _montar_nfce(_venda_simples(), nota_fiscal=nota)
+
+    assert payload["presenca_comprador"] == indicador
+
+
+def test_nfce_com_nota_fiscal_sem_indicador_cai_no_balcao():
+    """Venda que tem nota_fiscal só por causa do CPF, sem escolha de presença."""
+    nota = VendaNotaFiscal(venda_id=1, documento_consumidor="11144477735")
+
+    payload = _montar_nfce(_venda_simples(), nota_fiscal=nota)
+
+    assert payload["presenca_comprador"] == 1

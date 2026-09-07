@@ -11,6 +11,7 @@ import {
 } from '@/modules/fiscal/composables/useEmissaoIncerta';
 import type { PendenciaFiscal } from '@/shared/types/fiscal.types';
 import type { DocumentoFiscalRead } from '@/modules/fiscal/types/fiscal.types';
+import type { VendaNotaFiscalUpdate } from '@/modules/sales/schemas/sale.schema';
 import type { ApiError } from '@/shared/types/axios.types';
 import type { AxiosError } from 'axios';
 
@@ -118,13 +119,24 @@ export function useEmitirFiscal() {
   async function emitirNFCeVenda(
     vendaId: number,
     documentoConsumidor?: string | null,
+    indicadorPresenca?: number,
   ): Promise<DocumentoFiscalRead | null> {
     isVerificando.value = true;
     try {
+      // Grava o que o caixa escolheu ANTES de emitir. Sem isto o
+      // payload_builder assumia 1 (presencial) para toda NFC-e, o que fazia
+      // uma entrega a domicílio sair com indPres errado — e, pior, passar
+      // batido pela trava interestadual, que trata indPres 1 como venda de
+      // balcão e por definição interna.
+      const dadosFiscais: VendaNotaFiscalUpdate = {};
       if (documentoConsumidor !== undefined) {
-        await saleService.upsertVendaNotaFiscal(vendaId, {
-          documento_consumidor: documentoConsumidor,
-        });
+        dadosFiscais.documento_consumidor = documentoConsumidor;
+      }
+      if (indicadorPresenca !== undefined) {
+        dadosFiscais.indicador_presenca = indicadorPresenca;
+      }
+      if (Object.keys(dadosFiscais).length > 0) {
+        await saleService.upsertVendaNotaFiscal(vendaId, dadosFiscais);
       }
 
       const resultado = await saleService.verificarFiscal(vendaId);

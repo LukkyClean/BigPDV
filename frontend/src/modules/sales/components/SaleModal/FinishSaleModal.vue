@@ -150,6 +150,8 @@ const exigeConfirmacao = computed(() => !modoBalcao.value || temPagamentoAPrazo.
 // vez de aparecer só como aviso — deixar finalizar e falhar depois na emissão
 // queimaria um número da NFC-e por um impedimento que já era conhecido aqui.
 const emitirFiscal = ref(false);
+/** indPres da NFC-e, vindo do bloco fiscal. Nasce em 1 (balcão). */
+const indicadorPresenca = ref(1);
 const documentoConsumidor = ref<string | null>(null);
 const fiscalBloqueado = ref(false);
 // `pendencias` e `pendenciasModalOpen` PRECISAM vir daqui: o composable liga
@@ -612,7 +614,7 @@ function handleFinish() {
         // resolve a nota pelo Centro Fiscal, com o dinheiro já na gaveta.
         if (emitirFiscal.value) {
           const documento = await emitirNFCeVenda(
-            finishedSale.id, documentoConsumidor.value,
+            finishedSale.id, documentoConsumidor.value, indicadorPresenca.value,
           );
           // Cupom só quando a SEFAZ autorizou. Imprimir um DANFE de nota
           // rejeitada entregaria ao cliente um papel que parece fiscal e não é.
@@ -863,6 +865,7 @@ function handleFinish() {
         :documento-cliente="documentoDoClienteDaVenda"
         @update:emitir-fiscal="emitirFiscal = $event"
         @update:documento="documentoConsumidor = $event"
+        @update:indicador-presenca="indicadorPresenca = $event"
         @update:bloqueado="fiscalBloqueado = $event"
       />
 

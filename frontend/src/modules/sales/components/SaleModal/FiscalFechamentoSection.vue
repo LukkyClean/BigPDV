@@ -3,9 +3,10 @@
  * @component FiscalFechamentoSection
  * @description O bloco fiscal do fechamento de venda no PDV.
  *
- * Responde duas perguntas do caixa, nesta ordem:
+ * Responde tres perguntas do caixa, nesta ordem:
  *   1. "Emite cupom fiscal ou é venda gerencial?"
  *   2. "Quer CPF na nota?"
+ *   3. "Como essa venda aconteceu?" (indPres da NFC-e)
  *
  * Vive num componente separado do FinishSaleModal de propósito: aquele arquivo
  * já passa de 900 linhas cuidando de pagamentos, e a regra fiscal muda por
@@ -17,6 +18,7 @@ import { cpf as cpfValidator, cnpj as cnpjValidator } from 'cpf-cnpj-validator';
 import { Receipt, FileX, AlertTriangle, Loader2 } from 'lucide-vue-next';
 
 import BaseInput from '@/shared/components/ui/BaseInput/BaseInput.vue';
+import BaseSelect from '@/shared/components/ui/BaseSelect/BaseSelect.vue';
 import { formatCPF, formatCNPJ, unmaskDocument } from '@/shared/utils/document.utils';
 import { formatCurrency } from '@/shared/utils/finance';
 import { recursoDisponivel } from '@/shared/config/planos';
@@ -32,6 +34,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'update:emitirFiscal', valor: boolean): void;
   (e: 'update:documento', valor: string | null): void;
+  /** indPres da NFC-e — ver INDICADOR_PRESENCA_OPTIONS. */
+  (e: 'update:indicadorPresenca', valor: number): void;
   /** True quando algo impede finalizar — o modal desabilita o botão. */
   (e: 'update:bloqueado', valor: boolean): void;
 }>();
@@ -42,6 +46,38 @@ const { data: configuracao, isLoading } = useFiscalConfiguracaoQuery();
 
 const emitirFiscal = ref(false);
 const documentoDigitado = ref('');
+
+// ── Indicador de presença (indPres) ──────────────────────────────────────
+// Campo obrigatório do layout da NFC-e. Até aqui o PDV nunca o preenchia e
+// TODA NFC-e saía com 1 (presencial), porque é o default do payload_builder.
+// Certo no balcão, errado justamente no delivery — que é o indPres 4, o valor
+// que só existe para NFC-e.
+//
+// Não pode virar mais uma pergunta no caminho crítico: o fechamento é de
+// quatro teclas e o cliente está esperando. Por isso nasce em "Balcão", que
+// cobre a esmagadora maioria das vendas, e só quem foge do padrão mexe.
+//
+// Uma escolha errada aqui não é cosmética: indPres alimenta a trava
+// interestadual do resolver (_operacao_presencial). Marcar "Balcão" numa venda
+// que na verdade foi pela internet desliga a trava e libera uma nota
+// interestadual sem DIFAL.
+const INDICADOR_PRESENCA_OPTIONS = [
+  { value: 1, label: 'Balcão (cliente presente)' },
+  { value: 4, label: 'Entrega a domicílio' },
+  { value: 2, label: 'Internet / WhatsApp' },
+  { value: 3, label: 'Telefone' },
+  { value: 9, label: 'Outro' },
+];
+const INDICADOR_PRESENCA_BALCAO = 1;
+
+// `string | number` porque é o que o BaseSelect expõe no v-model; a
+// normalização para number acontece na saída, num lugar só.
+const indicadorPresenca = ref<string | number>(INDICADOR_PRESENCA_BALCAO);
+watch(
+  indicadorPresenca,
+  (v) => emit('update:indicadorPresenca', Number(v) || INDICADOR_PRESENCA_BALCAO),
+  { immediate: true },
+);
 const documentoInputRef = ref<InstanceType<typeof BaseInput> | null>(null);
 
 // ── Documento efetivo ────────────────────────────────────────────────────
@@ -213,6 +249,17 @@ function aoDigitarDocumento(valor: string | number) {
         inputmode="numeric"
         :error="erroDocumento"
         @update:model-value="aoDigitarDocumento"
+      />
+
+      <!--
+        Como a venda aconteceu. Nasce em "Balcão": o caminho feliz não ganha
+        nenhum passo, e quem faz delivery corrige em um clique.
+      -->
+      <BaseSelect
+        v-model="indicadorPresenca"
+        data-indicador-presenca
+        label="Como foi esta venda"
+        :options="INDICADOR_PRESENCA_OPTIONS"
       />
 
       <!-- Avisos, do mais bloqueante ao informativo -->
