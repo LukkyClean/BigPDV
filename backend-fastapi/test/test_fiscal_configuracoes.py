@@ -205,3 +205,73 @@ def test_get_empresas_nao_cria_fiscal_settings(
         "/api/v1/fiscal/emitir/nfce", headers=header_with_token, json={"venda_id": 1},
     )
     assert fiscal.status_code == 403
+
+
+# ===========================================================================
+# RESOLUÇÃO DE RECURSO CONTRATADO — Fase 3
+# ===========================================================================
+#
+# O frontend deixou de decidir o plano por conta propria (planos.ts era uma
+# constante fixa em `nfe: true`) e passou a espelhar o que o backend reporta.
+# Quem responde e `plano_tem_recurso`, testado aqui direto: o endpoint que o
+# expoe (/licenca/status) depende da tabela de licenca, que nao existe nas
+# fixtures desta suite.
+
+def test_recurso_negado_sem_contratacao(db_session: Session, create_test_empresa):
+    from app.services.plano import RECURSO_NFE, plano_tem_recurso
+    from app.db.models.empresa import Empresa
+
+    empresa = db_session.query(Empresa).first()
+
+    assert plano_tem_recurso(db_session, RECURSO_NFE, empresa_id=empresa.id) is False
+
+
+def test_recurso_negado_com_linha_existente_mas_inativa(db_session: Session, create_test_empresa):
+    """Existir configuracao nao e o mesmo que ter direito — foi essa confusao
+    que deixava o modulo se destrancar sozinho."""
+    from app.services.plano import RECURSO_NFE, plano_tem_recurso
+    from app.db.models.empresa import Empresa
+
+    empresa = db_session.query(Empresa).first()
+    db_session.add(
+        EmpresaFiscalSettings(
+            empresa_id=empresa.id, modulo_fiscal_ativo=False, ambiente_emissao=2,
+        )
+    )
+    db_session.commit()
+
+    assert plano_tem_recurso(db_session, RECURSO_NFE, empresa_id=empresa.id) is False
+
+
+def test_ativacao_local_libera_o_recurso(db_session: Session, create_test_empresa):
+    from app.services.plano import RECURSO_NFE, ativar_recurso_local, plano_tem_recurso
+    from app.db.models.empresa import Empresa
+
+    empresa = db_session.query(Empresa).first()
+
+    ativar_recurso_local(db_session, empresa.id)
+    db_session.commit()
+
+    assert plano_tem_recurso(db_session, RECURSO_NFE, empresa_id=empresa.id) is True
+
+
+def test_ativacao_cria_a_configuracao_quando_nao_existe(db_session: Session, create_test_empresa):
+    """Caminho de onboarding: cliente novo nao tem nem a linha."""
+    from app.services.plano import ativar_recurso_local
+    from app.db.models.empresa import Empresa
+
+    empresa = db_session.query(Empresa).first()
+    assert db_session.query(EmpresaFiscalSettings).count() == 0
+
+    ativar_recurso_local(db_session, empresa.id)
+    db_session.commit()
+
+    settings = db_session.query(EmpresaFiscalSettings).one()
+    assert settings.empresa_id == empresa.id
+    assert settings.modulo_fiscal_ativo is True
+
+
+def test_recurso_desconhecido_nao_e_inventado(db_session: Session):
+    from app.services.plano import plano_tem_recurso
+
+    assert plano_tem_recurso(db_session, "recurso-que-nao-existe", empresa_id=1) is False

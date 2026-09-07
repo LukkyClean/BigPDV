@@ -4,6 +4,7 @@ import { verificarLicenca } from '@/shared/services/licenca.service';
 import { useNetworkConfigStore } from '@/shared/stores/networkConfig.store';
 import { useLicencaStore } from '@/shared/stores/licenca.store';
 import { recursoDisponivel, type Recurso } from '@/shared/config/planos';
+import { usePlanoStore } from '@/shared/stores/plano.store';
 import { storeToRefs } from 'pinia';
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router';
 import { watch } from 'vue';
@@ -37,8 +38,12 @@ router.beforeEach(async (to) => {
 
     if (agora - ultimaVerificacaoLicenca >= INTERVALO_VERIFICACAO_MS) {
       try {
-        await verificarLicenca();
+        const licenca = await verificarLicenca();
         ultimaVerificacaoLicenca = agora;
+        // Recursos contratados vem junto do status — sem requisicao extra, e
+        // antes do login, entao a UI nunca pisca mostrando um modulo que o
+        // cliente nao tem.
+        usePlanoStore().definirRecursos(licenca.recursos);
         // Voltou a valer (renovou, ou entrou em carência): sai do estado de
         // paywall sozinho, sem precisar reiniciar o sistema.
         useLicencaStore().limpar();

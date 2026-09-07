@@ -4,7 +4,7 @@
 # ---------------------------------------------------------------------------
 
 from datetime import datetime
-from typing import Optional
+from typing import Dict, Optional
 from pydantic import BaseModel, Field
 
 
@@ -115,6 +115,14 @@ class LicencaStatusResponse(BaseModel):
     )
     dias_restantes_carencia: Optional[int] = Field(
         None, description="Dias que ainda faltam da carencia, quando estiver em carencia"
+    )
+    recursos: Dict[str, bool] = Field(
+        default_factory=dict,
+        description=(
+            "Recursos contratados, por nome (ex.: {'nfe': true}). O frontend usa "
+            "isto para decidir o que MOSTRAR; quem decide o que pode ser feito e "
+            "o backend, em app/services/plano.py."
+        ),
     )
 
 

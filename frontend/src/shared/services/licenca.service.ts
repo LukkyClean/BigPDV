@@ -23,6 +23,14 @@ export interface LicencaStatusResponse {
   em_carencia?: boolean;
   /** Dias que ainda faltam da carência. */
   dias_restantes_carencia?: number | null;
+  /**
+   * Recursos contratados, por nome (ex.: `{ nfe: true }`).
+   *
+   * Viaja junto do status porque o router já consulta este endpoint a cada 5
+   * minutos — hidratar o `plano.store` daqui não custa requisição nenhuma e
+   * funciona antes do login. É UX: quem barra de verdade é o backend.
+   */
+  recursos?: Record<string, boolean>;
 }
 
 export interface LicencaErroResponse {

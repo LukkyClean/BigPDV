@@ -51,7 +51,25 @@ def verificar_status_licenca(db: Session = Depends(get_db)):
     - **200**: Licença válida (online ou offline).
     - **403**: Licença inválida com código de erro estruturado.
     """
-    return licenca_service.verificar_licenca_ativa(db)
+    from app.db.crud import empresa as empresa_crud
+    from app.services.plano import RECURSO_NFE, plano_tem_recurso
+
+    resultado = licenca_service.verificar_licenca_ativa(db)
+
+    # Recursos contratados viajam junto com o status porque o router do
+    # frontend já chama este endpoint a cada 5 minutos — hidratar o store daqui
+    # não custa requisição nenhuma, e funciona antes do login, então a UI nunca
+    # pisca mostrando um módulo que o cliente não tem.
+    #
+    # Instalação é singleton (uma empresa por banco), então a empresa atual é a
+    # única que existe. Sem ela, só o claim do JWT decide.
+    empresa = empresa_crud.get_empresa_atual(db)
+    resultado["recursos"] = {
+        RECURSO_NFE: plano_tem_recurso(
+            db, RECURSO_NFE, empresa_id=empresa.id if empresa else None,
+        ),
+    }
+    return resultado
 
 
 @router.post(

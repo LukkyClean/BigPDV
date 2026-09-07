@@ -3,7 +3,7 @@ import { ref, watch } from 'vue';
 import { Lock, Sparkles, Check } from 'lucide-vue-next';
 
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
-import { recursoDisponivel, PLANO_ATUAL } from '@/shared/config/planos';
+import { recursoDisponivel } from '@/shared/config/planos';
 
 import { useFiscalConfiguracaoQuery } from '../composables/useFiscalConfiguracaoQuery';
 
@@ -22,10 +22,10 @@ watch(configuracao, (cfg) => {
 }, { immediate: true });
 
 const beneficios = [
-  'Emissao de NF-e, NFC-e e NFS-e',
-  'Certificado digital A1 e integracao com a prefeitura',
-  'Controle de series e numeracao',
-  'Ambiente de homologacao e producao',
+  'Emissão de NF-e, NFC-e e NFS-e',
+  'Certificado digital A1 e integração com a prefeitura',
+  'Controle de séries e numeração',
+  'Ambiente de homologação e produção',
 ];
 
 function solicitarUpgrade() {
@@ -42,10 +42,10 @@ function solicitarUpgrade() {
           <Lock :size="28" class="text-brand-primary" />
         </div>
 
-        <h2 class="text-xl font-bold text-gray-800">Recurso nao incluido no seu plano</h2>
+        <h2 class="text-xl font-bold text-gray-800">A emissão de notas fiscais não está no seu plano</h2>
         <p class="text-sm text-gray-500 mt-2 leading-relaxed">
-          Voce esta no plano <strong>{{ PLANO_ATUAL }}</strong>, que nao inclui emissao de notas
-          fiscais. Faca upgrade para habilitar o modulo fiscal.
+          Seu plano atual não inclui NF-e, NFC-e e NFS-e. Fale com a gente para
+          habilitar o módulo fiscal.
         </p>
 
         <ul class="text-left text-sm text-gray-600 space-y-2 mt-6 mb-7">
