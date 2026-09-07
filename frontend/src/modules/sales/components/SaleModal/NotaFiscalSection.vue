@@ -20,6 +20,8 @@ import BaseSelect from '@/shared/components/ui/BaseSelect/BaseSelect.vue';
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
 import PendenciasFiscaisModal from '@/shared/components/commons/PendenciasFiscaisModal.vue';
 import { useToast } from '@/shared/composables/useToast';
+import { useRouter } from 'vue-router';
+
 import { useEmitirFiscal } from '@/shared/composables/useEmitirFiscal';
 import { saleService } from '../../api.service';
 import type { VendaNotaFiscalUpdate } from '../../schemas/sale.schema';
@@ -180,7 +182,13 @@ const statusBadge = computed(() => {
 // Emissão Fiscal
 // =============================================
 
-const { pendencias, pendenciasModalOpen, isVerificando, emitirVenda } = useEmitirFiscal();
+const router = useRouter();
+const { pendencias, pendenciasModalOpen, isVerificando } = useEmitirFiscal();
+
+/** O preview e a confirmação de NF-e vivem no Centro Fiscal. */
+function irParaEmissaoNFe() {
+  router.push({ name: 'fiscal-nfe', query: { venda: String(props.vendaId) } });
+}
 
 const podeEmitir = computed(() => {
   const statusNota = notaFiscal.value?.status_nota ?? 'PENDENTE';
@@ -289,16 +297,20 @@ const podeEmitir = computed(() => {
         </template>
 
         <!-- Botão Emitir NF-e -->
+        <!--
+          Leva ao Centro Fiscal. O antigo POST /vendas/{id}/emitir-fiscal
+          SEMPRE responde 422 ou 501 — o botão prometia uma emissão que não
+          podia acontecer.
+        -->
         <BaseButton
           v-if="podeEmitir"
           variant="primary"
           size="sm"
           class="mt-2 w-full"
-          :is-loading="isVerificando"
-          @click="emitirVenda(props.vendaId)"
+          @click="irParaEmissaoNFe()"
         >
           <Send :size="14" class="mr-1.5" />
-          Emitir NF-e
+          Emitir NF-e no Centro Fiscal
         </BaseButton>
       </div>
     </template>

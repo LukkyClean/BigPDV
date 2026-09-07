@@ -29,12 +29,14 @@ from app.schemas.emissao_fiscal import (
     CancelamentoRequest,
     EmissaoBatchResponse,
     EmissaoNFeBatchRequest,
+    EmissaoNFCeRequest,
     EmissaoNFeRequest,
     EmissaoResponse,
     FiscalConfiguracao,
 )
 from app.services import documento_fiscal as documento_fiscal_service
 from app.services import pendencias_globais as pendencias_globais_service
+from app.services.fiscal.helpers import mascarar_csc, obter_csc_token
 
 router = APIRouter()
 
@@ -53,8 +55,11 @@ def obter_resumo(
     user_token: dict = Depends(requer_modulo_fiscal),
     *,
     db: Session = Depends(get_db),
+    tipo: Optional[str] = Query(
+        None, description="Restringe os contadores a um tipo (NFE, NFCE, NFSE)",
+    ),
 ):
-    return documento_fiscal_service.obter_resumo(db)
+    return documento_fiscal_service.obter_resumo(db, tipo=tipo)
 
 
 # ===========================================================================
@@ -227,6 +232,48 @@ def emitir_nfe(
 
 
 @router.post(
+    "/preview/nfce",
+    response_model=EmissaoPreviewResponse,
+    summary="Pré-visualizar NFC-e",
+    description="Gera um resumo da NFC-e para conferência antes da emissão.",
+)
+def preview_nfce(
+    user_token: dict = Depends(requer_modulo_fiscal),
+    *,
+    db: Session = Depends(get_db),
+    payload: EmissaoNFCeRequest = Body(...),
+):
+    from app.services.fiscal.emissao import preview_nfce_venda
+
+    return preview_nfce_venda(db, payload.venda_id, user_token["empresa_id"])
+
+
+@router.post(
+    "/emitir/nfce",
+    response_model=EmissaoResponse,
+    summary="Emitir NFC-e",
+    description=(
+        "Emite NFC-e (modelo 65) a partir de uma venda do PDV. "
+        "A autorização é síncrona: o resultado volta nesta resposta."
+    ),
+)
+def emitir_nfce(
+    user_token: dict = Depends(requer_modulo_fiscal),
+    *,
+    db: Session = Depends(get_db),
+    payload: EmissaoNFCeRequest = Body(...),
+):
+    # Sem BackgroundTasks de propósito: a NFC-e é síncrona. Agendar polling
+    # aqui atrasaria o cupom que o operador está esperando para entregar.
+    from app.services.fiscal.emissao import emitir_nfce_venda
+
+    doc = _handle_db_transaction(
+        db, emitir_nfce_venda, payload.venda_id, user_token["empresa_id"],
+    )
+    return EmissaoResponse.de_documento(doc, "NFC-e")
+
+
+@router.post(
     "/emitir/nfe/batch",
     response_model=EmissaoBatchResponse,
     summary="Emitir NF-e em Lote",
@@ -248,7 +295,10 @@ def emitir_nfe_batch(
         if r["status"] == "PROCESSANDO" and r["documento_id"]:
             background_tasks.add_task(poll_nfe_status_async, r["documento_id"], empresa_id)
 
-    sucesso = sum(1 for r in resultados if r["status"] not in ("ERRO", "REJEITADA"))
+    # Sucesso é a SEFAZ ter aceitado — não é "tudo que não deu pau".
+    # A regra anterior (`not in ("ERRO", "REJEITADA")`) contava DENEGADA como
+    # sucesso, e o contador que o lojista lê na tela mentia sobre o resultado.
+    sucesso = sum(1 for r in resultados if r["status"] in ("AUTORIZADA", "PROCESSANDO"))
     return EmissaoBatchResponse(
         resultados=resultados,
         total=len(resultados),
@@ -399,8 +449,12 @@ def obter_configuracao(
         ultimo_numero_nfe=fs.ultimo_numero_nfe if fs else 0,
         serie_nfce=fs.serie_nfce if fs else 1,
         ultimo_numero_nfce=fs.ultimo_numero_nfce if fs else 0,
-        csc_token=fs.csc_token if fs else None,
+        csc_token=mascarar_csc(obter_csc_token(fs)) if fs else None,
+        csc_configurado=bool(fs and obter_csc_token(fs)),
         csc_id=fs.csc_id if fs else None,
+        limite_consumidor_anonimo=(
+            fs.limite_consumidor_anonimo if fs else 1000000
+        ),
     )
 
 from app.schemas.empresa import FiscalSettingsUpdate
@@ -442,8 +496,12 @@ def atualizar_configuracao(
         ultimo_numero_nfe=fs.ultimo_numero_nfe if fs else 0,
         serie_nfce=fs.serie_nfce if fs else 1,
         ultimo_numero_nfce=fs.ultimo_numero_nfce if fs else 0,
-        csc_token=fs.csc_token if fs else None,
+        csc_token=mascarar_csc(obter_csc_token(fs)) if fs else None,
+        csc_configurado=bool(fs and obter_csc_token(fs)),
         csc_id=fs.csc_id if fs else None,
+        limite_consumidor_anonimo=(
+            fs.limite_consumidor_anonimo if fs else 1000000
+        ),
     )
 
 @router.post(

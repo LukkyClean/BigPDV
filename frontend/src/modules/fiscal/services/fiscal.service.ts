@@ -4,6 +4,7 @@ import type { EmissaoPreviewResponse,
   DocumentoFiscalListRead,
   DocumentoFiscalRead,
   DocumentoFiscalResumo,
+  DocumentoFiscalTipo,
   DocumentoFiscalFilters,
   EmissaoNFeRequest,
   EmissaoResponse,
@@ -11,7 +12,9 @@ import type { EmissaoPreviewResponse,
   FiscalConfiguracao,
   PendenciasGlobais,
   ResultadoVerificacaoBatch,
+  VendaCorrecaoFiscalPayload,
 } from '../types/fiscal.types';
+import { TIMEOUT_CONSULTA, TIMEOUT_EMISSAO, TIMEOUT_LOTE } from '../constants/fiscal.constants';
 
 const FISCAL_ENDPOINT = '/fiscal';
 
@@ -37,9 +40,11 @@ export const fiscalService = {
     return data;
   },
 
-  async obterResumo(): Promise<DocumentoFiscalResumo> {
+  /** `tipo` restringe os contadores a um modelo (NFE, NFCE, NFSE). */
+  async obterResumo(tipo?: DocumentoFiscalTipo): Promise<DocumentoFiscalResumo> {
     const { data } = await api.get<DocumentoFiscalResumo>(
       `${FISCAL_ENDPOINT}/resumo`,
+      { params: tipo ? { tipo } : undefined },
     );
     return data;
   },
@@ -61,6 +66,8 @@ export const fiscalService = {
   async reemitirDocumento(id: number): Promise<DocumentoFiscalRead> {
     const { data } = await api.post<DocumentoFiscalRead>(
       `${FISCAL_ENDPOINT}/documentos/${id}/reemitir`,
+      undefined,
+      { timeout: TIMEOUT_EMISSAO },
     );
     return data;
   },
@@ -71,6 +78,7 @@ export const fiscalService = {
     const { data } = await api.post<EmissaoPreviewResponse>(
       `${FISCAL_ENDPOINT}/preview/nfe`,
       payload,
+      { timeout: TIMEOUT_EMISSAO },
     );
     return data;
   },
@@ -79,6 +87,20 @@ export const fiscalService = {
     const { data } = await api.post<EmissaoResponse>(
       `${FISCAL_ENDPOINT}/emitir/nfe`,
       payload,
+      { timeout: TIMEOUT_EMISSAO },
+    );
+    return data;
+  },
+
+  /**
+   * Emite NFC-e (modelo 65). Síncrono: a resposta já traz o resultado da
+   * SEFAZ, porque o cliente está no balcão esperando o cupom.
+   */
+  async emitirNfce(payload: EmissaoNFeRequest): Promise<EmissaoResponse> {
+    const { data } = await api.post<EmissaoResponse>(
+      `${FISCAL_ENDPOINT}/emitir/nfce`,
+      payload,
+      { timeout: TIMEOUT_EMISSAO },
     );
     return data;
   },
@@ -86,6 +108,8 @@ export const fiscalService = {
   async emitirTesteNfe(): Promise<EmissaoResponse> {
     const { data } = await api.post<EmissaoResponse>(
       `${FISCAL_ENDPOINT}/emitir/teste/nfe`,
+      undefined,
+      { timeout: TIMEOUT_EMISSAO },
     );
     return data;
   },
@@ -93,6 +117,7 @@ export const fiscalService = {
   async consultarDocumento(id: number): Promise<DocumentoFiscalRead> {
     const { data } = await api.get<DocumentoFiscalRead>(
       `${FISCAL_ENDPOINT}/documentos/${id}/consultar`,
+      { timeout: TIMEOUT_CONSULTA },
     );
     return data;
   },
@@ -101,6 +126,7 @@ export const fiscalService = {
     const { data } = await api.post<DocumentoFiscalRead>(
       `${FISCAL_ENDPOINT}/documentos/${id}/cancelar`,
       { justificativa },
+      { timeout: TIMEOUT_EMISSAO },
     );
     return data;
   },
@@ -131,6 +157,7 @@ export const fiscalService = {
     const { data } = await api.post<EmissaoBatchResponse>(
       `${FISCAL_ENDPOINT}/emitir/nfe/batch`,
       { venda_ids: vendaIds },
+      { timeout: TIMEOUT_LOTE },
     );
     return data;
   },

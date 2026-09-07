@@ -9,6 +9,8 @@ import PendenciasFiscaisModal from '@/shared/components/commons/PendenciasFiscai
 import { formatCurrency } from '@/shared/utils/finance';
 import { tempoDecorrido as esperandoDesde } from '@/shared/utils/date.utils';
 import { recursoDisponivel } from '@/shared/config/planos';
+import { useRouter } from 'vue-router';
+
 import { useEmitirFiscal } from '@/shared/composables/useEmitirFiscal';
 
 import { useSaleTable } from '../composables/flows/useSaleTable';
@@ -28,7 +30,17 @@ const filtrosDisponiveis = computed(() =>
   usarFilaDoCaixa.value ? SALE_FILTER_CONFIG_COM_CAIXA : SALE_FILTER_CONFIG,
 );
 const nfeDisponivel = recursoDisponivel('nfe');
-const { pendencias, pendenciasModalOpen, isVerificando, emitirVenda } = useEmitirFiscal();
+const router = useRouter();
+const { pendencias, pendenciasModalOpen, isVerificando } = useEmitirFiscal();
+
+/**
+ * O Centro Fiscal é onde a emissão de NF-e realmente acontece (preview +
+ * confirmação). A `venda` na query fica registrada para a pré-seleção do
+ * modal, ainda não implementada.
+ */
+function irParaEmissaoNFe(vendaId: number) {
+  router.push({ name: 'fiscal-nfe', query: { venda: String(vendaId) } });
+}
 
 const emit = defineEmits<{
   (e: 'cancel', saleId: number): void;
@@ -196,13 +208,18 @@ const emit = defineEmits<{
                   >
                     <Printer class="h-4 w-4" />
                   </button>
+                  <!--
+                    Vai para o Centro Fiscal em vez de chamar
+                    POST /vendas/{id}/emitir-fiscal, que SEMPRE responde 422 ou
+                    501 — nunca emitiu nada. Emitir direto daqui, sem a etapa de
+                    conferência, seria pior: NF-e é irreversível.
+                  -->
                   <button
                     v-if="nfeDisponivel"
                     type="button"
                     class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-emerald-50 hover:text-emerald-600"
-                    title="Emitir Nota Fiscal"
-                    :disabled="isVerificando"
-                    @click.stop="emitirVenda(sale.id)"
+                    title="Emitir NF-e no Centro Fiscal"
+                    @click.stop="irParaEmissaoNFe(sale.id)"
                   >
                     <FileText class="h-4 w-4" />
                   </button>

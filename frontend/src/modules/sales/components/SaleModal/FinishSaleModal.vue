@@ -31,6 +31,10 @@ import BaseCheckbox from '@/shared/components/ui/BaseCheckbox/BaseCheckbox.vue';
 
 import { useConfiguracoesStore } from '@/shared/stores/configuracoes.store';
 import { useBalcaoStore } from '@/shared/stores/balcao.store';
+import PendenciasFiscaisModal from '@/shared/components/commons/PendenciasFiscaisModal.vue';
+import { useEmitirFiscal } from '@/shared/composables/useEmitirFiscal';
+import { useNfcePrintFlow } from '../../composables/flows/useNfcePrintFlow';
+import FiscalFechamentoSection from './FiscalFechamentoSection.vue';
 import { useFinishSaleModal } from '../../composables/flows/useFinishSaleModal';
 import { useFinishSaleMutation } from '../../composables/mutates/useFinishSaleMutation';
 import { usePaymentMethodsQuery } from '../../composables/queries/usePaymentMethodsQuery';
@@ -39,6 +43,7 @@ import {
   JUROS_RESPONSAVEL_OPTIONS,
 } from '@/shared/composables/useJurosPagamento';
 
+import { documentoDoCliente } from '../../schemas/customers.schema';
 import type { SaleRead } from '../../schemas/sale.schema';
 import type { CardFlag } from '../../schemas/paymentSale.schema';
 import type { PaymentFormReadDataType } from '@/shared/schemas/payments/payment.schema';
@@ -139,8 +144,50 @@ const temPagamentoAPrazo = computed(() =>
  */
 const exigeConfirmacao = computed(() => !modoBalcao.value || temPagamentoAPrazo.value);
 
+// --- Fiscal (NFC-e) ---
+// O bloqueio vem do FiscalFechamentoSection: CSC ausente, certificado vencido
+// ou venda acima do teto sem CPF. Entra no MESMO gate do botão Finalizar em
+// vez de aparecer só como aviso — deixar finalizar e falhar depois na emissão
+// queimaria um número da NFC-e por um impedimento que já era conhecido aqui.
+const emitirFiscal = ref(false);
+const documentoConsumidor = ref<string | null>(null);
+const fiscalBloqueado = ref(false);
+// `pendencias` e `pendenciasModalOpen` PRECISAM vir daqui: o composable liga
+// a flag ao encontrar pendência, e sem alguém renderizando o modal a venda
+// finalizava, o cupom não saía e NADA aparecia na tela. O operador só
+// descobria no fechamento do caixa.
+const {
+  emitirNFCeVenda,
+  isVerificando: emitindoNFCe,
+  pendencias,
+  pendenciasModalOpen,
+} = useEmitirFiscal();
+
+/** Nome da forma de pagamento como sai impresso no cupom. */
+function resolverNomePagamento(formaId: number): string {
+  const forma = formasPagamento.value.find((fp) => fp.id === formaId);
+  return getPaymentDisplayName(forma?.nome ?? 'Desconhecido');
+}
+
+const { imprimirDanfeNfce } = useNfcePrintFlow(resolverNomePagamento);
+
+// A emissão acontece com o modal ainda aberto e pode levar segundos (o
+// client tem timeout de 30s). Sem isto o operador vê a tela parada sem
+// saber se travou — e aperta o botão de novo com o cliente esperando.
+const finalizando = computed(
+  () => finishMutation.isPending.value || emitindoNFCe.value,
+);
+
+/** Documento do cliente já cadastrado na venda, quando houver. */
+const documentoDoClienteDaVenda = computed(
+  () => documentoDoCliente(props.sale?.cliente) || null,
+);
+
 const canFinishWithConfirmation = computed(
-  () => canFinish.value && (!exigeConfirmacao.value || confirmacao.value),
+  () =>
+    canFinish.value
+    && (!exigeConfirmacao.value || confirmacao.value)
+    && !fiscalBloqueado.value,
 );
 
 const paymentBaseCentavos = computed(() => Math.round(paymentValueReais.value * 100));
@@ -556,8 +603,26 @@ function handleFinish() {
   finishMutation.mutate(
     { saleId: props.sale.id, payments: payments.value, acrescimo: acrescimo.value },
     {
-      onSuccess: (finishedSale) => {
+      onSuccess: async (finishedSale) => {
         confirmacao.value = false;
+
+        // A venda já está finalizada; a NFC-e vem DEPOIS e de propósito.
+        // Só uma venda finalizada pode gerar cupom, e uma recusa da SEFAZ não
+        // pode desfazer o recebimento que já aconteceu no caixa — o operador
+        // resolve a nota pelo Centro Fiscal, com o dinheiro já na gaveta.
+        if (emitirFiscal.value) {
+          const documento = await emitirNFCeVenda(
+            finishedSale.id, documentoConsumidor.value,
+          );
+          // Cupom só quando a SEFAZ autorizou. Imprimir um DANFE de nota
+          // rejeitada entregaria ao cliente um papel que parece fiscal e não é.
+          if (documento) {
+            await imprimirDanfeNfce(finishedSale, documento, {
+              documentoConsumidor: documentoConsumidor.value,
+            });
+          }
+        }
+
         closeFinishModal();
         emit('finalized', finishedSale);
       },
@@ -792,6 +857,15 @@ function handleFinish() {
 
       </div><!-- fim grid -->
 
+      <!-- Bloco fiscal: emitir cupom? CPF na nota? -->
+      <FiscalFechamentoSection
+        :total-centavos="totalComAcrescimo"
+        :documento-cliente="documentoDoClienteDaVenda"
+        @update:emitir-fiscal="emitirFiscal = $event"
+        @update:documento="documentoConsumidor = $event"
+        @update:bloqueado="fiscalBloqueado = $event"
+      />
+
       <!-- Confirmação + botões (dentro do body) -->
       <div class="flex items-center gap-4 pt-3 border-t border-zinc-200 shrink-0">
         <BaseCheckbox
@@ -806,8 +880,8 @@ function handleFinish() {
           <BaseButton
             variant="primary"
             data-finalizar-venda
-            :is-loading="finishMutation.isPending.value"
-            :disabled="!canFinishWithConfirmation"
+            :is-loading="finalizando"
+            :disabled="!canFinishWithConfirmation || finalizando"
             class="px-6 shadow-lg shadow-brand-primary/20"
             @click="handleFinish"
           >
@@ -959,4 +1033,15 @@ function handleFinish() {
 
     <template #footer><span></span></template>
   </BaseModal>
+
+  <!--
+    Pendência fiscal no balcão: a venda está registrada e paga, mas o cupom não
+    pode ser emitido. Precisa aparecer AQUI, no momento em que acontece.
+  -->
+  <PendenciasFiscaisModal
+    :is-open="pendenciasModalOpen"
+    :pendencias="pendencias"
+    titulo="Não foi possível emitir o cupom fiscal"
+    @close="pendenciasModalOpen = false"
+  />
 </template>
