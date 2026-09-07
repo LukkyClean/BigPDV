@@ -20,17 +20,6 @@ const homeRoutes: RouteRecordRaw[] = [
         },
       },
       {
-        path: '/vendas',
-        name: 'sales',
-        component: () => import('@/modules/home/views/HomeView.vue'),
-        meta: {
-          title: 'Vendas',
-          subtitle: 'Resumo de vendas do sistema',
-          tabId: 'sales',
-          requiresAuth: true,
-        },
-      },
-      {
         path: '/equipes',
         name: 'employees',
         component: () => import('@/modules/employees/views/EmployeesView.vue'),
@@ -77,7 +66,10 @@ const homeRoutes: RouteRecordRaw[] = [
       {
         path: '/fiscal',
         component: () => import('@/modules/fiscal/views/FiscalLayout.vue'),
-        meta: { requiresAuth: true },
+        // `exigeRecurso` é herdado pelas filhas na checagem do beforeEach:
+        // o guard olha `to.meta`, que o vue-router monta mesclando os metas
+        // de toda a cadeia de rotas casadas.
+        meta: { requiresAuth: true, exigeRecurso: 'nfe' },
         children: [
           {
             path: '',

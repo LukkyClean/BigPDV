@@ -21,7 +21,7 @@ from app.schemas.empresa import (
 )
 from app.db.models.usuario import Usuario as UsuarioModel
 from app.core.config import BASE_DIR
-from app.core.depends import get_current_master_user, get_current_user, _handle_db_transaction
+from app.core.depends import get_current_master_user, get_current_user, _handle_db_transaction, requer_modulo_fiscal
 from app.db.session import get_db
 from app.services import empresa as empresa_service
 from app.db.crud import empresa as empresa_crud
@@ -133,22 +133,23 @@ def get_tema_empresa(db: Session = Depends(get_db)):
     response_model=EmpresaAdminRead,
     status_code=status.HTTP_200_OK,
     summary="Retorna os dados da empresa cadastrada!",
-    description="Retorna empresa com fiscal_settings sempre instanciado (nunca null)."
+    description="Retorna a empresa cadastrada. `fiscal_settings` vem null enquanto o módulo fiscal não for configurado."
 )
 def get_empresa_data(
     user_token: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    empresa_id = user_token.get('empresa_id')
-    empresa = empresa_service.get_empresa_by_id(db, empresa_id)
-
-    # Garantir que fiscal_settings existe (get_or_create)
-    if empresa and not empresa.fiscal_settings:
-        empresa_service.get_or_create_fiscal_settings(db, empresa_id)
-        db.commit()
-        db.refresh(empresa)
-
-    return empresa
+    # NÃO criar fiscal_settings aqui.
+    #
+    # Este endpoint exige apenas autenticação e é chamado por PixQrCode,
+    # FormatosExibicao e IntegracoesAPIs — ou seja, abrir configurações ou
+    # vender no PIX passava por aqui. Enquanto ele fazia get_or_create +
+    # commit, a linha criada satisfazia sozinha o gate `requer_modulo_fiscal`,
+    # destrancando o módulo fiscal inteiro sem que ninguém pedisse.
+    #
+    # A criação agora acontece só no PUT /fiscal/configuracao, que já é gated.
+    # O frontend trata o null desde sempre (useEmpresaFormProvider: `?? DEFAULT_FISCAL_SETTINGS`).
+    return empresa_service.get_empresa_by_id(db, empresa_id=user_token.get('empresa_id'))
 
 @router.get(
     "/logo-base64",
@@ -236,6 +237,7 @@ def update_empresa(
 )
 def upload_certificado_a1(
     user_token: dict = Depends(get_current_master_user),
+    _fiscal: dict = Depends(requer_modulo_fiscal),
     file: UploadFile = File(..., description="Arquivo .pfx ou .p12"),
     senha: str = Form(..., description="Senha do certificado"),
     db: Session = Depends(get_db)
@@ -291,6 +293,7 @@ def list_certificados_windows(
 )
 def vincular_certificado_windows(
     user_token: dict = Depends(get_current_master_user),
+    _fiscal: dict = Depends(requer_modulo_fiscal),
     payload: CertificadoWindowsVincular = ...,
     db: Session = Depends(get_db)
 ):

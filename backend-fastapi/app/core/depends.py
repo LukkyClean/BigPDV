@@ -252,11 +252,20 @@ def requer_modulo_fiscal(
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     """
-    Garante que a empresa do usuário possui o módulo fiscal ativo.
-    A presença de EmpresaFiscalSettings é o indicador canônico de ativação.
+    Garante que a empresa do usuário TEM DIREITO ao módulo fiscal.
+
+    São duas perguntas distintas, que até 05/09/2026 estavam confundidas numa só:
+
+      1. A empresa contratou o módulo?  → `modulo_fiscal_ativo`
+      2. A empresa já o configurou?     → existência da linha
+
+    O gate antigo usava só a (2). Como o `GET /empresas/` criava essa linha para
+    qualquer usuário autenticado — e ele é chamado ao abrir configurações ou ao
+    vender no PIX —, o módulo se destrancava sozinho na operação normal. A (1)
+    é a que decide direito, e é o ponto onde o billing vai entrar.
 
     Raises:
-        HTTPException 403: Se o módulo fiscal não estiver ativado para a empresa.
+        HTTPException 403: Se o módulo fiscal não estiver contratado/ativo.
 
     Returns:
         Dict[str, Any]: O payload do token (passthrough para encadeamento de depends).
@@ -273,11 +282,10 @@ def requer_modulo_fiscal(
         .filter(EmpresaFiscalSettings.empresa_id == empresa_id)
         .first()
     )
-    if not fiscal_settings:
+    if not fiscal_settings or not fiscal_settings.modulo_fiscal_ativo:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Módulo fiscal não configurado para esta empresa. "
-                   "Acesse Configurações > Dados Fiscais para ativar.",
+            detail="Módulo de emissão fiscal não contratado para esta empresa.",
         )
 
     return usuario_token

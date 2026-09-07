@@ -3,6 +3,7 @@ import { useAuthStore } from '@/shared/stores/auth.store';
 import { verificarLicenca } from '@/shared/services/licenca.service';
 import { useNetworkConfigStore } from '@/shared/stores/networkConfig.store';
 import { useLicencaStore } from '@/shared/stores/licenca.store';
+import { recursoDisponivel, type Recurso } from '@/shared/config/planos';
 import { storeToRefs } from 'pinia';
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router';
 import { watch } from 'vue';
@@ -150,6 +151,21 @@ router.beforeEach(async (to) => {
     const authStore = useAuthStore();
     const usaOrdemServico = authStore.userData?.empresa?.usa_ordem_servico ?? true;
     if (!usaOrdemServico) {
+      return { name: 'home' };
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // ETAPA 4: Recursos que dependem do plano contratado
+  // -----------------------------------------------------------------------
+  // Mesma lição da etapa acima, que estava escrita e não tinha sido aplicada
+  // ao fiscal: o `v-if` do FiscalLayout é DOM, e digitar /fiscal/nfe na barra
+  // de endereço montava a tela mesmo com o recurso indisponível.
+  //
+  // Isto é UX, não segurança — quem decide de verdade é o backend, em
+  // `requer_modulo_fiscal`. Aqui só evitamos abrir uma tela que vai falhar.
+  if (to.meta.exigeRecurso) {
+    if (!recursoDisponivel(to.meta.exigeRecurso as Recurso)) {
       return { name: 'home' };
     }
   }

@@ -10,7 +10,10 @@ import { useFiscalConfiguracaoQuery } from '../composables/useFiscalConfiguracao
 const nfeDisponivel = recursoDisponivel('nfe');
 const upgradeSolicitado = ref(false);
 
-const { data: configuracao } = useFiscalConfiguracaoQuery();
+// Só consulta a configuração fiscal se o recurso estiver liberado. Sem o
+// `enabled`, a tela de upgrade disparava uma chamada a /fiscal/configuracao
+// que o backend recusa com 403 — barulho no console e no log do servidor.
+const { data: configuracao } = useFiscalConfiguracaoQuery({ enabled: nfeDisponivel });
 
 const isHomologacao = ref(true);
 

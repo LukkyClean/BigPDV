@@ -33,6 +33,27 @@ def _seed_contador_venda(db_session):
         db_session.commit()
 
 
+def _ativar_modulo_fiscal(db_session, empresa_id: int = 1):
+    """
+    Libera o modulo fiscal para a empresa do teste.
+
+    Desde 05/09/2026 a existencia de EmpresaFiscalSettings significa apenas
+    "ja configurou"; quem decide o direito e `modulo_fiscal_ativo`. Endpoints
+    de correcao fiscal passaram a exigi-lo, entao todo teste que os exercita
+    precisa ativar o modulo explicitamente.
+    """
+    fs = (
+        db_session.query(EmpresaFiscalSettings)
+        .filter(EmpresaFiscalSettings.empresa_id == empresa_id)
+        .first()
+    )
+    if fs is None:
+        fs = EmpresaFiscalSettings(empresa_id=empresa_id, ambiente_emissao=2)
+        db_session.add(fs)
+    fs.modulo_fiscal_ativo = True
+    db_session.commit()
+
+
 def _funcionario(client: TestClient, header: dict) -> int:
     r = client.post(
         "/api/v1/funcionarios/",
@@ -112,6 +133,7 @@ def _forma_pagamento(client: TestClient, header: dict) -> int:
 
 def test_correcao_fiscal_venda_finalizada_sucesso(client: TestClient, db_session, header_with_token: dict):
     _seed_contador_venda(db_session)
+    _ativar_modulo_fiscal(db_session)
     header = header_with_token
     func_id = _funcionario(client, header)
     prod_id = _produto(client, header, codigo="CF01", varejo=10000, quantidade=10)
@@ -235,6 +257,7 @@ def test_invariancia_estoque_e_financeiro_apos_correcao(client: TestClient, db_s
 
 def test_correcao_fiscal_cliente_inexistente_erro(client: TestClient, db_session, header_with_token: dict):
     _seed_contador_venda(db_session)
+    _ativar_modulo_fiscal(db_session)
     header = header_with_token
     func_id = _funcionario(client, header)
 
@@ -251,6 +274,7 @@ def test_correcao_fiscal_cliente_inexistente_erro(client: TestClient, db_session
 
 def test_correcao_fiscal_venda_inexistente_erro(client: TestClient, db_session, header_with_token: dict):
     _seed_contador_venda(db_session)
+    _ativar_modulo_fiscal(db_session)
     header = header_with_token
 
     r = client.patch(
@@ -273,6 +297,7 @@ def test_detalhe_documento_fiscal_hidratado(client: TestClient, db_session, head
     db_session.add(
         EmpresaFiscalSettings(
             empresa_id=1,
+            modulo_fiscal_ativo=True,
             ambiente_emissao=2,
             serie_nfe=1,
             ultimo_numero_nfe=10,
@@ -353,6 +378,7 @@ def test_reemissao_documento_cria_tentativa_pendente(client: TestClient, db_sess
     db_session.add(
         EmpresaFiscalSettings(
             empresa_id=1,
+            modulo_fiscal_ativo=True,
             ambiente_emissao=2,
             serie_nfe=1,
             ultimo_numero_nfe=10,
@@ -407,6 +433,7 @@ def test_documento_fiscal_timestamps_utc(client: TestClient, db_session, header_
     db_session.add(
         EmpresaFiscalSettings(
             empresa_id=1,
+            modulo_fiscal_ativo=True,
             ambiente_emissao=2,
             serie_nfe=1,
             ultimo_numero_nfe=50,
@@ -438,6 +465,7 @@ def test_documento_fiscal_timestamps_utc(client: TestClient, db_session, header_
 def test_bloqueio_correcao_venda_com_nfe_autorizada(client: TestClient, db_session, header_with_token: dict):
     """Garante que uma venda com NF-e já autorizada não pode ter dados alterados via correção fiscal."""
     _seed_contador_venda(db_session)
+    _ativar_modulo_fiscal(db_session)
     header = header_with_token
     func_id = _funcionario(client, header)
     prod_id = _produto(client, header, codigo="BLQ01", varejo=3000, quantidade=5)

@@ -24,6 +24,9 @@ def setup_fiscal_settings(db_session: Session, header_with_token: dict, client: 
     
     fs = EmpresaFiscalSettings(
         empresa_id=empresa_id,
+        # A partir de 05/09/2026 a existencia da linha significa apenas "ja
+        # configurou". Quem decide o DIREITO e `modulo_fiscal_ativo`.
+        modulo_fiscal_ativo=True,
         ambiente_emissao=2,
         serie_nfe=1,
         ultimo_numero_nfe=0,
@@ -89,3 +92,55 @@ def test_upload_certificado_focus_invalid_password(client: TestClient, header_wi
     )
     # We'll see what it actually returns. If we need to mock, we'll patch it.
     assert response.status_code == 400
+
+
+# ===========================================================================
+# GATE DO MÓDULO FISCAL — regressão da Fase 1 (05/09/2026)
+# ===========================================================================
+#
+# O gate decidia o DIREITO ao módulo pela mera existência de uma linha em
+# empresa_fiscal_settings. Só que o GET /empresas/ criava essa linha para
+# qualquer usuário autenticado, e é chamado ao abrir configurações ou ao vender
+# no PIX — o módulo se destrancava sozinho na operação normal.
+#
+# Os dois testes abaixo fixam as duas metades da correção.
+
+def test_modulo_fiscal_bloqueado_sem_ativacao(
+    client: TestClient, header_with_token: dict, db_session: Session
+):
+    """Linha existente mas NÃO contratada: o gate tem que recusar."""
+    from app.db.models.empresa import Empresa
+
+    empresa = db_session.query(Empresa).first()
+    db_session.add(
+        EmpresaFiscalSettings(
+            empresa_id=empresa.id,
+            modulo_fiscal_ativo=False,   # já configurou, mas não contratou
+            ambiente_emissao=2,
+        )
+    )
+    db_session.commit()
+
+    response = client.get("/api/v1/fiscal/configuracao", headers=header_with_token)
+
+    assert response.status_code == 403
+
+
+def test_get_empresas_nao_cria_fiscal_settings(
+    client: TestClient, header_with_token: dict, db_session: Session
+):
+    """
+    O furo original: este endpoint fazia get_or_create + commit, e a linha
+    criada satisfazia sozinha o gate. Ele não pode mais criar nada.
+    """
+    assert db_session.query(EmpresaFiscalSettings).count() == 0
+
+    response = client.get("/api/v1/empresas/", headers=header_with_token)
+
+    assert response.status_code == 200
+    assert response.json()["fiscal_settings"] is None
+    assert db_session.query(EmpresaFiscalSettings).count() == 0
+
+    # E o módulo continua trancado depois da visita.
+    fiscal = client.get("/api/v1/fiscal/configuracao", headers=header_with_token)
+    assert fiscal.status_code == 403

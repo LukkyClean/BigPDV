@@ -6,7 +6,7 @@
 
 from datetime import datetime
 from typing import Optional, TYPE_CHECKING
-from sqlalchemy import Integer, String, DateTime, ForeignKey, func
+from sqlalchemy import Boolean, Integer, String, DateTime, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
@@ -38,6 +38,22 @@ class EmpresaFiscalSettings(Base):
         unique=True,
         nullable=False,
         doc="ID da empresa (FK única - relacionamento 1:1)"
+    )
+
+    # --- Contratação do módulo ---
+    modulo_fiscal_ativo: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="0",
+        doc=(
+            "Se a empresa TEM DIREITO ao módulo fiscal. Não confundir com a "
+            "existência desta linha, que significa apenas 'já configurou'. "
+            "Até 05/09/2026 o gate `requer_modulo_fiscal` usava a presença da "
+            "linha como critério de direito — e o GET /empresas/ a criava para "
+            "qualquer usuário autenticado, destrancando o módulo sozinho. "
+            "Enquanto não houver billing, ativar é ato deliberado."
+        ),
     )
 
     # --- Ambiente de Emissão ---
@@ -78,14 +94,30 @@ class EmpresaFiscalSettings(Base):
 
     # --- CSC (Código de Segurança do Contribuinte - NFCe) ---
     csc_token: Mapped[Optional[str]] = mapped_column(
-        String(100),
+        String(300),
         nullable=True,
-        doc="Token CSC para NFCe (código alfanumérico)"
+        doc=(
+            "Token CSC para NFCe, CRIPTOGRAFADO com Fernet. O CSC em si tem "
+            "poucas dezenas de caracteres, mas o texto cifrado passa de 180 — "
+            "daí o campo ser bem maior que o segredo que guarda."
+        )
     )
     csc_id: Mapped[Optional[str]] = mapped_column(
         String(10),
         nullable=True,
         doc="ID do Token CSC (ex: 000001)"
+    )
+    limite_consumidor_anonimo: Mapped[int] = mapped_column(
+        Integer,
+        default=1000000,
+        nullable=False,
+        doc=(
+            "Teto em CENTAVOS para emitir NFC-e sem identificar o comprador. "
+            "Acima dele a SEFAZ exige CPF/CNPJ no cupom. Configurável porque a "
+            "faixa é estadual (na maioria das UFs R$ 10.000,00 = 1000000) e "
+            "muda por legislação — fixar em código exigiria um instalador novo "
+            "a cada mudança de estado."
+        )
     )
 
     # --- NFSe (Serviços / RPS) ---

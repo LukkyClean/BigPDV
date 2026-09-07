@@ -458,6 +458,7 @@ def upsert_nota_fiscal_venda(
 )
 def corrigir_venda_fiscal(
     user_token: dict = Depends(check_permission(required_permission=module_permission)),
+    _fiscal: dict = Depends(requer_modulo_fiscal),
     *,
     venda_id: int = Path(..., ge=1, description="ID da venda"),
     payload: VendaCorrecaoFiscalPayload,
