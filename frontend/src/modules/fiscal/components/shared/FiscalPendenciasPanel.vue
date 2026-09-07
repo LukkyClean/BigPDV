@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, type ComputedRef } from 'vue';
 import { useRouter } from 'vue-router';
 import {
   Building2,
@@ -9,7 +9,6 @@ import {
   ChevronDown,
   ChevronRight,
   CheckCircle,
-  AlertTriangle,
   AlertOctagon,
   ExternalLink,
   ShieldCheck,
@@ -93,10 +92,6 @@ function navegarEmpresa() {
   router.push({ name: 'enterprise' });
 }
 
-function navegarProduto(produtoId: number) {
-  router.push({ name: 'products', query: { editar: produtoId } });
-}
-
 function navegarServico(_servicoId: number) {
   router.push({ name: 'services' });
 }
@@ -113,8 +108,8 @@ interface Secao {
   icon: any;
   gravidade: 'critica' | 'alerta';
   gravidadeLabel: string;
-  count: ReturnType<typeof computed<number>>;
-  isOk: ReturnType<typeof computed<boolean>>;
+  count: ComputedRef<number>;
+  isOk: ComputedRef<boolean>;
 }
 
 const secoes = computed<Secao[]>(() => [

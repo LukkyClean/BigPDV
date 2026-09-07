@@ -45,6 +45,12 @@ class DocumentoFiscalRead(BaseModel):
     codigo_status_sefaz: Optional[int] = None
     motivo_rejeicao: Optional[str] = None
     valor_total: Optional[int] = None
+    # --- NFC-e: o que o DANFE térmico precisa imprimir ---
+    # Vêm aqui (e não só na nota da venda) porque a REIMPRESSÃO parte do
+    # documento fiscal — sem eles seria preciso consultar o provedor de novo.
+    qrcode: Optional[str] = None
+    url_consulta: Optional[str] = None
+    valor_tributos: Optional[int] = None
     ref_api: Optional[str] = None
     ambiente_emissao: Optional[int] = None
     tentativa_anterior_id: Optional[int] = None

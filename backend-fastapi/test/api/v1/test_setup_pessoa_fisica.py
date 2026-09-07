@@ -20,7 +20,7 @@ from app.db.models.funcionario import Funcionario
 
 
 CPF_RESPONSAVEL = "12345678909"
-CNPJ_EMPRESA = "12345678000199"
+CNPJ_EMPRESA = "12345678000195"
 
 
 @pytest.fixture(autouse=True)

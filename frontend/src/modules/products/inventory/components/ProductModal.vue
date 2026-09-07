@@ -29,7 +29,6 @@ const {
   isViewMode,
   modalTitle,
   closeModal,
-  selectedProduct,
 } = useProductModal();
 
 const { onSubmit, isPending, submitCount, apiError } = useProductFormProvider();

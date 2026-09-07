@@ -9,6 +9,8 @@
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 from typing import Optional
 
+from app.core.enum import TipoIntegracaoPagamento
+
 
 class FormaPagamentoBase(BaseModel):
     """Campos base de uma forma de pagamento."""
@@ -17,6 +19,13 @@ class FormaPagamentoBase(BaseModel):
     codigo_sefaz: Optional[str] = Field(
         None, max_length=2,
         description="Código SEFAZ da forma de pagamento (01-99). Obrigatório para emissão fiscal.",
+    )
+    tipo_integracao: Optional[TipoIntegracaoPagamento] = Field(
+        None,
+        description=(
+            "TEF (maquininha integrada ao PDV), POS (maquininha autônoma) ou "
+            "NAO_SE_APLICA. Só é usado em cartão (SEFAZ 03/04)."
+        ),
     )
 
     @field_validator("codigo_sefaz", mode="before")
@@ -49,6 +58,9 @@ class FormaPagamentoUpdate(BaseModel):
     nome: Optional[str] = Field(None, min_length=2, max_length=50, description="Novo nome")
     ativo: Optional[bool] = Field(None, description="Novo status ativo/inativo")
     codigo_sefaz: Optional[str] = Field(None, max_length=2, description="Código SEFAZ (01-99)")
+    tipo_integracao: Optional[TipoIntegracaoPagamento] = Field(
+        None, description="TEF, POS ou NAO_SE_APLICA (só usado em cartão)"
+    )
 
     @field_validator("codigo_sefaz", mode="before")
     @classmethod

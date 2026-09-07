@@ -152,6 +152,9 @@ export const VendaNotaFiscalUpdateSchema = z.object({
   indicador_presenca: z.number().int().refine((v) => [1, 2, 3, 4, 9].includes(v), {
     message: 'indicador_presenca deve ser 1, 2, 3, 4 ou 9',
   }).nullable().optional(),
+  // CPF/CNPJ do "quer CPF na nota?" — consumidor de passagem, sem cadastro.
+  // Só dígitos; o backend revalida e recusa documento com DV errado.
+  documento_consumidor: z.string().max(14).nullable().optional(),
 });
 
 export type VendaNotaFiscalUpdate = z.infer<typeof VendaNotaFiscalUpdateSchema>;

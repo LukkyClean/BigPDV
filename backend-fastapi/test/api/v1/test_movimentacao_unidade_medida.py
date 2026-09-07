@@ -39,7 +39,7 @@ def _auth(client) -> dict:
         "razao_social": "Empresa Teste 000199 LTDA",
         "nome_fantasia": "Teste",
         "is_cnpj": True,
-        "documento": "12345678000199",
+        "documento": "12345678000195",
         "regime_tributario": "Simples Nacional",
         "celular": "11999998888",
         "endereco": [{

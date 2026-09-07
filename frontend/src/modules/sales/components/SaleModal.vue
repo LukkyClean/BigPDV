@@ -262,6 +262,17 @@ useSaleShortcuts({
       btn?.focus();
     });
   },
+  onFocusDocumentoFiscal: () => {
+    nextTick(() => {
+      // Busca pelo atributo em vez de por ref encadeada: o campo vive dois
+      // componentes abaixo (FinishSaleModal > FiscalFechamentoSection) e só
+      // existe quando a emissão fiscal está escolhida — quando não existe,
+      // o atalho simplesmente não faz nada.
+      const input = document.querySelector<HTMLInputElement>('[data-cpf-na-nota] input');
+      input?.focus();
+      input?.select();
+    });
+  },
   onCancelSale: handleCancel,
   onCloseSaleModal: closeSaleModal,
   onCloseFinishModal: closeFinishModal,

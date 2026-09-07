@@ -14,6 +14,7 @@ from typing import Sequence
 from sqlalchemy.orm import Session, aliased
 from sqlalchemy import select, func, and_, or_, literal
 
+from app.core.tempo import deslocamento_sqlite
 from app.db.models.venda import Venda
 from app.db.models.venda_pagamento import PagamentoVenda
 from app.db.models.venda_produto import ProdutoVenda
@@ -43,7 +44,7 @@ def get_faturamento_vendas_por_dia(
     """Soma das vendas finalizadas agrupada por dia (func.date), da empresa."""
     stmt = (
         select(
-            func.date(Venda.criado_em).label("dia"),
+            func.date(Venda.criado_em, deslocamento_sqlite()).label("dia"),
             func.coalesce(func.sum(Venda.total), 0).label("total"),
         )
         .join(Funcionario, Funcionario.id == Venda.funcionario_id)
@@ -55,7 +56,7 @@ def get_faturamento_vendas_por_dia(
                 Funcionario.empresa_id == empresa_id,
             )
         )
-        .group_by(func.date(Venda.criado_em))
+        .group_by(func.date(Venda.criado_em, deslocamento_sqlite()))
     )
     return db.execute(stmt).all()
 
@@ -71,7 +72,7 @@ def get_faturamento_os_por_dia(
     """
     stmt = (
         select(
-            func.date(OSModel.data_finalizacao).label("dia"),
+            func.date(OSModel.data_finalizacao, deslocamento_sqlite()).label("dia"),
             func.coalesce(func.sum(OSModel.valor_total), 0).label("total"),
         )
         .outerjoin(Funcionario, Funcionario.id == OSModel.funcionario_id)
@@ -87,7 +88,7 @@ def get_faturamento_os_por_dia(
                 ),
             )
         )
-        .group_by(func.date(OSModel.data_finalizacao))
+        .group_by(func.date(OSModel.data_finalizacao, deslocamento_sqlite()))
     )
     return db.execute(stmt).all()
 

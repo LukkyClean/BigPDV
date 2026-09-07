@@ -17,7 +17,7 @@ import type { ApiError } from '@/shared/types/axios.types';
 import { useFiscalDocumentosQuery } from '../../composables/useFiscalDocumentosQuery';
 import { useFiscalConsultarMutation } from '../../composables/useFiscalConsultarMutation';
 import { fiscalService } from '../../services/fiscal.service';
-import { fiscalKeys, STATUS_COLORS, TIPO_LABELS, ORIGEM_LABELS } from '../../constants/fiscal.constants';
+import { fiscalKeys, STATUS_COLORS, ORIGEM_LABELS } from '../../constants/fiscal.constants';
 import { abrirArquivo } from '../../utils/abrirArquivo';
 import FiscalCancelarModal from '../detalhes/FiscalCancelarModal.vue';
 import type { DocumentoFiscalFilters, DocumentoFiscalStatus, DocumentoFiscalTipo } from '../../types/fiscal.types';
@@ -34,7 +34,7 @@ const props = withDefaults(defineProps<Props>(), {
   statusFilterExterno: undefined,
 });
 
-const emit = defineEmits<{
+defineEmits<{
   (e: 'abrir-detalhes', id: number): void;
 }>();
 

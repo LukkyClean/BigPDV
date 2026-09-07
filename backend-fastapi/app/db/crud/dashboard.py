@@ -10,7 +10,7 @@ from typing import Sequence, NamedTuple
 from sqlalchemy.orm import Session, aliased
 from sqlalchemy import select, func, or_, and_, case, literal
 
-from app.core.tempo import hoje_local, inicio_do_dia_utc
+from app.core.tempo import deslocamento_sqlite, hoje_local, inicio_do_dia_utc
 from app.db.models.venda import Venda
 from app.db.models.ordem_servico import OrdemServico as OSModel
 from app.db.models.objeto_servico import ObjetoServico as OSEquipamentoModel
@@ -286,7 +286,7 @@ def get_minhas_vendas_por_dia(
     """Soma das vendas finalizadas do funcionario, agrupada por dia (serie de tendencia pessoal)."""
     stmt = (
         select(
-            func.date(Venda.criado_em).label("dia"),
+            func.date(Venda.criado_em, deslocamento_sqlite()).label("dia"),
             func.coalesce(func.sum(Venda.total), 0).label("total"),
         )
         .where(
@@ -297,7 +297,7 @@ def get_minhas_vendas_por_dia(
                 Venda.funcionario_id == funcionario_id,
             )
         )
-        .group_by(func.date(Venda.criado_em))
+        .group_by(func.date(Venda.criado_em, deslocamento_sqlite()))
     )
     return db.execute(stmt).all()
 
@@ -308,7 +308,7 @@ def get_minhas_os_por_dia(
     """Soma das OS finalizadas do funcionario, agrupada por dia (serie de tendencia pessoal)."""
     stmt = (
         select(
-            func.date(OSModel.data_finalizacao).label("dia"),
+            func.date(OSModel.data_finalizacao, deslocamento_sqlite()).label("dia"),
             func.coalesce(func.sum(OSModel.valor_total), 0).label("total"),
         )
         .where(
@@ -320,7 +320,7 @@ def get_minhas_os_por_dia(
                 OSModel.funcionario_id == funcionario_id,
             )
         )
-        .group_by(func.date(OSModel.data_finalizacao))
+        .group_by(func.date(OSModel.data_finalizacao, deslocamento_sqlite()))
     )
     return db.execute(stmt).all()
 

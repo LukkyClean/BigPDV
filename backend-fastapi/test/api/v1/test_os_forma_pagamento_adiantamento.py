@@ -43,7 +43,7 @@ def _autenticar_e_criar_empresa(client, segmento: str = "assistencia_tecnica") -
         "razao_social": "Empresa Teste 000199 LTDA",
         "nome_fantasia": "Teste",
         "is_cnpj": True,
-        "documento": "12345678000199",
+        "documento": "12345678000195",
         "regime_tributario": "Simples Nacional",
         "celular": "11999998888",
         "segmento": segmento,

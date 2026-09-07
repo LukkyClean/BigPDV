@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from fastapi import FastAPI
 
 from app.db.migrations import aplicar_migracoes
+from app.db.base import Base
 from app.db.session import SessionLocal, engine
 from app.db.models.contador_venda import ContadorVenda
 from app.db.models.empresa import Empresa
@@ -268,13 +269,16 @@ async def _loop_renovacao_licenca():
         await asyncio.sleep(INTERVALO_RENOVACAO_SEGUNDOS)
 
 
+# `tipo_integracao` só é preenchido em cartão — ver TipoIntegracaoPagamento.
+# POS (maquininha autônoma) é o padrão porque é o arranjo da maioria das lojas;
+# quem tem TEF integrado troca no cadastro.
 _FORMAS_PAGAMENTO_PADRAO = [
-    {"nome": "Dinheiro",               "codigo_sefaz": "01"},
-    {"nome": "PIX",                     "codigo_sefaz": "17"},
-    {"nome": "Cartão de Crédito",       "codigo_sefaz": "03"},
-    {"nome": "Cartão de Débito",        "codigo_sefaz": "04"},
-    {"nome": "Transferência Bancária",  "codigo_sefaz": "99"},
-    {"nome": "Boleto",                  "codigo_sefaz": "15"},
+    {"nome": "Dinheiro",               "codigo_sefaz": "01", "tipo_integracao": "NAO_SE_APLICA"},
+    {"nome": "PIX",                     "codigo_sefaz": "17", "tipo_integracao": "NAO_SE_APLICA"},
+    {"nome": "Cartão de Crédito",       "codigo_sefaz": "03", "tipo_integracao": "POS"},
+    {"nome": "Cartão de Débito",        "codigo_sefaz": "04", "tipo_integracao": "POS"},
+    {"nome": "Transferência Bancária",  "codigo_sefaz": "99", "tipo_integracao": "NAO_SE_APLICA"},
+    {"nome": "Boleto",                  "codigo_sefaz": "15", "tipo_integracao": "NAO_SE_APLICA"},
 ]
 
 
@@ -285,11 +289,20 @@ def _seed_formas_pagamento():
         for fp in _FORMAS_PAGAMENTO_PADRAO:
             existe = db.query(FormaPagamento).filter(FormaPagamento.nome.ilike(fp["nome"])).first()
             if not existe:
-                db.add(FormaPagamento(nome=fp["nome"], ativo=True, codigo_sefaz=fp["codigo_sefaz"]))
+                db.add(FormaPagamento(
+                    nome=fp["nome"], ativo=True,
+                    codigo_sefaz=fp["codigo_sefaz"],
+                    tipo_integracao=fp["tipo_integracao"],
+                ))
                 logger.info("Forma de pagamento criada: %s (SEFAZ %s)", fp["nome"], fp["codigo_sefaz"])
-            elif not existe.codigo_sefaz:
-                existe.codigo_sefaz = fp["codigo_sefaz"]
-                logger.info("Código SEFAZ atualizado: %s → %s", fp["nome"], fp["codigo_sefaz"])
+            else:
+                # Só PREENCHE o que falta: a loja pode ter trocado o padrão
+                # (POS -> TEF) de propósito, e sobrescrever desfaria a escolha.
+                if not existe.codigo_sefaz:
+                    existe.codigo_sefaz = fp["codigo_sefaz"]
+                    logger.info("Código SEFAZ atualizado: %s → %s", fp["nome"], fp["codigo_sefaz"])
+                if not existe.tipo_integracao:
+                    existe.tipo_integracao = fp["tipo_integracao"]
         db.commit()
     except Exception:
         db.rollback()
@@ -340,6 +353,14 @@ async def lifespan(app: FastAPI):
         print(f"[LIMPEZA] Erro ao limpar snapshots antigos: {type(e).__name__}: {e}")
 
     await asyncio.to_thread(limpar_temp_data)
+
+    # create_all CONTINUA AQUI, ANTES das migracoes. A versao do master removeu
+    # esta linha porque la o Alembic tem um baseline unico que cria o schema
+    # inteiro; nesta branch a cadeia de migracoes pressupoe que o create_all
+    # rodou antes (ver db/migrations.py e CLAUDE.md) -- as migracoes decidem
+    # pela PRESENCA do schema, entao sem isto um banco novo e apenas stampado
+    # e fica SEM TABELAS.
+    Base.metadata.create_all(bind=engine)
 
     aplicar_migracoes()
 

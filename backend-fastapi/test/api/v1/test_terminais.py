@@ -41,7 +41,7 @@ def _auth(client, hwid=HWID):
     header = {"Authorization": f"Bearer {login.json()['access_token']}"}
     client.post("/api/v1/empresas/", json={
         "razao_social": "Adega Teste LTDA", "nome_fantasia": "Adega", "is_cnpj": True,
-        "documento": "12345678000199", "regime_tributario": "Simples Nacional",
+        "documento": "12345678000195", "regime_tributario": "Simples Nacional",
         "celular": "11999998888", "segmento": "pdv",
         "endereco": [{"logradouro": "Av. Paulista", "numero": "1000", "bairro": "Bela Vista",
                       "cidade": "São Paulo", "estado": "SP", "cep": "01310-100"}],

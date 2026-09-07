@@ -98,6 +98,47 @@ def test_reserva_em_empresa_sem_configuracao_fiscal_falha(db):
 
 
 # =========================
+# 1b. Numeração da NFC-e (modelo 65)
+# =========================
+
+def test_contador_de_nfce_e_independente_do_de_nfe(db, empresa_com_contador):
+    """
+    Cada modelo tem sua sequência na SEFAZ. Compartilhar o contador abriria
+    buraco nas duas e causaria Rejeição 204 numa delas.
+    """
+    empresa_id = empresa_com_contador.id
+
+    nfce_1 = crud.reservar_proximo_numero_nfce(db, empresa_id)
+    nfe_1 = crud.reservar_proximo_numero_nfe(db, empresa_id)
+    nfce_2 = crud.reservar_proximo_numero_nfce(db, empresa_id)
+
+    # A NFC-e começa do zero (contador não inicializado nesta fixture)...
+    assert [nfce_1, nfce_2] == [1, 2]
+    # ...enquanto a NF-e segue de onde estava, em 42.
+    assert nfe_1 == 43
+
+    fs = crud.get_fiscal_settings(db, empresa_id)
+    assert fs.ultimo_numero_nfce == 2
+    assert fs.ultimo_numero_nfe == 43
+
+
+def test_reservas_de_nfce_seguidas_nunca_repetem(db, empresa_com_contador):
+    """No PDV a corrida é real: vários caixas fechando venda ao mesmo tempo."""
+    numeros = [
+        crud.reservar_proximo_numero_nfce(db, empresa_com_contador.id)
+        for _ in range(5)
+    ]
+
+    assert numeros == [1, 2, 3, 4, 5]
+    assert len(set(numeros)) == 5
+
+
+def test_reserva_de_nfce_sem_configuracao_fiscal_falha(db):
+    with pytest.raises(ValueError, match="não encontradas"):
+        crud.reservar_proximo_numero_nfce(db, 999)
+
+
+# =========================
 # 2. Estado indeterminado vs. rejeição
 # =========================
 

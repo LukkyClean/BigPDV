@@ -10,7 +10,7 @@ import { upsertProdutoFiscal } from '@/modules/products/inventory/services/produ
 import { useFiscalPendenciasQuery } from '../../composables/useFiscalPendenciasQuery';
 import { fiscalKeys } from '../../constants/fiscal.constants';
 
-const props = defineProps<{
+defineProps<{
   isOpen: boolean;
 }>();
 

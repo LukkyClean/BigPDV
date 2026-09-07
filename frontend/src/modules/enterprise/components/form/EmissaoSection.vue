@@ -172,11 +172,15 @@ function updateField<K extends keyof FiscalSettings>(field: K, value: FiscalSett
               :disabled="disabled"
               @update:model-value="updateField('csc_id', $event)"
             />
+            <!-- O backend devolve o CSC MASCARADO (••••••••AB12): o segredo
+                 que autentica o QR Code não trafega inteiro para a tela.
+                 Reenviar a máscara no salvamento não sobrescreve nada, então
+                 quem não for trocar o token pode simplesmente não tocar aqui. -->
             <BaseInput
               :model-value="fiscal_settings.csc_token"
               label="Código CSC"
               type="text"
-              placeholder="Código Alfanumérico"
+              :placeholder="fiscal_settings.csc_token ? 'Digite para substituir' : 'Código Alfanumérico'"
               :disabled="disabled"
               @update:model-value="updateField('csc_token', $event)"
             />

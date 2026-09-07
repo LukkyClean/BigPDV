@@ -556,6 +556,7 @@ export function useCompanyPrintInfo() {
       contato: formatPrintPhone(empresa?.telefone || empresa?.celular || ''),
       email: empresa?.email || '',
       logo: getImageUrl(empresa?.url_logo),
+      inscricaoEstadual: empresa?.inscricao_estadual ?? null,
       cidade: endereco?.cidade || '',
       chavePix: empresa?.chave_pix ?? null,
       pixAtivo: Boolean(empresa?.pix_ativo),

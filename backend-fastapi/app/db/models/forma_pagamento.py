@@ -21,6 +21,13 @@ class FormaPagamento(Base):
         String(2), nullable=True,
         doc="Código SEFAZ da forma de pagamento (01-99). Obrigatório para emissão fiscal."
     )
+    tipo_integracao: Mapped[Optional[str]] = mapped_column(
+        String(15), nullable=True,
+        doc=(
+            "TEF, POS ou NAO_SE_APLICA — como a maquininha conversa com o PDV. "
+            "Só faz sentido em cartão; ver TipoIntegracaoPagamento."
+        )
+    )
 
     pagamentos: Mapped[List["OrdemServicoPagamento"]] = relationship(
         "OrdemServicoPagamento",

@@ -13,6 +13,8 @@ interface SaleShortcutsContext {
   onOpenItemModal: () => void;
   onOpenAddProductModal: () => void;
   onFocusPaymentGrid: () => void;
+  /** Leva o cursor ao campo de CPF/CNPJ do cupom (F7). */
+  onFocusDocumentoFiscal: () => void;
   onCancelSale: () => void;
   onCloseSaleModal: () => void;
   onCloseFinishModal: () => void;
@@ -87,6 +89,17 @@ export function useSaleShortcuts(context: SaleShortcutsContext) {
   whenever(keys.F6, () => {
     if (context.finishModalIsOpen.value) {
       context.onFocusPaymentGrid();
+    }
+  });
+
+  // F7 — Focar o CPF/CNPJ do cupom (dentro do FinishSaleModal)
+  //
+  // Vizinho do F6 de propósito: "Deseja CPF na nota?" vem logo depois de
+  // informar os pagamentos, e é a pergunta que o operador faz de cabeça com o
+  // cliente na frente — procurar o campo com o mouse ali custa a fila.
+  whenever(keys.F7, () => {
+    if (context.finishModalIsOpen.value) {
+      context.onFocusDocumentoFiscal();
     }
   });
 

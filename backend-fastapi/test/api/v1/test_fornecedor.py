@@ -104,7 +104,7 @@ def test_criar_fornecedor_sem_token(client: TestClient):
     # ... (lógica) ...
     response = client.post("/api/v1/fornecedores/", json={
         "nome": "X",
-        "cnpj": "12345678000100"
+        "cnpj": "12345678000276"
     })
     assert response.status_code == 401
 

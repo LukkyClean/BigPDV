@@ -155,12 +155,18 @@ def obter_documento(db: Session, documento_id: int) -> DocumentoFiscalRead:
     return _hidratar_documento_com_venda(db, doc)
 
 
-def obter_resumo(db: Session) -> DocumentoFiscalResumo:
-    resultados = (
-        db.query(DocumentoFiscal.status, func.count(DocumentoFiscal.id))
-        .group_by(DocumentoFiscal.status)
-        .all()
-    )
+def obter_resumo(db: Session, tipo: Optional[str] = None) -> DocumentoFiscalResumo:
+    """Contadores por status, opcionalmente restritos a um tipo de documento.
+
+    O `tipo` existe para as telas por modelo (NF-e, NFC-e): sem ele a tela da
+    NFC-e mostraria também as NF-e nos cartões, e o lojista leria "3 rejeitadas"
+    achando que são cupons quando são notas de outro modelo.
+    """
+    consulta = db.query(DocumentoFiscal.status, func.count(DocumentoFiscal.id))
+    if tipo:
+        consulta = consulta.filter(DocumentoFiscal.tipo_documento == tipo)
+
+    resultados = consulta.group_by(DocumentoFiscal.status).all()
 
     contadores = {row[0]: row[1] for row in resultados}
 

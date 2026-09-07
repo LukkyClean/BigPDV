@@ -61,6 +61,23 @@ class DocumentoFiscal(Base):
     # --- Valor total (centavos) ---
     valor_total: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
+    # --- Específicos da NFC-e (modelo 65) ---
+    # Ficam AQUI, e não só em venda_nota_fiscal, porque a reimpressão do cupom
+    # parte do documento fiscal: sem estes três não há como reimprimir sem
+    # consultar o provedor de novo — e o cliente está no balcão esperando.
+    qrcode: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True,
+        doc="Texto do QR Code do DANFE NFC-e, montado pelo provedor com o CSC"
+    )
+    url_consulta: Mapped[Optional[str]] = mapped_column(
+        String(300), nullable=True,
+        doc="Endereço de consulta da SEFAZ impresso no cupom"
+    )
+    valor_tributos: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True,
+        doc="Tributos totais aproximados em CENTAVOS (Lei 12.741/2012 — IBPT)"
+    )
+
     # --- Emissão via API ---
     ref_api: Mapped[Optional[str]] = mapped_column(
         String(50), unique=True, index=True, nullable=True,

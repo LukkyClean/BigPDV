@@ -43,7 +43,7 @@ def _autenticar_e_criar_empresa(client, segmento: str) -> dict:
         "razao_social": "Empresa Teste 000199 LTDA",
         "nome_fantasia": "Teste",
         "is_cnpj": True,
-        "documento": "12345678000199",
+        "documento": "12345678000195",
         "regime_tributario": "Simples Nacional",
         "celular": "11999998888",
         "segmento": segmento,
@@ -107,7 +107,7 @@ def _buscar(client, header: dict, termo: str) -> list[dict]:
 
 def test_acha_pela_placa_inteira(client, db_session):
     header = _autenticar_e_criar_empresa(client, "oficina_mecanica")
-    ana = _criar_cliente(client, header, "Ana Souza", "98765432101")
+    ana = _criar_cliente(client, header, "Ana Souza", "98765432100")
     _criar_os(client, header, ana, "ABC1D23", marca="Fiat", modelo="Uno")
 
     achados = _buscar(client, header, "ABC1D23")
@@ -124,7 +124,7 @@ def test_acha_por_pedaco_da_placa(client, db_session):
     oficina e ancorado -- e a busca morreria justo no segmento que mais precisa.
     """
     header = _autenticar_e_criar_empresa(client, "oficina_mecanica")
-    ana = _criar_cliente(client, header, "Ana Souza", "98765432101")
+    ana = _criar_cliente(client, header, "Ana Souza", "98765432100")
     _criar_os(client, header, ana, "ABC1D23", marca="Fiat", modelo="Uno")
 
     achados = _buscar(client, header, "1D23")
@@ -139,7 +139,7 @@ def test_acha_pelas_tres_primeiras_letras_da_placa(client, db_session):
     identifica um bem (dedup), aqui decide se vale consultar o banco.
     """
     header = _autenticar_e_criar_empresa(client, "oficina_mecanica")
-    ana = _criar_cliente(client, header, "Ana Souza", "98765432101")
+    ana = _criar_cliente(client, header, "Ana Souza", "98765432100")
     _criar_os(client, header, ana, "ABC2152", marca="Fiat", modelo="Toro")
 
     achados = _buscar(client, header, "ABC")
@@ -149,7 +149,7 @@ def test_acha_pelas_tres_primeiras_letras_da_placa(client, db_session):
 
 def test_acha_ignorando_hifen_e_caixa(client, db_session):
     header = _autenticar_e_criar_empresa(client, "oficina_mecanica")
-    ana = _criar_cliente(client, header, "Ana Souza", "98765432101")
+    ana = _criar_cliente(client, header, "Ana Souza", "98765432100")
     _criar_os(client, header, ana, "ABC1D23", marca="Fiat", modelo="Uno")
 
     assert len(_buscar(client, header, "abc-1d23")) == 1
@@ -158,7 +158,7 @@ def test_acha_ignorando_hifen_e_caixa(client, db_session):
 
 def test_acha_por_pedaco_do_numero_de_serie(client, db_session):
     header = _autenticar_e_criar_empresa(client, "assistencia_tecnica")
-    ana = _criar_cliente(client, header, "Ana Souza", "98765432101")
+    ana = _criar_cliente(client, header, "Ana Souza", "98765432100")
     _criar_os(client, header, ana, "C02X1234JGH5", marca="Apple", modelo="MacBook")
 
     achados = _buscar(client, header, "1234JGH5")
@@ -170,7 +170,7 @@ def test_devolve_o_objeto_inteiro_para_a_os_abrir_preenchida(client, db_session)
     """Quem clica na linha ja disse qual e o bem: o form nao pode ter que
     perguntar de novo."""
     header = _autenticar_e_criar_empresa(client, "oficina_mecanica")
-    ana = _criar_cliente(client, header, "Ana Souza", "98765432101")
+    ana = _criar_cliente(client, header, "Ana Souza", "98765432100")
     _criar_os(client, header, ana, "ABC1D23", marca="Fiat", modelo="Uno",
               cor="Prata", dados_adicionais={"ano": "2015"})
 
@@ -187,7 +187,7 @@ def test_bem_vendido_devolve_os_dois_donos(client, db_session):
     """Mesma placa em dois clientes: a lista mostra os dois, com nome, para o
     atendente escolher. Esconder um seria pior que mostrar."""
     header = _autenticar_e_criar_empresa(client, "oficina_mecanica")
-    ana = _criar_cliente(client, header, "Ana Souza", "98765432101")
+    ana = _criar_cliente(client, header, "Ana Souza", "98765432100")
     bruno = _criar_cliente(client, header, "Bruno Lima", "11122233396")
 
     _criar_os(client, header, ana, "ABC1D23", marca="Fiat", modelo="Uno")
@@ -207,7 +207,7 @@ def test_termo_generico_nao_devolve_nada(client, db_session):
     """'S/N' e 'nao sei' sao o que se digita SEM ter o dado -- se casassem,
     a busca devolveria meia loja."""
     header = _autenticar_e_criar_empresa(client, "assistencia_tecnica")
-    ana = _criar_cliente(client, header, "Ana Souza", "98765432101")
+    ana = _criar_cliente(client, header, "Ana Souza", "98765432100")
     bruno = _criar_cliente(client, header, "Bruno Lima", "11122233396")
     _criar_os(client, header, ana, "S/N")
     _criar_os(client, header, bruno, "nao sei")
@@ -220,7 +220,7 @@ def test_termo_generico_nao_devolve_nada(client, db_session):
 
 def test_termo_curto_nao_varre_a_loja(client, db_session):
     header = _autenticar_e_criar_empresa(client, "assistencia_tecnica")
-    ana = _criar_cliente(client, header, "Ana Souza", "98765432101")
+    ana = _criar_cliente(client, header, "Ana Souza", "98765432100")
     _criar_os(client, header, ana, "AB123456")
 
     assert _buscar(client, header, "AB") == []
@@ -230,7 +230,7 @@ def test_termo_curto_nao_varre_a_loja(client, db_session):
 def test_cliente_inativo_fica_de_fora(client, db_session):
     """Nao adianta oferecer no seletor um dono que nao da mais para selecionar."""
     header = _autenticar_e_criar_empresa(client, "assistencia_tecnica")
-    ana = _criar_cliente(client, header, "Ana Souza", "98765432101")
+    ana = _criar_cliente(client, header, "Ana Souza", "98765432100")
     _criar_os(client, header, ana, "C02X1234JGH5")
 
     assert len(_buscar(client, header, "C02X1234JGH5")) == 1
@@ -244,6 +244,6 @@ def test_cliente_inativo_fica_de_fora(client, db_session):
 
 def test_identificador_inexistente_devolve_lista_vazia(client, db_session):
     header = _autenticar_e_criar_empresa(client, "assistencia_tecnica")
-    _criar_cliente(client, header, "Ana Souza", "98765432101")
+    _criar_cliente(client, header, "Ana Souza", "98765432100")
 
     assert _buscar(client, header, "SERIALQUENAOEXISTE") == []

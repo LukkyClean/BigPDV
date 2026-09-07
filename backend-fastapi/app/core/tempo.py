@@ -128,3 +128,30 @@ def intervalo_utc(inicio: date, fim: date) -> Tuple[datetime, datetime]:
     sao datas locais) e precisam de duas bordas em UTC.
     """
     return inicio_do_dia_utc(inicio), fim_do_dia_utc(fim)
+
+
+def limite_utc_ha(dias: int = 0, horas: int = 0) -> datetime:
+    """Instante de N dias/horas atras, em UTC ingenuo.
+
+    Para regras de expiracao que comparam contra colunas do banco (rascunho de
+    venda, orcamento vencido). Usar `datetime.now()` aqui erraria pelo tamanho
+    do fuso: em UTC-3 a expiracao de 3 dias dispararia 3h cedo ou tarde demais.
+    """
+    return agora_utc() - timedelta(days=dias, hours=horas)
+
+
+def deslocamento_sqlite(momento: Optional[datetime] = None) -> str:
+    """Modificador do SQLite que leva um instante UTC para o dia da LOJA.
+
+    Existe para o `func.date()`: agrupar por dia direto na coluna agrupa pelo dia
+    UTC, e depois das 21h em UTC-3 esse dia ja e o seguinte. O total do periodo
+    sai certo (o filtro usa `intervalo_utc`), mas a serie diaria do grafico
+    perde o movimento da noite -- ele aparece no dia seguinte.
+
+    Uso: `func.date(Venda.criado_em, deslocamento_sqlite())`.
+
+    Devolve minutos, e nao horas, porque ha fusos com meia hora de offset.
+    """
+    referencia = momento or datetime.now(timezone.utc)
+    offset = referencia.astimezone(fuso_local()).utcoffset() or timedelta(0)
+    return f"{int(offset.total_seconds() // 60):+d} minutes"

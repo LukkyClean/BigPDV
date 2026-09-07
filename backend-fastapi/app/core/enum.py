@@ -219,3 +219,23 @@ class MovimentacaoFinanceiraOrigem(str, enum.Enum):
     # tabela não precise ser alterada quando ele chegar.
     RECEBIMENTO = "RECEBIMENTO"    # baixa de conta a receber (fiado, boleto)
     DESPESA = "DESPESA"            # conta a pagar (aluguel, fornecedor)
+
+
+class TipoIntegracaoPagamento(str, enum.Enum):
+    """Como a maquininha de cartão conversa com o PDV — grupo `card` da NF-e/NFC-e.
+
+    A SEFAZ quer saber se a transação foi integrada ao sistema ou digitada à
+    mão na maquininha, e o XML separa os dois casos (tpIntegra 1 e 2). Enviar
+    o valor errado não derruba a nota, mas descreve mal a operação num
+    documento fiscal — e é o tipo de divergência que aparece em fiscalização.
+
+    TEF:            maquininha integrada ao PDV (tpIntegra 1). O sistema manda
+                    o valor e recebe a confirmação; não há digitação.
+    POS:            maquininha autônoma (tpIntegra 2). O operador digita o
+                    valor no aparelho; o PDV só registra que foi cartão.
+    NAO_SE_APLICA:  formas que não passam por maquininha — dinheiro, PIX,
+                    crediário. É o padrão, e o motivo de o campo ser opcional.
+    """
+    TEF = "TEF"
+    POS = "POS"
+    NAO_SE_APLICA = "NAO_SE_APLICA"

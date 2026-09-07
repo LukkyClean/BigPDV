@@ -77,6 +77,9 @@ export const SALE_SHORTCUTS: ShortcutItem[] = [
     { keys: 'Ctrl+Enter', description: 'Ir para o pagamento' },
     { keys: '←+↑+↓+→', description: 'Pagamento: escolher a forma' },
     { keys: 'F6', description: 'Pagamento: focar as formas' },
+    // Só existe com a emissão fiscal escolhida — na venda gerencial não há
+    // campo para focar, e a tecla fica inerte.
+    { keys: 'F7', description: 'Pagamento: CPF/CNPJ no cupom' },
     { keys: 'Ctrl+Backspace', description: 'Descartar a venda' },
     { keys: 'Esc', description: 'Fechar a tela atual' },
     // Vive na LISTA de vendas (`SalesView`), nao aqui dentro: com a venda

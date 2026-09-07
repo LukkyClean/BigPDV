@@ -44,6 +44,15 @@ class VendaNotaFiscal(Base):
     consumidor_final: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
     # 1=Presencial, 2=Internet, 3=Teleatendimento, 4=Entrega domiciliar, 9=Outros
     indicador_presenca: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    # CPF/CNPJ digitado no caixa, só dígitos — o "CPF na nota?" da NFC-e.
+    # Fica AQUI e não em `vendas.cliente_id` de propósito: o consumidor de
+    # passagem não vira cadastro. Criar um Cliente para cada CPF de cupom
+    # encheria a base de fantasmas sem nome, endereço nem histórico.
+    # Quem tem cadastro continua vindo por `venda.cliente`, que tem precedência.
+    documento_consumidor: Mapped[Optional[str]] = mapped_column(
+        String(14), nullable=True,
+        doc="CPF (11) ou CNPJ (14) informado no fechamento, sem pontuação"
+    )
 
     # --- Resultados da emissão (preenchidos pelo Focus NFe — fase futura) ---
     # PENDENTE, EMITIDA, CANCELADA, DENEGADA, ERRO

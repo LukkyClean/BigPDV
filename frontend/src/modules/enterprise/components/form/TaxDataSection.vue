@@ -11,7 +11,7 @@ import LucideIcon from '@/shared/components/icons/LucideIcon.vue';
 import BaseInput from '@/shared/components/ui/BaseInput/BaseInput.vue';
 import BaseSelect from '@/shared/components/ui/BaseSelect/BaseSelect.vue';
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
-import { SECTION_LABELS, REGIME_TRIBUTARIO_OPTIONS, INDICADOR_IE_OPTIONS, NATUREZA_JURIDICA_OPTIONS, TIPO_ATIVIDADE_OPTIONS } from '../../constants/empresa.constants';
+import { REGIME_TRIBUTARIO_OPTIONS, INDICADOR_IE_OPTIONS, NATUREZA_JURIDICA_OPTIONS, TIPO_ATIVIDADE_OPTIONS } from '../../constants/empresa.constants';
 import { useEmpresaForm } from '../../composables/useEmpresaFormProvider';
 
 // =============================================

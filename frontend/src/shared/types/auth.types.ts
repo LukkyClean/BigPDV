@@ -20,6 +20,14 @@ export interface Company {
    * o frontend não devolve o campo; nesse caso o padrão é TER OS.
    */
   usa_ordem_servico?: boolean;
+  /**
+   * Rotulo do regime fiscal (ex.: "Simples Nacional"). Vem do login — ver
+   * `schemas/auth.py`. É TEXTO DE EXIBICAO: quem decide CSOSN vs CST no
+   * backend é `empresas.crt`, não este campo.
+   */
+  regime_tributario?: string | null;
+  /** Inscricao Estadual. Obrigatoria no cabecalho do DANFE NFC-e. */
+  inscricao_estadual?: string | null;
   /** Chave PIX do recebedor. Vem do login junto do resto da identidade da empresa. */
   chave_pix?: string | null;
   pix_ativo?: boolean;

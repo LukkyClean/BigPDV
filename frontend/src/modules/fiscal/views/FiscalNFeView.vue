@@ -15,16 +15,17 @@ import FiscalDocumentoDetailsDrawer from '../components/detalhes/FiscalDocumento
 import FiscalResolucaoProdutosDrawer from '../components/shared/FiscalResolucaoProdutosDrawer.vue';
 import { useFiscalResumoQuery } from '../composables/useFiscalResumoQuery';
 import { useFiscalPendenciasQuery } from '../composables/useFiscalPendenciasQuery';
+import type { DocumentoFiscalStatus } from '../types/fiscal.types';
 
 interface Props {
   isHomologacao?: boolean;
 }
 
-const props = withDefaults(defineProps<Props>(), {
+withDefaults(defineProps<Props>(), {
   isHomologacao: true,
 });
 
-const { data: resumo, isLoading: isResumoLoading } = useFiscalResumoQuery();
+const { data: resumo, isLoading: isResumoLoading } = useFiscalResumoQuery('NFE');
 const { data: pendencias } = useFiscalPendenciasQuery();
 
 const showTesteModal = ref(false);
@@ -32,7 +33,7 @@ const showEmitirModal = ref(false);
 const showDetalhesDrawer = ref(false);
 const detalhesDocumentoId = ref<number | null>(null);
 const showPendenciasPopover = ref(false);
-const activeStatusFilter = ref<string | null>(null);
+const activeStatusFilter = ref<DocumentoFiscalStatus | null>(null);
 const showResolucaoDrawer = ref(false);
 
 function handleAbrirResolucao() {
