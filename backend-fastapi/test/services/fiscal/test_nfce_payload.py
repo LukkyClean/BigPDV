@@ -65,6 +65,13 @@ def _montar_nfce(venda, nota_fiscal=None, fiscal_settings=None, numero=None):
     )
 
 
+def _cliente_pf_com_endereco():
+    """Cliente com endereco — exigencia do indPres 4 (rejeicoes 787 e 788)."""
+    cliente = ClientePF(id=1, nome="Maria Souza", cpf="52998224725")
+    cliente.endereco = [_endereco_empresa()]
+    return cliente
+
+
 def _venda_simples(total=10000, cliente=None):
     itens = [_item_venda(1, _produto(1), quantidade=1, valor_unitario=total)]
     return _venda(itens, [_pagamento(total)], cliente=cliente)
@@ -415,21 +422,46 @@ def test_nfce_sem_escolha_assume_balcao():
 
 
 def test_nfce_respeita_a_entrega_a_domicilio():
-    """Regressão do chumbado: o 4 é o motivo de este campo existir na NFC-e."""
+    """
+    Regressao do chumbado: o 4 e o motivo de este campo existir na NFC-e.
+
+    Com cliente e endereco, porque sem eles a SEFAZ recusa (787 e 788).
+    """
+    cliente = _cliente_pf_com_endereco()
     nota = VendaNotaFiscal(venda_id=1, indicador_presenca=4)
 
-    payload = _montar_nfce(_venda_simples(), nota_fiscal=nota)
+    payload = _montar_nfce(_venda_simples(cliente=cliente), nota_fiscal=nota)
 
     assert payload["presenca_comprador"] == 4
+    # 788: endereco do destinatario obrigatorio.
+    assert payload["destinatario"]["endereco"]
+    # 786: grupo do transportador obrigatorio -- quem entrega e a loja.
+    assert payload["transportador"]
+    # Transporte proprio por conta do remetente.
+    assert payload["modalidade_frete"] == 3
 
 
-@pytest.mark.parametrize("indicador", [1, 2, 3, 4, 9])
-def test_nfce_repassa_o_indicador_escolhido(indicador):
+@pytest.mark.parametrize("indicador", [2, 3, 9])
+def test_nfce_recusa_indicador_nao_presencial(indicador):
+    """
+    A regra da SEFAZ e literalmente `indPres <> 1 e 4` -> rejeicao 717.
+    Internet, teleatendimento e "outros" pedem NF-e, nao cupom.
+
+    Recusar aqui, ANTES de reservar numeracao, e o ponto: uma rejeicao 717 no
+    balcao ja teria consumido o numero.
+    """
     nota = VendaNotaFiscal(venda_id=1, indicador_presenca=indicador)
 
-    payload = _montar_nfce(_venda_simples(), nota_fiscal=nota)
+    with pytest.raises(ValueError, match="717"):
+        _montar_nfce(_venda_simples(), nota_fiscal=nota)
 
-    assert payload["presenca_comprador"] == indicador
+
+def test_entrega_a_domicilio_sem_cliente_e_recusada():
+    """Rejeicao 787: indPres 4 exige o grupo `dest`."""
+    nota = VendaNotaFiscal(venda_id=1, indicador_presenca=4)
+
+    with pytest.raises(ValueError, match="787"):
+        _montar_nfce(_venda_simples(), nota_fiscal=nota)
 
 
 def test_nfce_com_nota_fiscal_sem_indicador_cai_no_balcao():

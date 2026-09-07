@@ -29,6 +29,8 @@ const props = defineProps<{
   totalCentavos: number;
   /** Documento do cliente já cadastrado na venda, se houver (só dígitos). */
   documentoCliente?: string | null;
+  /** True se a venda tem cliente com endereço — exigência do indPres 4. */
+  clienteTemEndereco?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -61,18 +63,31 @@ const documentoDigitado = ref('');
 // interestadual do resolver (_operacao_presencial). Marcar "Balcão" numa venda
 // que na verdade foi pela internet desliga a trava e libera uma nota
 // interestadual sem DIFAL.
+// A SEFAZ aceita SÓ 1 e 4 na NFC-e. A regra de validação é literalmente
+// `indPres <> 1 e 4` → rejeição 717 ("NFC-e em operação não presencial").
+// Internet, teleatendimento e "outros" pedem NF-e, não cupom — oferecê-los
+// aqui seria entregar ao operador uma opção que a SEFAZ recusa no balcão,
+// com o cliente esperando.
 const INDICADOR_PRESENCA_OPTIONS = [
   { value: 1, label: 'Balcão (cliente presente)' },
   { value: 4, label: 'Entrega a domicílio' },
-  { value: 2, label: 'Internet / WhatsApp' },
-  { value: 3, label: 'Telefone' },
-  { value: 9, label: 'Outro' },
 ];
 const INDICADOR_PRESENCA_BALCAO = 1;
+const INDICADOR_PRESENCA_ENTREGA = 4;
 
 // `string | number` porque é o que o BaseSelect expõe no v-model; a
 // normalização para number acontece na saída, num lugar só.
 const indicadorPresenca = ref<string | number>(INDICADOR_PRESENCA_BALCAO);
+
+/**
+ * Entrega a domicílio exige destinatário identificado COM endereço — a SEFAZ
+ * recusa sem isso (787 e 788). Avisar aqui é melhor que descobrir na rejeição:
+ * o cupom já teria consumido numeração.
+ */
+const entregaSemDestinatario = computed(
+  () => Number(indicadorPresenca.value) === INDICADOR_PRESENCA_ENTREGA
+    && !props.clienteTemEndereco,
+);
 watch(
   indicadorPresenca,
   (v) => emit('update:indicadorPresenca', Number(v) || INDICADOR_PRESENCA_BALCAO),
@@ -175,6 +190,7 @@ const bloqueado = computed(
     faltaDocumentoObrigatorio.value ||
     cscAusente.value ||
     certificadoInvalido.value ||
+    entregaSemDestinatario.value ||
     !!erroDocumento.value,
 );
 
@@ -263,6 +279,18 @@ function aoDigitarDocumento(valor: string | number) {
       />
 
       <!-- Avisos, do mais bloqueante ao informativo -->
+      <div
+        v-if="entregaSemDestinatario"
+        class="flex items-start gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2"
+      >
+        <AlertTriangle :size="14" class="text-red-500 mt-0.5 shrink-0" />
+        <p class="text-[11px] text-red-700 leading-snug">
+          Entrega a domicílio exige um <strong>cliente com endereço</strong> na
+          venda — a SEFAZ recusa o cupom sem isso. Vincule o cliente ou marque
+          como venda de balcão.
+        </p>
+      </div>
+
       <div
         v-if="certificadoInvalido"
         class="flex items-start gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2"

@@ -173,7 +173,9 @@ def _montar_destinatario(cliente: Cliente) -> dict:
 
 
 def _montar_destinatario_nfce(
-    cliente: Optional[Cliente], documento_consumidor: Optional[str]
+    cliente: Optional[Cliente],
+    documento_consumidor: Optional[str],
+    entrega_domicilio: bool = False,
 ) -> Optional[dict]:
     """Destinatário da NFC-e — ou None para consumidor não identificado.
 
@@ -188,7 +190,28 @@ def _montar_destinatario_nfce(
 
     Precedência: o cadastro do cliente vence, porque foi conferido; o CPF
     digitado no caixa é o caminho do consumidor de passagem.
+
+    EXCEÇÃO — `entrega_domicilio` (indPres 4): aí as duas regras acima se
+    invertem. A SEFAZ exige o grupo `dest` completo (rejeição 787) COM
+    endereço (rejeição 788), porque a mercadoria vai circular até a casa do
+    comprador. Nesse caso reusamos o destinatário da NF-e, que já monta nome
+    e endereço.
     """
+    if entrega_domicilio:
+        if cliente is None:
+            raise ValueError(
+                "Entrega a domicílio exige um cliente identificado na venda: a "
+                "NFC-e com indPres 4 é recusada sem os dados do destinatário "
+                "(rejeição 787)."
+            )
+        destinatario = _montar_destinatario(cliente)
+        if not destinatario.get("endereco"):
+            raise ValueError(
+                "Entrega a domicílio exige o endereço do cliente: a NFC-e com "
+                "indPres 4 é recusada sem ele (rejeição 788)."
+            )
+        return destinatario
+
     if cliente is not None:
         if isinstance(cliente, ClientePJ) and cliente.cnpj:
             return {"cnpj": cliente.cnpj, "indicador_ie": "1" if cliente.ie else "9"}
@@ -428,9 +451,20 @@ def _montar_totais_pagamentos(
     return totais, formas_pagamento, valor_troco
 
 
-# indPres 1 = operação presencial. Default da NFC-e: e o caso do balcao, que
-# e o uso dominante. O 4 (entrega a domicilio) so existe para NFC-e.
+# indPres aceitos pela NFC-e (modelo 65). A regra de validacao da SEFAZ e
+# literalmente `indPres <> 1 e 4` -> rejeicao 717 ("NFC-e em operacao nao
+# presencial"). Internet (2), teleatendimento (3) e outros (9) NAO valem em
+# NFC-e: essas operacoes pedem NF-e.
+#
+# O 4 (entrega a domicilio) so existe para NFC-e, e arrasta tres exigencias:
+#   787 -> grupo `dest` obrigatorio
+#   788 -> `enderDest` obrigatorio
+#   786 -> grupo `transporta` obrigatorio
+# Alem disso a UF precisa PERMITIR entrega a domicilio em NFC-e (rejeicao
+# 785, parametrizavel por estado) -- confirmar no ambiente de homologacao.
 INDPRES_BALCAO = 1
+INDPRES_ENTREGA_DOMICILIO = 4
+INDPRES_NFCE_ACEITOS = (INDPRES_BALCAO, INDPRES_ENTREGA_DOMICILIO)
 
 
 def montar_payload_nfce(
@@ -476,25 +510,59 @@ def montar_payload_nfce(
         venda, resultado_calculo,
     )
 
-    documento_consumidor = getattr(nota_fiscal, "documento_consumidor", None)
-    destinatario = _montar_destinatario_nfce(venda.cliente, documento_consumidor)
-
     # Balcão é o default: cobre a esmagadora maioria das vendas e é o que o
     # PDV grava sozinho. `or` em vez de `is not None` é seguro aqui porque 0
     # não é indPres válido (o schema aceita só 1, 2, 3, 4 e 9).
     presenca_comprador = (
         getattr(nota_fiscal, "indicador_presenca", None) or INDPRES_BALCAO
     )
+    if presenca_comprador not in INDPRES_NFCE_ACEITOS:
+        raise ValueError(
+            f"Indicador de presenca {presenca_comprador} nao vale para NFC-e: a "
+            f"SEFAZ aceita apenas 1 (presencial) e 4 (entrega a domicilio), e "
+            f"recusa o resto com a rejeicao 717. Operacao nao presencial exige "
+            f"NF-e."
+        )
+    entrega_domicilio = presenca_comprador == INDPRES_ENTREGA_DOMICILIO
+
+    documento_consumidor = getattr(nota_fiscal, "documento_consumidor", None)
+    destinatario = _montar_destinatario_nfce(
+        venda.cliente, documento_consumidor, entrega_domicilio=entrega_domicilio,
+    )
+
+    # Quem entrega e a propria loja (motoboy). Sem este grupo a NFC-e com
+    # indPres 4 volta com a rejeicao 786.
+    transportador = None
+    if entrega_domicilio:
+        transportador = {
+            "cnpj": empresa.documento if empresa.is_cnpj else None,
+            "cpf": None if empresa.is_cnpj else empresa.documento,
+            "razao_social": _sanitizar_texto_sefaz(
+                empresa.razao_social or empresa.nome_fantasia
+            ),
+            "inscricao_estadual": empresa.inscricao_estadual,
+            "endereco": _sanitizar_texto_sefaz(endereco_empresa.logradouro),
+            "municipio": _sanitizar_texto_sefaz(endereco_empresa.cidade),
+            "uf": (
+                endereco_empresa.estado.value
+                if hasattr(endereco_empresa.estado, "value")
+                else str(endereco_empresa.estado)
+            ),
+        }
 
     payload = {
         "modelo": 65,
         "natureza_operacao": natureza,
         "tipo_documento": 1,  # saída
         "local_destino": 1,   # operação interna (o motor bloqueia interestadual)
-        "modalidade_frete": 9,  # sem transporte: o cliente leva a mercadoria
+        # 9 = sem transporte (o cliente leva a mercadoria). Na entrega a
+        # domicilio quem transporta e a propria loja: 3 = proprio por conta do
+        # remetente, e o grupo `transporta` vira obrigatorio (rejeicao 786).
+        "modalidade_frete": 3 if entrega_domicilio else 9,
         "finalidade_emissao": 1,
         "consumidor_final": 1,
         "presenca_comprador": presenca_comprador,
+        "transportador": transportador,
         "numero": numero,
         "serie": fiscal_settings.serie_nfce,
         "emitente": _montar_emitente(empresa, endereco_empresa, fiscal_settings),

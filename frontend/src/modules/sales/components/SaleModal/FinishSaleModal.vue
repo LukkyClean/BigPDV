@@ -185,6 +185,14 @@ const documentoDoClienteDaVenda = computed(
   () => documentoDoCliente(props.sale?.cliente) || null,
 );
 
+/**
+ * Entrega a domicílio (indPres 4) só é emitível com destinatário COM endereço:
+ * a SEFAZ recusa sem o grupo `dest` (787) e sem `enderDest` (788).
+ */
+const clienteTemEndereco = computed(
+  () => (props.sale?.cliente?.endereco?.length ?? 0) > 0,
+);
+
 const canFinishWithConfirmation = computed(
   () =>
     canFinish.value
@@ -863,6 +871,7 @@ function handleFinish() {
       <FiscalFechamentoSection
         :total-centavos="totalComAcrescimo"
         :documento-cliente="documentoDoClienteDaVenda"
+        :cliente-tem-endereco="clienteTemEndereco"
         @update:emitir-fiscal="emitirFiscal = $event"
         @update:documento="documentoConsumidor = $event"
         @update:indicador-presenca="indicadorPresenca = $event"
