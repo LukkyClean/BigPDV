@@ -197,10 +197,15 @@ const cofinsTributavel = computed(() => ['01', '02'].includes(fiscal_cst_cofins.
         :error="submitCount > 0 ? errors.fiscal_cfop_padrao : undefined"
       />
 
-      <!-- Unidade Tributável -->
+      <!--
+        Unidade Tributável — opcional. Vazia, o payload usa a unidade comercial
+        do produto (e "UN" como último recurso). Pela contabilidade, forçar
+        uTrib = uCom é a prática aceita no varejo fracionado; divergir exigiria
+        `qTrib`/`vUnTrib`, que o payload não envia.
+      -->
       <BaseSelect
         v-model="fiscal_unidade_tributavel"
-        label="Unidade Tributável"
+        label="Unidade Tributável (opcional)"
         :options="UNIDADE_PRODUTO_OPTIONS"
         :disabled="disabled"
         placeholder="Selecione a unidade"
@@ -249,11 +254,14 @@ const cofinsTributavel = computed(() => ['01', '02'].includes(fiscal_cst_cofins.
         :error="submitCount > 0 ? errors.fiscal_cest : undefined"
       />
 
-      <!-- GTIN Tributável -->
+      <!--
+        GTIN Tributável — opcional. Vazio, o payload usa o código de barras do
+        produto e, se ele não passar no checksum GS1, manda "SEM GTIN".
+      -->
       <div>
         <BaseInput
           v-model="fiscal_gtin_tributavel"
-          label="GTIN Tributável"
+          label="GTIN Tributável (opcional)"
           placeholder="Ex: 7891000000000"
           :disabled="disabled || usarCodigoBarrasComoGtin"
           inputmode="numeric"
@@ -309,8 +317,13 @@ const cofinsTributavel = computed(() => ['01', '02'].includes(fiscal_cst_cofins.
           :error="submitCount > 0 ? errors.fiscal_codigo_beneficio_fiscal : undefined"
         />
 
-        <!-- CST PIS -->
+        <!--
+          CST PIS/COFINS só aparece FORA do Simples. No Simples o resolver
+          ignora o que estiver gravado e força CST 49 zerado (os tributos vão
+          na guia única), então pedir o campo é digitação descartada.
+        -->
         <BaseSelect
+          v-if="!isSimplesNacional"
           v-model="fiscal_cst_pis"
           label="CST PIS"
           :options="CST_PIS_COFINS_OPTIONS"
@@ -321,7 +334,7 @@ const cofinsTributavel = computed(() => ['01', '02'].includes(fiscal_cst_cofins.
 
         <!-- Alíquota PIS (CST 01 ou 02) -->
         <BaseInput
-          v-if="pisTributavel"
+          v-if="!isSimplesNacional && pisTributavel"
           v-model="fiscal_aliquota_pis_display"
           label="Alíquota PIS (%)"
           placeholder="Ex: 1.65"
@@ -330,8 +343,9 @@ const cofinsTributavel = computed(() => ['01', '02'].includes(fiscal_cst_cofins.
           :error="submitCount > 0 ? errors.fiscal_aliquota_pis_display : undefined"
         />
 
-        <!-- CST COFINS -->
+        <!-- CST COFINS — mesma regra do CST PIS acima. -->
         <BaseSelect
+          v-if="!isSimplesNacional"
           v-model="fiscal_cst_cofins"
           label="CST COFINS"
           :options="CST_PIS_COFINS_OPTIONS"
@@ -342,7 +356,7 @@ const cofinsTributavel = computed(() => ['01', '02'].includes(fiscal_cst_cofins.
 
         <!-- Alíquota COFINS (CST 01 ou 02) -->
         <BaseInput
-          v-if="cofinsTributavel"
+          v-if="!isSimplesNacional && cofinsTributavel"
           v-model="fiscal_aliquota_cofins_display"
           label="Alíquota COFINS (%)"
           placeholder="Ex: 7.60"
@@ -353,12 +367,20 @@ const cofinsTributavel = computed(() => ['01', '02'].includes(fiscal_cst_cofins.
       </div>
     </div>
 
-    <!-- Reforma Tributária (IBS/CBS) -->
-    <div class="mt-6 pt-5 border-t border-zinc-200">
-      <div class="flex items-center gap-2 mb-4">
+    <!--
+      Reforma Tributária (IBS/CBS) — RECOLHIDA.
+
+      Os cinco campos existem no cadastro e NENHUM código os lê: um grep por
+      ibs/cbs em app/services/ volta vazio. Enquanto a reforma não valer e o
+      motor não os consumir, são cinco digitações por produto sem efeito
+      nenhum na nota. Ficam disponíveis para quem quiser adiantar o
+      preenchimento, mas fora do caminho.
+    -->
+    <details class="mt-6 pt-5 border-t border-zinc-200">
+      <summary class="flex items-center gap-2 mb-4 cursor-pointer select-none list-none">
         <h4 class="text-sm font-semibold text-zinc-700">Reforma Tributária (IBS/CBS)</h4>
-        <span class="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-emerald-100 text-emerald-700 rounded-full">Novo</span>
-      </div>
+        <span class="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-zinc-100 text-zinc-500 rounded-full">Ainda não usado na emissão</span>
+      </summary>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <!-- Classificação Tributária -->
@@ -409,6 +431,6 @@ const cofinsTributavel = computed(() => ['01', '02'].includes(fiscal_cst_cofins.
           :error="submitCount > 0 ? errors.fiscal_c_benef : undefined"
         />
       </div>
-    </div>
+    </details>
   </div>
 </template>
