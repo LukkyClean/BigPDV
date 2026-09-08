@@ -31,7 +31,59 @@ _ROTULO_PARA_CRT = {
     "regime normal": CRT_REGIME_NORMAL,
     "mei": CRT_MEI,
     "microempreendedor individual": CRT_MEI,
+    # Lucro Presumido e Lucro Real são os dois sabores do Regime Normal. Para o
+    # CRT da nota os dois valem 3 — a diferença entre eles só aparece no regime
+    # de apuração do PIS/COFINS (ver `regime_apuracao`).
+    "lucro presumido": CRT_REGIME_NORMAL,
+    "lucro real": CRT_REGIME_NORMAL,
 }
+
+
+# ---------------------------------------------------------------------------
+# Regime de apuração do PIS/COFINS
+# ---------------------------------------------------------------------------
+# É ortogonal ao CRT: quem está no Simples (CRT 1/4) nem chega aqui, porque sai
+# com CST 49 zerado. Para o Regime Normal, o que decide a alíquota é o regime de
+# apuração, não a UF — PIS e COFINS são tributos federais.
+REGIME_CUMULATIVO = "CUMULATIVO"          # Lucro Presumido — 0,65% / 3,00%
+REGIME_NAO_CUMULATIVO = "NAO_CUMULATIVO"  # Lucro Real      — 1,65% / 7,60%
+
+_ROTULO_PARA_APURACAO = {
+    "lucro real": REGIME_NAO_CUMULATIVO,
+    "lucro presumido": REGIME_CUMULATIVO,
+}
+
+
+def regime_apuracao(empresa) -> str:
+    """
+    Regime de apuração do PIS/COFINS da empresa.
+
+    Default conservador: CUMULATIVO. É o regime da esmagadora maioria das lojas,
+    e o rótulo genérico "Regime Normal" (usado por todo cadastro anterior a esta
+    versão) não distingue Presumido de Real. Destacar 0,65/3,00 quando o certo
+    seria 1,65/7,60 recolhe a menor e se corrige; o contrário cobra do cliente
+    um imposto que não era devido.
+    """
+    rotulo = (getattr(empresa, "regime_tributario", None) or "").strip().lower()
+    return _ROTULO_PARA_APURACAO.get(rotulo, REGIME_CUMULATIVO)
+
+
+def crt_efetivo(regime_tributario, natureza_juridica) -> int:
+    """
+    CRT a persistir no cadastro, a partir do que o usuário preencheu.
+
+    Ordem: o rótulo de regime manda; se ele não disser nada, a natureza jurídica
+    MEI resolve; sem os dois, Regime Normal. Diferente de `obter_crt`, que lê uma
+    empresa já salva, esta função roda no momento do save.
+    """
+    do_rotulo = crt_do_rotulo(regime_tributario)
+    if do_rotulo is not None:
+        return do_rotulo
+
+    if (natureza_juridica or "").strip().upper() == "MEI":
+        return CRT_MEI
+
+    return CRT_PADRAO
 
 
 def crt_do_rotulo(regime: Optional[str]) -> Optional[int]:
@@ -109,3 +161,69 @@ def get_nome_cliente(cliente: Cliente) -> str:
     elif isinstance(cliente, ClientePJ):
         return cliente.nome_fantasia or cliente.razao_social
     return f"Cliente #{cliente.id}"
+
+
+# ---------------------------------------------------------------------------
+# CSC — Código de Segurança do Contribuinte (NFC-e)
+# ---------------------------------------------------------------------------
+# O CSC é o segredo que autentica o QR Code do cupom: é com ele que o
+# provedor monta o hash que a SEFAZ confere quando o consumidor lê o código.
+# Vazado, permite forjar QR Code em nome da loja — por isso é guardado
+# cifrado com Fernet, do mesmo jeito que a senha do certificado A1.
+
+def cifrar_csc_token(token: Optional[str]) -> Optional[str]:
+    """Cifra o CSC para gravar. Vazio vira None (limpa o campo)."""
+    from app.core.security import encrypt_data
+
+    if not token or not token.strip():
+        return None
+    return encrypt_data(token.strip())
+
+
+def decifrar_csc(bruto: Optional[str]) -> Optional[str]:
+    """Decifra o valor gravado na coluna `csc_token`.
+
+    Tolera o valor em texto puro: as instalações anteriores a esta versão
+    gravaram o CSC sem cifrar, e recusá-las aqui quebraria a emissão de quem
+    já tinha o token configurado. O valor legado é devolvido como está e
+    passa a ser cifrado no próximo salvamento da configuração fiscal.
+    """
+    from app.core.security import decrypt_data
+
+    if not bruto:
+        return None
+
+    try:
+        return decrypt_data(bruto)
+    except Exception:
+        return bruto
+
+
+def obter_csc_token(fiscal_settings) -> Optional[str]:
+    """CSC em claro a partir do objeto de configuração fiscal."""
+    return decifrar_csc(getattr(fiscal_settings, "csc_token", None))
+
+
+# Caractere da máscara do CSC. Escolhido por não existir em CSC real (que é
+# alfanumérico), então serve de sentinela: se ele voltar no PUT, é porque a
+# tela devolveu a máscara sem que ninguém digitasse um token novo.
+MASCARA_CSC = "•"
+
+
+def mascarar_csc(token: Optional[str]) -> Optional[str]:
+    """Versão do CSC segura para trafegar até a tela.
+
+    O segredo não precisa sair do servidor para o lojista saber que está
+    configurado — bastam os últimos caracteres para ele reconhecer QUAL token
+    cadastrou. Devolver o CSC inteiro colocava o segredo do QR Code em toda
+    resposta da configuração fiscal, em log de proxy e no cache do navegador.
+    """
+    if not token:
+        return None
+    visivel = token[-4:] if len(token) > 4 else ""
+    return MASCARA_CSC * 8 + visivel
+
+
+def e_csc_mascarado(valor: Optional[str]) -> bool:
+    """True quando a tela devolveu a máscara em vez de um token novo."""
+    return bool(valor) and MASCARA_CSC in valor

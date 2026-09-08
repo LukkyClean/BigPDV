@@ -40,6 +40,18 @@ class CancelamentoRequest(BaseModel):
         return v
 
 
+class EmissaoNFCeRequest(BaseModel):
+    """Request para emitir NFC-e (modelo 65).
+
+    Separado do `EmissaoNFeRequest` porque o contrato é OUTRO: a NFC-e só
+    nasce de uma venda de balcão, nunca de uma OS. Reaproveitar o schema da
+    NF-e obrigaria o endpoint a recusar `numero_os` na mão — e validação de
+    forma é trabalho do Pydantic, não do controlador.
+    """
+
+    venda_id: int = Field(..., gt=0, description="Venda finalizada que origina o cupom")
+
+
 class EmissaoResponse(BaseModel):
     """Response padrão de operações de emissão/consulta/cancelamento."""
 
@@ -48,6 +60,22 @@ class EmissaoResponse(BaseModel):
     status: str
     mensagem: str
     ambiente: int
+
+    @classmethod
+    def de_documento(cls, doc, rotulo: str = "Documento") -> "EmissaoResponse":
+        """Monta a resposta a partir do DocumentoFiscal.
+
+        Existe para o controlador não repetir o mapeamento a cada endpoint de
+        emissão — e para a mensagem de fallback ficar num lugar só quando a
+        SEFAZ não devolve texto.
+        """
+        return cls(
+            documento_id=doc.id,
+            ref_api=doc.ref_api,
+            status=doc.status,
+            mensagem=doc.mensagem_sefaz or f"{rotulo} {doc.status.lower()}.",
+            ambiente=doc.ambiente_emissao or 2,
+        )
 
 
 class FiscalConfiguracao(BaseModel):
@@ -64,8 +92,13 @@ class FiscalConfiguracao(BaseModel):
     ultimo_numero_nfe: Optional[int] = 0
     serie_nfce: Optional[int] = 1
     ultimo_numero_nfce: Optional[int] = 0
+    # MASCARADO. O CSC é o segredo que autentica o QR Code — sai daqui só com
+    # os 4 últimos caracteres, o bastante para o lojista reconhecer qual token
+    # cadastrou. Reenviar a máscara no PUT não sobrescreve nada.
     csc_token: Optional[str] = None
+    csc_configurado: bool = False
     csc_id: Optional[str] = None
+    limite_consumidor_anonimo: Optional[int] = 1000000
 
 
 class EmissaoPreviewItem(BaseModel):

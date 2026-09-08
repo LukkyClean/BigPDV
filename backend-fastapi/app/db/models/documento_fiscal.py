@@ -20,6 +20,7 @@ from sqlalchemy.sql import func
 from app.db.base import Base
 
 if TYPE_CHECKING:
+    from app.db.models.documento_fiscal_item import DocumentoFiscalItem
     from app.db.models.documento_fiscal import DocumentoFiscal as _Self
 
 
@@ -61,6 +62,23 @@ class DocumentoFiscal(Base):
     # --- Valor total (centavos) ---
     valor_total: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
+    # --- Específicos da NFC-e (modelo 65) ---
+    # Ficam AQUI, e não só em venda_nota_fiscal, porque a reimpressão do cupom
+    # parte do documento fiscal: sem estes três não há como reimprimir sem
+    # consultar o provedor de novo — e o cliente está no balcão esperando.
+    qrcode: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True,
+        doc="Texto do QR Code do DANFE NFC-e, montado pelo provedor com o CSC"
+    )
+    url_consulta: Mapped[Optional[str]] = mapped_column(
+        String(300), nullable=True,
+        doc="Endereço de consulta da SEFAZ impresso no cupom"
+    )
+    valor_tributos: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True,
+        doc="Tributos totais aproximados em CENTAVOS (Lei 12.741/2012 — IBPT)"
+    )
+
     # --- Emissão via API ---
     ref_api: Mapped[Optional[str]] = mapped_column(
         String(50), unique=True, index=True, nullable=True,
@@ -83,6 +101,17 @@ class DocumentoFiscal(Base):
     tentativa_anterior_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("documento_fiscal.id"), nullable=True, index=True,
         doc="ID da tentativa anterior (reemissão cria nova linha)"
+    )
+
+    itens: Mapped[list["DocumentoFiscalItem"]] = relationship(
+        "DocumentoFiscalItem",
+        back_populates="documento",
+        cascade="all, delete-orphan",
+        order_by="DocumentoFiscalItem.numero_item",
+        doc=(
+            "Snapshot do que foi enviado à SEFAZ. Vazio em documentos anteriores "
+            "a 05/09/2026 — aí o serviço reconstrói do cadastro, como fazia antes."
+        ),
     )
 
     tentativa_anterior: Mapped[Optional["DocumentoFiscal"]] = relationship(

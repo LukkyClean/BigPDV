@@ -3,7 +3,10 @@
 # DESCRIÇÃO: Endpoints do Centro Fiscal — documentos emitidos, pendências
 #            e emissão de NF-e (real e teste/homologação).
 #
-# Todos os endpoints exigem módulo fiscal ativo (EmpresaFiscalSettings).
+# Tres camadas de acesso (ver app/core/depends.py):
+#   leitura/regularizacao -> get_current_active_user
+#   configuracao          -> requer_configuracao_fiscal (master, sem plano)
+#   emissao               -> requer_modulo_fiscal (exige plano contratado)
 # ---------------------------------------------------------------------------
 
 from datetime import date, datetime
@@ -13,7 +16,13 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.depends import get_db, requer_modulo_fiscal, _handle_db_transaction
+from app.core.depends import (
+    get_current_active_user,
+    get_db,
+    requer_configuracao_fiscal,
+    requer_modulo_fiscal,
+    _handle_db_transaction,
+)
 from app.db.crud import fiscal as fiscal_crud
 from app.schemas.documento_fiscal import (
     DocumentoFiscalHistorico,
@@ -29,25 +38,27 @@ from app.schemas.emissao_fiscal import (
     CancelamentoRequest,
     EmissaoBatchResponse,
     EmissaoNFeBatchRequest,
+    EmissaoNFCeRequest,
     EmissaoNFeRequest,
     EmissaoResponse,
     FiscalConfiguracao,
 )
 from app.services import documento_fiscal as documento_fiscal_service
 from app.services import pendencias_globais as pendencias_globais_service
+from app.services.fiscal.helpers import mascarar_csc, obter_csc_token
 from app.core.modulos import requer_modulo
 
-# Duas travas, eixos diferentes, e as duas valem:
+# A LOJA contratou a NF-e? Trava de licenca, no router inteiro, como no
+# /financeiro. NFE NEGA por padrao: licenca sem resposta nao libera (ver
+# app/core/modulos.py).
 #
-#   requer_modulo("NFE")   — a LOJA contratou a NF-e? Mora aqui no router, como
-#                            no /financeiro, e responde 403 MODULO_NAO_CONTRATADO.
-#                            Licenca sem modulo nenhum LIBERA (ver core/modulos.py):
-#                            a plataforma ainda nao cadastra modulo, e bloquear
-#                            recusaria a rota para quem paga.
-#   requer_modulo_fiscal   — esta EMPRESA ja configurou certificado e ambiente?
-#                            Fica nas rotas de emissao, em app/core/depends.py.
-#
-# Esconder o item no menu e cortesia; quem decide e o backend.
+# Ela fica ACIMA das tres camadas descritas no topo. A camada de configuracao
+# e deliberadamente frouxa quanto a plano -- a ideia sendo deixar preparar
+# certificado antes de contratar --, mas no nosso fluxo isso nao se aplica: o
+# menu inteiro do Centro Fiscal fica escondido ate a licenca conceder o NFE,
+# entao nao existe "configurar antes de ter". Manter a trava aqui e o que
+# sustenta a promessa do nega-por-padrao: nenhuma rota fiscal responde sem a
+# concessao.
 router = APIRouter(dependencies=[Depends(requer_modulo("NFE"))])
 
 
@@ -62,11 +73,14 @@ router = APIRouter(dependencies=[Depends(requer_modulo("NFE"))])
     description="Retorna contadores operacionais agrupados por status.",
 )
 def obter_resumo(
-    user_token: dict = Depends(requer_modulo_fiscal),
+    user_token: dict = Depends(get_current_active_user),
     *,
     db: Session = Depends(get_db),
+    tipo: Optional[str] = Query(
+        None, description="Restringe os contadores a um tipo (NFE, NFCE, NFSE)",
+    ),
 ):
-    return documento_fiscal_service.obter_resumo(db)
+    return documento_fiscal_service.obter_resumo(db, tipo=tipo)
 
 
 # ===========================================================================
@@ -84,7 +98,7 @@ def obter_resumo(
     ),
 )
 def obter_pendencias(
-    user_token: dict = Depends(requer_modulo_fiscal),
+    user_token: dict = Depends(get_current_active_user),
     *,
     db: Session = Depends(get_db),
 ):
@@ -103,7 +117,7 @@ def obter_pendencias(
     description="Retorna lista paginada de documentos fiscais com filtros.",
 )
 def listar_documentos(
-    user_token: dict = Depends(requer_modulo_fiscal),
+    user_token: dict = Depends(get_current_active_user),
     *,
     db: Session = Depends(get_db),
     status_filtro: Optional[str] = Query(None, alias="status", description="Filtrar por status"),
@@ -139,7 +153,7 @@ def listar_documentos(
     description="Retorna os dados completos de um documento fiscal.",
 )
 def obter_documento(
-    user_token: dict = Depends(requer_modulo_fiscal),
+    user_token: dict = Depends(get_current_active_user),
     *,
     db: Session = Depends(get_db),
     documento_id: int = Path(..., ge=1, description="ID do documento fiscal"),
@@ -239,6 +253,48 @@ def emitir_nfe(
 
 
 @router.post(
+    "/preview/nfce",
+    response_model=EmissaoPreviewResponse,
+    summary="Pré-visualizar NFC-e",
+    description="Gera um resumo da NFC-e para conferência antes da emissão.",
+)
+def preview_nfce(
+    user_token: dict = Depends(requer_modulo_fiscal),
+    *,
+    db: Session = Depends(get_db),
+    payload: EmissaoNFCeRequest = Body(...),
+):
+    from app.services.fiscal.emissao import preview_nfce_venda
+
+    return preview_nfce_venda(db, payload.venda_id, user_token["empresa_id"])
+
+
+@router.post(
+    "/emitir/nfce",
+    response_model=EmissaoResponse,
+    summary="Emitir NFC-e",
+    description=(
+        "Emite NFC-e (modelo 65) a partir de uma venda do PDV. "
+        "A autorização é síncrona: o resultado volta nesta resposta."
+    ),
+)
+def emitir_nfce(
+    user_token: dict = Depends(requer_modulo_fiscal),
+    *,
+    db: Session = Depends(get_db),
+    payload: EmissaoNFCeRequest = Body(...),
+):
+    # Sem BackgroundTasks de propósito: a NFC-e é síncrona. Agendar polling
+    # aqui atrasaria o cupom que o operador está esperando para entregar.
+    from app.services.fiscal.emissao import emitir_nfce_venda
+
+    doc = _handle_db_transaction(
+        db, emitir_nfce_venda, payload.venda_id, user_token["empresa_id"],
+    )
+    return EmissaoResponse.de_documento(doc, "NFC-e")
+
+
+@router.post(
     "/emitir/nfe/batch",
     response_model=EmissaoBatchResponse,
     summary="Emitir NF-e em Lote",
@@ -260,7 +316,10 @@ def emitir_nfe_batch(
         if r["status"] == "PROCESSANDO" and r["documento_id"]:
             background_tasks.add_task(poll_nfe_status_async, r["documento_id"], empresa_id)
 
-    sucesso = sum(1 for r in resultados if r["status"] not in ("ERRO", "REJEITADA"))
+    # Sucesso é a SEFAZ ter aceitado — não é "tudo que não deu pau".
+    # A regra anterior (`not in ("ERRO", "REJEITADA")`) contava DENEGADA como
+    # sucesso, e o contador que o lojista lê na tela mentia sobre o resultado.
+    sucesso = sum(1 for r in resultados if r["status"] in ("AUTORIZADA", "PROCESSANDO"))
     return EmissaoBatchResponse(
         resultados=resultados,
         total=len(resultados),
@@ -312,7 +371,7 @@ def emitir_teste_nfe(
     description="Consulta o status atualizado do documento na API de emissão.",
 )
 def consultar_documento(
-    user_token: dict = Depends(requer_modulo_fiscal),
+    user_token: dict = Depends(get_current_active_user),
     *,
     db: Session = Depends(get_db),
     documento_id: int = Path(..., ge=1, description="ID do documento fiscal"),
@@ -336,7 +395,7 @@ def consultar_documento(
     description="Solicita cancelamento de documento autorizado (justificativa mínima: 15 caracteres).",
 )
 def cancelar_documento(
-    user_token: dict = Depends(requer_modulo_fiscal),
+    user_token: dict = Depends(get_current_active_user),
     *,
     db: Session = Depends(get_db),
     documento_id: int = Path(..., ge=1, description="ID do documento fiscal"),
@@ -365,7 +424,7 @@ def cancelar_documento(
     description="Retorna a cadeia completa de tentativas de emissão (do mais recente ao mais antigo).",
 )
 def obter_historico(
-    user_token: dict = Depends(requer_modulo_fiscal),
+    user_token: dict = Depends(get_current_active_user),
     *,
     db: Session = Depends(get_db),
     documento_id: int = Path(..., ge=1, description="ID do documento fiscal"),
@@ -384,7 +443,7 @@ def obter_historico(
     description="Retorna o ambiente atual (homologação/produção) e status do módulo.",
 )
 def obter_configuracao(
-    user_token: dict = Depends(requer_modulo_fiscal),
+    user_token: dict = Depends(get_current_active_user),
     *,
     db: Session = Depends(get_db),
 ):
@@ -411,13 +470,70 @@ def obter_configuracao(
         ultimo_numero_nfe=fs.ultimo_numero_nfe if fs else 0,
         serie_nfce=fs.serie_nfce if fs else 1,
         ultimo_numero_nfce=fs.ultimo_numero_nfce if fs else 0,
-        csc_token=fs.csc_token if fs else None,
+        csc_token=mascarar_csc(obter_csc_token(fs)) if fs else None,
+        csc_configurado=bool(fs and obter_csc_token(fs)),
         csc_id=fs.csc_id if fs else None,
+        limite_consumidor_anonimo=(
+            fs.limite_consumidor_anonimo if fs else 1000000
+        ),
     )
 
 from app.schemas.empresa import FiscalSettingsUpdate
 from app.services.empresa import update_fiscal_settings, upload_certificado_focus
 from fastapi import UploadFile, File, Form
+
+# ===========================================================================
+# SUGESTÃO DE CAMPOS FISCAIS
+# ===========================================================================
+
+@router.get(
+    "/sugestao/produto",
+    summary="Sugerir Campos Fiscais de Produto",
+    description=(
+        "Devolve os campos fiscais que o sistema consegue deduzir para um "
+        "produto novo, com procedência e fundamentação. NÃO persiste nada: "
+        "quem decide o que aplicar é o formulário."
+    ),
+)
+def sugerir_campos_fiscais_produto(
+    user_token: dict = Depends(get_current_active_user),
+    *,
+    db: Session = Depends(get_db),
+):
+    """
+    Sugestões para o cadastro de produto.
+
+    Camada de leitura: sugerir não emite nada e não exige o plano fiscal — um
+    lojista pode deixar o catálogo pronto antes de contratar.
+
+    Cada campo vem com `fundamentacao` (o "por quê?" que a tela mostra ao lado)
+    e `exige_confirmacao`, ligado onde errar produz nota aceita e errada.
+    """
+    from app.services.fiscal.derivacao import derivar_produto
+    from app.services.fiscal.derivacao.resolver_db import contexto_do_cadastro
+
+    contexto = contexto_do_cadastro(db, user_token["empresa_id"])
+    return {"sugestoes": [s.model_dump() for s in derivar_produto(contexto)]}
+
+
+# ===========================================================================
+# ATIVACAO LOCAL DO MODULO -- REMOVIDA DE PROPOSITO
+# ===========================================================================
+#
+# A feat/fiscal-module tinha aqui um POST /ativar que ligava uma flag local
+# (empresa_fiscal_settings.modulo_fiscal_ativo) para liberar as telas. A
+# propria docstring dizia que existia so ate o servidor de licencas mandar o
+# claim de recursos no JWT.
+#
+# Aqui esse claim JA existe: e o `modulos`, o mesmo que o FINANCEIRO usa, e a
+# concessao do NFE e feita pela plataforma, por plano ou por cliente. Manter a
+# rota daria a um master a chance de destravar as telas na propria maquina --
+# contra a regra de NEGAR por padrao que sustenta o modulo fiscal aqui.
+#
+# Se um dia o onboarding precisar de um empurrao, ele vem da plataforma, nao
+# de uma coluna no SQLite do cliente.
+
+
 
 @router.put(
     "/configuracao",
@@ -426,7 +542,7 @@ from fastapi import UploadFile, File, Form
     description="Atualiza configurações fiscais da empresa.",
 )
 def atualizar_configuracao(
-    user_token: dict = Depends(requer_modulo_fiscal),
+    user_token: dict = Depends(requer_configuracao_fiscal),
     *,
     db: Session = Depends(get_db),
     payload: FiscalSettingsUpdate = Body(...)
@@ -454,8 +570,12 @@ def atualizar_configuracao(
         ultimo_numero_nfe=fs.ultimo_numero_nfe if fs else 0,
         serie_nfce=fs.serie_nfce if fs else 1,
         ultimo_numero_nfce=fs.ultimo_numero_nfce if fs else 0,
-        csc_token=fs.csc_token if fs else None,
+        csc_token=mascarar_csc(obter_csc_token(fs)) if fs else None,
+        csc_configurado=bool(fs and obter_csc_token(fs)),
         csc_id=fs.csc_id if fs else None,
+        limite_consumidor_anonimo=(
+            fs.limite_consumidor_anonimo if fs else 1000000
+        ),
     )
 
 @router.post(
@@ -464,7 +584,7 @@ def atualizar_configuracao(
     description="Envia o certificado para a API da Focus NFe (simulado) e atualiza o status."
 )
 def upload_certificado_focus_endpoint(
-    user_token: dict = Depends(requer_modulo_fiscal),
+    user_token: dict = Depends(requer_configuracao_fiscal),
     *,
     db: Session = Depends(get_db),
     file: UploadFile = File(...),
@@ -489,7 +609,7 @@ def upload_certificado_focus_endpoint(
     ),
 )
 def listar_gaps_numeracao(
-    user_token: dict = Depends(requer_modulo_fiscal),
+    user_token: dict = Depends(get_current_active_user),
     *,
     db: Session = Depends(get_db),
 ):
@@ -505,7 +625,7 @@ def listar_gaps_numeracao(
     description="Histórico de pedidos de inutilização de faixa de numeração.",
 )
 def listar_inutilizacoes(
-    user_token: dict = Depends(requer_modulo_fiscal),
+    user_token: dict = Depends(get_current_active_user),
     *,
     db: Session = Depends(get_db),
 ):
@@ -524,7 +644,7 @@ def listar_inutilizacoes(
     ),
 )
 def inutilizar_numeracao(
-    user_token: dict = Depends(requer_modulo_fiscal),
+    user_token: dict = Depends(get_current_active_user),
     *,
     db: Session = Depends(get_db),
     payload: InutilizacaoRequest = Body(...),

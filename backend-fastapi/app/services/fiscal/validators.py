@@ -107,7 +107,15 @@ def verificar_produto_fiscal(db: Session, produto, pendencias: list, simples_nac
         pendencias.append(_p("item", "dados_fiscais", f"Produto '{produto.nome}' sem dados fiscais.", produto.id, produto.nome))
         return
 
-    for c, label in [("ncm", "NCM"), ("cfop_padrao", "CFOP padrão"), ("unidade_tributavel", "Unidade")]:
+    # `unidade_tributavel` SAIU desta lista de propósito.
+    #
+    # O payload já resolve `fiscal.unidade_tributavel or produto.unidade_medida
+    # or "UN"` (payload_builder), então exigir o preenchimento aqui obrigava o
+    # lojista a digitar duas vezes a mesma unidade para depois o sistema usar o
+    # fallback. Pela contabilidade, forçar uTrib = uCom é a prática aceita no
+    # varejo fracionado — e é o correto aqui, já que o payload não envia
+    # `qTrib`/`vUnTrib`, que a divergência exigiria.
+    for c, label in [("ncm", "NCM"), ("cfop_padrao", "CFOP padrão")]:
         if not getattr(fiscal, c, None):
             pendencias.append(_p("item", c, f"Produto '{produto.nome}' — {label} vazio.", produto.id, produto.nome))
 
@@ -174,19 +182,25 @@ def verificar_produto_fiscal(db: Session, produto, pendencias: list, simples_nac
                 produto.id, produto.nome,
             ))
 
-    # CST PIS/COFINS — obrigatório para emissão
-    if not fiscal.cst_pis:
-        pendencias.append(_p(
-            "item", "cst_pis",
-            f"Produto '{produto.nome}' — CST PIS não preenchido.",
-            produto.id, produto.nome,
-        ))
-    if not fiscal.cst_cofins:
-        pendencias.append(_p(
-            "item", "cst_cofins",
-            f"Produto '{produto.nome}' — CST COFINS não preenchido.",
-            produto.id, produto.nome,
-        ))
+    # CST PIS/COFINS — obrigatório só FORA do Simples Nacional.
+    #
+    # No Simples o resolver IGNORA o que estiver gravado e força CST 49 zerado,
+    # porque os tributos vão na guia única. Exigir o preenchimento de um campo
+    # que será descartado é pedir digitação para nada — e era o que acontecia
+    # com todo lojista do Simples, que é a maioria.
+    if not simples_nacional:
+        if not fiscal.cst_pis:
+            pendencias.append(_p(
+                "item", "cst_pis",
+                f"Produto '{produto.nome}' — CST PIS não preenchido.",
+                produto.id, produto.nome,
+            ))
+        if not fiscal.cst_cofins:
+            pendencias.append(_p(
+                "item", "cst_cofins",
+                f"Produto '{produto.nome}' — CST COFINS não preenchido.",
+                produto.id, produto.nome,
+            ))
 
 def verificar_itens_venda(db: Session, venda: Venda, simples_nacional: bool) -> list[PendenciaFiscal]:
     pendencias = []

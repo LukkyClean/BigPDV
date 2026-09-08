@@ -35,6 +35,18 @@ CST_PIS_COFINS_SIMPLES = "49"
 CST_IPI_NAO_TRIBUTADO = "53"
 IPI_CODIGO_ENQUADRAMENTO = "999"
 
-# --- Defaults de alíquota PIS/COFINS (Lucro Presumido cumulativo) ---
-PIS_PADRAO = Decimal("1.65")
-COFINS_PADRAO = Decimal("7.60")
+# --- Defaults de alíquota PIS/COFINS, por regime de apuração ---
+#
+# PIS e COFINS são tributos FEDERAIS: a alíquota vem do regime de apuração da
+# empresa, não da UF. Até 05/09/2026 o motor usava 1,65/7,60 para todo mundo,
+# rotulado como "Lucro Presumido cumulativo" — que é justamente o regime onde
+# esses números NÃO se aplicam. Confirmado com a contabilidade:
+#
+#   Cumulativo     (Lucro Presumido) → 0,65% / 3,00%
+#   Não-cumulativo (Lucro Real)      → 1,65% / 7,60%
+#
+# Quem está no Simples não passa por aqui: sai com CST 49 zerado.
+PIS_CUMULATIVO = Decimal("0.65")
+COFINS_CUMULATIVO = Decimal("3.00")
+PIS_NAO_CUMULATIVO = Decimal("1.65")
+COFINS_NAO_CUMULATIVO = Decimal("7.60")

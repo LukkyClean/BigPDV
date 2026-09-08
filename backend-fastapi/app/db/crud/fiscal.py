@@ -69,6 +69,47 @@ def reservar_proximo_numero_nfe(db: Session, empresa_id: int) -> int:
 
     return int(linha[0])
 
+
+def reservar_proximo_numero_nfce(db: Session, empresa_id: int) -> int:
+    """
+    Reserva atomicamente o próximo número de NFC-e e o devolve.
+
+    Mesma mecânica de `reservar_proximo_numero_nfe`, sobre outro contador: a
+    numeração do modelo 65 é INDEPENDENTE da do modelo 55. Compartilhar o
+    contador geraria buraco nas duas sequências e Rejeição 204 numa delas.
+
+    No PDV a corrida é real — vários caixas fechando venda ao mesmo tempo é o
+    caso normal, não a exceção. Por isso o UPDATE atômico, e não ler-e-gravar.
+
+    O número reservado é definitivo: mesmo que a transmissão falhe, ele NÃO
+    volta para o contador. Ver `emitir_nfce_venda`.
+    """
+    from sqlalchemy import text
+
+    linha = db.execute(
+        text(
+            "UPDATE empresa_fiscal_settings "
+            "SET ultimo_numero_nfce = ultimo_numero_nfce + 1 "
+            "WHERE empresa_id = :empresa_id "
+            "RETURNING ultimo_numero_nfce"
+        ),
+        {"empresa_id": empresa_id},
+    ).fetchone()
+
+    if linha is None:
+        raise ValueError(
+            f"Configurações fiscais da empresa {empresa_id} não encontradas — "
+            f"impossível reservar número de NFC-e."
+        )
+
+    # A instância ORM em memória ficou com o valor antigo; força releitura.
+    fs = get_fiscal_settings(db, empresa_id)
+    if fs is not None:
+        db.expire(fs, ["ultimo_numero_nfce"])
+
+    return int(linha[0])
+
+
 def get_produto_fiscal(db: Session, produto_id: int):
     return db.query(ProdutoFiscal).filter(ProdutoFiscal.produto_id == produto_id).first()
 
@@ -80,6 +121,11 @@ def get_venda_completa(db: Session, venda_id: int):
         joinedload(Venda.cliente).subqueryload(Cliente.endereco),
         subqueryload(Venda.itens).joinedload(ProdutoVenda.produto),
         subqueryload(Venda.pagamentos).joinedload(PagamentoVenda.forma_pagamento),
+        # A nota carrega os parâmetros da emissão (natureza, indicador de
+        # presença, documento do consumidor) e é lida em TODA emissão — sem o
+        # eager load ela vira um SELECT extra por venda. A versão de OS
+        # (`get_os_completa`) já carregava a dela; esta ficou para trás.
+        joinedload(Venda.nota_fiscal),
     ).filter(Venda.id == venda_id).first()
 
 def get_os_completa(db: Session, numero_os: str):

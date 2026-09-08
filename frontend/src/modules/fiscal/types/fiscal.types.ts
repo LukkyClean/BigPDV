@@ -33,6 +33,12 @@ export interface DocumentoFiscalRead {
   codigo_status_sefaz: number | null;
   motivo_rejeicao: string | null;
   valor_total: number | null;
+  /** Texto do QR Code do DANFE NFC-e, montado pelo provedor com o CSC. */
+  qrcode: string | null;
+  /** Endereço de consulta da SEFAZ impresso abaixo do QR Code. */
+  url_consulta: string | null;
+  /** Tributos aproximados em CENTAVOS (Lei 12.741/2012 — IBPT). */
+  valor_tributos: number | null;
   ref_api: string | null;
   ambiente_emissao: number | null;
   tentativa_anterior_id: number | null;
@@ -131,8 +137,17 @@ export interface FiscalConfiguracao {
   ultimo_numero_nfe?: number;
   serie_nfce?: number;
   ultimo_numero_nfce?: number;
+  /**
+   * MASCARADO pelo backend (ex.: `••••••••AB12`) — só os últimos caracteres,
+   * o bastante para reconhecer qual token está cadastrado. Reenviar a máscara
+   * no salvamento não sobrescreve o CSC guardado.
+   */
   csc_token?: string | null;
+  /** True quando há CSC cadastrado. É o que a tela deve exibir, não o token. */
+  csc_configurado?: boolean;
   csc_id?: string | null;
+  /** Teto em CENTAVOS para emitir NFC-e sem CPF/CNPJ do comprador. */
+  limite_consumidor_anonimo?: number;
 }
 export interface EmissaoPreviewItem {
   numero_item: number;
@@ -226,4 +241,28 @@ export interface ResultadoVerificacaoBatch {
   total_aptas: number;
   total_com_pendencias: number;
   total_com_documento: number;
+}
+
+
+/**
+ * Sugestão de campo fiscal vinda do backend.
+ *
+ * Nunca é só o valor: `fundamentacao` é o "por quê?" que a tela mostra ao lado
+ * do campo, e é o que permite ao contador discordar com base. Sugestão sem
+ * explicação, em campo tributário, é pior que campo vazio.
+ */
+export interface CampoSugerido {
+  campo: string;
+  valor: string | null;
+  fonte: 'derivado' | 'default_regime' | 'default_uf' | 'base_ncm' | 'base_cest';
+  confianca: 'certa' | 'provavel' | 'ambigua';
+  fundamentacao: string;
+  /** (valor, descrição) — preenchido quando a confiança é `ambigua`. */
+  alternativas: [string, string][];
+  /** Bloqueia auto-aplicação: errar aqui produz nota aceita e errada. */
+  exige_confirmacao: boolean;
+}
+
+export interface SugestoesFiscaisResponse {
+  sugestoes: CampoSugerido[];
 }

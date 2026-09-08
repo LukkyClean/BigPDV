@@ -23,6 +23,7 @@ import {
   RefreshCw,
   Clock,
   ExternalLink,
+  Printer,
 } from 'lucide-vue-next';
 
 import { useToast } from '@/shared/composables/useToast';
@@ -32,6 +33,7 @@ import { useFiscalHistoricoQuery } from '../../composables/useFiscalHistoricoQue
 import { useFiscalConsultarMutation } from '../../composables/useFiscalConsultarMutation';
 import { useFiscalCancelarMutation } from '../../composables/useFiscalCancelarMutation';
 import { useFiscalReemitirMutation } from '../../composables/useFiscalReemitirMutation';
+import { useNfceReimpressao } from '../../composables/useNfceReimpressao';
 import { formatCurrency } from '@/shared/utils/finance';
 import { formatCPF, formatCNPJ } from '@/shared/utils/document.utils';
 import { formatDataHora } from '@/shared/utils/date.utils';
@@ -90,6 +92,9 @@ const documento = computed(() => {
   if (!historicoData.value || historicoData.value.tentativas.length === 0) return null;
   return historicoData.value.tentativas[0];
 });
+
+// Segunda via do cupom — só faz sentido na NFC-e (ver `podeReimprimir`).
+const { reimprimir, podeReimprimir, isReimprimindo } = useNfceReimpressao();
 
 // Diagnóstico inteligente
 const diagnostico = computed(() => analisarDiagnosticoFiscal(documento.value));
@@ -195,9 +200,8 @@ const handleDownload = (tipo: 'pdf' | 'xml') => {
     toast.warning('URL do ' + tipo.toUpperCase() + ' não disponível');
     return;
   }
-  // abrirArquivo abre a URL no navegador/opener do Tauri; nao ha como nomear o
-  // arquivo por aqui, entao o segundo argumento (que nem existia na assinatura)
-  // foi removido em vez de inventar um parametro ignorado.
+  // `abrirArquivo` delega ao opener do Tauri (ou a uma nova aba): quem nomeia o
+  // arquivo e o destino, entao nao ha nome de arquivo a passar aqui.
   abrirArquivo(url);
 };
 
@@ -325,6 +329,23 @@ function formatarData(iso?: string | null): string {
                 </div>
 
                 <div class="flex items-center gap-1.5">
+                  <!-- Segunda via do cupom: só na NFC-e autorizada. A NF-e tem
+                       DANFE em PDF, que sai pelo botão de download. -->
+                  <button
+                    v-if="podeReimprimir(documento)"
+                    type="button"
+                    data-reimprimir-cupom
+                    :disabled="isReimprimindo"
+                    @click="documento && reimprimir(documento)"
+                    class="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-200 hover:text-zinc-700 cursor-pointer disabled:opacity-50 disabled:cursor-wait"
+                    title="Reimprimir cupom (2a via)"
+                  >
+                    <component
+                      :is="isReimprimindo ? Loader2 : Printer"
+                      class="h-4 w-4"
+                      :class="{ 'animate-spin': isReimprimindo }"
+                    />
+                  </button>
                   <button
                     type="button"
                     @click="isExpanded = !isExpanded"

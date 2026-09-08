@@ -23,11 +23,12 @@ from app.schemas.empresa import (
 from app.services import endereco as endereco_service
 from app.services import usuario as usuario_service
 from app.core.enum import EntityType
+from app.services.fiscal.helpers import crt_efetivo
 from app.db.crud import empresa as empresa_crud
 from app.db.models.funcionario import Funcionario as FuncionarioModel
 from app.db.crud import funcionario as funcionario_crud
 from app.core.imagem import salvar_imagem
-from app.core.config import BASE_DIR
+from app.core.config import BASE_DIR, secure_dir
 
 # ---------------------------------------------------------------------------
 # CONSTANTES E EXCEÇÕES
@@ -45,10 +46,15 @@ NOT_FOUND_EXCE = HTTPException(
 )
 
 # Diretório seguro para certificados (fora de static para não expor publicamente)
-CERT_UPLOAD_DIR = "secure_storage/certificates"
-
-secure_path = os.path.join(BASE_DIR, CERT_UPLOAD_DIR)
-os.makedirs(secure_path, exist_ok=True)
+# Caminho ABSOLUTO, e dentro do data_dir.
+#
+# Era relativo ("secure_storage/certificates"), e a pasta era criada num lugar
+# (BASE_DIR + relativo) enquanto o .pfx era gravado em outro -- relativo ao CWD
+# do processo. Rodando como tarefa agendada do Windows o CWD e imprevisivel, e
+# o certificado ia parar onde ninguem procura. O data_dir e o mesmo lugar do
+# banco e da chave Fernet: o desinstalador nao o alcanca.
+CERT_UPLOAD_DIR = os.path.join(secure_dir, "certificados")
+os.makedirs(CERT_UPLOAD_DIR, exist_ok=True)
 
 # ---------------------------------------------------------------------------
 # FUNÇÕES DE SERVIÇO
@@ -92,6 +98,14 @@ def create_empresa(
     # 2. Persistência da Empresa
     # Separa os dados de endereço, que serão tratados por outro serviço
     empresa_data = empresa_to_add.model_dump(exclude={"endereco"})
+    # CRT e o codigo que a NF-e usa para decidir CSOSN vs CST. A coluna existia
+    # e NINGUEM escrevia nela: toda empresa caia no padrao 3 (Regime Normal), e
+    # um MEI emitia com CST no lugar de CSOSN -- nota AUTORIZADA com tributacao
+    # errada, que so aparece na fiscalizacao.
+    empresa_data["crt"] = crt_efetivo(
+        empresa_data.get("regime_tributario"),
+        empresa_data.get("natureza_juridica"),
+    )
     empresa_to_db = EmpresaModel(**empresa_data)
     empresa_in_db = empresa_crud.create_empresa(db, empresa_to_add=empresa_to_db)
    
@@ -196,6 +210,14 @@ def update_empresa(db: Session, empresa_id: int, update_empresa: EmpresaUpdate) 
     for key, value in data_to_update.items():
         setattr(empresa_in_db, key, value)
 
+    # Recalcula DEPOIS do setattr: se o usuario acabou de trocar o regime ou a
+    # natureza juridica, o CRT tem que acompanhar. Vale tambem para cadastro
+    # antigo que nunca teve CRT -- a primeira edicao ja o corrige.
+    empresa_in_db.crt = crt_efetivo(
+        empresa_in_db.regime_tributario,
+        empresa_in_db.natureza_juridica,
+    )
+
     return empresa_crud.update_empresa(db, empresa_to_update=empresa_in_db)
 
 
@@ -247,6 +269,23 @@ def update_fiscal_settings(
     settings = get_or_create_fiscal_settings(db, empresa_id)
 
     update_dict = update_data.model_dump(exclude_unset=True)
+
+    # O CSC é o segredo que autentica o QR Code da NFC-e: quem o tem consegue
+    # forjar cupom em nome da loja. Vai para o banco cifrado, como a senha do
+    # certificado A1 — ver `cifrar_csc_token`.
+    #
+    # A tela recebe o token MASCARADO e o devolve inteiro no salvamento. Gravar
+    # a máscara destruiria o CSC configurado sem ninguém perceber — o erro só
+    # apareceria na primeira venda, com o cupom sem QR Code válido. Por isso a
+    # máscara é descartada aqui, e não tratada como "apagar o campo".
+    if "csc_token" in update_dict:
+        from app.services.fiscal.helpers import cifrar_csc_token, e_csc_mascarado
+
+        if e_csc_mascarado(update_dict["csc_token"]):
+            update_dict.pop("csc_token")
+        else:
+            update_dict["csc_token"] = cifrar_csc_token(update_dict["csc_token"])
+
     for field, value in update_dict.items():
         setattr(settings, field, value)
 

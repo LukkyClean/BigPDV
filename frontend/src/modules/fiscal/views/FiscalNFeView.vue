@@ -10,12 +10,12 @@ import FiscalStats from '../components/listagem/FiscalStats.vue';
 import FiscalDocumentosTable from '../components/listagem/FiscalDocumentosTable.vue';
 import FiscalPendenciasPanel from '../components/shared/FiscalPendenciasPanel.vue';
 import FiscalEmitirTesteModal from '../components/emitir/FiscalEmitirTesteModal.vue';
-import type { DocumentoFiscalStatus } from '../types/fiscal.types';
 import FiscalEmitirNFeModal from '../components/emitir/FiscalEmitirNFeModal.vue';
 import FiscalDocumentoDetailsDrawer from '../components/detalhes/FiscalDocumentoDetailsDrawer.vue';
 import FiscalResolucaoProdutosDrawer from '../components/shared/FiscalResolucaoProdutosDrawer.vue';
 import { useFiscalResumoQuery } from '../composables/useFiscalResumoQuery';
 import { useFiscalPendenciasQuery } from '../composables/useFiscalPendenciasQuery';
+import type { DocumentoFiscalStatus } from '../types/fiscal.types';
 
 interface Props {
   isHomologacao?: boolean;
@@ -25,7 +25,7 @@ withDefaults(defineProps<Props>(), {
   isHomologacao: true,
 });
 
-const { data: resumo, isLoading: isResumoLoading } = useFiscalResumoQuery();
+const { data: resumo, isLoading: isResumoLoading } = useFiscalResumoQuery('NFE');
 const { data: pendencias } = useFiscalPendenciasQuery();
 
 const showTesteModal = ref(false);

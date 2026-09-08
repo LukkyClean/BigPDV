@@ -315,6 +315,35 @@ def requer_modulo_fiscal(
 
 
 # =========================
+# Módulo fiscal: direito de CONFIGURAR
+# =========================
+
+def requer_configuracao_fiscal(
+    usuario_token: Dict[str, Any] = Depends(get_current_master_user),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    """
+    Garante o direito de CONFIGURAR o módulo fiscal — sem exigir o plano.
+
+    Deliberadamente mais frouxo que `requer_modulo_fiscal`: configuração é
+    inerte sem emissão. Um lojista pode deixar certificado, CSC e séries
+    prontos antes de contratar; a nota só sai quando o plano existir, e é o
+    servidor remoto que dá a palavra final.
+
+    Só master, porque envolve certificado digital e credencial de SEFAZ.
+
+    Returns:
+        Dict[str, Any]: O payload do token (passthrough para encadeamento).
+    """
+    if not usuario_token.get("empresa_id"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Usuário sem empresa vinculada. Acesso negado.",
+        )
+    return usuario_token
+
+
+# =========================
 # Função Utilitária: Gerenciador de Transação (Core)
 # =========================
 

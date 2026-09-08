@@ -19,8 +19,21 @@ import { useCustomerQueryAll } from '@/modules/customers/composables/request/use
 import { useFiscalCorrecaoVendaMutation } from '../../composables/useFiscalCorrecaoVendaMutation';
 import { useFiscalReemitirMutation } from '../../composables/useFiscalReemitirMutation';
 import { formatCPF, formatCNPJ } from '@/shared/utils/document.utils';
-import { isCustomerPF } from '@/modules/customers/schemas/customerQuery.schema';
-import type { CustomerUnionReadSchemaDataType as CustomerRead } from '@/modules/customers/schemas/customerQuery.schema';
+import {
+  isCustomerPF,
+  type CustomerUnionReadSchemaDataType,
+} from '@/modules/customers/schemas/customerQuery.schema';
+
+// O cadastro de cliente e uma uniao discriminada por `tipo`: PF tem nome/cpf,
+// PJ tem razao_social/cnpj. Estes dois helpers concentram o narrowing para o
+// template nao precisar repeti-lo em cada interpolacao.
+function nomeCliente(c: CustomerUnionReadSchemaDataType): string {
+  return isCustomerPF(c) ? c.nome : c.razao_social;
+}
+
+function docCliente(c: CustomerUnionReadSchemaDataType): string {
+  return isCustomerPF(c) ? c.cpf : c.cnpj;
+}
 
 const props = defineProps<{
   isOpen: boolean;
@@ -42,7 +55,7 @@ const { searchQuery, customers } = useCustomerQueryAll();
 const correcaoMutation = useFiscalCorrecaoVendaMutation();
 const reemitirMutation = useFiscalReemitirMutation();
 
-const clienteSelecionado = ref<CustomerRead | null>(null);
+const clienteSelecionado = ref<CustomerUnionReadSchemaDataType | null>(null);
 const desvincularCliente = ref(false);
 
 const naturezaOperacao = ref('Venda de Mercadoria');
@@ -81,7 +94,7 @@ watch(
   { immediate: true },
 );
 
-function selecionarCliente(cliente: CustomerRead) {
+function selecionarCliente(cliente: CustomerUnionReadSchemaDataType) {
   clienteSelecionado.value = cliente;
   desvincularCliente.value = false;
   searchQuery.value = '';
@@ -101,8 +114,7 @@ function removerSelecaoCliente() {
 
 const docFormatado = computed(() => {
   if (!clienteSelecionado.value) return '';
-  const c = clienteSelecionado.value;
-  const doc = (isCustomerPF(c) ? c.cpf : c.cnpj) || '';
+  const doc = docCliente(clienteSelecionado.value);
   const digits = doc.replace(/\D/g, '');
   if (digits.length === 14) return formatCNPJ(digits);
   if (digits.length === 11) return formatCPF(digits);
@@ -199,7 +211,7 @@ async function salvarAlteracoes(reemitirAposSalvar = false) {
             <div class="min-w-0">
               <div class="flex items-center gap-2">
                 <p class="text-xs font-bold text-zinc-900 truncate">
-                  {{ isCustomerPF(clienteSelecionado) ? clienteSelecionado.nome : clienteSelecionado.razao_social }}
+                  {{ nomeCliente(clienteSelecionado) }}
                 </p>
                 <span class="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.2 text-[10px] font-bold text-emerald-800 shrink-0">
                   <Check class="h-3 w-3" /> Selecionado
@@ -276,10 +288,10 @@ async function salvarAlteracoes(reemitirAposSalvar = false) {
                 />
                 <div class="truncate">
                   <p class="font-semibold text-zinc-900 truncate">
-                    {{ isCustomerPF(c) ? c.nome : c.razao_social }}
+                    {{ nomeCliente(c) }}
                   </p>
                   <p class="text-[11px] text-zinc-500 font-mono">
-                    {{ (isCustomerPF(c) ? c.cpf : c.cnpj) || 'Sem documento' }}
+                    {{ docCliente(c) || 'Sem documento' }}
                   </p>
                 </div>
               </div>

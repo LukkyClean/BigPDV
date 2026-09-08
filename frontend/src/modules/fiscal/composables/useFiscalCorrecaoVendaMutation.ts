@@ -18,7 +18,8 @@ export function useFiscalCorrecaoVendaMutation() {
       fiscalService.corrigirVendaFiscal(vendaId, payload),
     onSuccess: () => {
       toast.success('Venda e dados fiscais atualizados com sucesso.');
-      // Um invalidate só: documentos, resumo e pendências penduram do prefixo.
+      queryClient.invalidateQueries({ queryKey: fiscalKeys.documentos() });
+      queryClient.invalidateQueries({ queryKey: fiscalKeys.resumo() });
       queryClient.invalidateQueries({ queryKey: fiscalKeys.all });
       queryClient.invalidateQueries({ queryKey: ['sales'] });
     },

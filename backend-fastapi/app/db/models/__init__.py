@@ -59,3 +59,4 @@ from app.db.models.ordem_servico_nota_fiscal import OrdemServicoNotaFiscal  # no
 from app.db.models.documento_fiscal import DocumentoFiscal  # noqa: F401
 from app.db.models.inutilizacao_fiscal import InutilizacaoFiscal  # noqa: F401
 from app.db.models.aliquota_uf import AliquotaUF  # noqa: F401
+from app.db.models.documento_fiscal_item import DocumentoFiscalItem  # noqa: F401

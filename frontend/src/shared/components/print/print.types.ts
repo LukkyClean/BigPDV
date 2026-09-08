@@ -38,6 +38,8 @@ export interface CompanyPrintInfo {
   contato: string;
   email: string;
   logo: string | null;
+  /** Inscricao Estadual — obrigatoria no cabecalho do DANFE NFC-e. */
+  inscricaoEstadual?: string | null;
   /** Cidade sozinha — o BR Code do PIX exige o campo separado do endereço. */
   cidade?: string;
   /** Chave PIX do recebedor, para montar o QR do comprovante. */

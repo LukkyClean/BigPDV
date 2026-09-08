@@ -7,6 +7,9 @@ from datetime import datetime
 from typing import List, Optional, Sequence
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+import re
+
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
 from app.schemas.endereco import Endereco, EnderecoRead, EnderecoUpdate
 
@@ -29,7 +32,11 @@ class FiscalSettingsBase(BaseModel):
     ultimo_numero_nfe: int = Field(default=0, ge=0, description="Último número NFe")
     serie_nfce: int = Field(default=1, ge=0, description="Série da NFCe")
     ultimo_numero_nfce: int = Field(default=0, ge=0, description="Último número NFCe")
-    csc_token: Optional[str] = Field(None, max_length=100, description="Token CSC para NFCe")
+    # SEM max_length: na LEITURA este campo carrega o texto CIFRADO vindo do
+    # banco (~180 chars), não o CSC digitado. Um limite de 100 aqui rejeitaria
+    # a própria configuração salva. O limite de entrada fica no
+    # FiscalSettingsUpdate, que é por onde o usuário digita.
+    csc_token: Optional[str] = Field(None, description="Token CSC para NFCe (cifrado)")
     csc_id: Optional[str] = Field(None, max_length=10, description="ID do Token CSC")
     rps_serie: Optional[str] = Field(None, max_length=10, description="Série do RPS")
     rps_ultimo_numero: int = Field(default=0, ge=0, description="Último número RPS")
@@ -54,6 +61,10 @@ class FiscalSettingsUpdate(BaseModel):
     ultimo_numero_nfce: Optional[int] = Field(None, ge=0)
     csc_token: Optional[str] = Field(None, max_length=100)
     csc_id: Optional[str] = Field(None, max_length=10)
+    limite_consumidor_anonimo: Optional[int] = Field(
+        None, ge=0,
+        description="Teto em centavos para NFC-e sem CPF/CNPJ do comprador",
+    )
     rps_serie: Optional[str] = Field(None, max_length=10)
     rps_ultimo_numero: Optional[int] = Field(None, ge=0)
     prefeitura_login: Optional[str] = Field(None, max_length=50)
@@ -76,6 +87,24 @@ class FiscalSettingsRead(FiscalSettingsBase):
     certificado_validade: Optional[datetime] = Field(None, description="Validade do certificado")
     certificado_subject: Optional[str] = Field(None, description="Subject/CN do certificado")
     certificado_thumbprint: Optional[str] = Field(None, description="Thumbprint (Windows)")
+    certificado_status: Optional[str] = Field(None, description="Status da conexão na nuvem")
+    certificado_cnpj: Optional[str] = Field(None, description="CNPJ do certificado")
+
+    @field_serializer("csc_token")
+    def serializar_csc_token(self, valor: Optional[str]) -> Optional[str]:
+        """Mascara o CSC em QUALQUER resposta que carregue estas configurações.
+
+        Fica no schema, e não no endpoint, porque `FiscalSettingsRead` viaja
+        dentro de `EmpresaRead` — mascarar só no Centro Fiscal deixaria o
+        segredo saindo pela tela de empresa.
+
+        Também é o que impede a interface de exibir o blob cifrado: o valor
+        vem do banco já criptografado, e sem isto o campo mostraria
+        `gAAAAAB...` para o lojista.
+        """
+        from app.services.fiscal.helpers import decifrar_csc, mascarar_csc
+
+        return mascarar_csc(decifrar_csc(valor))
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -243,6 +272,19 @@ class EmpresaBase(BaseModel):
         None,
         description="Se o QR PIX aparece na finalizacao da venda.",
     )
+
+    # NAO validamos digito verificador do documento AQUI, de proposito.
+    #
+    # A versao da feat/fiscal-module plugava validar_cpf/validar_cnpj neste
+    # ponto. Medido: reprova 394 testes, porque o documento passa a exigir
+    # digito verificador correto no CADASTRO. Na loja o efeito e pior -- uma
+    # empresa cadastrada com documento digitado errado deixa de conseguir
+    # SALVAR qualquer alteracao, e a reprovacao chega ao usuario como "clico
+    # em Salvar e nao acontece nada".
+    #
+    # O digito verificador e conferido no PORTAO DE EMISSAO
+    # (services/fiscal/validators.py e verificacao_fiscal.py), que e onde ele
+    # de fato importa: a Receita recusa a nota, nao o cadastro.
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -430,6 +472,19 @@ class EmpresaUpdate(BaseModel):
         description="Configurações fiscais para atualização",
     )
 
+    # NAO validamos digito verificador do documento AQUI, de proposito.
+    #
+    # A versao da feat/fiscal-module plugava validar_cpf/validar_cnpj neste
+    # ponto. Medido: reprova 394 testes, porque o documento passa a exigir
+    # digito verificador correto no CADASTRO. Na loja o efeito e pior -- uma
+    # empresa cadastrada com documento digitado errado deixa de conseguir
+    # SALVAR qualquer alteracao, e a reprovacao chega ao usuario como "clico
+    # em Salvar e nao acontece nada".
+    #
+    # O digito verificador e conferido no PORTAO DE EMISSAO
+    # (services/fiscal/validators.py e verificacao_fiscal.py), que e onde ele
+    # de fato importa: a Receita recusa a nota, nao o cadastro.
+
     model_config = ConfigDict(
         from_attributes=True,
         json_schema_extra={
@@ -555,6 +610,11 @@ class EmpresaUserRead(BaseModel):
     usa_ordem_servico: bool = Field(
         True,
         description="Se a loja deste segmento trabalha com Ordem de Serviço",
+    )
+    regime_tributario: Optional[str] = Field(
+        None,
+        max_length=50,
+        description="Regime Tributário da empresa",
     )
     enderecos: Optional[Sequence["EnderecoRead"]] = Field(
         None,

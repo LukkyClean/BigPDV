@@ -312,9 +312,12 @@ def test_multiplos_pagamentos_saem_com_o_codigo_sefaz_de_cada_forma():
 
     payload = _montar(venda)
 
+    # O cartão leva `tipo_integracao` (grupo `card` do XML) e o dinheiro não —
+    # ver TipoIntegracaoPagamento. Sem classificação cadastrada assume 2
+    # (maquininha autônoma), que é o arranjo da maioria das lojas.
     assert payload["formas_pagamento"] == [
         {"forma_pagamento": "01", "valor_pagamento": 60.00},
-        {"forma_pagamento": "03", "valor_pagamento": 40.00},
+        {"forma_pagamento": "03", "valor_pagamento": 40.00, "tipo_integracao": 2},
     ]
     assert _somar_pagamentos(payload) == payload["totais"]["valor_total"]
 

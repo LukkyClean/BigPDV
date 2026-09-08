@@ -43,3 +43,23 @@ export const CustomerDiscriminatedSimpleReadSchema = z.discriminatedUnion('tipo'
 ]).array();
 
 export type CustomerSimpleRead = z.infer<typeof CustomerDiscriminatedSimpleReadSchema>;
+
+export type CustomerDiscriminated = z.infer<typeof CustomerDiscriminatedSchema>;
+
+/**
+ * Documento do cliente (CPF ou CNPJ), pelo discriminante `tipo`.
+ *
+ * Existe para o resto do módulo não precisar de cast: sem ele, quem quisesse o
+ * documento escrevia `cliente as { cpf?: string }`, que fura a união do Zod e
+ * volta a compilar mesmo se o schema mudar.
+ *
+ * ATENÇÃO — o valor sai MASCARADO ("123.456.789-00"): os dois schemas aplicam
+ * `maskCpfCnpj` no parse. Quem precisa só de dígitos passa por
+ * `unmaskDocument`.
+ */
+export function documentoDoCliente(
+  cliente: CustomerDiscriminated | null | undefined,
+): string {
+  if (!cliente) return '';
+  return (cliente.tipo === 'PF' ? cliente.cpf : cliente.cnpj) ?? '';
+}

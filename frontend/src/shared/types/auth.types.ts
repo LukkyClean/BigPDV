@@ -34,6 +34,13 @@ export interface Company {
   regime_tributario?: string | null;
   /** Código de Regime Tributário da NF-e: 1=Simples, 2=Simples excesso, 3=Normal, 4=MEI. */
   crt?: number | null;
+  /**
+   * Inscrição Estadual. O backend sempre devolveu; faltava aqui.
+   *
+   * Vai impressa no cupom da NFC-e — é dado obrigatório do emitente no
+   * documento fiscal, não enfeite de cabeçalho.
+   */
+  inscricao_estadual?: string | null;
   ativo: boolean;
 }
 

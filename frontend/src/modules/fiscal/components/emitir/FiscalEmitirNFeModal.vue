@@ -40,6 +40,27 @@ const modoLote = ref(false);
 const vendasSelecionadasLote = ref<Set<number>>(new Set());
 const batchResultado = ref<EmissaoBatchResponse | null>(null);
 
+/**
+ * Três desfechos possíveis numa emissão em lote, e eles não se agrupam em dois:
+ *
+ *  - sucesso : a SEFAZ aceitou (ou ainda está processando)
+ *  - recusa  : a SEFAZ respondeu e NEGOU — a nota não existe, mas o sistema
+ *              funcionou. É problema de cadastro, e o operador precisa vê-lo.
+ *  - erro    : falha antes ou durante o envio (rede, validação local)
+ *
+ * Juntar recusa com sucesso, como fazia o `!== 'ERRO'`, faz o lojista acreditar
+ * que emitiu notas que a SEFAZ recusou.
+ */
+const STATUS_SUCESSO = ['AUTORIZADA', 'PROCESSANDO'];
+const STATUS_RECUSA = ['REJEITADA', 'DENEGADA'];
+
+function ehSucesso(status: string): boolean {
+  return STATUS_SUCESSO.includes(status);
+}
+function ehRecusa(status: string): boolean {
+  return STATUS_RECUSA.includes(status);
+}
+
 import FiscalEditarVendaModal from '../detalhes/FiscalEditarVendaModal.vue';
 import { UserPlus, UserX } from 'lucide-vue-next';
 
@@ -577,7 +598,13 @@ function formatDocumento(doc: string): string {
               :key="resultado.venda_id"
               class="flex items-center gap-3 px-4 py-3"
             >
-              <CheckCircle v-if="resultado.status !== 'ERRO'" :size="16" class="text-emerald-500 shrink-0" />
+              <!--
+                Três desfechos, não dois. REJEITADA e DENEGADA caíam no ramo
+                verde porque a condição era `!== 'ERRO'` — o lojista via um ✓
+                esmeralda em notas que a SEFAZ tinha recusado.
+              -->
+              <CheckCircle v-if="ehSucesso(resultado.status)" :size="16" class="text-emerald-500 shrink-0" />
+              <AlertTriangle v-else-if="ehRecusa(resultado.status)" :size="16" class="text-amber-500 shrink-0" />
               <XCircle v-else :size="16" class="text-red-500 shrink-0" />
               <div class="flex-1 min-w-0">
                 <p class="text-sm font-medium text-zinc-800">
@@ -589,9 +616,11 @@ function formatDocumento(doc: string): string {
               </div>
               <span
                 class="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0"
-                :class="resultado.status === 'ERRO'
-                  ? 'bg-red-100 text-red-700'
-                  : 'bg-emerald-100 text-emerald-700'"
+                :class="ehSucesso(resultado.status)
+                  ? 'bg-emerald-100 text-emerald-700'
+                  : ehRecusa(resultado.status)
+                    ? 'bg-amber-100 text-amber-700'
+                    : 'bg-red-100 text-red-700'"
               >
                 {{ resultado.status }}
               </span>

@@ -4,19 +4,35 @@ import type { DocumentoFiscalFilters } from '../types/fiscal.types';
 export const FISCAL_STALE_TIME = 1000 * 30;
 export const FISCAL_REFETCH_INTERVAL = REFETCH_DASHBOARD;
 
+/**
+ * Timeouts de emissão — precisam ser MAIORES que o do backend.
+ *
+ * O `api` do axios tem timeout global de 10 s, mas o cliente HTTP que fala com
+ * a SEFAZ espera até 30 s. Toda emissão lenta estourava no navegador antes de
+ * a resposta chegar, e a mensagem que aparecia ("Tente novamente") mandava o
+ * operador reemitir uma nota que podia já estar autorizada e com numeração
+ * consumida — o caminho mais curto para duplicidade fiscal.
+ *
+ * Timeout numa emissão NÃO é falha: é incerteza. Ver `ehEmissaoIncerta`.
+ */
+export const TIMEOUT_EMISSAO = 45_000;
+export const TIMEOUT_LOTE = 300_000;
+export const TIMEOUT_CONSULTA = 20_000;
+
 export const fiscalKeys = {
-  /**
-   * Prefixo de TUDO do fiscal. Invalidar `all` alcança documentos, resumo,
-   * pendências e o resto, porque todas as chaves abaixo penduram dele.
-   *
-   * Existe porque o código chamava `fiscalKeys.all` sem que a chave existisse:
-   * em runtime isso vira `queryKey: undefined`, e o TanStack entende
-   * "invalide TUDO" -- o app inteiro refetchava a cada correção de venda.
-   */
+  /** Prefixo de todas as queries do modulo — invalida o fiscal inteiro. */
   all: ['fiscal'] as const,
   documentos: (filters?: DocumentoFiscalFilters, page?: number) =>
     ['fiscal', 'documentos', filters, page] as const,
-  resumo: () => ['fiscal', 'resumo'] as const,
+  /**
+   * Contadores. Sem `tipo` devolve o PREFIXO `['fiscal','resumo']`, e não
+   * `[..., undefined]`: as mutations invalidam com `resumo()` e precisam
+   * atingir também as variantes por modelo. Uma chave com `undefined` no fim
+   * não é prefixo de `['fiscal','resumo','NFCE']` e deixaria os cartões
+   * desatualizados depois de emitir ou cancelar.
+   */
+  resumo: (tipo?: string) =>
+    (tipo ? ['fiscal', 'resumo', tipo] : ['fiscal', 'resumo']) as readonly unknown[],
   pendencias: () => ['fiscal', 'pendencias'] as const,
   documento: (id: number) => ['fiscal', 'documento', id] as const,
   configuracao: () => ['fiscal', 'configuracao'] as const,
@@ -25,19 +41,20 @@ export const fiscalKeys = {
 };
 
 /**
- * Cores por status do documento fiscal.
- *
- * `border` faltava aqui e o drawer de detalhes já a consumia (a bolinha da
- * linha do tempo desenha `border-2` e pintava com a cor errada). Está no tipo
- * agora para que faltar de novo vire erro de compilação, e não borda cinza.
+ * Cores por status do documento. `border` e usada pelo drawer de detalhes
+ * (icone do cabecalho e os pontos da linha do tempo) — manter as tres chaves
+ * em toda entrada nova, senao o Tailwind cai sem a classe de borda.
  */
-export const STATUS_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  PENDENTE: { bg: 'bg-amber-100', text: 'text-amber-700', border: 'border-amber-300' },
-  PROCESSANDO: { bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-300' },
-  AUTORIZADA: { bg: 'bg-green-100', text: 'text-green-700', border: 'border-green-300' },
-  REJEITADA: { bg: 'bg-red-100', text: 'text-red-600', border: 'border-red-300' },
-  CANCELADA: { bg: 'bg-zinc-100', text: 'text-zinc-500', border: 'border-zinc-300' },
-  DENEGADA: { bg: 'bg-red-100', text: 'text-red-600', border: 'border-red-300' },
+export const STATUS_COLORS: Record<
+  string,
+  { bg: string; text: string; border: string }
+> = {
+  PENDENTE: { bg: 'bg-amber-100', text: 'text-amber-700', border: 'border-amber-200' },
+  PROCESSANDO: { bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-200' },
+  AUTORIZADA: { bg: 'bg-green-100', text: 'text-green-700', border: 'border-green-200' },
+  REJEITADA: { bg: 'bg-red-100', text: 'text-red-600', border: 'border-red-200' },
+  CANCELADA: { bg: 'bg-zinc-100', text: 'text-zinc-500', border: 'border-zinc-200' },
+  DENEGADA: { bg: 'bg-red-100', text: 'text-red-600', border: 'border-red-200' },
 };
 
 export const STATUS_FILTER_OPTIONS = [

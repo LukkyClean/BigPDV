@@ -54,12 +54,11 @@ async function uploadCertificate() {
   try {
     const formData = new FormData();
     formData.append('file', file.value);
-    // O backend recebe `senha` (Form(...)), nao `password` -- o nome errado
+    // O backend recebe `senha` (Form(...)), não `password` — o nome errado
     // devolvia 422 antes mesmo de o arquivo ser lido.
     formData.append('senha', password.value);
 
-    // Call new backend endpoint
-    // O baseURL do axios JA e .../api/v1: repetir o prefixo aqui gerava
+    // O baseURL do axios JÁ é .../api/v1: repetir o prefixo aqui gerava
     // .../api/v1/api/v1/fiscal/... e um 404 silencioso.
     await api.post('/fiscal/certificado/upload-focus', formData, {
       headers: {

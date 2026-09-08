@@ -21,9 +21,40 @@ from app.schemas.documento_fiscal import (
 )
 
 
+def _itens_do_snapshot(doc: DocumentoFiscal) -> list[DocumentoItemResumo]:
+    """Itens como foram ENVIADOS à SEFAZ, lidos do snapshot da emissão."""
+    return [
+        DocumentoItemResumo(
+            id=item.id,
+            produto_id=item.produto_id,
+            nome=item.descricao,
+            codigo_barras=item.codigo_barras,
+            # O snapshot guarda a quantidade em milésimos; a tela mostra inteiro,
+            # como o resto do sistema.
+            quantidade=round(item.quantidade_milesimos / 1000),
+            valor_unitario=item.valor_unitario,
+            subtotal=item.valor_bruto,
+            desconto=item.valor_desconto,
+            ncm=item.ncm,
+            cfop=item.cfop,
+        )
+        for item in doc.itens
+    ]
+
+
 def _hidratar_documento_com_venda(db: Session, doc: DocumentoFiscal) -> DocumentoFiscalRead:
     """Hidrata DocumentoFiscalRead com dados enriquecidos de venda, cliente e itens."""
     doc_read = DocumentoFiscalRead.model_validate(doc)
+
+    # O snapshot manda quando existe.
+    #
+    # Sem ele, os itens eram reconstruídos AO VIVO de `item.produto.fiscal` —
+    # então trocar o NCM de um produto mudava o que uma nota já autorizada
+    # exibia, e o lojista via um documento diferente do XML que está na SEFAZ.
+    # A reconstrução continua abaixo, só como fallback para documentos
+    # anteriores a 05/09/2026.
+    if doc.itens:
+        doc_read.itens_resumo = _itens_do_snapshot(doc)
 
     if doc.origem_tipo == "VENDA" and doc.origem_id is not None:
         venda = (
@@ -89,7 +120,9 @@ def _hidratar_documento_com_venda(db: Session, doc: DocumentoFiscal) -> Document
                         cfop=cfop,
                     )
                 )
-            doc_read.itens_resumo = itens_list
+            # Só sobrescreve se o snapshot não respondeu — ver comentário no topo.
+            if not doc.itens:
+                doc_read.itens_resumo = itens_list
 
     return doc_read
 
@@ -155,12 +188,18 @@ def obter_documento(db: Session, documento_id: int) -> DocumentoFiscalRead:
     return _hidratar_documento_com_venda(db, doc)
 
 
-def obter_resumo(db: Session) -> DocumentoFiscalResumo:
-    resultados = (
-        db.query(DocumentoFiscal.status, func.count(DocumentoFiscal.id))
-        .group_by(DocumentoFiscal.status)
-        .all()
-    )
+def obter_resumo(db: Session, tipo: Optional[str] = None) -> DocumentoFiscalResumo:
+    """Contadores por status, opcionalmente restritos a um tipo de documento.
+
+    O `tipo` existe para as telas por modelo (NF-e, NFC-e): sem ele a tela da
+    NFC-e mostraria também as NF-e nos cartões, e o lojista leria "3 rejeitadas"
+    achando que são cupons quando são notas de outro modelo.
+    """
+    consulta = db.query(DocumentoFiscal.status, func.count(DocumentoFiscal.id))
+    if tipo:
+        consulta = consulta.filter(DocumentoFiscal.tipo_documento == tipo)
+
+    resultados = consulta.group_by(DocumentoFiscal.status).all()
 
     contadores = {row[0]: row[1] for row in resultados}
 
