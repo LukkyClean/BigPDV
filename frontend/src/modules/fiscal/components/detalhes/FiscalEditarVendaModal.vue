@@ -60,14 +60,36 @@ const desvincularCliente = ref(false);
 
 const naturezaOperacao = ref('Venda de Mercadoria');
 const observacao = ref('');
-const consumidorFinal = ref(true);
-const indicadorPresenca = ref<string | number>(1);
+/**
+ * MANTER = "não alterar este campo".
+ *
+ * Este é um modal de CORREÇÃO: ele existe para consertar uma coisa (o cliente
+ * que faltou, em geral) numa venda já finalizada. Até aqui ele reenviava
+ * `consumidor_final: true` e `indicador_presenca: 1` em TODO salvamento,
+ * porque nunca carregou os valores gravados — apagando em silêncio o que o
+ * caixa escolheu no fechamento.
+ *
+ * Em vez de carregar os valores só para reenviá-los iguais, o modal passa a
+ * omitir do PATCH tudo que o usuário não tocou. O backend mantém o que está
+ * gravado, e a tela não precisa fingir que sabe o valor atual.
+ */
+const MANTER = '' as const;
+
+const consumidorFinal = ref<string | number>(MANTER);
+const indicadorPresenca = ref<string | number>(MANTER);
+
+const consumidorFinalOptions: SelectOption[] = [
+  { value: MANTER, label: 'Manter como está' },
+  { value: 'sim', label: 'Sim — consumidor final' },
+  { value: 'nao', label: 'Não — destinatário revende' },
+];
 
 const indicadorPresencaOptions: SelectOption[] = [
+  { value: MANTER, label: 'Manter como está' },
   { value: 1, label: '1 - Operação Presencial' },
   { value: 2, label: '2 - Operação Não Presencial (Internet)' },
   { value: 3, label: '3 - Operação Não Presencial (Teleatendimento)' },
-  { value: 4, label: '4 - NF-e em Operação com Entrega a Domicílio' },
+  { value: 4, label: '4 - NFC-e com Entrega a Domicílio' },
   { value: 9, label: '9 - Operação Não Presencial (Outros)' },
 ];
 
@@ -80,8 +102,8 @@ watch(
       desvincularCliente.value = false;
       naturezaOperacao.value = props.naturezaOperacaoInicial || 'Venda de Mercadoria';
       observacao.value = props.observacaoInicial || '';
-      consumidorFinal.value = true;
-      indicadorPresenca.value = 1;
+      consumidorFinal.value = MANTER;
+      indicadorPresenca.value = MANTER;
 
       if (props.clienteAtualId) {
         const c = customers.value.find((item) => item.id === props.clienteAtualId);
@@ -148,8 +170,13 @@ async function salvarAlteracoes(reemitirAposSalvar = false) {
       cliente_id: novoClienteId,
       observacao: observacao.value || undefined,
       natureza_operacao: naturezaOperacao.value || undefined,
-      consumidor_final: consumidorFinal.value,
-      indicador_presenca: Number(indicadorPresenca.value),
+      // Omitidos quando o usuário não mexeu — ver a constante MANTER.
+      ...(consumidorFinal.value !== MANTER
+        ? { consumidor_final: consumidorFinal.value === 'sim' }
+        : {}),
+      ...(indicadorPresenca.value !== MANTER
+        ? { indicador_presenca: Number(indicadorPresenca.value) }
+        : {}),
     },
   });
 
@@ -326,7 +353,18 @@ async function salvarAlteracoes(reemitirAposSalvar = false) {
             v-model="indicadorPresenca"
             label="Indicador de Presença"
             :options="indicadorPresencaOptions"
-            placeholder="Selecione o indicador"
+          />
+
+          <!--
+            Este campo NÃO tinha controle na tela: era enviado como `true` em
+            todo salvamento, sem o usuário poder ver nem mudar. Numa venda a
+            PJ que revende, `consumidor_final` deve ser falso — e não havia
+            como corrigir isso por aqui.
+          -->
+          <BaseSelect
+            v-model="consumidorFinal"
+            label="Consumidor Final"
+            :options="consumidorFinalOptions"
           />
         </div>
 

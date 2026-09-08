@@ -15,6 +15,10 @@ from app.core.depends import check_permission, _handle_db_transaction
 from app.db.session import get_db
 from app.db.models.forma_pagamento import FormaPagamento as FormaPagamentoModel
 from app.db.crud import forma_pagamento as fp_crud
+from app.services.fiscal.derivacao.pagamento import (
+    codigo_sefaz_por_nome,
+    tipo_integracao_por_codigo,
+)
 from app.schemas.forma_pagamento import FormaPagamentoCreate, FormaPagamentoUpdate, FormaPagamentoRead
 from fastapi import HTTPException
 
@@ -48,7 +52,21 @@ def _create_fp_service(db: Session, fp_data: FormaPagamentoCreate) -> FormaPagam
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Já existe uma forma de pagamento com o nome '{fp_data.nome}'"
         )
-    fp_to_db = FormaPagamentoModel(nome=fp_data.nome, ativo=fp_data.ativo, codigo_sefaz=fp_data.codigo_sefaz)
+    # Deduz o codigo SEFAZ quando o usuario nao informou.
+    #
+    # Sem isto, uma forma criada pela loja ("Vale Refeicao", "Cartao da Loja")
+    # nascia sem codigo, virava pendencia que IMPEDE a emissao e nao tinha como
+    # ser resolvida pela interface — o campo nao existe em tela nenhuma, embora
+    # a API o aceite. Como so preenche o que veio vazio, informar o codigo
+    # continua vencendo a deducao.
+    codigo_sefaz = fp_data.codigo_sefaz or codigo_sefaz_por_nome(fp_data.nome)
+
+    fp_to_db = FormaPagamentoModel(
+        nome=fp_data.nome,
+        ativo=fp_data.ativo,
+        codigo_sefaz=codigo_sefaz,
+        tipo_integracao=tipo_integracao_por_codigo(codigo_sefaz),
+    )
     return fp_crud.create_forma_pagamento(db, fp_to_add=fp_to_db)
 
 
