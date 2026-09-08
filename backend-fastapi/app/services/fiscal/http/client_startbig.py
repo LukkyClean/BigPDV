@@ -11,6 +11,29 @@ from .client import EmissaoResultado
 
 logger = logging.getLogger(__name__)
 
+
+class EmissaoIncertaError(Exception):
+    """A emissao pode ter acontecido, e nao sabemos.
+
+    Existe para separar dois desfechos que o codigo antigo confundia:
+
+      - A SEFAZ respondeu NAO  -> rejeicao. Vira REJEITADA, e reemitir e seguro.
+      - Nao houve resposta     -> INCERTEZA. A nota pode estar autorizada.
+
+    O client ANTIGO capturava `Exception` e devolvia {"status": "erro"} para os
+    dois casos. Como `erro` vira REJEITADA em `_aplicar_resultado`, e REJEITADA
+    e reemitivel, um timeout produzia esta sequencia:
+
+        timeout (a SEFAZ demora) -> "erro" -> REJEITADA -> operador reemite
+        -> reemissao usa ref NOVA -> a idempotencia da plataforma e POR REF
+        -> nota DUPLICADA, as duas autorizadas, no mesmo CNPJ
+
+    A protecao contra isso ja existia em emissao.py (status INDETERMINADA), mas
+    era codigo morto: nunca chegava excecao ate la. Levantar esta e o que a
+    religa.
+    """
+
+
 # Chaves cujo valor nunca pode ir para o log em disco do cliente.
 _CHAVES_SENSIVEIS = (
     "password", "senha", "token", "secret", "certificado", "csc",
@@ -141,14 +164,30 @@ class FiscalClientStartBig:
         except httpx.HTTPStatusError as exc:
             logger.error("[FISCAL] Erro HTTP ao emitir NF-e: %s - %s",
                          exc.response.status_code, _resposta_para_log(exc.response))
+            # 5xx: o servidor pode ter processado antes de falhar. Incerto.
+            if exc.response.status_code >= 500:
+                raise EmissaoIncertaError(
+                    f"Servidor respondeu {exc.response.status_code} ao emitir."
+                ) from exc
+            # 4xx: recusa ANTES de transmitir (CNPJ divergente, sem config,
+            # rota inexistente). Nada foi para a SEFAZ.
             try:
-                data = exc.response.json()
-                return self._parse_response(data)
+                return self._parse_response(exc.response.json())
             except Exception:
-                return {"status": "erro", "mensagem_sefaz": f"Erro {exc.response.status_code} da API"}
+                return {
+                    "status": "erro",
+                    "mensagem_sefaz": (
+                        f"A API recusou a emissão (HTTP {exc.response.status_code}) "
+                        f"antes de enviar à SEFAZ."
+                    ),
+                }
+        except (httpx.TimeoutException, httpx.TransportError) as exc:
+            # Sem resposta: a nota PODE estar autorizada. Ver EmissaoIncertaError.
+            logger.error("[FISCAL] Sem resposta ao emitir NF-e: %s", exc)
+            raise EmissaoIncertaError(str(exc)) from exc
         except Exception as exc:
             logger.error("[FISCAL] Falha na requisição de emissão: %s", exc)
-            return {"status": "erro", "mensagem_sefaz": str(exc)}
+            raise EmissaoIncertaError(str(exc)) from exc
 
     def emitir_nfce(
         self, ref: str, payload: dict, idempotency_key: Optional[str] = None
@@ -171,14 +210,26 @@ class FiscalClientStartBig:
         except httpx.HTTPStatusError as exc:
             logger.error("[FISCAL] Erro HTTP ao emitir NFC-e: %s - %s",
                          exc.response.status_code, _resposta_para_log(exc.response))
+            if exc.response.status_code >= 500:
+                raise EmissaoIncertaError(
+                    f"Servidor respondeu {exc.response.status_code} ao emitir NFC-e."
+                ) from exc
             try:
-                data = exc.response.json()
-                return self._parse_response(data)
+                return self._parse_response(exc.response.json())
             except Exception:
-                return {"status": "erro", "mensagem_sefaz": f"Erro {exc.response.status_code} da API"}
+                return {
+                    "status": "erro",
+                    "mensagem_sefaz": (
+                        f"A API recusou a emissão (HTTP {exc.response.status_code}) "
+                        f"antes de enviar à SEFAZ."
+                    ),
+                }
+        except (httpx.TimeoutException, httpx.TransportError) as exc:
+            logger.error("[FISCAL] Sem resposta ao emitir NFC-e: %s", exc)
+            raise EmissaoIncertaError(str(exc)) from exc
         except Exception as exc:
             logger.error("[FISCAL] Falha na requisição de emissão de NFC-e: %s", exc)
-            return {"status": "erro", "mensagem_sefaz": str(exc)}
+            raise EmissaoIncertaError(str(exc)) from exc
 
     def baixar_xml(self, caminho: str) -> Optional[str]:
         """Baixa o XML autorizado. Devolve None em qualquer falha."""
@@ -259,7 +310,16 @@ class FiscalClientStartBig:
                 return self._parse_response(response.json())
         except httpx.HTTPStatusError as exc:
             logger.error("[FISCAL] Erro HTTP ao inutilizar numeracao: %s", exc.response.status_code)
+            if exc.response.status_code >= 500:
+                raise EmissaoIncertaError(
+                    f"Servidor respondeu {exc.response.status_code} ao inutilizar."
+                ) from exc
             try:
                 return self._parse_response(exc.response.json())
             except Exception:
-                return {"status": "erro", "mensagem_sefaz": f"Erro {exc.response.status_code} da API"}
+                return {
+                    "status": "erro",
+                    "mensagem_sefaz": (
+                        f"A API recusou a inutilização (HTTP {exc.response.status_code})."
+                    ),
+                }
