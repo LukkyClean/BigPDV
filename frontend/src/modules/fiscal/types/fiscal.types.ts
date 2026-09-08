@@ -242,3 +242,27 @@ export interface ResultadoVerificacaoBatch {
   total_com_pendencias: number;
   total_com_documento: number;
 }
+
+
+/**
+ * Sugestão de campo fiscal vinda do backend.
+ *
+ * Nunca é só o valor: `fundamentacao` é o "por quê?" que a tela mostra ao lado
+ * do campo, e é o que permite ao contador discordar com base. Sugestão sem
+ * explicação, em campo tributário, é pior que campo vazio.
+ */
+export interface CampoSugerido {
+  campo: string;
+  valor: string | null;
+  fonte: 'derivado' | 'default_regime' | 'default_uf' | 'base_ncm' | 'base_cest';
+  confianca: 'certa' | 'provavel' | 'ambigua';
+  fundamentacao: string;
+  /** (valor, descrição) — preenchido quando a confiança é `ambigua`. */
+  alternativas: [string, string][];
+  /** Bloqueia auto-aplicação: errar aqui produz nota aceita e errada. */
+  exige_confirmacao: boolean;
+}
+
+export interface SugestoesFiscaisResponse {
+  sugestoes: CampoSugerido[];
+}

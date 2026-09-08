@@ -13,6 +13,7 @@ import type { EmissaoPreviewResponse,
   PendenciasGlobais,
   ResultadoVerificacaoBatch,
   VendaCorrecaoFiscalPayload,
+  SugestoesFiscaisResponse,
 } from '../types/fiscal.types';
 import { TIMEOUT_CONSULTA, TIMEOUT_EMISSAO, TIMEOUT_LOTE } from '../constants/fiscal.constants';
 
@@ -134,6 +135,20 @@ export const fiscalService = {
   async obterHistorico(id: number): Promise<DocumentoFiscalHistorico> {
     const { data } = await api.get<DocumentoFiscalHistorico>(
       `${FISCAL_ENDPOINT}/documentos/${id}/historico`,
+    );
+    return data;
+  },
+
+  /**
+   * Campos fiscais que o sistema deduz para um produto novo.
+   *
+   * Não exige o plano fiscal: sugerir não emite nada, e o lojista pode deixar
+   * o catálogo pronto antes de contratar.
+   */
+  async sugerirCamposProduto(): Promise<SugestoesFiscaisResponse> {
+    const { data } = await api.get<SugestoesFiscaisResponse>(
+      `${FISCAL_ENDPOINT}/sugestao/produto`,
+      { timeout: TIMEOUT_CONSULTA },
     );
     return data;
   },

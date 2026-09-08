@@ -8,12 +8,13 @@
  * query/mutation; dados fiscais são salvos junto com o produto.
  */
 
-import { computed, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { FileText, Info } from 'lucide-vue-next';
 import LucideIcon from '@/shared/components/icons/LucideIcon.vue';
 import BaseInput from '@/shared/components/ui/BaseInput/BaseInput.vue';
 import BaseSelect from '@/shared/components/ui/BaseSelect/BaseSelect.vue';
 import { useProductForm } from '../../composables/useProductForm';
+import { useSugestoesFiscais } from '@/modules/fiscal/composables/useSugestoesFiscais';
 import { useAuthStore } from '@/shared/stores/auth.store';
 import {
   CST_ICMS_OPTIONS,
@@ -33,7 +34,7 @@ interface Props {
   isCreateMode?: boolean;
 }
 
-defineProps<Props>();
+const props = defineProps<Props>();
 
 // =============================================
 // Form context (injetado do pai)
@@ -63,6 +64,52 @@ const {
   codigo_barras,
   errors,
 } = useProductForm();
+
+
+// =============================================
+// Sugestões fiscais (derivação)
+// =============================================
+// Só preenchem o que está VAZIO. Nunca sobrescrevem o que o usuário digitou —
+// quando o contador escolhe um CSOSN diferente do default, ele tem um motivo,
+// e a próxima rodada de sugestão não pode apagar essa escolha.
+
+const {
+  carregar: carregarSugestoes,
+  aplicarNosVazios,
+  explicacao,
+  veioDeSugestao,
+  marcarComoDoUsuario,
+} = useSugestoesFiscais();
+
+/** Nome do campo no backend → ref do formulário. */
+const REFS_POR_CAMPO: Record<string, { value: unknown }> = {
+  cfop_padrao: fiscal_cfop_padrao,
+  cst_icms: fiscal_cst_icms,
+  csosn: fiscal_csosn,
+  origem_mercadoria: fiscal_origem_mercadoria,
+  cst_pis: fiscal_cst_pis,
+  cst_cofins: fiscal_cst_cofins,
+};
+
+onMounted(async () => {
+  // Só faz sentido no cadastro novo: num produto existente, campo vazio é
+  // escolha de quem cadastrou, não lacuna a preencher.
+  if (!props.isCreateMode) return;
+
+  await carregarSugestoes();
+  aplicarNosVazios(
+    (campo) => REFS_POR_CAMPO[campo]?.value,
+    (campo, valor) => {
+      const ref = REFS_POR_CAMPO[campo];
+      if (ref) ref.value = valor;
+    },
+  );
+});
+
+/** Rótulo com a marca de sugestão, para o usuário saber o que não digitou. */
+function rotulo(campo: string, base: string): string {
+  return veioDeSugestao(campo) ? `${base} · sugerido` : base;
+}
 
 // =============================================
 // Regime tributário (CST vs CSOSN)
@@ -188,14 +235,20 @@ const cofinsTributavel = computed(() => ['01', '02'].includes(fiscal_cst_cofins.
       />
 
       <!-- CFOP Padrão -->
-      <BaseInput
-        v-model="fiscal_cfop_padrao"
-        label="CFOP Padrão (4 dígitos)"
-        placeholder="Ex: 5102"
-        :disabled="disabled"
-        inputmode="numeric"
-        :error="submitCount > 0 ? errors.fiscal_cfop_padrao : undefined"
-      />
+      <div>
+        <BaseInput
+          v-model="fiscal_cfop_padrao"
+          :label="rotulo('cfop_padrao', 'CFOP Padrão (4 dígitos)')"
+          placeholder="Ex: 5102"
+          :disabled="disabled"
+          inputmode="numeric"
+          :error="submitCount > 0 ? errors.fiscal_cfop_padrao : undefined"
+          @update:model-value="marcarComoDoUsuario('cfop_padrao')"
+        />
+        <p v-if="veioDeSugestao('cfop_padrao')" class="mt-1 text-[11px] text-zinc-500 leading-snug">
+          {{ explicacao('cfop_padrao') }}
+        </p>
+      </div>
 
       <!--
         Unidade Tributável — opcional. Vazia, o payload usa a unidade comercial
@@ -231,7 +284,8 @@ const cofinsTributavel = computed(() => ['01', '02'].includes(fiscal_cst_cofins.
         :disabled="disabled"
         placeholder="Pesquise o CST..."
         :error="submitCount > 0 ? errors.fiscal_cst_icms : undefined"
-      />
+      @update:model-value="marcarComoDoUsuario('cst_icms')"
+        />
 
       <!-- CSOSN (Simples Nacional) -->
       <BaseSelect
@@ -242,7 +296,8 @@ const cofinsTributavel = computed(() => ['01', '02'].includes(fiscal_cst_cofins.
         :disabled="disabled"
         placeholder="Pesquise o CSOSN..."
         :error="submitCount > 0 ? errors.fiscal_csosn : undefined"
-      />
+      @update:model-value="marcarComoDoUsuario('csosn')"
+        />
 
       <!-- CEST -->
       <BaseInput

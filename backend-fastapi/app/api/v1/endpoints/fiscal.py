@@ -471,6 +471,40 @@ from app.services.empresa import update_fiscal_settings, upload_certificado_focu
 from fastapi import UploadFile, File, Form
 
 # ===========================================================================
+# SUGESTÃO DE CAMPOS FISCAIS
+# ===========================================================================
+
+@router.get(
+    "/sugestao/produto",
+    summary="Sugerir Campos Fiscais de Produto",
+    description=(
+        "Devolve os campos fiscais que o sistema consegue deduzir para um "
+        "produto novo, com procedência e fundamentação. NÃO persiste nada: "
+        "quem decide o que aplicar é o formulário."
+    ),
+)
+def sugerir_campos_fiscais_produto(
+    user_token: dict = Depends(get_current_active_user),
+    *,
+    db: Session = Depends(get_db),
+):
+    """
+    Sugestões para o cadastro de produto.
+
+    Camada de leitura: sugerir não emite nada e não exige o plano fiscal — um
+    lojista pode deixar o catálogo pronto antes de contratar.
+
+    Cada campo vem com `fundamentacao` (o "por quê?" que a tela mostra ao lado)
+    e `exige_confirmacao`, ligado onde errar produz nota aceita e errada.
+    """
+    from app.services.fiscal.derivacao import derivar_produto
+    from app.services.fiscal.derivacao.resolver_db import contexto_do_cadastro
+
+    contexto = contexto_do_cadastro(db, user_token["empresa_id"])
+    return {"sugestoes": [s.model_dump() for s in derivar_produto(contexto)]}
+
+
+# ===========================================================================
 # ATIVAÇÃO DO MÓDULO (onboarding)
 # ===========================================================================
 
