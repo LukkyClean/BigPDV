@@ -225,7 +225,12 @@ def preview_nfce_venda(db: Session, venda_id: int, empresa_id: int) -> dict:
     fiscal_settings = _obter_fiscal_settings(db, empresa_id)
     venda = crud.get_venda_completa(db, venda_id)
 
-    _assert_csc_configurado(fiscal_settings)
+    # Aqui a consulta à plataforma cai bem: o preview existe justamente para o
+    # problema aparecer com a tela aberta, e não no botão de emitir com o
+    # cliente esperando no balcão.
+    _assert_csc_configurado(
+        get_fiscal_client(fiscal_settings.ambiente_emissao, crud.get_licenca_token(db))
+    )
     _assert_consumidor_identificado(venda, fiscal_settings)
 
     documento = _documento_do_consumidor(venda)
@@ -421,9 +426,24 @@ def _assert_consumidor_identificado(venda, fiscal_settings: EmpresaFiscalSetting
     )
 
 
-def _assert_csc_configurado(fiscal_settings: EmpresaFiscalSettings) -> None:
-    """Sem CSC não há QR Code, e sem QR Code o cupom não tem validade."""
-    if fiscal_settings.csc_id and obter_csc_token(fiscal_settings):
+def _assert_csc_configurado(client) -> None:
+    """
+    Sem CSC não há QR Code, e sem QR Code o cupom não tem validade.
+
+    QUEM RESPONDE É A PLATAFORMA, não um campo daqui. O CSC é cadastrado uma
+    única vez na ficha da empresa dentro da Focus, junto do certificado A1 --
+    nunca viajou no payload da nota. Perguntar ao nosso banco barraria uma loja
+    corretamente configurada só porque o lojista não redigitou o segredo aqui.
+
+    "Não sei" LIBERA. Se a consulta falhar, `consultar_config` devolve {} e a
+    emissão segue: derrubar um cupom no balcão por causa de um diagnóstico
+    indisponível troca a venda por um detalhe. O preço de errar para "tem" é um
+    cupom sem QR Code, e esse a plataforma sinaliza em `pendencias`.
+
+    Lembre que o CSC é POR AMBIENTE: o de homologação não vale em produção.
+    """
+    config = client.consultar_config()
+    if config.get("cscConfigurado") is not False:
         return
 
     raise HTTPException(
@@ -432,8 +452,10 @@ def _assert_csc_configurado(fiscal_settings: EmpresaFiscalSettings) -> None:
             "codigo": "CSC_NAO_CONFIGURADO",
             "mensagem": (
                 "O CSC (Código de Segurança do Contribuinte) não está "
-                "configurado. Ele é obrigatório para gerar o QR Code da NFC-e "
-                "— cadastre o ID e o Token em Configurações Fiscais."
+                "cadastrado para esta empresa na emissora. Sem ele o cupom sai "
+                "sem QR Code e não tem validade. Fale com o suporte para "
+                "cadastrá-lo — e confirme o ambiente, porque o CSC de "
+                "homologação não vale em produção."
             ),
         },
     )
@@ -499,7 +521,13 @@ def emitir_nfce_venda(db: Session, venda_id: int, empresa_id: int) -> DocumentoF
             detail="Apenas vendas finalizadas podem gerar NFC-e.",
         )
 
-    _assert_csc_configurado(fiscal_settings)
+    # O client nasce AQUI, e não junto da emissão lá embaixo: a trava do CSC
+    # pergunta à plataforma, e descobrir o problema depois de reservar o número
+    # queimaria uma numeração à toa.
+    token = crud.get_licenca_token(db)
+    client = get_fiscal_client(fiscal_settings.ambiente_emissao, token)
+
+    _assert_csc_configurado(client)
     _assert_consumidor_identificado(venda, fiscal_settings)
 
     # Bloqueio de duplicata — mesma regra e mesmas mensagens da NF-e.
@@ -574,9 +602,6 @@ def emitir_nfce_venda(db: Session, venda_id: int, empresa_id: int) -> DocumentoF
     # registro mesmo se a resposta da SEFAZ se perder no caminho.
     gravar_snapshot(doc, payload, venda=venda)
     crud.salvar_documento(db, doc)
-
-    token = crud.get_licenca_token(db)
-    client = get_fiscal_client(fiscal_settings.ambiente_emissao, token)
 
     try:
         resultado = client.emitir_nfce(ref, payload, idempotency_key=doc.idempotency_key)

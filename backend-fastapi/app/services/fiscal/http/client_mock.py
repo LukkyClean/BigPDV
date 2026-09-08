@@ -138,6 +138,18 @@ class FiscalClientMock:
             "</infNFe></NFe></nfeProc>"
         )
 
+    def consultar_config(self) -> dict:
+        """No mock tudo está configurado -- senão o modo de teste barraria a si mesmo."""
+        return {
+            "ambiente": 2,
+            "ambienteNome": "Homologação",
+            "configurado": True,
+            "tokenConfigurado": True,
+            "cscConfigurado": True,
+            "certificadoStatus": "OK",
+            "pendencias": [],
+        }
+
     def consultar_nfe(
         self, ref: str, tipo_documento: str = "NFE"
     ) -> EmissaoResultado:

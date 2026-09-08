@@ -19,7 +19,7 @@ from app.db.models.endereco import Endereco
 from app.db.models.venda import Venda
 from app.db.models.venda_nota_fiscal import VendaNotaFiscal
 
-from .helpers import obter_crt, obter_csc_token, usa_csosn
+from .helpers import obter_crt, usa_csosn
 from .tax_engine.types import ResultadoCalculo
 
 
@@ -488,8 +488,8 @@ def montar_payload_nfce(
       Toda entrega saía com o indicador errado.
     * `consumidor_final` sempre 1: é venda a consumidor, por definição.
     * Destinatário OPCIONAL (ver `_montar_destinatario_nfce`).
-    * `csc_id`/`csc_token`: é com eles que o provedor monta o QR Code impresso
-      no cupom. Sem CSC não há QR Code válido, e sem QR Code o cupom não vale.
+    * O CSC NÃO viaja no payload: fica cadastrado na empresa dentro da Focus,
+      que monta o QR Code sozinha. Ver o comentário no corpo da função.
     * Saída passa por `expurgar_nulos` — nó vazio é rejeição na hora.
 
     `numero` é o número já reservado por `crud.reservar_proximo_numero_nfce`.
@@ -570,10 +570,21 @@ def montar_payload_nfce(
         "formas_pagamento": formas_pagamento,
         "valor_troco": valor_troco,
         "totais": totais,
-        # Credenciais do QR Code. Ficam fora do grupo do emitente porque não são
-        # dado cadastral: são segredo de transmissão.
-        "csc_id": fiscal_settings.csc_id,
-        "csc_token": obter_csc_token(fiscal_settings),
+        # O CSC NÃO vai aqui, e isso é deliberado.
+        #
+        # Ele é cadastrado UMA VEZ na ficha da empresa dentro da Focus, junto do
+        # certificado A1, e é ela quem monta o hash do QR Code e a URL de
+        # consulta. Nunca foi campo de nota.
+        #
+        # Enquanto a plataforma validava o payload com schema estrito, mandá-lo
+        # era inofensivo: o campo era descartado no caminho. Agora que o payload
+        # é repassado inteiro, ele atravessaria até a Focus -- segredo em
+        # trânsito sem ganho nenhum. Vazado, permite forjar QR Code em nome da
+        # loja.
+        #
+        # Se o cupom sair sem QR Code, o CSC não está na Focus: veja
+        # `cscConfigurado` em GET /erp/fiscal/config. E lembre que ele é POR
+        # AMBIENTE -- o de homologação não vale em produção.
     }
 
     if destinatario is not None:

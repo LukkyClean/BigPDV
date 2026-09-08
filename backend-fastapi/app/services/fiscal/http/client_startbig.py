@@ -264,6 +264,31 @@ class FiscalClientStartBig:
             logger.warning("[FISCAL] Falha ao baixar XML em %s: %s", url, exc)
             return None
 
+    def consultar_config(self) -> dict:
+        """
+        Configuração fiscal desta licença, como a PLATAFORMA a enxerga.
+
+        É a fonte de verdade para coisas que não moram aqui: o ambiente
+        (homologação × produção é decidido lá, por cliente), se o token da Focus
+        foi preenchido, se o CSC está cadastrado e o status do certificado.
+
+        Não exige módulo do lado de lá, de propósito: é justamente quem ainda
+        não emite que precisa desta resposta.
+
+        Devolve {} quando não dá para saber. Quem chama trata isso como "não
+        sei", nunca como "não configurado" -- derrubar uma emissão por causa de
+        um diagnóstico indisponível seria trocar a nota por um detalhe.
+        """
+        url = f"{self.base_url}/erp/fiscal/config"
+        try:
+            with httpx.Client(timeout=10.0) as client:
+                response = client.get(url, headers=self.headers)
+                response.raise_for_status()
+                return response.json() or {}
+        except Exception as exc:
+            logger.warning("[FISCAL] Não foi possível ler a config da plataforma: %s", exc)
+            return {}
+
     def consultar_nfe(
         self, ref: str, tipo_documento: str = "NFE"
     ) -> EmissaoResultado:
@@ -335,6 +360,17 @@ class FiscalClientStartBig:
             "numero_inicial": payload.get("numero_inicial"),
             "numero_final": payload.get("numero_final"),
             "justificativa": payload.get("justificativa"),
+            # `ano` NÃO está na doc publicada da Focus, que lista cinco campos
+            # obrigatórios e nenhum opcional. Mandamos assim mesmo porque o
+            # custo é zero e o risco de não mandar não é: sem ele, quem decide o
+            # ano é a Focus, e quase certamente será o ANO CORRENTE -- então
+            # inutilizar em janeiro uma faixa aberta em dezembro iria para o ano
+            # errado. Se a Focus ignorar, nada muda; se honrar, a faixa vai para
+            # o ano certo.
+            #
+            # ENQUANTO NINGUÉM CONFIRMAR com o suporte da Focus que ela honra:
+            # inutilize a faixa no mesmo ano em que ela foi aberta.
+            "ano": payload.get("ano"),
         }
         headers = dict(self.headers)
         if idempotency_key:

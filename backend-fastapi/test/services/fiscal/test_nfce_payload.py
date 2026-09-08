@@ -232,12 +232,18 @@ def test_destinatario_nfce_nao_leva_endereco():
 # 4. CSC
 # =========================
 
-def test_csc_vai_no_payload_em_claro():
-    """O provedor precisa do token para montar o hash do QR Code."""
+def test_csc_nao_vai_no_payload():
+    """O CSC é cadastrado na empresa dentro da Focus, e não viaja na nota.
+
+    Enquanto a plataforma validava o payload com schema estrito, mandá-lo era
+    inofensivo -- o campo morria no caminho. Desde que o payload passou a ser
+    repassado inteiro, ele atravessaria até a Focus: segredo em trânsito sem
+    ganho nenhum, e quem o tem forja QR Code em nome da loja.
+    """
     payload = _montar_nfce(_venda_simples())
 
-    assert payload["csc_id"] == "000001"
-    assert payload["csc_token"] == "CSC-DE-TESTE"
+    assert "csc_token" not in payload
+    assert "csc_id" not in payload
 
 
 def test_csc_e_guardado_cifrado():
@@ -254,17 +260,46 @@ def test_csc_legado_em_texto_puro_continua_funcionando():
     assert obter_csc_token(fs) == "TEXTO-PURO-LEGADO"
 
 
-@pytest.mark.parametrize("fs_kwargs", [
-    {"csc_id": None},
-    {"csc_token": None},
-    {"csc_id": None, "csc_token": None},
-])
-def test_emissao_sem_csc_e_recusada(fs_kwargs):
+class _ClienteConfig:
+    """Client de mentira que devolve a config que o teste quiser."""
+
+    def __init__(self, config):
+        self._config = config
+
+    def consultar_config(self):
+        return self._config
+
+
+def test_emissao_sem_csc_e_recusada():
+    """Quem responde é a PLATAFORMA, não um campo do nosso banco.
+
+    O CSC mora na ficha da empresa dentro da Focus. Perguntar ao banco local
+    barraria uma loja corretamente configurada só porque o lojista não
+    redigitou o segredo aqui.
+    """
     with pytest.raises(HTTPException) as erro:
-        _assert_csc_configurado(_fiscal_settings_nfce(**fs_kwargs))
+        _assert_csc_configurado(_ClienteConfig({"cscConfigurado": False}))
 
     assert erro.value.status_code == 422
     assert erro.value.detail["codigo"] == "CSC_NAO_CONFIGURADO"
+
+
+def test_csc_configurado_na_plataforma_libera():
+    _assert_csc_configurado(_ClienteConfig({"cscConfigurado": True}))
+
+
+@pytest.mark.parametrize(
+    "config", [{}, {"cscConfigurado": None}], ids=["sem_resposta", "campo_ausente"]
+)
+def test_nao_saber_libera(config):
+    """"Não sei" NÃO pode virar "não tem".
+
+    Se a consulta de diagnóstico falhar, `consultar_config` devolve {} e a
+    emissão segue: derrubar um cupom no balcão porque um diagnóstico ficou
+    indisponível troca a venda por um detalhe. O preço de errar para "tem" é um
+    cupom sem QR Code, e esse a plataforma sinaliza em `pendencias`.
+    """
+    _assert_csc_configurado(_ClienteConfig(config))
 
 
 # =========================

@@ -80,6 +80,10 @@ class FiscalClientProtocol(Protocol):
         """
         ...
 
+    def consultar_config(self) -> dict:
+        """Config fiscal como a plataforma a enxerga. {} = não foi possível saber."""
+        ...
+
     def consultar_nfe(
         self, ref: str, tipo_documento: str = "NFE"
     ) -> EmissaoResultado:
