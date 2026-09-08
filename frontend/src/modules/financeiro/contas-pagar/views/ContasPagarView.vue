@@ -137,7 +137,7 @@ async function confirmarCancelamento(conta: ContaPagar) {
 
 function classeStatus(conta: ContaPagar): string {
   if (conta.status === 'PAGA') return 'bg-emerald-50 text-emerald-700';
-  if (conta.status === 'CANCELADA') return 'bg-gray-100 text-gray-500';
+  if (conta.status === 'CANCELADA') return 'bg-zinc-100 text-zinc-500';
   if (conta.vencida) return 'bg-rose-50 text-rose-700';
   return 'bg-amber-50 text-amber-700';
 }
@@ -150,7 +150,7 @@ function rotuloStatus(conta: ContaPagar): string {
 </script>
 
 <template>
-  <div class="flex flex-col gap-5">
+  <div class="flex flex-col gap-6 md:gap-8">
     <!-- O aviso de que a lista NÃO é o mês: quem chegou pelo painel de atenção
          está vendo um recorte, e sem dizer isso a tela parece ter esquecido
          contas. "Mostrar tudo" devolve o comportamento normal. -->
@@ -175,12 +175,12 @@ function rotuloStatus(conta: ContaPagar): string {
     <!-- Filtros -->
     <div class="flex flex-wrap items-center justify-between gap-3">
       <div class="flex items-center gap-2">
-        <button type="button" @click="anterior" class="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer" aria-label="Mês anterior">
-          <ChevronLeft :size="18" class="text-gray-600" />
+        <button type="button" @click="anterior" class="p-2 rounded-lg border border-zinc-200 hover:bg-zinc-50 cursor-pointer" aria-label="Mês anterior">
+          <ChevronLeft :size="18" class="text-zinc-600" />
         </button>
-        <span class="font-semibold text-gray-800 min-w-40 text-center">{{ rotulo }}</span>
-        <button type="button" @click="proximo" class="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer" aria-label="Próximo mês">
-          <ChevronRight :size="18" class="text-gray-600" />
+        <span class="font-semibold text-zinc-800 min-w-40 text-center">{{ rotulo }}</span>
+        <button type="button" @click="proximo" class="p-2 rounded-lg border border-zinc-200 hover:bg-zinc-50 cursor-pointer" aria-label="Próximo mês">
+          <ChevronRight :size="18" class="text-zinc-600" />
         </button>
       </div>
 
@@ -190,11 +190,11 @@ function rotuloStatus(conta: ContaPagar): string {
     </div>
 
     <div class="flex flex-wrap items-center gap-3">
-      <div class="flex rounded-xl bg-gray-100 p-1">
+      <div class="flex rounded-xl bg-zinc-100 p-1">
         <button
           v-for="aba in ABAS" :key="aba.valor" type="button"
           class="rounded-lg px-3 py-1.5 text-sm font-medium transition cursor-pointer"
-          :class="statusFiltro === aba.valor ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'"
+          :class="statusFiltro === aba.valor ? 'bg-white text-zinc-800 shadow-sm' : 'text-zinc-500 hover:text-zinc-700'"
           @click="statusFiltro = aba.valor"
         >
           {{ aba.rotulo }}
@@ -207,37 +207,37 @@ function rotuloStatus(conta: ContaPagar): string {
 
     <!-- Totais: do filtro inteiro, não da página -->
     <div v-if="listagem" class="grid gap-3 sm:grid-cols-3">
-      <div class="rounded-xl border border-gray-100 bg-white px-4 py-3 shadow-sm">
-        <p class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Em aberto</p>
-        <p class="mt-1 text-lg font-bold text-gray-800 tabular-nums">{{ formatCurrency(listagem.total_pendente) }}</p>
+      <div class="rounded-xl border border-zinc-100 bg-white px-4 py-3 shadow-sm">
+        <p class="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Em aberto</p>
+        <p class="mt-1 text-lg font-bold text-zinc-800 tabular-nums">{{ formatCurrency(listagem.total_pendente) }}</p>
       </div>
       <div class="rounded-xl border px-4 py-3 shadow-sm"
-           :class="listagem.total_vencido > 0 ? 'border-rose-200 bg-rose-50' : 'border-gray-100 bg-white'">
+           :class="listagem.total_vencido > 0 ? 'border-rose-200 bg-rose-50' : 'border-zinc-100 bg-white'">
         <p class="text-[11px] font-semibold uppercase tracking-wide"
-           :class="listagem.total_vencido > 0 ? 'text-rose-600' : 'text-gray-500'">Vencido</p>
+           :class="listagem.total_vencido > 0 ? 'text-rose-600' : 'text-zinc-500'">Vencido</p>
         <p class="mt-1 text-lg font-bold tabular-nums"
-           :class="listagem.total_vencido > 0 ? 'text-rose-700' : 'text-gray-800'">
+           :class="listagem.total_vencido > 0 ? 'text-rose-700' : 'text-zinc-800'">
           {{ formatCurrency(listagem.total_vencido) }}
         </p>
       </div>
-      <div class="rounded-xl border border-gray-100 bg-white px-4 py-3 shadow-sm">
-        <p class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Pago no período</p>
-        <p class="mt-1 text-lg font-bold text-gray-800 tabular-nums">{{ formatCurrency(listagem.total_pago) }}</p>
+      <div class="rounded-xl border border-zinc-100 bg-white px-4 py-3 shadow-sm">
+        <p class="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Pago no período</p>
+        <p class="mt-1 text-lg font-bold text-zinc-800 tabular-nums">{{ formatCurrency(listagem.total_pago) }}</p>
       </div>
     </div>
 
     <!-- Lista -->
-    <div v-if="isLoading" class="text-sm text-gray-500">Carregando…</div>
+    <div v-if="isLoading" class="text-sm text-zinc-500">Carregando…</div>
 
-    <div v-else-if="!listagem?.itens.length" class="rounded-2xl border border-dashed border-gray-200 px-6 py-12 text-center">
-      <p class="text-sm font-medium text-gray-700">Nenhuma conta neste período</p>
-      <p class="mt-1 text-sm text-gray-400">Lance aluguel, fornecedores e despesas fixas para ver o resultado real do mês.</p>
+    <div v-else-if="!listagem?.itens.length" class="rounded-2xl border border-dashed border-zinc-200 px-6 py-12 text-center">
+      <p class="text-sm font-medium text-zinc-700">Nenhuma conta neste período</p>
+      <p class="mt-1 text-sm text-zinc-400">Lance aluguel, fornecedores e despesas fixas para ver o resultado real do mês.</p>
     </div>
 
-    <div v-else class="overflow-x-auto rounded-2xl border border-gray-100 bg-white shadow-sm">
+    <div v-else class="overflow-x-auto rounded-2xl border border-zinc-100 bg-white shadow-sm">
       <table class="w-full min-w-180 text-sm">
         <thead>
-          <tr class="border-b border-gray-100 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+          <tr class="border-b border-zinc-100 text-left text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
             <th class="px-5 py-3">Descrição</th>
             <th class="px-5 py-3">Categoria</th>
             <th class="px-5 py-3">Vencimento</th>
@@ -246,8 +246,8 @@ function rotuloStatus(conta: ContaPagar): string {
             <th class="px-5 py-3 text-right">Ações</th>
           </tr>
         </thead>
-        <tbody class="divide-y divide-gray-100">
-          <tr v-for="conta in listagem.itens" :key="conta.id" class="hover:bg-gray-50/60">
+        <tbody class="divide-y divide-zinc-100">
+          <tr v-for="conta in listagem.itens" :key="conta.id" class="hover:bg-zinc-50/60">
             <td class="px-5 py-3">
               <!-- Abre o DETALHE, como em Contas a Receber — não o formulário.
                    A trilha de auditoria só existe aqui dentro, e enquanto este
@@ -256,7 +256,7 @@ function rotuloStatus(conta: ContaPagar): string {
                    um clique, na coluna de ações. -->
               <button
                 type="button"
-                class="text-left font-medium text-gray-800 hover:underline underline-offset-2 cursor-pointer"
+                class="text-left font-medium text-zinc-800 hover:underline underline-offset-2 cursor-pointer"
                 @click="contaParaDetalhe = conta"
               >
                 {{ conta.descricao }}
@@ -273,9 +273,9 @@ function rotuloStatus(conta: ContaPagar): string {
                 mensal
               </span>
             </td>
-            <td class="px-5 py-3 text-gray-500">{{ conta.plano_conta_nome ?? '—' }}</td>
-            <td class="px-5 py-3 text-gray-600">{{ formatDataPura(conta.vencimento) }}</td>
-            <td class="px-5 py-3 text-right font-semibold text-gray-800 tabular-nums">
+            <td class="px-5 py-3 text-zinc-500">{{ conta.plano_conta_nome ?? '—' }}</td>
+            <td class="px-5 py-3 text-zinc-600">{{ formatDataPura(conta.vencimento) }}</td>
+            <td class="px-5 py-3 text-right font-semibold text-zinc-800 tabular-nums">
               {{ formatCurrency(conta.valor_pago ?? conta.valor) }}
             </td>
             <td class="px-5 py-3">
@@ -290,13 +290,13 @@ function rotuloStatus(conta: ContaPagar): string {
                     Pagar
                   </button>
                   <!-- Discreto ao lado de "Pagar", mas nunca cinza-desabilitado:
-                       em `text-gray-400` ele lia como rótulo morto e ninguém
+                       em `text-zinc-400` ele lia como rótulo morto e ninguém
                        achava a ação. Continua secundário pela ausência de cor
                        de marca, não pela falta de contraste. -->
-                  <button type="button" class="text-xs font-medium text-gray-600 underline-offset-2 hover:text-gray-900 hover:underline cursor-pointer" @click="editar(conta)">
+                  <button type="button" class="text-xs font-medium text-zinc-600 underline-offset-2 hover:text-zinc-900 hover:underline cursor-pointer" @click="editar(conta)">
                     Editar
                   </button>
-                  <button type="button" class="text-xs font-medium text-gray-600 underline-offset-2 hover:text-gray-900 hover:underline cursor-pointer" @click="confirmarCancelamento(conta)">
+                  <button type="button" class="text-xs font-medium text-zinc-600 underline-offset-2 hover:text-zinc-900 hover:underline cursor-pointer" @click="confirmarCancelamento(conta)">
                     Cancelar
                   </button>
                 </template>
@@ -307,14 +307,14 @@ function rotuloStatus(conta: ContaPagar): string {
                        da tela — ele conta justamente as despesas pagas. -->
                   <button
                     type="button"
-                    class="text-xs font-medium text-gray-600 underline-offset-2 hover:text-gray-900 hover:underline cursor-pointer"
+                    class="text-xs font-medium text-zinc-600 underline-offset-2 hover:text-zinc-900 hover:underline cursor-pointer"
                     @click="contaParaClassificar = conta"
                   >
                     Classificar
                   </button>
                   <button
                     type="button"
-                    class="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-700 cursor-pointer"
+                    class="flex items-center gap-1 text-xs font-medium text-zinc-500 hover:text-zinc-700 cursor-pointer"
                     @click="contaParaEstorno = conta"
                   >
                     <Undo2 :size="13" /> Estornar
@@ -333,7 +333,7 @@ function rotuloStatus(conta: ContaPagar): string {
                     <RotateCcw :size="13" /> Reativar
                   </button>
                 </template>
-                <span v-else class="text-xs text-gray-300">—</span>
+                <span v-else class="text-xs text-zinc-300">—</span>
               </div>
             </td>
           </tr>

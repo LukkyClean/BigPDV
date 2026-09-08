@@ -61,16 +61,16 @@ function confirmar() {
     @close="emit('fechar')"
   >
     <div v-if="conta" class="flex flex-col gap-4">
-      <div class="rounded-xl bg-gray-50 px-4 py-3">
-        <p class="text-sm font-semibold text-gray-800">{{ conta.descricao }}</p>
-        <p class="mt-0.5 text-xs text-gray-500">
+      <div class="rounded-xl bg-zinc-50 px-4 py-3">
+        <p class="text-sm font-semibold text-zinc-800">{{ conta.descricao }}</p>
+        <p class="mt-0.5 text-xs text-zinc-500">
           Pago {{ formatCurrency(conta.valor_pago ?? conta.valor) }}
           <template v-if="conta.pago_em"> em {{ formatData(conta.pago_em) }}</template>
         </p>
       </div>
 
       <div class="w-full">
-        <label for="motivo-estorno" class="mb-1 block select-none text-xs font-medium text-gray-700">
+        <label for="motivo-estorno" class="mb-1 block select-none text-xs font-medium text-zinc-700">
           Motivo <span class="text-red-600">*</span>
         </label>
         <textarea
@@ -78,7 +78,7 @@ function confirmar() {
           v-model="motivo"
           rows="3"
           placeholder="Ex.: lançado na conta errada"
-          class="w-full resize-none rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 outline-none transition-colors duration-200 placeholder:text-gray-400 focus:border-brand-primary focus:ring-1 focus:ring-brand-primary"
+          class="w-full resize-none rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-700 outline-none transition-colors duration-200 placeholder:text-zinc-400 focus:border-brand-primary focus:ring-1 focus:ring-brand-primary"
         />
       </div>
 

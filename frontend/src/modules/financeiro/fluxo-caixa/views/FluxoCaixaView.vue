@@ -73,7 +73,7 @@ function diaSemana(iso: string): string {
 </script>
 
 <template>
-  <div class="flex flex-col gap-6">
+  <div class="flex flex-col gap-6 md:gap-8">
     <!-- Janela -->
     <div class="flex flex-wrap items-center justify-between gap-3">
       <div class="flex items-center gap-2">
@@ -85,7 +85,7 @@ function diaSemana(iso: string): string {
           :class="
             dias === opcao
               ? 'border-brand-primary bg-brand-primary/5 text-brand-primary'
-              : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+              : 'border-zinc-200 text-zinc-600 hover:bg-zinc-50'
           "
           @click="dias = opcao"
         >
@@ -100,13 +100,13 @@ function diaSemana(iso: string): string {
 
     <!-- Aviso e não bloqueio: o horizonte longo serve para enxergar as parcelas
          que já existem, desde que o dono saiba o que NÃO está ali. -->
-    <p v-if="dias > 90" class="rounded-xl bg-gray-50 px-3.5 py-2.5 text-xs text-gray-500">
+    <p v-if="dias > 90" class="rounded-xl bg-zinc-50 px-3.5 py-2.5 text-xs text-zinc-500">
       Daqui a mais de 90 dias a projeção fica incompleta: contas mensais só são criadas quando
       você paga a anterior, então elas ainda não existem para entrar aqui. Parcelas já
       lançadas aparecem normalmente.
     </p>
 
-    <div v-if="isLoading" class="text-sm text-gray-500">Carregando…</div>
+    <div v-if="isLoading" class="text-sm text-zinc-500">Carregando…</div>
 
     <template v-else-if="fluxo">
       <!-- Sem saldo declarado a projeção não parte de lugar nenhum. "Não sei"
@@ -149,11 +149,11 @@ function diaSemana(iso: string): string {
 
       <!-- Saldo hoje / vai entrar / vai sair / sobra prevista -->
       <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-          <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-            <Wallet :size="15" class="text-gray-400" /> Saldo hoje
+        <div class="rounded-2xl border border-zinc-100 bg-white p-5 shadow-sm">
+          <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+            <Wallet :size="15" class="text-zinc-400" /> Saldo hoje
           </p>
-          <p class="mt-2 text-xl font-bold text-gray-800">
+          <p class="mt-2 text-xl font-bold text-zinc-800">
             {{ formatCurrency(fluxo.saldo_inicial) }}
           </p>
           <!-- AS DUAS METADES DO SALDO. O total sozinho o dono só pode aceitar
@@ -162,9 +162,9 @@ function diaSemana(iso: string): string {
                declaração pura e ficava parado por semanas, até alguém digitar
                outro à mão. -->
           <template v-if="fluxo.saldo_declarado">
-            <p class="mt-2 text-xs text-gray-500">
+            <p class="mt-2 text-xs text-zinc-500">
               Você declarou
-              <strong class="tabular-nums text-gray-700">{{ formatCurrency(fluxo.saldo_ancora) }}</strong>
+              <strong class="tabular-nums text-zinc-700">{{ formatCurrency(fluxo.saldo_ancora) }}</strong>
               <template v-if="diasDesdeSaldo === 0"> hoje</template>
               <template v-else-if="diasDesdeSaldo === 1"> ontem</template>
               <template v-else-if="diasDesdeSaldo !== null"> há {{ diasDesdeSaldo }} dias</template>
@@ -184,7 +184,7 @@ function diaSemana(iso: string): string {
             </p>
             <p
               v-if="!fluxo.saldo_entrou && !fluxo.saldo_saiu"
-              class="text-xs text-gray-400"
+              class="text-xs text-zinc-400"
             >
               Nada entrou nem saiu desde então.
             </p>
@@ -195,24 +195,24 @@ function diaSemana(iso: string): string {
           <p v-else class="mt-1 text-xs text-amber-600 font-semibold">Você ainda não informou</p>
         </div>
 
-        <div class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-          <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+        <div class="rounded-2xl border border-zinc-100 bg-white p-5 shadow-sm">
+          <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
             <TrendingUp :size="15" class="text-emerald-500" /> Vai entrar
           </p>
-          <p class="mt-2 text-xl font-bold text-gray-800">
+          <p class="mt-2 text-xl font-bold text-zinc-800">
             {{ formatCurrency(fluxo.total_entradas) }}
           </p>
-          <p class="mt-1 text-xs text-gray-400">Cobranças com vencimento no período</p>
+          <p class="mt-1 text-xs text-zinc-400">Cobranças com vencimento no período</p>
         </div>
 
-        <div class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-          <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+        <div class="rounded-2xl border border-zinc-100 bg-white p-5 shadow-sm">
+          <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
             <TrendingDown :size="15" class="text-rose-500" /> Vai sair
           </p>
-          <p class="mt-2 text-xl font-bold text-gray-800">
+          <p class="mt-2 text-xl font-bold text-zinc-800">
             {{ formatCurrency(fluxo.total_saidas) }}
           </p>
-          <p class="mt-1 text-xs text-gray-400">Contas a pagar no mesmo período</p>
+          <p class="mt-1 text-xs text-zinc-400">Contas a pagar no mesmo período</p>
         </div>
 
         <div
@@ -249,13 +249,13 @@ function diaSemana(iso: string): string {
            empurrá-lo para hoje inventaria um aperto que talvez não exista. -->
       <div
         v-if="temAtraso"
-        class="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-2xl border border-gray-100 bg-white px-5 py-4 shadow-sm"
+        class="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-2xl border border-zinc-100 bg-white px-5 py-4 shadow-sm"
       >
-        <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Fora da projeção</p>
+        <p class="text-xs font-semibold uppercase tracking-wide text-zinc-500">Fora da projeção</p>
         <button
           v-if="fluxo.atrasado_a_receber > 0"
           type="button"
-          class="text-sm text-gray-700 cursor-pointer hover:underline"
+          class="text-sm text-zinc-700 cursor-pointer hover:underline"
           @click="router.push({ name: 'finance-receivable' })"
         >
           <strong class="text-rose-600">{{ formatCurrency(fluxo.atrasado_a_receber) }}</strong>
@@ -264,22 +264,22 @@ function diaSemana(iso: string): string {
         <button
           v-if="fluxo.atrasado_a_pagar > 0"
           type="button"
-          class="text-sm text-gray-700 cursor-pointer hover:underline"
+          class="text-sm text-zinc-700 cursor-pointer hover:underline"
           @click="router.push({ name: 'finance-payable' })"
         >
           <strong class="text-amber-700">{{ formatCurrency(fluxo.atrasado_a_pagar) }}</strong>
           atrasado a pagar
         </button>
-        <p class="text-xs text-gray-400">
+        <p class="text-xs text-zinc-400">
           Vencido não entra na linha do tempo — não há dia futuro para ele ocupar.
         </p>
       </div>
 
       <!-- A régua -->
-      <section class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-        <h3 class="text-sm font-bold text-gray-800">Dia a dia</h3>
+      <section class="rounded-2xl border border-zinc-100 bg-white p-5 shadow-sm">
+        <h3 class="text-sm font-bold text-zinc-800">Dia a dia</h3>
 
-        <p v-if="!fluxo.linha.length" class="mt-3 text-sm text-gray-400">
+        <p v-if="!fluxo.linha.length" class="mt-3 text-sm text-zinc-400">
           Nada agendado para os próximos {{ fluxo.dias }} dias. Contas a pagar e cobranças a
           receber aparecem aqui na data do vencimento.
         </p>
@@ -290,7 +290,7 @@ function diaSemana(iso: string): string {
              real tropeçou. -->
         <div
           v-else
-          class="mt-4 flex items-baseline justify-between gap-3 border-b border-gray-100 pb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400"
+          class="mt-4 flex items-baseline justify-between gap-3 border-b border-zinc-100 pb-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-400"
         >
           <span>Dia</span>
           <div class="flex items-baseline gap-4">
@@ -301,12 +301,12 @@ function diaSemana(iso: string): string {
           </div>
         </div>
 
-        <ul v-if="fluxo.linha.length" class="flex flex-col divide-y divide-gray-100">
+        <ul v-if="fluxo.linha.length" class="flex flex-col divide-y divide-zinc-100">
           <li v-for="dia in fluxo.linha" :key="dia.data" class="py-3">
             <div class="flex items-baseline justify-between gap-3">
-              <p class="text-sm font-semibold text-gray-800">
+              <p class="text-sm font-semibold text-zinc-800">
                 {{ formatDataPura(dia.data) }}
-                <span class="ml-1 text-xs font-normal capitalize text-gray-400">
+                <span class="ml-1 text-xs font-normal capitalize text-zinc-400">
                   {{ diaSemana(dia.data) }}
                 </span>
               </p>
@@ -328,10 +328,10 @@ function diaSemana(iso: string): string {
                   class="min-w-28 text-right font-bold"
                   :class="
                     !fluxo.saldo_declarado
-                      ? 'text-gray-400'
+                      ? 'text-zinc-400'
                       : dia.saldo < 0
                         ? 'text-rose-700'
-                        : 'text-gray-800'
+                        : 'text-zinc-800'
                   "
                 >
                   {{ formatCurrency(dia.saldo) }}
@@ -343,7 +343,7 @@ function diaSemana(iso: string): string {
               <li
                 v-for="lancamento in dia.lancamentos"
                 :key="`${lancamento.tipo}-${lancamento.conta_id}`"
-                class="flex items-baseline justify-between gap-3 text-xs text-gray-500"
+                class="flex items-baseline justify-between gap-3 text-xs text-zinc-500"
               >
                 <span class="flex min-w-0 items-baseline gap-2">
                   <span class="truncate">{{ lancamento.descricao }}</span>
@@ -352,7 +352,7 @@ function diaSemana(iso: string): string {
                        pagamento não foi registrado. -->
                   <span
                     v-if="lancamento.recorrente"
-                    class="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-500"
+                    class="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] font-medium text-zinc-500"
                   >
                     repete todo mês
                   </span>
@@ -365,7 +365,7 @@ function diaSemana(iso: string): string {
           </li>
         </ul>
 
-        <p v-if="fluxo.linha.length && !fluxo.saldo_declarado" class="mt-3 text-xs text-gray-400">
+        <p v-if="fluxo.linha.length && !fluxo.saldo_declarado" class="mt-3 text-xs text-zinc-400">
           Sem o ponto de partida, a coluna da direita soma só o movimento a partir de zero —
           não é o seu dinheiro. Informe o saldo uma vez para ela virar o saldo previsto de
           cada dia.

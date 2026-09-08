@@ -87,7 +87,7 @@ const rotuloMedia = computed(() => {
   const razao = (ultimo.value.receita - mediaAnterior.value) / mediaAnterior.value;
   if (razao > FAIXA_NA_MEDIA) return { texto: 'acima da sua média', cor: 'text-emerald-600' };
   if (razao < -FAIXA_NA_MEDIA) return { texto: 'abaixo da sua média', cor: 'text-rose-600' };
-  return { texto: 'na média dos últimos meses', cor: 'text-gray-500' };
+  return { texto: 'na média dos últimos meses', cor: 'text-zinc-500' };
 });
 
 /** A origem que mais pesou no último mês — "dependo de uma perna só?". */
@@ -107,7 +107,7 @@ function faltam(portao: number): number {
 </script>
 
 <template>
-  <div class="flex flex-col gap-6">
+  <div class="flex flex-col gap-6 md:gap-8">
     <div class="flex items-center gap-2">
       <button
         v-for="opcao in [6, 12]"
@@ -117,7 +117,7 @@ function faltam(portao: number): number {
         :class="
           meses === opcao
             ? 'border-brand-primary bg-brand-primary/5 text-brand-primary'
-            : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+            : 'border-zinc-200 text-zinc-600 hover:bg-zinc-50'
         "
         @click="meses = opcao"
       >
@@ -125,7 +125,7 @@ function faltam(portao: number): number {
       </button>
     </div>
 
-    <div v-if="isLoading" class="text-sm text-gray-500">Carregando…</div>
+    <div v-if="isLoading" class="text-sm text-zinc-500">Carregando…</div>
 
     <template v-else-if="serie">
       <!-- A loja começou este mês. Não há UM mês fechado, e nenhuma leitura
@@ -133,13 +133,13 @@ function faltam(portao: number): number {
            reto no zero e deixar o dono concluir que o sistema está quebrado. -->
       <div
         v-if="disponiveis === 0"
-        class="rounded-2xl border border-gray-100 bg-white p-8 text-center shadow-sm"
+        class="rounded-2xl border border-zinc-100 bg-white p-8 text-center shadow-sm"
       >
-        <CalendarRange :size="28" class="mx-auto text-gray-300" />
-        <p class="mt-3 text-sm font-semibold text-gray-800">
+        <CalendarRange :size="28" class="mx-auto text-zinc-300" />
+        <p class="mt-3 text-sm font-semibold text-zinc-800">
           Ainda não há um mês fechado para comparar
         </p>
-        <p class="mx-auto mt-1 max-w-lg text-sm text-gray-500">
+        <p class="mx-auto mt-1 max-w-lg text-sm text-zinc-500">
           Esta tela fala de meses inteiros: o mês em andamento não entra, porque comparar
           alguns dias com um mês completo acusaria queda todo dia 3. Assim que o mês virar,
           ele aparece aqui — e a cada mês novo uma leitura a mais se abre sozinha.
@@ -149,24 +149,24 @@ function faltam(portao: number): number {
       <template v-else>
         <!-- O que dá para dizer do último mês fechado -->
         <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-            <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+          <div class="rounded-2xl border border-zinc-100 bg-white p-5 shadow-sm">
+            <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
               <TrendingUp :size="15" class="text-emerald-500" /> {{ nomeDoMes(ultimo?.mes) }}
             </p>
-            <p class="mt-2 text-xl font-bold text-gray-800">
+            <p class="mt-2 text-xl font-bold text-zinc-800">
               {{ formatCurrency(ultimo?.receita ?? 0) }}
             </p>
             <p v-if="rotuloMedia" class="mt-1 text-xs font-semibold" :class="rotuloMedia.cor">
               {{ rotuloMedia.texto }}
             </p>
-            <p v-else class="mt-1 text-xs text-gray-400">
+            <p v-else class="mt-1 text-xs text-zinc-400">
               Comparação com a sua média em {{ faltam(PORTAO_MEDIA) }}
               {{ faltam(PORTAO_MEDIA) === 1 ? 'mês' : 'meses' }}
             </p>
           </div>
 
-          <div class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-            <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">
+          <div class="rounded-2xl border border-zinc-100 bg-white p-5 shadow-sm">
+            <p class="text-xs font-semibold uppercase tracking-wide text-zinc-500">
               Variação no mês
             </p>
             <template v-if="variacao !== null">
@@ -176,55 +176,55 @@ function faltam(portao: number): number {
               >
                 {{ variacao >= 0 ? '+' : '' }}{{ Math.round(variacao * 100) }}%
               </p>
-              <p class="mt-1 text-xs text-gray-400">contra {{ nomeDoMes(anterior?.mes) }}</p>
+              <p class="mt-1 text-xs text-zinc-400">contra {{ nomeDoMes(anterior?.mes) }}</p>
             </template>
             <template v-else>
-              <p class="mt-2 text-xl font-bold text-gray-300">—</p>
-              <p class="mt-1 text-xs text-gray-400">
+              <p class="mt-2 text-xl font-bold text-zinc-300">—</p>
+              <p class="mt-1 text-xs text-zinc-400">
                 Chega em {{ faltam(PORTAO_COMPARACAO) }}
                 {{ faltam(PORTAO_COMPARACAO) === 1 ? 'mês' : 'meses' }}
               </p>
             </template>
           </div>
 
-          <div class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-            <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-              <Percent :size="15" class="text-gray-400" /> Concentração
+          <div class="rounded-2xl border border-zinc-100 bg-white p-5 shadow-sm">
+            <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+              <Percent :size="15" class="text-zinc-400" /> Concentração
             </p>
             <template v-if="concentracao">
-              <p class="mt-2 text-xl font-bold text-gray-800">{{ concentracao.fatia }}%</p>
-              <p class="mt-1 text-xs" :class="concentracao.fatia >= 80 ? 'text-amber-600 font-semibold' : 'text-gray-400'">
+              <p class="mt-2 text-xl font-bold text-zinc-800">{{ concentracao.fatia }}%</p>
+              <p class="mt-1 text-xs" :class="concentracao.fatia >= 80 ? 'text-amber-600 font-semibold' : 'text-zinc-400'">
                 da receita veio de {{ concentracao.rotulo }}
               </p>
             </template>
             <template v-else>
-              <p class="mt-2 text-xl font-bold text-gray-300">—</p>
-              <p class="mt-1 text-xs text-gray-400">Você trabalha com uma fonte de receita só</p>
+              <p class="mt-2 text-xl font-bold text-zinc-300">—</p>
+              <p class="mt-1 text-xs text-zinc-400">Você trabalha com uma fonte de receita só</p>
             </template>
           </div>
 
-          <div class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-            <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-              <Wallet :size="15" class="text-gray-400" /> Prazo de recebimento
+          <div class="rounded-2xl border border-zinc-100 bg-white p-5 shadow-sm">
+            <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+              <Wallet :size="15" class="text-zinc-400" /> Prazo de recebimento
             </p>
             <template v-if="prazo !== null">
-              <p class="mt-2 text-xl font-bold text-gray-800">{{ prazo }} dias</p>
-              <p class="mt-1 text-xs text-gray-400">
+              <p class="mt-2 text-xl font-bold text-zinc-800">{{ prazo }} dias</p>
+              <p class="mt-1 text-xs text-zinc-400">
                 é o que o cliente leva, em média, para pagar
               </p>
             </template>
             <template v-else>
               <!-- Nulo não é zero: zero diria que todo mundo pagou à vista. -->
-              <p class="mt-2 text-xl font-bold text-gray-300">—</p>
-              <p class="mt-1 text-xs text-gray-400">Nenhuma cobrança a prazo foi quitada no mês</p>
+              <p class="mt-2 text-xl font-bold text-zinc-300">—</p>
+              <p class="mt-1 text-xs text-zinc-400">Nenhuma cobrança a prazo foi quitada no mês</p>
             </template>
           </div>
         </div>
 
-        <section class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+        <section class="rounded-2xl border border-zinc-100 bg-white p-5 shadow-sm">
           <div class="flex flex-wrap items-baseline justify-between gap-2">
-            <h3 class="text-sm font-bold text-gray-800">De onde veio o dinheiro</h3>
-            <p class="text-xs text-gray-400">
+            <h3 class="text-sm font-bold text-zinc-800">De onde veio o dinheiro</h3>
+            <p class="text-xs text-zinc-400">
               {{ disponiveis }} {{ disponiveis === 1 ? 'mês' : 'meses' }} de histórico ·
               o mês em andamento não entra
             </p>
@@ -240,28 +240,28 @@ function faltam(portao: number): number {
              a prometer uma data de falência que o dado não sustenta. -->
         <section
           v-if="projecao"
-          class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm"
+          class="rounded-2xl border border-zinc-100 bg-white p-5 shadow-sm"
         >
-          <h3 class="flex items-center gap-2 text-sm font-bold text-gray-800">
-            <LineChart :size="16" class="text-gray-400" /> Se o ritmo continuar
+          <h3 class="flex items-center gap-2 text-sm font-bold text-zinc-800">
+            <LineChart :size="16" class="text-zinc-400" /> Se o ritmo continuar
           </h3>
 
           <template v-if="projecao.disponivel">
             <div class="mt-4 grid gap-4 sm:grid-cols-3">
               <div>
-                <p class="text-xs text-gray-500">Entra em 12 meses</p>
-                <p class="mt-1 text-lg font-bold text-gray-800">
+                <p class="text-xs text-zinc-500">Entra em 12 meses</p>
+                <p class="mt-1 text-lg font-bold text-zinc-800">
                   {{ formatCurrency(projecao.receita_12_meses) }}
                 </p>
               </div>
               <div>
-                <p class="text-xs text-gray-500">Sai em 12 meses</p>
-                <p class="mt-1 text-lg font-bold text-gray-800">
+                <p class="text-xs text-zinc-500">Sai em 12 meses</p>
+                <p class="mt-1 text-lg font-bold text-zinc-800">
                   {{ formatCurrency(projecao.despesa_12_meses) }}
                 </p>
               </div>
               <div>
-                <p class="text-xs text-gray-500">Sobra</p>
+                <p class="text-xs text-zinc-500">Sobra</p>
                 <p
                   class="mt-1 text-lg font-bold"
                   :class="projecao.resultado_12_meses < 0 ? 'text-rose-700' : 'text-emerald-700'"
@@ -274,7 +274,7 @@ function faltam(portao: number): number {
             <!-- FAIXA, NUNCA NÚMERO SECO. Número seco vira promessa; e os dois
                  cenários se explicam numa frase, que é o que os torna
                  conferíveis. -->
-            <p class="mt-4 rounded-xl bg-gray-50 px-3.5 py-2.5 text-xs text-gray-600">
+            <p class="mt-4 rounded-xl bg-zinc-50 px-3.5 py-2.5 text-xs text-zinc-600">
               Entre <strong>{{ formatCurrency(projecao.piso_12_meses) }}</strong> e
               <strong>{{ formatCurrency(projecao.teto_12_meses) }}</strong> —
               vendendo {{ Math.round(projecao.margem * 100) }}% a menos e gastando
@@ -289,19 +289,19 @@ function faltam(portao: number): number {
               {{ formatCurrency(Math.abs(projecao.resultado_mensal)) }}.
             </p>
 
-            <p class="mt-3 text-xs text-gray-400">
+            <p class="mt-3 text-xs text-zinc-400">
               Conta feita sobre a média dos últimos {{ projecao.base_meses }} meses fechados.
               Ela repete esse ritmo — não adivinha crescimento nem queda.
             </p>
           </template>
 
           <template v-else>
-            <p class="mt-3 text-sm text-gray-500">
+            <p class="mt-3 text-sm text-zinc-500">
               A projeção precisa de 6 meses fechados para existir. Faltam
               <strong>{{ projecao.meses_faltando }}</strong>
               {{ projecao.meses_faltando === 1 ? 'mês' : 'meses' }}.
             </p>
-            <p class="mt-1 text-xs text-gray-400">
+            <p class="mt-1 text-xs text-zinc-400">
               Com menos que isso, uma linha de doze meses seria desenhada sobre três pontos —
               e você decidiria em cima dela.
             </p>
@@ -310,7 +310,7 @@ function faltam(portao: number): number {
 
         <!-- O que ainda vai aparecer, com data. É informação, não desculpa: o
              dono precisa saber que a tela cresce sozinha. -->
-        <p v-if="disponiveis < 12" class="text-xs text-gray-400">
+        <p v-if="disponiveis < 12" class="text-xs text-zinc-400">
           A comparação com o mesmo mês do ano passado e a tendência de 12 meses — que é a
           leitura que ignora sazonalidade — precisam de um ano de histórico. Faltam
           {{ 12 - disponiveis }} {{ 12 - disponiveis === 1 ? 'mês' : 'meses' }}.

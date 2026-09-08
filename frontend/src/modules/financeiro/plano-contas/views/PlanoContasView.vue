@@ -107,10 +107,10 @@ function alternarAtivo(id: number, ativo: boolean) {
 </script>
 
 <template>
-  <div class="flex flex-col gap-6">
-    <p class="max-w-2xl text-sm text-gray-500">
+  <div class="flex flex-col gap-6 md:gap-8">
+    <p class="max-w-2xl text-sm text-zinc-500">
       As categorias classificam cada conta que você lança. É o que faz o resultado do mês
-      dizer <strong class="text-gray-700">onde</strong> o dinheiro foi, e não só quanto saiu —
+      dizer <strong class="text-zinc-700">onde</strong> o dinheiro foi, e não só quanto saiu —
       e é o que separa o que é gasto do que é compra de mercadoria.
     </p>
 
@@ -125,8 +125,8 @@ function alternarAtivo(id: number, ativo: boolean) {
            dropdown, ninguém descobre que existe — e a classificação errada só
            aparece meses depois, como lucro que não fecha. -->
       <div class="flex flex-col gap-1">
-        <span class="text-xs font-medium text-gray-600">O que é isso?</span>
-        <div class="flex rounded-lg border border-gray-200 p-0.5">
+        <span class="text-xs font-medium text-zinc-600">O que é isso?</span>
+        <div class="flex rounded-lg border border-zinc-200 p-0.5">
           <button
             v-for="n in NATUREZAS" :key="n.valor"
             type="button"
@@ -134,7 +134,7 @@ function alternarAtivo(id: number, ativo: boolean) {
             :class="
               novoTipo === n.valor
                 ? 'bg-brand-primary text-white'
-                : 'text-gray-500 hover:text-gray-700'
+                : 'text-zinc-500 hover:text-zinc-700'
             "
             @click="novoTipo = n.valor"
           >
@@ -148,16 +148,16 @@ function alternarAtivo(id: number, ativo: boolean) {
       </BaseButton>
     </form>
 
-    <p class="-mt-3 text-xs text-gray-400">{{ ajudaDaNatureza }}</p>
+    <p class="-mt-3 text-xs text-zinc-400">{{ ajudaDaNatureza }}</p>
 
-    <div v-if="isLoading" class="text-sm text-gray-500">Carregando…</div>
+    <div v-if="isLoading" class="text-sm text-zinc-500">Carregando…</div>
 
-    <div v-else class="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
-      <ul class="divide-y divide-gray-100">
+    <div v-else class="overflow-hidden rounded-2xl border border-zinc-100 bg-white shadow-sm">
+      <ul class="divide-y divide-zinc-100">
         <li
           v-for="c in categorias" :key="c.id"
           class="flex flex-wrap items-center gap-3 px-5 py-3.5"
-          :class="!c.ativo && 'bg-gray-50'"
+          :class="!c.ativo && 'bg-zinc-50'"
         >
           <!-- Modo edição -->
           <template v-if="editandoId === c.id">
@@ -167,7 +167,7 @@ function alternarAtivo(id: number, ativo: boolean) {
             <button type="button" class="p-1.5 text-emerald-600 cursor-pointer" @click="salvarEdicao(c.id)" aria-label="Salvar">
               <Check :size="18" />
             </button>
-            <button type="button" class="p-1.5 text-gray-400 cursor-pointer" @click="editandoId = null" aria-label="Cancelar">
+            <button type="button" class="p-1.5 text-zinc-400 cursor-pointer" @click="editandoId = null" aria-label="Cancelar">
               <X :size="18" />
             </button>
           </template>
@@ -179,7 +179,7 @@ function alternarAtivo(id: number, ativo: boolean) {
               class="flex-1 min-w-0 text-left cursor-pointer"
               @click="abrirEdicao(c.id, c.nome)"
             >
-              <span class="text-sm font-medium" :class="c.ativo ? 'text-gray-800' : 'text-gray-400 line-through'">
+              <span class="text-sm font-medium" :class="c.ativo ? 'text-zinc-800' : 'text-zinc-400 line-through'">
                 {{ c.nome }}
               </span>
             </button>
@@ -195,7 +195,7 @@ function alternarAtivo(id: number, ativo: boolean) {
                   ? 'bg-amber-50 text-amber-700 hover:bg-amber-100'
                   : c.tipo === 'RECEITA'
                     ? 'bg-emerald-50 text-emerald-700'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
               "
               :disabled="c.tipo === 'RECEITA'"
               :title="
@@ -217,7 +217,7 @@ function alternarAtivo(id: number, ativo: boolean) {
             <button
               type="button"
               class="text-xs font-semibold cursor-pointer"
-              :class="c.ativo ? 'text-gray-500 hover:text-gray-700' : 'text-brand-primary'"
+              :class="c.ativo ? 'text-zinc-500 hover:text-zinc-700' : 'text-brand-primary'"
               @click="alternarAtivo(c.id, c.ativo)"
             >
               {{ c.ativo ? 'Desativar' : 'Reativar' }}
@@ -227,13 +227,13 @@ function alternarAtivo(id: number, ativo: boolean) {
       </ul>
     </div>
 
-    <div class="flex flex-col gap-1.5 text-xs text-gray-400">
+    <div class="flex flex-col gap-1.5 text-xs text-zinc-400">
       <p>
         Categorias desativadas somem dos novos lançamentos, mas continuam valendo nas contas
         antigas — por isso não existe excluir.
       </p>
       <p>
-        <strong class="text-gray-500">Compra de mercadoria</strong> sai do caixa no dia em que
+        <strong class="text-zinc-500">Compra de mercadoria</strong> sai do caixa no dia em que
         você paga, e aparece no Fluxo de Caixa — mas só desconta do lucro no dia em que a
         peça for vendida. É o que impede a mesma peça de ser descontada duas vezes.
       </p>

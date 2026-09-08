@@ -97,9 +97,9 @@ function confirmar() {
     @close="emit('fechar')"
   >
     <div v-if="conta" class="flex flex-col gap-4">
-      <div class="rounded-xl bg-gray-50 px-4 py-3">
-        <p class="text-sm font-semibold text-gray-800">{{ conta.descricao }}</p>
-        <p class="mt-0.5 text-xs text-gray-500">
+      <div class="rounded-xl bg-zinc-50 px-4 py-3">
+        <p class="text-sm font-semibold text-zinc-800">{{ conta.descricao }}</p>
+        <p class="mt-0.5 text-xs text-zinc-500">
           Previsto {{ formatCurrency(conta.valor) }} · vence {{ formatDataPura(conta.vencimento) }}
         </p>
       </div>
@@ -119,7 +119,7 @@ function confirmar() {
         placeholder="Selecione a conta"
       />
 
-      <p class="text-xs text-gray-400">
+      <p class="text-xs text-zinc-400">
         Pagar fornecedor não é sangria de caixa. Se o dinheiro saiu da gaveta, registre a
         sangria à parte no PDV.
       </p>

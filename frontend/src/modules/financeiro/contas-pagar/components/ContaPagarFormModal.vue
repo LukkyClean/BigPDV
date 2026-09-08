@@ -218,14 +218,14 @@ function salvar() {
         class="flex cursor-pointer items-start gap-2.5 rounded-xl border px-3 py-2.5 transition"
         :class="aplicarNasProximas
           ? 'border-brand-primary bg-brand-primary/5 ring-1 ring-brand-primary'
-          : 'border-gray-200 hover:border-gray-300'"
+          : 'border-zinc-200 hover:border-zinc-300'"
       >
         <input v-model="aplicarNasProximas" type="checkbox" class="mt-0.5 accent-brand-primary" />
         <span>
-          <span class="block text-sm font-medium text-gray-800">
+          <span class="block text-sm font-medium text-zinc-800">
             Corrigir também as próximas parcelas
           </span>
-          <span class="block text-[11px] text-gray-500">
+          <span class="block text-[11px] text-zinc-500">
             Vale da {{ (conta?.parcela_numero ?? 0) + 1 }}ª à {{ conta?.parcela_total }}ª, só as
             que ainda estão em aberto. A data mantém o mesmo dia mês a mês; parcela já paga
             não é tocada.
@@ -238,7 +238,7 @@ function salvar() {
       <!-- Como a conta se repete. Três opções exclusivas: ver o comentário
            de `repeticao` no script para o porquê da separação. -->
       <fieldset v-if="podeParcelar" class="flex flex-col gap-2">
-        <legend class="mb-1.5 block text-sm font-medium text-gray-700">Repetição</legend>
+        <legend class="mb-1.5 block text-sm font-medium text-zinc-700">Repetição</legend>
         <div class="grid gap-2 sm:grid-cols-3">
           <label
             v-for="opcao in [
@@ -250,11 +250,11 @@ function salvar() {
             class="cursor-pointer rounded-xl border px-3 py-2.5 transition"
             :class="repeticao === opcao.valor
               ? 'border-brand-primary bg-brand-primary/5 ring-1 ring-brand-primary'
-              : 'border-gray-200 hover:border-gray-300'"
+              : 'border-zinc-200 hover:border-zinc-300'"
           >
             <input v-model="repeticao" type="radio" :value="opcao.valor" class="sr-only" />
-            <span class="block text-sm font-medium text-gray-800">{{ opcao.titulo }}</span>
-            <span class="block text-[11px] text-gray-400">{{ opcao.ajuda }}</span>
+            <span class="block text-sm font-medium text-zinc-800">{{ opcao.titulo }}</span>
+            <span class="block text-[11px] text-zinc-400">{{ opcao.ajuda }}</span>
           </label>
         </div>
       </fieldset>
@@ -268,8 +268,8 @@ function salvar() {
         </div>
         <!-- A simulação vem da Omie: mostra o que vai acontecer antes de
              salvar, porque gerar dez linhas sem avisar assusta. -->
-        <p v-if="simulacao" class="rounded-xl bg-gray-50 px-3.5 py-2.5 text-xs text-gray-600">
-          <strong class="text-gray-800">
+        <p v-if="simulacao" class="rounded-xl bg-zinc-50 px-3.5 py-2.5 text-xs text-zinc-600">
+          <strong class="text-zinc-800">
             {{ simulacao.n }} parcelas de {{ formatCurrency(Math.round(valorReais * 100)) }}
           </strong>
           · {{ simulacao.de }} a {{ simulacao.ate }} · total
@@ -277,7 +277,7 @@ function salvar() {
         </p>
       </div>
 
-      <p v-if="podeParcelar && repeticao === 'MENSAL'" class="-mt-1 text-xs text-gray-400">
+      <p v-if="podeParcelar && repeticao === 'MENSAL'" class="-mt-1 text-xs text-zinc-400">
         Ao dar baixa, a conta do mês seguinte é criada automaticamente com o valor previsto.
       </p>
 

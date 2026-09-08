@@ -151,24 +151,24 @@ function limparFiltros() {
 </script>
 
 <template>
-  <div class="flex flex-col gap-6">
+  <div class="flex flex-col gap-6 md:gap-8">
     <!-- Mês, o mesmo seletor das outras telas do módulo -->
     <div class="flex flex-wrap items-center justify-between gap-3">
       <div class="flex items-center gap-3">
         <button
           type="button" @click="anterior"
-          class="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer"
+          class="p-2 rounded-lg border border-zinc-200 hover:bg-zinc-50 cursor-pointer"
           aria-label="Mês anterior"
         >
-          <ChevronLeft :size="18" class="text-gray-600" />
+          <ChevronLeft :size="18" class="text-zinc-600" />
         </button>
-        <span class="font-semibold text-gray-800 min-w-44 text-center">{{ rotulo }}</span>
+        <span class="font-semibold text-zinc-800 min-w-44 text-center">{{ rotulo }}</span>
         <button
           type="button" @click="proximo" :disabled="ehMesAtual"
-          class="p-2 rounded-lg border border-gray-200 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 cursor-pointer"
+          class="p-2 rounded-lg border border-zinc-200 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-zinc-50 cursor-pointer"
           aria-label="Próximo mês"
         >
-          <ChevronRight :size="18" class="text-gray-600" />
+          <ChevronRight :size="18" class="text-zinc-600" />
         </button>
       </div>
 
@@ -185,7 +185,7 @@ function limparFiltros() {
           :class="
             tipo === opcao.valor
               ? 'border-brand-primary bg-brand-primary/5 text-brand-primary'
-              : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+              : 'border-zinc-200 text-zinc-600 hover:bg-zinc-50'
           "
           @click="tipo = opcao.valor"
         >
@@ -194,7 +194,7 @@ function limparFiltros() {
 
         <select
           v-model="origem"
-          class="rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-700 cursor-pointer"
+          class="rounded-lg border border-zinc-200 px-3 py-1.5 text-xs text-zinc-700 cursor-pointer"
         >
           <option value="">Todas as origens</option>
           <option v-for="o in OPCOES_ORIGEM" :key="o.valor" :value="o.valor">
@@ -205,7 +205,7 @@ function limparFiltros() {
         <button
           v-if="temFiltro"
           type="button"
-          class="text-xs font-medium text-gray-500 underline-offset-2 hover:text-gray-800 hover:underline cursor-pointer"
+          class="text-xs font-medium text-zinc-500 underline-offset-2 hover:text-zinc-800 hover:underline cursor-pointer"
           @click="limparFiltros"
         >
           Limpar
@@ -225,49 +225,49 @@ function limparFiltros() {
       </div>
     </div>
 
-    <div v-if="isLoading" class="text-sm text-gray-500">Carregando…</div>
+    <div v-if="isLoading" class="text-sm text-zinc-500">Carregando…</div>
 
     <template v-else-if="extrato">
       <!-- Os totais saem do MESMO filtro da lista: um rodapé que não fecha com
            o que está na tela destrói a confiança na tela inteira. -->
       <div class="grid gap-4 sm:grid-cols-3">
-        <div class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-          <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+        <div class="rounded-2xl border border-zinc-100 bg-white p-5 shadow-sm">
+          <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
             <ArrowDownLeft :size="15" class="text-emerald-500" /> Entrou
           </p>
-          <p class="mt-2 text-xl font-bold text-gray-800">
+          <p class="mt-2 text-xl font-bold text-zinc-800">
             {{ formatCurrency(extrato.total_entradas) }}
           </p>
         </div>
-        <div class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-          <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+        <div class="rounded-2xl border border-zinc-100 bg-white p-5 shadow-sm">
+          <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
             <ArrowUpRight :size="15" class="text-rose-500" /> Saiu
           </p>
-          <p class="mt-2 text-xl font-bold text-gray-800">
+          <p class="mt-2 text-xl font-bold text-zinc-800">
             {{ formatCurrency(extrato.total_saidas) }}
           </p>
         </div>
         <div
           class="rounded-2xl border p-5 shadow-sm"
-          :class="extrato.saldo < 0 ? 'border-rose-200 bg-rose-50' : 'border-gray-100 bg-white'"
+          :class="extrato.saldo < 0 ? 'border-rose-200 bg-rose-50' : 'border-zinc-100 bg-white'"
         >
           <p class="text-xs font-semibold uppercase tracking-wide"
-             :class="extrato.saldo < 0 ? 'text-rose-600' : 'text-gray-500'">
+             :class="extrato.saldo < 0 ? 'text-rose-600' : 'text-zinc-500'">
             Diferença
           </p>
-          <p class="mt-2 text-xl font-bold" :class="extrato.saldo < 0 ? 'text-rose-700' : 'text-gray-800'">
+          <p class="mt-2 text-xl font-bold" :class="extrato.saldo < 0 ? 'text-rose-700' : 'text-zinc-800'">
             {{ formatCurrency(extrato.saldo) }}
           </p>
-          <p class="mt-1 text-xs" :class="extrato.saldo < 0 ? 'text-rose-500' : 'text-gray-400'">
+          <p class="mt-1 text-xs" :class="extrato.saldo < 0 ? 'text-rose-500' : 'text-zinc-400'">
             {{ extrato.total_itens }} movimento(s) no filtro
           </p>
         </div>
       </div>
 
-      <div class="overflow-x-auto rounded-2xl border border-gray-100 bg-white shadow-sm">
+      <div class="overflow-x-auto rounded-2xl border border-zinc-100 bg-white shadow-sm">
         <table class="w-full min-w-[52rem] text-sm">
           <thead>
-            <tr class="border-b border-gray-100 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+            <tr class="border-b border-zinc-100 text-left text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
               <th class="px-5 py-3">Quando</th>
               <th class="px-5 py-3">Origem</th>
               <th class="px-5 py-3">Descrição</th>
@@ -275,27 +275,27 @@ function limparFiltros() {
               <th class="px-5 py-3 text-right">Valor</th>
             </tr>
           </thead>
-          <tbody class="divide-y divide-gray-100">
+          <tbody class="divide-y divide-zinc-100">
             <tr v-if="!extrato.itens.length">
-              <td colspan="5" class="px-5 py-10 text-center text-sm text-gray-400">
+              <td colspan="5" class="px-5 py-10 text-center text-sm text-zinc-400">
                 Nenhum movimento neste filtro. O extrato mostra o dinheiro que já andou —
                 conta lançada e ainda não paga aparece no Fluxo de Caixa, não aqui.
               </td>
             </tr>
-            <tr v-for="linha in extrato.itens" :key="linha.id" class="hover:bg-gray-50/60">
-              <td class="whitespace-nowrap px-5 py-3 text-gray-600">
+            <tr v-for="linha in extrato.itens" :key="linha.id" class="hover:bg-zinc-50/60">
+              <td class="whitespace-nowrap px-5 py-3 text-zinc-600">
                 {{ formatData(linha.criado_em) }}
               </td>
               <td class="px-5 py-3">
-                <span class="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600">
+                <span class="rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] font-medium text-zinc-600">
                   {{ rotuloOrigem(linha.origem) }}
                 </span>
               </td>
               <td class="px-5 py-3">
-                <p class="text-gray-800">
+                <p class="text-zinc-800">
                   {{ linha.documento ?? linha.motivo ?? rotuloOrigem(linha.origem) }}
                 </p>
-                <p class="text-xs text-gray-400">
+                <p class="text-xs text-zinc-400">
                   <template v-if="linha.forma_pagamento_nome">
                     {{ linha.forma_pagamento_nome }}
                   </template>
@@ -307,7 +307,7 @@ function limparFiltros() {
                   <template v-if="linha.sessao_caixa_id"> · pelo caixa</template>
                 </p>
               </td>
-              <td class="px-5 py-3 text-gray-500">{{ linha.funcionario_nome ?? '—' }}</td>
+              <td class="px-5 py-3 text-zinc-500">{{ linha.funcionario_nome ?? '—' }}</td>
               <td
                 class="whitespace-nowrap px-5 py-3 text-right font-semibold tabular-nums"
                 :class="linha.tipo === 'ENTRADA' ? 'text-emerald-600' : 'text-rose-600'"
@@ -319,7 +319,7 @@ function limparFiltros() {
         </table>
       </div>
 
-      <p class="text-xs text-gray-400">
+      <p class="text-xs text-zinc-400">
         Nada é apagado daqui. Um pagamento desfeito não some: ele ganha a linha contrária, e
         as duas ficam — é o que permite auditar o mês depois.
       </p>

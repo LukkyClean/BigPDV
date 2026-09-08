@@ -169,12 +169,12 @@ function agir(item: { alerta: AlertaFinanceiro; texto: Texto }) {
 </script>
 
 <template>
-  <section v-if="itens.length" class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-    <h3 class="flex items-center gap-2 text-sm font-bold text-gray-800">
+  <section v-if="itens.length" class="rounded-2xl border border-zinc-100 bg-white p-5 shadow-sm">
+    <h3 class="flex items-center gap-2 text-sm font-bold text-zinc-800">
       <CircleAlert :size="16" class="text-amber-500" /> Precisa de atenção
     </h3>
 
-    <ul class="mt-4 flex flex-col divide-y divide-gray-100">
+    <ul class="mt-4 flex flex-col divide-y divide-zinc-100">
       <li
         v-for="item in itens"
         :key="item.alerta.codigo"
@@ -192,11 +192,11 @@ function agir(item: { alerta: AlertaFinanceiro; texto: Texto }) {
           <div class="min-w-0">
             <p
               class="text-sm font-semibold"
-              :class="item.alerta.severidade === 'CRITICO' ? 'text-rose-700' : 'text-gray-800'"
+              :class="item.alerta.severidade === 'CRITICO' ? 'text-rose-700' : 'text-zinc-800'"
             >
               {{ item.texto.titulo }}
             </p>
-            <p class="mt-0.5 text-xs text-gray-500">{{ item.texto.detalhe }}</p>
+            <p class="mt-0.5 text-xs text-zinc-500">{{ item.texto.detalhe }}</p>
           </div>
         </div>
 
@@ -207,7 +207,7 @@ function agir(item: { alerta: AlertaFinanceiro; texto: Texto }) {
                ignorar o painel inteiro. -->
           <button
             type="button"
-            class="flex items-center gap-1 text-xs font-medium text-gray-400 cursor-pointer hover:text-gray-700"
+            class="flex items-center gap-1 text-xs font-medium text-zinc-400 cursor-pointer hover:text-zinc-700"
             title="Adiar por 7 dias"
             :disabled="adiar.isPending.value"
             @click="adiar.mutate({ codigo: item.alerta.codigo, dias: 7 })"
@@ -227,7 +227,7 @@ function agir(item: { alerta: AlertaFinanceiro; texto: Texto }) {
       </li>
     </ul>
 
-    <p class="mt-3 text-xs text-gray-400">
+    <p class="mt-3 text-xs text-zinc-400">
       Adiar cala o aviso por 7 dias. Se o problema continuar, ele volta — com o número
       daquele dia, não com o de hoje.
     </p>

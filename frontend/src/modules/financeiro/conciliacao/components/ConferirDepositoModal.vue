@@ -70,11 +70,11 @@ async function confirmar() {
     @close="emit('fechar')"
   >
     <div v-if="dia" class="flex flex-col gap-4">
-      <div class="rounded-xl bg-gray-50 px-4 py-3">
-        <p class="text-sm font-semibold text-gray-800">
+      <div class="rounded-xl bg-zinc-50 px-4 py-3">
+        <p class="text-sm font-semibold text-zinc-800">
           Vencimento em {{ formatDataPura(dia.data) }}
         </p>
-        <p class="mt-0.5 text-xs text-gray-500">
+        <p class="mt-0.5 text-xs text-zinc-500">
           {{ dia.quantidade }} cobrança(s) · previsto
           <strong>{{ formatCurrency(dia.total_previsto) }}</strong>
         </p>
@@ -108,7 +108,7 @@ async function confirmar() {
         placeholder="Selecione a conta"
       />
 
-      <p class="text-xs text-gray-400">
+      <p class="text-xs text-zinc-400">
         As {{ dia.quantidade }} cobrança(s) deste dia serão baixadas de uma vez, cada uma pelo
         mesmo caminho da baixa manual — dá para estornar qualquer uma depois, em Contas a
         Receber.

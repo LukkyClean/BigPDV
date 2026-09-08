@@ -18,12 +18,12 @@ defineProps<{ titulo: string; descricao: string }>();
   <div class="flex-1 flex items-start justify-center pt-10">
     <div class="w-full max-w-md text-center">
       <div
-        class="w-14 h-14 mx-auto rounded-2xl bg-gray-100 flex items-center justify-center mb-4"
+        class="w-14 h-14 mx-auto rounded-2xl bg-zinc-100 flex items-center justify-center mb-4"
       >
-        <Hammer :size="24" class="text-gray-400" />
+        <Hammer :size="24" class="text-zinc-400" />
       </div>
-      <h2 class="text-lg font-bold text-gray-800">{{ titulo }}</h2>
-      <p class="text-sm text-gray-500 mt-2 leading-relaxed">{{ descricao }}</p>
+      <h2 class="text-lg font-bold text-zinc-800">{{ titulo }}</h2>
+      <p class="text-sm text-zinc-500 mt-2 leading-relaxed">{{ descricao }}</p>
     </div>
   </div>
 </template>

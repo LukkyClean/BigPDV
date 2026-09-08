@@ -67,14 +67,14 @@ async function salvar() {
 <template>
   <BaseModal :is-open="aberto" title="Saldo de hoje" size="sm" overlay @close="emit('fechar')">
     <div class="flex flex-col gap-4">
-      <p class="text-sm text-gray-500">
+      <p class="text-sm text-zinc-500">
         Informe quanto há em cada conta <strong>agora</strong>. É o ponto de partida: o
         sistema não sabe o que já havia aí antes de ele existir.
       </p>
 
       <div v-for="conta in contas ?? []" :key="conta.id" class="flex flex-col gap-1">
         <BaseMoneyInput v-model="valores[conta.id]" :label="conta.nome" />
-        <p class="text-xs text-gray-400">
+        <p class="text-xs text-zinc-400">
           <template v-if="conta.saldo_informado_em">
             Informado em {{ formatDataPura(conta.saldo_informado_em) }}
           </template>
@@ -82,7 +82,7 @@ async function salvar() {
         </p>
       </div>
 
-      <p class="rounded-xl bg-gray-50 px-3.5 py-2.5 text-xs text-gray-500">
+      <p class="rounded-xl bg-zinc-50 px-3.5 py-2.5 text-xs text-zinc-500">
         Daqui em diante o saldo anda sozinho: cada venda, OS e conta paga entra nele. Você só
         precisa voltar aqui se conferir a gaveta e o número não bater — aí o que você digitar
         vira o novo ponto de partida.

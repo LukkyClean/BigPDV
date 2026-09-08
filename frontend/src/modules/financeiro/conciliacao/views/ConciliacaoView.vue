@@ -45,48 +45,48 @@ function jaVenceu(data: string): boolean {
 </script>
 
 <template>
-  <div class="flex flex-col gap-6">
+  <div class="flex flex-col gap-6 md:gap-8">
     <!-- Seletor de mês, o mesmo das outras telas do módulo -->
     <div class="flex items-center gap-3">
       <button
         type="button" @click="anterior"
-        class="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer"
+        class="p-2 rounded-lg border border-zinc-200 hover:bg-zinc-50 cursor-pointer"
         aria-label="Mês anterior"
       >
-        <ChevronLeft :size="18" class="text-gray-600" />
+        <ChevronLeft :size="18" class="text-zinc-600" />
       </button>
-      <span class="font-semibold text-gray-800 min-w-44 text-center">{{ rotulo }}</span>
+      <span class="font-semibold text-zinc-800 min-w-44 text-center">{{ rotulo }}</span>
       <button
         type="button" @click="proximo" :disabled="ehMesAtual"
-        class="p-2 rounded-lg border border-gray-200 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 cursor-pointer"
+        class="p-2 rounded-lg border border-zinc-200 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-zinc-50 cursor-pointer"
         aria-label="Próximo mês"
       >
-        <ChevronRight :size="18" class="text-gray-600" />
+        <ChevronRight :size="18" class="text-zinc-600" />
       </button>
     </div>
 
-    <div v-if="isLoading" class="text-sm text-gray-500">Carregando…</div>
+    <div v-if="isLoading" class="text-sm text-zinc-500">Carregando…</div>
 
     <template v-else-if="conciliacao">
-      <div class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-        <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">
+      <div class="rounded-2xl border border-zinc-100 bg-white p-5 shadow-sm">
+        <p class="text-xs font-semibold uppercase tracking-wide text-zinc-500">
           A conferir no período
         </p>
-        <p class="mt-2 text-2xl font-bold text-gray-800">
+        <p class="mt-2 text-2xl font-bold text-zinc-800">
           {{ formatCurrency(conciliacao.total_previsto) }}
         </p>
-        <p class="mt-1 text-xs text-gray-400">
+        <p class="mt-1 text-xs text-zinc-400">
           Cobranças em aberto, agrupadas pelo dia em que o dinheiro deve entrar
         </p>
       </div>
 
       <div
         v-if="!conciliacao.dias.length"
-        class="rounded-2xl border border-gray-100 bg-white p-8 text-center shadow-sm"
+        class="rounded-2xl border border-zinc-100 bg-white p-8 text-center shadow-sm"
       >
         <CheckCircle2 :size="28" class="mx-auto text-emerald-500" />
-        <p class="mt-3 text-sm font-semibold text-gray-800">Nada a conferir neste mês</p>
-        <p class="mt-1 text-sm text-gray-500">
+        <p class="mt-3 text-sm font-semibold text-zinc-800">Nada a conferir neste mês</p>
+        <p class="mt-1 text-sm text-zinc-500">
           Cobranças com data de repasse aparecem aqui — cartão a receber, boleto, cheque, fiado.
         </p>
       </div>
@@ -96,11 +96,11 @@ function jaVenceu(data: string): boolean {
           v-for="dia in conciliacao.dias"
           :key="dia.data"
           class="rounded-2xl border bg-white p-5 shadow-sm"
-          :class="jaVenceu(dia.data) ? 'border-amber-200' : 'border-gray-100'"
+          :class="jaVenceu(dia.data) ? 'border-amber-200' : 'border-zinc-100'"
         >
           <div class="flex flex-wrap items-baseline justify-between gap-3">
             <div>
-              <p class="text-sm font-bold text-gray-800">
+              <p class="text-sm font-bold text-zinc-800">
                 {{ formatDataPura(dia.data) }}
                 <span
                   v-if="jaVenceu(dia.data)"
@@ -109,9 +109,9 @@ function jaVenceu(data: string): boolean {
                   já deveria ter caído
                 </span>
               </p>
-              <p class="mt-0.5 text-xs text-gray-500">
+              <p class="mt-0.5 text-xs text-zinc-500">
                 {{ dia.quantidade }} cobrança(s) · previsto
-                <strong class="text-gray-700">{{ formatCurrency(dia.total_previsto) }}</strong>
+                <strong class="text-zinc-700">{{ formatCurrency(dia.total_previsto) }}</strong>
               </p>
             </div>
 
@@ -120,15 +120,15 @@ function jaVenceu(data: string): boolean {
             </BaseButton>
           </div>
 
-          <ul class="mt-4 flex flex-col divide-y divide-gray-100">
+          <ul class="mt-4 flex flex-col divide-y divide-zinc-100">
             <li
               v-for="item in dia.itens"
               :key="item.conta_id"
               class="flex items-baseline justify-between gap-3 py-2"
             >
               <div class="min-w-0">
-                <p class="truncate text-sm text-gray-700">{{ item.descricao }}</p>
-                <p class="flex items-center gap-1.5 text-xs text-gray-400">
+                <p class="truncate text-sm text-zinc-700">{{ item.descricao }}</p>
+                <p class="flex items-center gap-1.5 text-xs text-zinc-400">
                   <template v-if="item.forma_origem">
                     <CreditCard :size="12" /> {{ item.forma_origem }}
                   </template>
@@ -136,7 +136,7 @@ function jaVenceu(data: string): boolean {
                   <template v-if="item.cliente_nome"> · {{ item.cliente_nome }}</template>
                 </p>
               </div>
-              <span class="shrink-0 text-sm font-semibold text-gray-800 tabular-nums">
+              <span class="shrink-0 text-sm font-semibold text-zinc-800 tabular-nums">
                 {{ formatCurrency(item.valor) }}
               </span>
             </li>

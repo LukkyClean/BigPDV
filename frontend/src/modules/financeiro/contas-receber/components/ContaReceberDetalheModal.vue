@@ -59,41 +59,41 @@ const origem = computed(() => {
   >
     <div v-if="conta" class="flex flex-col gap-5">
       <div>
-        <p class="text-sm font-semibold text-gray-800">{{ conta.descricao }}</p>
-        <p class="mt-0.5 text-xs text-gray-400">
+        <p class="text-sm font-semibold text-zinc-800">{{ conta.descricao }}</p>
+        <p class="mt-0.5 text-xs text-zinc-400">
           {{ origem }}<template v-if="conta.cliente_nome"> · {{ conta.cliente_nome }}</template>
         </p>
       </div>
 
       <!-- Valores -->
-      <dl class="flex flex-col gap-2 rounded-xl bg-gray-50 px-4 py-3 text-sm">
+      <dl class="flex flex-col gap-2 rounded-xl bg-zinc-50 px-4 py-3 text-sm">
         <div class="flex justify-between gap-3">
-          <dt class="text-gray-500">Previsto</dt>
-          <dd class="font-medium text-gray-800 tabular-nums">{{ formatCurrency(conta.valor) }}</dd>
+          <dt class="text-zinc-500">Previsto</dt>
+          <dd class="font-medium text-zinc-800 tabular-nums">{{ formatCurrency(conta.valor) }}</dd>
         </div>
         <div class="flex justify-between gap-3">
-          <dt class="text-gray-500">Vencimento</dt>
-          <dd class="text-gray-800">{{ formatDataPura(conta.vencimento) }}</dd>
+          <dt class="text-zinc-500">Vencimento</dt>
+          <dd class="text-zinc-800">{{ formatDataPura(conta.vencimento) }}</dd>
         </div>
         <div v-if="conta.taxa > 0" class="flex justify-between gap-3">
-          <dt class="text-gray-500">Taxa da operadora</dt>
-          <dd class="text-gray-800 tabular-nums">{{ formatCurrency(conta.taxa) }}</dd>
+          <dt class="text-zinc-500">Taxa da operadora</dt>
+          <dd class="text-zinc-800 tabular-nums">{{ formatCurrency(conta.taxa) }}</dd>
         </div>
 
         <template v-if="recebida">
-          <div v-if="conta.juros > 0" class="flex justify-between gap-3 border-t border-gray-200 pt-2">
-            <dt class="text-gray-500">
+          <div v-if="conta.juros > 0" class="flex justify-between gap-3 border-t border-zinc-200 pt-2">
+            <dt class="text-zinc-500">
               Juros
-              <span class="text-[11px] text-gray-400">
+              <span class="text-[11px] text-zinc-400">
                 ({{ conta.juros_destino === 'OPERADORA' ? 'fica com a operadora' : 'fica com a loja' }})
               </span>
             </dt>
-            <dd class="text-gray-800 tabular-nums">{{ formatCurrency(conta.juros) }}</dd>
+            <dd class="text-zinc-800 tabular-nums">{{ formatCurrency(conta.juros) }}</dd>
           </div>
 
-          <div class="flex justify-between gap-3" :class="conta.juros > 0 ? '' : 'border-t border-gray-200 pt-2'">
-            <dt class="text-gray-500">O cliente pagou</dt>
-            <dd class="font-medium text-gray-800 tabular-nums">
+          <div class="flex justify-between gap-3" :class="conta.juros > 0 ? '' : 'border-t border-zinc-200 pt-2'">
+            <dt class="text-zinc-500">O cliente pagou</dt>
+            <dd class="font-medium text-zinc-800 tabular-nums">
               {{ formatCurrency(conta.valor_recebido ?? 0) }}
             </dd>
           </div>
@@ -113,22 +113,22 @@ const origem = computed(() => {
       <!-- Como e onde -->
       <dl v-if="recebida" class="flex flex-col gap-2 text-sm">
         <div class="flex justify-between gap-3">
-          <dt class="text-gray-500">Recebido em</dt>
-          <dd class="text-gray-800">{{ formatData(conta.recebido_em) }}</dd>
+          <dt class="text-zinc-500">Recebido em</dt>
+          <dd class="text-zinc-800">{{ formatData(conta.recebido_em) }}</dd>
         </div>
         <div v-if="conta.conta_bancaria_nome" class="flex justify-between gap-3">
-          <dt class="text-gray-500">Caiu em</dt>
-          <dd class="text-gray-800">{{ conta.conta_bancaria_nome }}</dd>
+          <dt class="text-zinc-500">Caiu em</dt>
+          <dd class="text-zinc-800">{{ conta.conta_bancaria_nome }}</dd>
         </div>
       </dl>
 
-      <p v-else class="flex items-center gap-1.5 text-sm text-gray-500">
-        <ArrowRight :size="14" class="text-gray-400" />
+      <p v-else class="flex items-center gap-1.5 text-sm text-zinc-500">
+        <ArrowRight :size="14" class="text-zinc-400" />
         Ainda não recebida.
       </p>
 
-      <div v-if="conta.observacao" class="rounded-xl border border-gray-100 px-3.5 py-2.5">
-        <p class="text-xs text-gray-500">{{ conta.observacao }}</p>
+      <div v-if="conta.observacao" class="rounded-xl border border-zinc-100 px-3.5 py-2.5">
+        <p class="text-xs text-zinc-500">{{ conta.observacao }}</p>
       </div>
 
       <HistoricoFinanceiro :historico="historico ?? []" :carregando="isLoading" />

@@ -44,8 +44,8 @@ const diferenca = computed(() => {
   >
     <div v-if="conta" class="flex flex-col gap-5">
       <div>
-        <p class="text-sm font-semibold text-gray-800">{{ conta.descricao }}</p>
-        <p class="mt-0.5 text-xs text-gray-400">
+        <p class="text-sm font-semibold text-zinc-800">{{ conta.descricao }}</p>
+        <p class="mt-0.5 text-xs text-zinc-400">
           {{ conta.plano_conta_nome ?? 'Sem categoria' }}
           <template v-if="conta.fornecedor_nome"> · {{ conta.fornecedor_nome }}</template>
           <template v-if="conta.parcela_total">
@@ -55,25 +55,25 @@ const diferenca = computed(() => {
         </p>
       </div>
 
-      <dl class="flex flex-col gap-2 rounded-xl bg-gray-50 px-4 py-3 text-sm">
+      <dl class="flex flex-col gap-2 rounded-xl bg-zinc-50 px-4 py-3 text-sm">
         <div class="flex justify-between gap-3">
-          <dt class="text-gray-500">Previsto</dt>
-          <dd class="font-medium text-gray-800 tabular-nums">{{ formatCurrency(conta.valor) }}</dd>
+          <dt class="text-zinc-500">Previsto</dt>
+          <dd class="font-medium text-zinc-800 tabular-nums">{{ formatCurrency(conta.valor) }}</dd>
         </div>
         <div class="flex justify-between gap-3">
-          <dt class="text-gray-500">Vencimento</dt>
-          <dd class="text-gray-800">{{ formatDataPura(conta.vencimento) }}</dd>
+          <dt class="text-zinc-500">Vencimento</dt>
+          <dd class="text-zinc-800">{{ formatDataPura(conta.vencimento) }}</dd>
         </div>
 
         <template v-if="paga">
-          <div class="flex justify-between gap-3 border-t border-gray-200 pt-2">
-            <dt class="text-gray-500">Pago</dt>
-            <dd class="font-medium text-gray-800 tabular-nums">
+          <div class="flex justify-between gap-3 border-t border-zinc-200 pt-2">
+            <dt class="text-zinc-500">Pago</dt>
+            <dd class="font-medium text-zinc-800 tabular-nums">
               {{ formatCurrency(conta.valor_pago ?? 0) }}
             </dd>
           </div>
           <div v-if="diferenca !== 0" class="flex justify-between gap-3">
-            <dt class="text-gray-500">{{ diferenca > 0 ? 'Acréscimo' : 'Desconto' }}</dt>
+            <dt class="text-zinc-500">{{ diferenca > 0 ? 'Acréscimo' : 'Desconto' }}</dt>
             <dd class="tabular-nums" :class="diferenca > 0 ? 'text-amber-700' : 'text-emerald-700'">
               {{ formatCurrency(Math.abs(diferenca)) }}
             </dd>
@@ -83,22 +83,22 @@ const diferenca = computed(() => {
 
       <dl v-if="paga" class="flex flex-col gap-2 text-sm">
         <div class="flex justify-between gap-3">
-          <dt class="text-gray-500">Pago em</dt>
-          <dd class="text-gray-800">{{ formatData(conta.pago_em) }}</dd>
+          <dt class="text-zinc-500">Pago em</dt>
+          <dd class="text-zinc-800">{{ formatData(conta.pago_em) }}</dd>
         </div>
         <div v-if="conta.conta_bancaria_nome" class="flex justify-between gap-3">
-          <dt class="text-gray-500">Saiu de</dt>
-          <dd class="text-gray-800">{{ conta.conta_bancaria_nome }}</dd>
+          <dt class="text-zinc-500">Saiu de</dt>
+          <dd class="text-zinc-800">{{ conta.conta_bancaria_nome }}</dd>
         </div>
       </dl>
 
-      <p v-else class="flex items-center gap-1.5 text-sm text-gray-500">
-        <ArrowRight :size="14" class="text-gray-400" />
+      <p v-else class="flex items-center gap-1.5 text-sm text-zinc-500">
+        <ArrowRight :size="14" class="text-zinc-400" />
         {{ conta.status === 'CANCELADA' ? 'Cancelada.' : 'Ainda não paga.' }}
       </p>
 
-      <div v-if="conta.observacao" class="rounded-xl border border-gray-100 px-3.5 py-2.5">
-        <p class="text-xs text-gray-500">{{ conta.observacao }}</p>
+      <div v-if="conta.observacao" class="rounded-xl border border-zinc-100 px-3.5 py-2.5">
+        <p class="text-xs text-zinc-500">{{ conta.observacao }}</p>
       </div>
 
       <HistoricoFinanceiro :historico="historico ?? []" :carregando="isLoading" />

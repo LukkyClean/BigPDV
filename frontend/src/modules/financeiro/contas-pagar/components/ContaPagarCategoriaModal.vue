@@ -63,9 +63,9 @@ function salvar() {
 <template>
   <BaseModal :is-open="!!conta" title="Classificar conta" size="sm" overlay @close="emit('fechar')">
     <div v-if="conta" class="flex flex-col gap-4">
-      <div class="rounded-xl bg-gray-50 px-4 py-3">
-        <p class="text-sm font-semibold text-gray-800">{{ conta.descricao }}</p>
-        <p class="mt-0.5 text-xs text-gray-500">
+      <div class="rounded-xl bg-zinc-50 px-4 py-3">
+        <p class="text-sm font-semibold text-zinc-800">{{ conta.descricao }}</p>
+        <p class="mt-0.5 text-xs text-zinc-500">
           {{ formatCurrency(conta.valor_pago ?? conta.valor) }} · vence
           {{ formatDataPura(conta.vencimento) }}
         </p>
@@ -78,7 +78,7 @@ function salvar() {
         placeholder="Sem categoria"
       />
 
-      <p class="text-xs text-gray-400">
+      <p class="text-xs text-zinc-400">
         A categoria é a leitura contábil do gasto — ela não entrou no livro do dinheiro, e por
         isso pode ser corrigida mesmo depois do pagamento. Valor e vencimento, não: para
         mudá-los é preciso estornar antes.

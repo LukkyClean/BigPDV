@@ -13,7 +13,7 @@
 </script>
 
 <template>
-  <div class="h-full flex flex-col p-6 overflow-y-auto">
+  <div class="h-full flex flex-col p-4 md:p-6 lg:p-8 overflow-y-auto">
     <router-view />
   </div>
 </template>

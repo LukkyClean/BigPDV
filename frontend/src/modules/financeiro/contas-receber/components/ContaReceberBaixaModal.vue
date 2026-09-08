@@ -206,9 +206,9 @@ function confirmar() {
     @close="emit('fechar')"
   >
     <div v-if="conta" class="flex flex-col gap-4">
-      <div class="rounded-xl bg-gray-50 px-4 py-3">
-        <p class="text-sm font-semibold text-gray-800">{{ conta.descricao }}</p>
-        <p class="mt-0.5 text-xs text-gray-500">
+      <div class="rounded-xl bg-zinc-50 px-4 py-3">
+        <p class="text-sm font-semibold text-zinc-800">{{ conta.descricao }}</p>
+        <p class="mt-0.5 text-xs text-zinc-500">
           Previsto {{ formatCurrency(conta.valor) }} · vence {{ formatDataPura(conta.vencimento) }}
           <template v-if="conta.taxa > 0">
             · taxa da operadora {{ formatCurrency(conta.taxa) }}
@@ -217,7 +217,7 @@ function confirmar() {
       </div>
 
       <div>
-        <p class="mb-1.5 block select-none text-xs font-medium text-gray-700">Como está pagando</p>
+        <p class="mb-1.5 block select-none text-xs font-medium text-zinc-700">Como está pagando</p>
         <div class="grid grid-cols-3 gap-1.5">
           <button
             v-for="forma in formasAtivas" :key="forma.id" type="button"
@@ -238,7 +238,7 @@ function confirmar() {
       <!-- Sem esta escolha, o juros da maquininha entraria no caixa como se
            fosse dinheiro da loja. -->
       <fieldset v-if="jurosReais > 0" class="-mt-1 flex flex-col gap-2">
-        <legend class="mb-1 block text-xs font-medium text-gray-700">Esse juros fica com</legend>
+        <legend class="mb-1 block text-xs font-medium text-zinc-700">Esse juros fica com</legend>
         <div class="grid gap-2 sm:grid-cols-2">
           <label
             v-for="opcao in [
@@ -249,11 +249,11 @@ function confirmar() {
             class="cursor-pointer rounded-xl border px-3 py-2 transition"
             :class="jurosDestino === opcao.valor
               ? 'border-brand-primary bg-brand-primary/5 ring-1 ring-brand-primary'
-              : 'border-gray-200 hover:border-gray-300'"
+              : 'border-zinc-200 hover:border-zinc-300'"
           >
             <input v-model="jurosDestino" type="radio" :value="opcao.valor" class="sr-only" />
-            <span class="block text-sm font-medium text-gray-800">{{ opcao.titulo }}</span>
-            <span class="block text-[11px] text-gray-400">{{ opcao.ajuda }}</span>
+            <span class="block text-sm font-medium text-zinc-800">{{ opcao.titulo }}</span>
+            <span class="block text-[11px] text-zinc-400">{{ opcao.ajuda }}</span>
           </label>
         </div>
       </fieldset>
@@ -287,7 +287,7 @@ function confirmar() {
           <Plus :size="13" /> Cadastrar outra conta
         </button>
 
-        <div v-else class="mt-2 flex flex-col gap-2 rounded-xl border border-gray-200 p-3">
+        <div v-else class="mt-2 flex flex-col gap-2 rounded-xl border border-zinc-200 p-3">
           <BaseInput v-model="nomeNovaConta" label="Nome da conta" placeholder="Ex.: Nubank" />
           <div class="grid grid-cols-3 gap-1.5">
             <button
@@ -307,7 +307,7 @@ function confirmar() {
             </button>
           </div>
           <div class="flex justify-end gap-2">
-            <button type="button" class="text-xs text-gray-500 cursor-pointer" @click="cadastrandoConta = false">
+            <button type="button" class="text-xs text-zinc-500 cursor-pointer" @click="cadastrandoConta = false">
               Cancelar
             </button>
             <button
@@ -322,7 +322,7 @@ function confirmar() {
         </div>
       </div>
 
-      <p class="text-xs text-gray-400">
+      <p class="text-xs text-zinc-400">
         Quitar uma dívida antiga não é venda no PDV. Se o dinheiro entrou na gaveta, registre
         um suprimento à parte.
       </p>
