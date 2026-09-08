@@ -3,6 +3,25 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 from app.db.models.empresa_fiscal_settings import EmpresaFiscalSettings
 
+
+@pytest.fixture(autouse=True)
+def _licenca_com_nfe(monkeypatch):
+    """Concede o módulo NFE à licença durante estes testes.
+
+    A NF-e NEGA por padrão quando a licença não responde (ver
+    test/core/test_modulo_nfe_nega_por_padrao.py), e no ambiente de teste não
+    há licença nenhuma -- sem isto toda rota /fiscal responderia 403.
+
+    A trava tem testes próprios; aqui o objetivo é exercitar o que vem DEPOIS
+    dela, então o módulo é concedido de propósito.
+    """
+    from app.core import modulos as modulos_mod
+
+    monkeypatch.setattr(
+        modulos_mod.licenca_service, "modulos_da_licenca", lambda _db: ["NFE"]
+    )
+
+
 @pytest.fixture
 def header_with_token(client: TestClient, db_session: Session, create_test_empresa) -> dict:
     login_data = {

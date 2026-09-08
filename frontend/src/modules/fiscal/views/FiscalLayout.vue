@@ -3,7 +3,7 @@ import { ref, watch } from 'vue';
 import { Lock, Sparkles, Check } from 'lucide-vue-next';
 
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
-import { recursoDisponivel, PLANO_ATUAL } from '@/shared/config/planos';
+import { recursoDisponivel } from '@/shared/config/planos';
 
 import { useFiscalConfiguracaoQuery } from '../composables/useFiscalConfiguracaoQuery';
 
@@ -32,7 +32,7 @@ function solicitarUpgrade() {
 
 <template>
   <div class="h-full flex flex-col p-6 overflow-y-auto">
-    <!-- Estado bloqueado (plano Start) -->
+    <!-- Bloqueado: a licenca nao traz o modulo NFE -->
     <div v-if="!nfeDisponivel" class="flex-1 flex items-start justify-center">
       <div class="w-full max-w-xl bg-white rounded-2xl shadow-sm border border-gray-100 p-8 text-center">
         <div class="w-16 h-16 mx-auto rounded-2xl bg-brand-primary-light flex items-center justify-center mb-5">
@@ -41,8 +41,8 @@ function solicitarUpgrade() {
 
         <h2 class="text-xl font-bold text-gray-800">Recurso nao incluido no seu plano</h2>
         <p class="text-sm text-gray-500 mt-2 leading-relaxed">
-          Voce esta no plano <strong>{{ PLANO_ATUAL }}</strong>, que nao inclui emissao de notas
-          fiscais. Faca upgrade para habilitar o modulo fiscal.
+          Seu plano nao inclui a emissao de notas fiscais. Faca upgrade para habilitar o
+          modulo fiscal.
         </p>
 
         <ul class="text-left text-sm text-gray-600 space-y-2 mt-6 mb-7">

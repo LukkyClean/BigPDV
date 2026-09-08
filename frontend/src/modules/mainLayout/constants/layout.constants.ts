@@ -142,11 +142,16 @@ export const SIDEBAR_SECTIONS: SidebarSection[] = [
         requiredPermission: PERMISSIONS.enterprise,
       },
       {
-        // SOME enquanto recursoDisponivel('nfe') for false -- e nao aparece com
-        // cadeado, como faz a Gestao Financeira. A diferenca e deliberada: NF-e
-        // ainda nao e vendida no plano START, entao anunciar cria expectativa de
-        // algo que o cliente nao tem como comprar. Ver `featureFlag` em
-        // layout.types.ts.
+        // SOME quando a licenca nao traz o modulo NFE -- e nao aparece com
+        // cadeado, como faz a Gestao Financeira. A diferenca e deliberada:
+        // cadeado serve para vender upgrade de recurso que existe no produto;
+        // a NF-e ainda esta em implantacao, e anunciar cria expectativa de algo
+        // que o cliente nao consegue usar. Ver `featureFlag` em layout.types.ts.
+        //
+        // Quem responde e a LICENCA: `recursoDisponivel('nfe')` consulta os
+        // modulos assinados pela plataforma, entao liberar para esta loja e um
+        // clique no app da web -- por plano ou por cliente. E NFE nega por
+        // padrao: licenca sem resposta nao libera.
         id: 'fiscal',
         icon: FileText,
         label: 'Centro Fiscal',

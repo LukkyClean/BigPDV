@@ -1,6 +1,24 @@
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 
+import { MODULOS } from '@/shared/constants/modulos.constants';
+
+/**
+ * Módulos em que "ainda não sei" significa NÃO.
+ *
+ * A regra normal do `temModulo` é liberar quando não há resposta útil, porque
+ * negar tiraria do ar um recurso que o cliente JÁ USAVA — por token velho,
+ * rede fora, ou porque a plataforma ainda não cadastrou módulo nenhum.
+ *
+ * NF-e não corre esse risco: é recurso novo, ninguém em campo tem, então não
+ * há acesso a proteger. E errar para "tem" abriria emissão de documento
+ * fiscal em nome da loja na SEFAZ — caro demais para ser o padrão.
+ *
+ * O backend aplica a MESMA exceção em app/core/modulos.py. Mudar de ideia
+ * exige mexer nos dois: aqui só se esconde o menu, lá é que se barra a rota.
+ */
+const MODULOS_NEGADOS_SEM_RESPOSTA = new Set<string>([MODULOS.NFE]);
+
 /**
  * Os módulos que esta licença tem contratados.
  *
@@ -41,11 +59,15 @@ export const useModulosStore = defineStore('modulos', () => {
    *
    * O bloqueio real acontece quando a lista vem PREENCHIDA e o identificador
    * não está nela. Aí sim a plataforma falou, e falou que esta loja não tem.
+   *
+   * EXCEÇÃO: `MODULOS_NEGADOS_SEM_RESPOSTA`. Ver o comentário da constante.
    */
-  const temModulo = (identificador: string): boolean =>
-    modulos.value === null ||
-    modulos.value.length === 0 ||
-    modulos.value.includes(identificador);
+  const temModulo = (identificador: string): boolean => {
+    if (modulos.value === null || modulos.value.length === 0) {
+      return !MODULOS_NEGADOS_SEM_RESPOSTA.has(identificador);
+    }
+    return modulos.value.includes(identificador);
+  };
 
   /**
    * Conhecido = a plataforma já disse quais são, e disse algo.

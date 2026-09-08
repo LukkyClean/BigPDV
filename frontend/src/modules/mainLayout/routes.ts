@@ -90,6 +90,7 @@ const homeRoutes: RouteRecordRaw[] = [
               subtitle: 'Certificado e Ambientes de Emissão',
               tabId: 'fiscal',
               requiresAuth: true,
+              exigeModulo: MODULOS.NFE,
             },
           },
           {
@@ -108,6 +109,7 @@ const homeRoutes: RouteRecordRaw[] = [
               subtitle: 'Notas Fiscais Eletrônicas',
               tabId: 'fiscal-nfe',
               requiresAuth: true,
+              exigeModulo: MODULOS.NFE,
             },
           },
           {
@@ -119,6 +121,7 @@ const homeRoutes: RouteRecordRaw[] = [
               subtitle: 'Notas Fiscais de Consumidor',
               tabId: 'fiscal-nfce',
               requiresAuth: true,
+              exigeModulo: MODULOS.NFE,
             },
           },
           {
@@ -130,6 +133,7 @@ const homeRoutes: RouteRecordRaw[] = [
               subtitle: 'Notas Fiscais de Serviço',
               tabId: 'fiscal-nfse',
               requiresAuth: true,
+              exigeModulo: MODULOS.NFE,
             },
           },
         ],

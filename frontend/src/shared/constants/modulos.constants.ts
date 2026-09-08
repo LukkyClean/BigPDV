@@ -26,6 +26,19 @@ export const MODULOS = {
 
   /** Fluxo de caixa projetado e conciliação. Só no plano superior. */
   FINANCEIRO_PRO: 'FINANCEIRO_PRO',
+
+  /**
+   * Centro Fiscal: emissão de NF-e, dados fiscais de produto e serviço,
+   * certificado digital e inutilização de numeração.
+   *
+   * Ao contrário dos demais, NEGA por padrão: licença sem resposta ou com
+   * lista vazia NÃO libera. Ver `MODULOS_NEGADOS_SEM_RESPOSTA` em
+   * `shared/stores/modulos.store.ts` e o gêmeo em `app/core/modulos.py`.
+   *
+   * A string precisa bater com a que o backend usa em
+   * `requer_modulo("NFE")` e com a que a plataforma emite no JWT.
+   */
+  NFE: 'NFE',
 } as const;
 
 export type Modulo = (typeof MODULOS)[keyof typeof MODULOS];

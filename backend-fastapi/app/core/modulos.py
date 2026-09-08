@@ -27,6 +27,23 @@ from app.db.session import get_db
 from app.services import licenca as licenca_service
 
 
+# Módulos que NÃO seguem a regra "sem resposta, libera".
+#
+# A regra geral (ver `modulo_dependency`) existe para proteger acesso que o
+# cliente JÁ TINHA: token velho sem a claim, rede fora, ou a plataforma que
+# ainda não cadastrou módulo nenhum. Nesses casos negar tiraria do ar um
+# recurso que estava funcionando, sem mensagem de erro nenhuma.
+#
+# NFE não tem esse risco: é recurso NOVO, ninguém em campo tem acesso a ele
+# hoje, então não há nada a proteger. E o custo de errar é assimétrico —
+# liberar por engano deixaria qualquer loja emitir documento fiscal em nome
+# dela na SEFAZ. Aqui, "não sei" significa NÃO.
+#
+# Para conceder: a plataforma inclui "NFE" na lista de módulos da licença,
+# por plano ou por cliente.
+MODULOS_NEGADOS_SEM_RESPOSTA = frozenset({"NFE"})
+
+
 def requer_modulo(identificador: str) -> Callable:
     """
     Factory de dependência que exige um módulo contratado na licença.
@@ -60,7 +77,21 @@ def requer_modulo(identificador: str) -> Callable:
         #
         # A trava morde quando a lista vem PREENCHIDA e o identificador não está
         # nela: aí a plataforma falou, e falou que esta loja não tem.
+        # ... com a exceção de MODULOS_NEGADOS_SEM_RESPOSTA, para quem "não
+        # sei" significa NÃO. Ver o comentário da constante no topo.
         if not modulos:
+            if identificador in MODULOS_NEGADOS_SEM_RESPOSTA:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail={
+                        "codigo": "MODULO_NAO_CONTRATADO",
+                        "mensagem": (
+                            f"Este recurso faz parte do módulo {identificador}, "
+                            "que não está liberado para esta licença."
+                        ),
+                        "modulo": identificador,
+                    },
+                )
             return
 
         if identificador in modulos:
