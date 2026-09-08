@@ -130,7 +130,7 @@ function handleKeydown(e: KeyboardEvent) {
         <BaseButton
           variant="primary"
           size="md"
-          :loading="isLoading"
+          :is-loading="isLoading"
           :disabled="!pin.trim()"
           @click="handleConfirmar"
         >

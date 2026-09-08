@@ -54,10 +54,14 @@ async function uploadCertificate() {
   try {
     const formData = new FormData();
     formData.append('file', file.value);
-    formData.append('password', password.value);
+    // O backend recebe `senha` (Form(...)), nao `password` -- o nome errado
+    // devolvia 422 antes mesmo de o arquivo ser lido.
+    formData.append('senha', password.value);
 
     // Call new backend endpoint
-    await api.post('/api/v1/fiscal/certificado/upload-focus', formData, {
+    // O baseURL do axios JA e .../api/v1: repetir o prefixo aqui gerava
+    // .../api/v1/api/v1/fiscal/... e um 404 silencioso.
+    await api.post('/fiscal/certificado/upload-focus', formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }
@@ -151,7 +155,7 @@ async function uploadCertificate() {
         <BaseButton 
           variant="primary" 
           @click="uploadCertificate"
-          :loading="loading"
+          :is-loading="loading"
           :disabled="!file || !password || success"
         >
           Enviar Certificado

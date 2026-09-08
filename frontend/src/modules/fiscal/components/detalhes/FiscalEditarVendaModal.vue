@@ -342,7 +342,7 @@ async function salvarAlteracoes(reemitirAposSalvar = false) {
           <BaseButton
             variant="secondary"
             type="button"
-            :loading="isSalvando"
+            :is-loading="isSalvando"
             @click="salvarAlteracoes(false)"
           >
             <Save class="h-4 w-4 mr-1.5" />
@@ -353,7 +353,7 @@ async function salvarAlteracoes(reemitirAposSalvar = false) {
             v-if="documentoId"
             variant="primary"
             type="button"
-            :loading="isSalvando"
+            :is-loading="isSalvando"
             @click="salvarAlteracoes(true)"
           >
             <RotateCcw class="h-4 w-4 mr-1.5" />

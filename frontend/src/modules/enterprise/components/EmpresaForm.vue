@@ -195,7 +195,7 @@ onBeforeRouteLeave(async () => {
             <BaseButton
               type="submit"
               variant="primary"
-              :loading="isPending"
+              :is-loading="isPending"
               :disabled="!temAlteracoesPendentes"
               class="w-full justify-center py-3 text-sm font-bold shadow-brand-primary-light/20 shadow-lg hover:shadow-brand-primary-light/30 transition-all transform active:scale-95"
             >

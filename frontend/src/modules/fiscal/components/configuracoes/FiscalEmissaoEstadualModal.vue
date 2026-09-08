@@ -204,7 +204,7 @@ async function handleSave() {
         <BaseButton
           variant="primary"
           @click="handleSave"
-          :loading="isPending"
+          :is-loading="isPending"
           :disabled="success"
         >
           Salvar Configurações

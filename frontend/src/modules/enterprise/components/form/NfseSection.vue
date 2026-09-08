@@ -128,7 +128,7 @@ function updateField<K extends keyof FiscalSettings>(field: K, value: FiscalSett
         variant="secondary"
         size="sm"
         :disabled="!fiscal_settings.prefeitura_login || !hasCertificado || disabled"
-        :loading="isTestingPrefeitura"
+        :is-loading="isTestingPrefeitura"
         @click="handleTestPrefeitura"
       >
         <Shield :size="16" class="mr-2 text-brand-primary" />

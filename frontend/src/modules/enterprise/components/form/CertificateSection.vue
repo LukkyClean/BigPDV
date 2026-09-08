@@ -346,7 +346,7 @@ function onSelectWindowsCert(event: Event) {
           <BaseButton
             type="button"
             variant="secondary"
-            :loading="isLoadingCertificates"
+            :is-loading="isLoadingCertificates"
             :disabled="disabled"
             class="w-full justify-center md:w-auto"
             @click="refetchWindowsCerts"

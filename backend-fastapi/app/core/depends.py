@@ -14,6 +14,7 @@ from app.db.crud import token as token_crud
 from app.db.crud import configuracao_licenca as licenca_crud
 from app.db.session import get_db
 from app.db.models.empresa_fiscal_settings import EmpresaFiscalSettings
+from app.core.modulos import requer_modulo
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
@@ -259,22 +260,38 @@ def requer_modulo_fiscal(
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     """
-    Garante que a empresa do usuário já configurou o módulo fiscal.
+    Porta de entrada de TODA rota fiscal fora do router /fiscal.
 
-    Eixo diferente de `requer_modulo("NFE")` (app/core/modulos.py), e os dois
-    convivem nas rotas de emissão: aquele pergunta se a LOJA contratou a NF-e
-    na licença, este pergunta se ESTA empresa já preencheu certificado e
-    ambiente. Contratado e não configurado é o estado normal de quem acabou de
-    comprar -- responder 403 aqui é o que manda o usuário para a tela certa.
+    Faz as duas perguntas, nesta ordem:
 
-    A presença de EmpresaFiscalSettings é o indicador canônico de ativação.
+      1. A LOJA contratou a NF-e?  -> `requer_modulo("NFE")`, pela licença
+         assinada. É a trava comercial, e NEGA por padrão.
+      2. ESTA empresa já configurou? -> existência de EmpresaFiscalSettings.
+         Contratado e não configurado é o estado normal de quem acabou de
+         liberar; o 403 aqui manda o usuário para a tela certa.
+
+    A (1) não estava aqui, e a falta dela abria um buraco: o router /fiscal
+    tem a trava de licença, mas as rotas fiscais que moram em produto,
+    serviço, venda e OS não têm -- elas dependem só desta função. E a (2)
+    sozinha NÃO tranca nada, porque `GET /empresas/` cria a linha de
+    EmpresaFiscalSettings para qualquer usuário autenticado (ver
+    endpoints/empresa.py). Bastava abrir a tela de configurações uma vez para
+    o "gate" passar a liberar sozinho.
+
+    Achado pelo Carlos André em 07/09/2026, na feat/fiscal-module. A correção
+    dele foi outra -- uma coluna local `modulo_fiscal_ativo` --; aqui a
+    pergunta é feita à licença, que é assinada pela plataforma e não fica
+    editável no SQLite da máquina do cliente.
 
     Raises:
-        HTTPException 403: Se o módulo fiscal não estiver configurado.
+        HTTPException 403: módulo não contratado, ou não configurado.
 
     Returns:
         Dict[str, Any]: O payload do token (passthrough para encadeamento).
     """
+    # 1. A loja contratou? Levanta 403 MODULO_NAO_CONTRATADO se não.
+    requer_modulo("NFE")(db=db)
+
     empresa_id = usuario_token.get("empresa_id")
     if not empresa_id:
         raise HTTPException(

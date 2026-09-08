@@ -254,7 +254,7 @@ function handleCloseModal() {
     <template #footer>
       <div class="flex items-center justify-end gap-3">
         <BaseButton variant="secondary" size="md" @click="handleCloseModal">Cancelar</BaseButton>
-        <BaseButton variant="primary" size="md" type="submit" :loading="isSubmitting" @click="submit">{{
+        <BaseButton variant="primary" size="md" type="submit" :is-loading="isSubmitting" @click="submit">{{
           isCreateMode ? 'Adicionar' : 'Salvar Alterações'
         }}</BaseButton>
       </div>
