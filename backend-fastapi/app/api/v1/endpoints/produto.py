@@ -10,7 +10,9 @@ from typing import Sequence, Optional
 
 from app.schemas.produto import ProdutoCreate, ProdutoRead, ProdutoSimpleRead, ProdutoUpdate
 from app.schemas.produto_fotos import ProdutoFotoRead
-from app.core.depends import check_permission, _handle_db_transaction
+from app.core.depends import check_permission, requer_modulo_fiscal, _handle_db_transaction
+from app.schemas.produto_fiscal import ProdutoFiscalRead, ProdutoFiscalUpdate
+from app.services import produto_fiscal as produto_fiscal_service
 from app.db.session import get_db
 from app.services import produto as produto_service
 
@@ -265,3 +267,82 @@ def delete_produto_image(
         image_id
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get(
+    "/{produto_id}",
+    response_model=ProdutoRead,
+    status_code=status.HTTP_200_OK,
+    summary="Obter Produto por ID",
+    description="Retorna os dados cadastrais e de estoque de um produto específico."
+)
+def get_produto_by_id(
+    user_token: dict = Depends(check_permission(required_permission="produto")),
+    produto_id: int = Path(..., description="ID do produto", ge=1),
+    db: Session = Depends(get_db)
+):
+    return _handle_db_transaction(
+        db,
+        produto_service.get_produto_by_id,
+        produto_id
+    )
+
+
+# ===========================================================================
+# ROTAS FISCAIS (GET/PUT) — Requer módulo fiscal ativo
+# ===========================================================================
+
+@router.get(
+    "/{produto_id}/fiscal",
+    response_model=ProdutoFiscalRead,
+    status_code=status.HTTP_200_OK,
+    summary="Obter Dados Fiscais do Produto",
+    description=(
+        "Retorna os dados fiscais (NCM, CFOP, CST etc.) de um produto. "
+        "Requer módulo fiscal ativo para a empresa. "
+        "Retorna 404 se os dados fiscais ainda não foram preenchidos."
+    ),
+)
+def get_dados_fiscais_produto(
+    user_token: dict = Depends(check_permission(required_permission="produto")),
+    _fiscal: dict = Depends(requer_modulo_fiscal),
+    produto_id: int = Path(..., description="ID do produto", ge=1),
+    *,
+    db: Session = Depends(get_db),
+):
+    dados = produto_fiscal_service.get_dados_fiscais(
+        db, produto_id, user_token["empresa_id"]
+    )
+    if dados is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Dados fiscais ainda não preenchidos para este produto.",
+        )
+    return dados
+
+
+@router.put(
+    "/{produto_id}/fiscal",
+    response_model=ProdutoFiscalRead,
+    status_code=status.HTTP_200_OK,
+    summary="Salvar Dados Fiscais do Produto",
+    description=(
+        "Cria ou atualiza os dados fiscais de um produto (NCM, CFOP, CST etc.). "
+        "Requer módulo fiscal ativo para a empresa."
+    ),
+)
+def upsert_dados_fiscais_produto(
+    user_token: dict = Depends(check_permission(required_permission="produto")),
+    _fiscal: dict = Depends(requer_modulo_fiscal),
+    produto_id: int = Path(..., description="ID do produto", ge=1),
+    *,
+    dados: ProdutoFiscalUpdate,
+    db: Session = Depends(get_db),
+):
+    return _handle_db_transaction(
+        db,
+        produto_fiscal_service.upsert_dados_fiscais,
+        produto_id,
+        user_token["empresa_id"],
+        dados,
+    )

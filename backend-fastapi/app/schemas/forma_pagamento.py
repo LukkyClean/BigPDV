@@ -6,7 +6,7 @@
 # exclusivamente às OS. É usada por OSPagamento ao registrar pagamentos.
 # ---------------------------------------------------------------------------
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 from typing import Optional
 
 
@@ -20,6 +20,10 @@ class FormaPagamentoBase(BaseModel):
     """Campos base de uma forma de pagamento."""
     nome: str = Field(..., min_length=2, max_length=50, description="Nome da forma de pagamento (ex: Dinheiro, PIX, Cartão)")
     ativo: bool = Field(True, description="Status ativo/inativo da forma de pagamento")
+    codigo_sefaz: Optional[str] = Field(
+        None, max_length=2,
+        description="Código SEFAZ da forma de pagamento (01-99). Obrigatório para emissão fiscal.",
+    )
     dias_para_receber: int = Field(
         0,
         ge=0,
@@ -37,6 +41,19 @@ class FormaPagamentoBase(BaseModel):
             "loja -- cartão cai no banco, dinheiro fica na gaveta"
         ),
     )
+
+    @field_validator("codigo_sefaz", mode="before")
+    @classmethod
+    def validar_codigo_sefaz(cls, v: str | None) -> str | None:
+        # Campo em branco vindo da tela chega como "" e significa "nao informado",
+        # nao "valor invalido" -- vira None em vez de reprovar o formulario.
+        if v is None or v == "":
+            return None
+        v = v.strip()
+        if not v.isdigit() or len(v) != 2:
+            raise ValueError("codigo_sefaz deve ter exatamente 2 dígitos numéricos (ex: 01, 17)")
+        return v
+
 
 
 class FormaPagamentoCreate(FormaPagamentoBase):
@@ -56,6 +73,7 @@ class FormaPagamentoUpdate(BaseModel):
     """Schema para atualização parcial de uma forma de pagamento."""
     nome: Optional[str] = Field(None, min_length=2, max_length=50, description="Novo nome")
     ativo: Optional[bool] = Field(None, description="Novo status ativo/inativo")
+    codigo_sefaz: Optional[str] = Field(None, max_length=2, description="Código SEFAZ (01-99)")
     dias_para_receber: Optional[int] = Field(
         None, ge=0, le=MAX_DIAS_PARA_RECEBER,
         description="Novo prazo em dias; 0 volta a entrar na hora",
@@ -68,6 +86,19 @@ class FormaPagamentoUpdate(BaseModel):
     )
 
     model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("codigo_sefaz", mode="before")
+    @classmethod
+    def validar_codigo_sefaz(cls, v: str | None) -> str | None:
+        # Campo em branco vindo da tela chega como "" e significa "nao informado",
+        # nao "valor invalido" -- vira None em vez de reprovar o formulario.
+        if v is None or v == "":
+            return None
+        v = v.strip()
+        if not v.isdigit() or len(v) != 2:
+            raise ValueError("codigo_sefaz deve ter exatamente 2 dígitos numéricos (ex: 01, 17)")
+        return v
+
 
 
 class FormaPagamentoRead(FormaPagamentoBase):

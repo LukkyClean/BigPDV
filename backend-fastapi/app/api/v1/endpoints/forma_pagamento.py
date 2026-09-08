@@ -53,6 +53,7 @@ def _create_fp_service(db: Session, fp_data: FormaPagamentoCreate) -> FormaPagam
         ativo=fp_data.ativo,
         dias_para_receber=fp_data.dias_para_receber,
         conta_bancaria_id=fp_data.conta_bancaria_id,
+        codigo_sefaz=fp_data.codigo_sefaz,
     )
     return fp_crud.create_forma_pagamento(db, fp_to_add=fp_to_db)
 
@@ -77,6 +78,9 @@ def _update_fp_service(db: Session, fp_id: int, fp_data: FormaPagamentoUpdate) -
 
     if fp_data.dias_para_receber is not None:
         fp_in_db.dias_para_receber = fp_data.dias_para_receber
+
+    if fp_data.codigo_sefaz is not None:
+        fp_in_db.codigo_sefaz = fp_data.codigo_sefaz
 
     # ZERO SIGNIFICA "volta para a principal". `None` ja quer dizer "nao mexe"
     # num PATCH parcial, entao sobrou o zero para limpar -- sem ele nao haveria
