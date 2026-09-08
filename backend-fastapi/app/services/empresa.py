@@ -6,7 +6,7 @@
 
 import os
 import platform
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
@@ -268,8 +268,9 @@ def upload_certificado_a1(
     """
     Upload e validação de certificado A1 (PKCS#12).
 
-    IMPORTANTE: A senha NÃO é persistida no banco de dados.
-    Ela é usada apenas para validar o certificado e extrair metadados.
+    A senha É persistida, criptografada com Fernet (`encrypt_data`): a emissão
+    da NF-e precisa abrir o PKCS#12 a cada chamada, e sem a senha guardada o
+    lojista teria de redigitá-la a cada nota.
 
     Args:
         db: Sessão do banco de dados.
@@ -341,6 +342,97 @@ def upload_certificado_a1(
     settings.certificado_validade = cert_validade
     settings.certificado_subject = cert_subject
     settings.certificado_thumbprint = None  # Limpar Windows se estava usando
+    settings.certificado_senha = encrypt_data(senha)
+
+    db.flush()
+    db.refresh(empresa_in_db)
+
+    return empresa_in_db
+
+
+def upload_certificado_focus(
+    db: Session,
+    empresa_id: int,
+    file: UploadFile,
+    senha: str
+) -> EmpresaModel:
+    """
+    Valida um certificado A1 (PKCS#12) destinado a emissao pela API na nuvem.
+
+    Diferente do `upload_certificado_a1`, aqui o arquivo NAO fica no disco e a
+    senha NAO e guardada: quem assina e o servico remoto, entao a loja nao
+    precisa manter o material criptografico.
+
+    ATENCAO: o envio para a API Online ainda e um mock (passo 5). O que esta
+    funcional e a validacao local do certificado e a gravacao dos metadados.
+    """
+    from cryptography.hazmat.primitives.serialization import pkcs12
+    from cryptography.hazmat.backends import default_backend
+
+    empresa_in_db = empresa_crud.get_empresa_by_id(db, empresa_id=empresa_id)
+    if not empresa_in_db:
+        raise NOT_FOUND_EXCE
+
+    # 1. Ler arquivo em memoria
+    file_content = file.file.read()
+
+    # 2. Validar certificado com a senha
+    try:
+        private_key, certificate, chain = pkcs12.load_key_and_certificates(
+            file_content,
+            senha.encode('utf-8'),
+            default_backend()
+        )
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Senha incorreta ou certificado invalido"
+        )
+    finally:
+        file.file.close()
+
+    if certificate is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Certificado nao encontrado no arquivo"
+        )
+
+    # 3. Extrair metadados
+    cert_subject = certificate.subject.rfc4514_string()
+    cert_validade = certificate.not_valid_after_utc
+
+    # Extrair CNPJ se possivel
+    import re
+    cnpj_match = (
+        re.search(r'2\.5\.4\.97=#131[a-f0-9]{2}([0-9]{14})', cert_subject)
+        or re.search(r'CNPJ:?([0-9]{14})', cert_subject)
+    )
+    cert_cnpj = cnpj_match.group(1) if cnpj_match else None
+
+    # 4. Verificar se nao esta expirado.
+    # `not_valid_after_utc` vem COM fuso, entao a comparacao tem que ser com um
+    # datetime tambem com fuso -- utcnow() aqui levanta TypeError.
+    if cert_validade < datetime.now(timezone.utc):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Certificado expirado em {cert_validade.strftime('%d/%m/%Y')}"
+        )
+
+    # 5. Envio para a API Online -- AINDA MOCK.
+    import time
+    time.sleep(0.5)
+
+    # 6. Atualizar configuracoes fiscais
+    settings_fiscais = get_or_create_fiscal_settings(db, empresa_id)
+    settings_fiscais.tipo_certificado = "NUVEM"
+    settings_fiscais.certificado_digital_path = None
+    settings_fiscais.certificado_validade = cert_validade
+    settings_fiscais.certificado_subject = cert_subject
+    settings_fiscais.certificado_thumbprint = None
+    settings_fiscais.certificado_senha = None
+    settings_fiscais.certificado_status = "CONECTADO_NUVEM"
+    if cert_cnpj:
+        settings_fiscais.certificado_cnpj = cert_cnpj
 
     db.flush()
     db.refresh(empresa_in_db)

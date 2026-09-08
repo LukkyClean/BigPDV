@@ -6,6 +6,7 @@
 import os
 import platform
 import secrets
+from cryptography.fernet import Fernet
 from pydantic_settings import BaseSettings
 from pydantic import ConfigDict
 
@@ -125,6 +126,33 @@ def _load_or_create_secret_key(path: str) -> str:
 
 _secret_key_value = _load_or_create_secret_key(os.path.join(data_dir, "secret.key"))
 
+# Pasta da chave de criptografia dos certificados. Fica DENTRO do data_dir, e
+# nao na pasta de instalacao, pelo mesmo motivo do banco: o desinstalador nao
+# alcanca o data_dir, entao a chave sobrevive a atualizacao do cliente.
+secure_dir = os.path.join(data_dir, "secure")
+os.makedirs(secure_dir, exist_ok=True)
+
+
+def _load_or_create_encryption_key(path: str) -> bytes:
+    """
+    Le a chave Fernet do disco, ou cria uma na primeira execucao.
+
+    A chave e por INSTALACAO e nao pode mudar: e com ela que a senha do
+    certificado A1 foi cifrada no banco. Perder o arquivo nao perde o
+    certificado, mas obriga o lojista a redigitar a senha.
+    """
+    if os.path.exists(path):
+        with open(path, "rb") as f:
+            return f.read().strip()
+
+    key = Fernet.generate_key()
+    with open(path, "wb") as f:
+        f.write(key)
+    return key
+
+
+_fernet_key_value = _load_or_create_encryption_key(os.path.join(secure_dir, "fernet.key"))
+
 class Settings(BaseSettings):
     """
     Carrega e valida as variáveis de ambiente (.env).
@@ -139,6 +167,12 @@ class Settings(BaseSettings):
     SECRET_KEY: str = _secret_key_value
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 180
+
+    # Criptografia da senha do certificado digital (Fernet)
+    FERNET_KEY: bytes = _fernet_key_value
+
+    # Fiscal: com o mock ligado da para exercitar a emissao sem API real.
+    FISCAL_MOCK_ENABLED: bool = False
 
 # Instância única (Singleton)
 settings = Settings()

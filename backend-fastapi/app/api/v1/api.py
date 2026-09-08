@@ -31,6 +31,7 @@ from app.api.v1.endpoints import comunicado
 from app.api.v1.endpoints import licenca
 from app.api.v1.endpoints import checklist_mobile
 from app.api.v1.endpoints import backup
+from app.api.v1.endpoints import fiscal
 
 # Cria a instância principal do roteador para a V1
 router = APIRouter()
@@ -124,3 +125,7 @@ router.include_router(backup.router, prefix="/backup", tags=["Backup"])
 # Contas a pagar, plano de contas e contas bancarias. TODA rota exige o modulo
 # FINANCEIRO na licenca (403 MODULO_NAO_CONTRATADO) alem da permissao do cargo.
 router.include_router(financeiro.router, prefix="/financeiro", tags=["Financeiro"])
+
+# Inclui o roteador do Centro Fiscal sob o prefixo /fiscal
+# Documentos fiscais, resumo e pendencias globais da NF-e.
+router.include_router(fiscal.router, prefix="/fiscal", tags=["Fiscal"])

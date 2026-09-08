@@ -8,10 +8,32 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, Any
 
 import bcrypt
+from cryptography.fernet import Fernet
 from fastapi import HTTPException, status
 from jose import jwt, JWTError
 
 from app.core.config import settings
+
+# =========================
+# Criptografia reversivel (certificado digital)
+# =========================
+#
+# Fernet e simetrico e REVERSIVEL, ao contrario do bcrypt logo abaixo. A senha
+# do certificado A1 precisa ser recuperada em texto claro a cada emissao, para
+# abrir o PKCS#12 -- por isso ela nao pode ser hasheada como a senha de login.
+
+_fernet_instance = Fernet(settings.FERNET_KEY)
+
+
+def encrypt_data(plain_text: str) -> str:
+    """Cifra um texto com a chave Fernet da instalacao."""
+    return _fernet_instance.encrypt(plain_text.encode('utf-8')).decode('utf-8')
+
+
+def decrypt_data(encrypted_text: str) -> str:
+    """Decifra um texto cifrado por `encrypt_data` nesta mesma instalacao."""
+    return _fernet_instance.decrypt(encrypted_text.encode('utf-8')).decode('utf-8')
+
 
 # =========================
 # Hash de Senha

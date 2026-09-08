@@ -13,6 +13,7 @@ from app.services import usuario as usuario
 from app.db.crud import token as token_crud
 from app.db.crud import configuracao_licenca as licenca_crud
 from app.db.session import get_db
+from app.db.models.empresa_fiscal_settings import EmpresaFiscalSettings
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
@@ -247,6 +248,53 @@ def is_visao_gerencial(user_token: dict) -> bool:
         return True
     cargo = (user_token.get("cargo") or "").lower()
     return any(c in cargo for c in _CARGOS_GERENCIAIS)
+
+
+# =========================
+# Módulo fiscal: a empresa CONFIGUROU?
+# =========================
+
+def requer_modulo_fiscal(
+    usuario_token: Dict[str, Any] = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    """
+    Garante que a empresa do usuário já configurou o módulo fiscal.
+
+    Eixo diferente de `requer_modulo("NFE")` (app/core/modulos.py), e os dois
+    convivem nas rotas de emissão: aquele pergunta se a LOJA contratou a NF-e
+    na licença, este pergunta se ESTA empresa já preencheu certificado e
+    ambiente. Contratado e não configurado é o estado normal de quem acabou de
+    comprar -- responder 403 aqui é o que manda o usuário para a tela certa.
+
+    A presença de EmpresaFiscalSettings é o indicador canônico de ativação.
+
+    Raises:
+        HTTPException 403: Se o módulo fiscal não estiver configurado.
+
+    Returns:
+        Dict[str, Any]: O payload do token (passthrough para encadeamento).
+    """
+    empresa_id = usuario_token.get("empresa_id")
+    if not empresa_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Usuário sem empresa vinculada. Acesso negado.",
+        )
+
+    fiscal_settings = (
+        db.query(EmpresaFiscalSettings)
+        .filter(EmpresaFiscalSettings.empresa_id == empresa_id)
+        .first()
+    )
+    if not fiscal_settings:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Módulo fiscal não configurado para esta empresa. "
+                   "Acesse Configurações > Dados Fiscais para ativar.",
+        )
+
+    return usuario_token
 
 
 # =========================
