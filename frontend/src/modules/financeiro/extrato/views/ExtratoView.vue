@@ -12,6 +12,8 @@
  * erro não serve para conferir nada.
  */
 import { computed, nextTick, ref } from 'vue';
+
+import PageReview from '@/shared/components/layout/PageReview/PageReview.vue';
 import { useRoute } from 'vue-router';
 import { ChevronLeft, ChevronRight, ArrowDownLeft, ArrowUpRight, Printer } from 'lucide-vue-next';
 
@@ -152,6 +154,12 @@ function limparFiltros() {
 
 <template>
   <div class="flex flex-col gap-6 md:gap-8">
+    <!-- Cabecalho da secao. Mesmo padrao de Clientes e Produtos:
+         PageReview a esquerda, acao principal a direita. -->
+    <div class="flex items-center justify-between gap-4">
+      <PageReview title="Extrato Financeiro" description="Todo o dinheiro que entrou e saiu, linha a linha" />
+    </div>
+
     <!-- Mês, o mesmo seletor das outras telas do módulo -->
     <div class="flex flex-wrap items-center justify-between gap-3">
       <div class="flex items-center gap-3">

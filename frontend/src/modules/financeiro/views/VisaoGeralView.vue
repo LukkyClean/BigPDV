@@ -16,6 +16,8 @@
  * na hora saía como R$ 160 de lucro.
  */
 import { computed, ref } from 'vue';
+
+import PageReview from '@/shared/components/layout/PageReview/PageReview.vue';
 import { useRouter } from 'vue-router';
 import {
   ChevronLeft,
@@ -86,6 +88,12 @@ const diferencaCaixa = computed(
 
 <template>
   <div class="flex flex-col gap-6 md:gap-8">
+    <!-- Cabecalho da secao. Mesmo padrao de Clientes e Produtos:
+         PageReview a esquerda, acao principal a direita. -->
+    <div class="flex items-center justify-between gap-4">
+      <PageReview title="Visão Geral do Mês" description="O resultado do período e o movimento do caixa" />
+    </div>
+
     <!-- Seletor de mês -->
     <div class="flex items-center gap-3">
       <button

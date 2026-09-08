@@ -16,6 +16,7 @@ import { computed, ref } from 'vue';
 import { ChevronLeft, ChevronRight, CheckCircle2, CreditCard } from 'lucide-vue-next';
 
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
+import PageReview from '@/shared/components/layout/PageReview/PageReview.vue';
 import { formatCurrency } from '@/shared/utils/finance';
 import { formatDataPura } from '@/shared/utils/date.utils';
 
@@ -46,6 +47,12 @@ function jaVenceu(data: string): boolean {
 
 <template>
   <div class="flex flex-col gap-6 md:gap-8">
+    <!-- Cabecalho da secao. Mesmo padrao de Clientes e Produtos:
+         PageReview a esquerda, acao principal a direita. -->
+    <div class="flex items-center justify-between gap-4">
+      <PageReview title="Conciliação de Cartão" description="O extrato da operadora conferido contra a loja" />
+    </div>
+
     <!-- Seletor de mês, o mesmo das outras telas do módulo -->
     <div class="flex items-center gap-3">
       <button

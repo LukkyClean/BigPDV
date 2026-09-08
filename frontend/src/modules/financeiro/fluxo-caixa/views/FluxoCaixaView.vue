@@ -26,6 +26,7 @@ import { useRouter } from 'vue-router';
 import { AlertTriangle, CalendarClock, TrendingDown, TrendingUp, Wallet } from 'lucide-vue-next';
 
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
+import PageReview from '@/shared/components/layout/PageReview/PageReview.vue';
 import { formatCurrency } from '@/shared/utils/finance';
 import { formatDataPura } from '@/shared/utils/date.utils';
 
@@ -74,6 +75,15 @@ function diaSemana(iso: string): string {
 
 <template>
   <div class="flex flex-col gap-6 md:gap-8">
+    <!-- Cabecalho da secao. Mesmo padrao de Clientes e Produtos:
+         PageReview a esquerda, acao principal a direita. -->
+    <div class="flex items-center justify-between gap-4">
+      <PageReview title="Fluxo de Caixa" description="A projeção de entradas e saídas do período" />
+      <BaseButton variant="secondary" class="px-4" @click="modalSaldo = true">
+        <Wallet :size="16" class="mr-2" /> Atualizar saldo
+      </BaseButton>
+    </div>
+
     <!-- Janela -->
     <div class="flex flex-wrap items-center justify-between gap-3">
       <div class="flex items-center gap-2">
@@ -93,9 +103,6 @@ function diaSemana(iso: string): string {
         </button>
       </div>
 
-      <BaseButton variant="secondary" class="px-4" @click="modalSaldo = true">
-        <Wallet :size="16" class="mr-2" /> Atualizar saldo
-      </BaseButton>
     </div>
 
     <!-- Aviso e não bloqueio: o horizonte longo serve para enxergar as parcelas

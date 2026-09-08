@@ -11,6 +11,7 @@ import { useRoute } from 'vue-router';
 import { Filter, ChevronLeft, ChevronRight, Plus, Undo2 } from 'lucide-vue-next';
 
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
+import PageReview from '@/shared/components/layout/PageReview/PageReview.vue';
 import BaseSearchInput from '@/shared/components/ui/BaseSearchInput/BaseSearchInput.vue';
 import BaseConfirmModal from '@/shared/components/commons/BaseConfirmModal/BaseConfirmModal.vue';
 import BaseModal from '@/shared/components/commons/BaseModal/BaseModal.vue';
@@ -136,6 +137,15 @@ function rotuloStatus(conta: ContaReceber): string {
 
 <template>
   <div class="flex flex-col gap-6 md:gap-8">
+    <!-- Cabecalho da secao. Mesmo padrao de Clientes e Produtos:
+         PageReview a esquerda, acao principal a direita. -->
+    <div class="flex items-center justify-between gap-4">
+      <PageReview title="Contas a Receber" description="Cobranças em aberto e o que já foi quitado" />
+      <BaseButton variant="primary" @click="abrirForm">
+        <Plus :size="16" class="mr-1.5" /> Nova cobrança
+      </BaseButton>
+    </div>
+
     <!-- O aviso de que a lista NÃO é o mês: quem chegou pelo painel de atenção
          está vendo um recorte, e sem dizer isso a tela parece ter esquecido
          contas. "Mostrar tudo" devolve o comportamento normal. -->
@@ -168,9 +178,6 @@ function rotuloStatus(conta: ContaReceber): string {
         </button>
       </div>
 
-      <BaseButton variant="primary" @click="abrirForm">
-        <Plus :size="16" class="mr-1.5" /> Nova cobrança
-      </BaseButton>
     </div>
 
     <div class="flex flex-wrap items-center gap-3">

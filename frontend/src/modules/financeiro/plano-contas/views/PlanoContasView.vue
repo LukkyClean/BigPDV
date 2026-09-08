@@ -16,6 +16,7 @@ import { computed, ref } from 'vue';
 import { Plus, Check, X } from 'lucide-vue-next';
 
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
+import PageReview from '@/shared/components/layout/PageReview/PageReview.vue';
 import BaseInput from '@/shared/components/ui/BaseInput/BaseInput.vue';
 import { useToast } from '@/shared/composables/useToast';
 
@@ -108,6 +109,12 @@ function alternarAtivo(id: number, ativo: boolean) {
 
 <template>
   <div class="flex flex-col gap-6 md:gap-8">
+    <!-- Cabecalho da secao. Mesmo padrao de Clientes e Produtos:
+         PageReview a esquerda, acao principal a direita. -->
+    <div class="flex items-center justify-between gap-4">
+      <PageReview title="Plano de Contas" description="As categorias que classificam cada lançamento" />
+    </div>
+
     <p class="max-w-2xl text-sm text-zinc-500">
       As categorias classificam cada conta que você lança. É o que faz o resultado do mês
       dizer <strong class="text-zinc-700">onde</strong> o dinheiro foi, e não só quanto saiu —

@@ -16,6 +16,8 @@
  * andamento é a Visão Geral.
  */
 import { computed, ref } from 'vue';
+
+import PageReview from '@/shared/components/layout/PageReview/PageReview.vue';
 import { CalendarRange, LineChart, Percent, TrendingUp, Wallet } from 'lucide-vue-next';
 
 import { formatCurrency } from '@/shared/utils/finance';
@@ -108,6 +110,12 @@ function faltam(portao: number): number {
 
 <template>
   <div class="flex flex-col gap-6 md:gap-8">
+    <!-- Cabecalho da secao. Mesmo padrao de Clientes e Produtos:
+         PageReview a esquerda, acao principal a direita. -->
+    <div class="flex items-center justify-between gap-4">
+      <PageReview title="Análise do Período" description="De onde vem a receita e para onde vai o dinheiro" />
+    </div>
+
     <div class="flex items-center gap-2">
       <button
         v-for="opcao in [6, 12]"
