@@ -104,3 +104,5 @@ export const DEFAULT_OS_PAGAMENTO_VALUES = {
   bandeira_cartao: undefined,
   detalhes: undefined,
 }
+
+export const OS_NOTA_FISCAL_QUERY_KEY = 'os-nota-fiscal';

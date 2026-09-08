@@ -23,6 +23,17 @@ export interface Company {
   /** Chave PIX do recebedor. Vem do login junto do resto da identidade da empresa. */
   chave_pix?: string | null;
   pix_ativo?: boolean;
+  /**
+   * Regime tributário como RÓTULO de tela ("Simples Nacional", "Lucro
+   * Presumido"...). Serve para exibir e para o formulário fiscal sugerir
+   * campos — nunca para decidir tributação.
+   *
+   * Quem decide CSOSN vs CST é o `crt` abaixo, que é o código numérico da
+   * NF-e. Texto muda, código não.
+   */
+  regime_tributario?: string | null;
+  /** Código de Regime Tributário da NF-e: 1=Simples, 2=Simples excesso, 3=Normal, 4=MEI. */
+  crt?: number | null;
   ativo: boolean;
 }
 

@@ -19,6 +19,7 @@ export type SidebarLabelOptions =
     | 'Gestão de Equipe'
     | 'Minha Conta'
     | 'Gestão Financeira'
+    | 'Centro Fiscal'
 
 /**
  * Sub-item de um menu que agrupa (ex.: Contas a Pagar dentro de Gestão
@@ -67,6 +68,26 @@ export interface SidebarOption {
      * os filhos, cada um com o seu modulo.
      */
     requiredModule?: string;
+    /**
+     * Recurso que precisa estar no PLANO para o item existir. Quando devolve
+     * false, o item SOME.
+     *
+     * ATENÇÃO -- este é o segundo mecanismo, e ele contradiz de propósito o
+     * `requiredModule` logo acima. Qual usar:
+     *
+     *   requiredModule  -> a loja está dentro do produto e o item é upgrade.
+     *                      APARECE COM CADEADO. É o caso da Gestão Financeira.
+     *   featureFlag     -> o recurso ainda não é vendido para este plano e não
+     *                      deve nem ser anunciado. SOME. É o caso da NF-e,
+     *                      enquanto `recursoDisponivel('nfe')` for false.
+     *
+     * Regra prática: se mostrar o cadeado ajuda a vender, use requiredModule;
+     * se mostrar cria expectativa de algo que ainda não dá para comprar, use
+     * featureFlag. Na dúvida, cadeado -- sumir com tela gera chamado.
+     *
+     * O backend não depende disto: /fiscal já responde 403 por conta própria.
+     */
+    featureFlag?: () => boolean;
     /**
      * Sub-itens. Presente = o item vira grupo que expande e deixa de navegar
      * por conta própria; quem navega são os filhos.

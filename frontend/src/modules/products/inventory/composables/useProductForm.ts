@@ -24,6 +24,8 @@ import type {
 import { useCreateProductMutation, useUpdateProductMutation } from './useProductsQuery';
 import { useProductModal } from './useProductModal';
 import { useConfiguracoesStore } from '@/shared/stores/configuracoes.store';
+import { recursoDisponivel } from '@/shared/config/planos';
+import { getProdutoFiscal } from '../services/product.service';
 
 // =============================================
 // Constants
@@ -48,6 +50,27 @@ const DEFAULT_FORM_VALUES: ProductFormData = {
   quantidade_ideal: 0,
 
   image_url: '',
+
+  fiscal_ncm: '',
+  fiscal_cest: '',
+  fiscal_cfop_padrao: '',
+  fiscal_origem_mercadoria: '',
+  fiscal_unidade_tributavel: '',
+  fiscal_gtin_tributavel: '',
+  fiscal_cst_icms: '',
+  fiscal_csosn: '',
+  fiscal_aliquota_icms_display: '',
+  fiscal_reducao_base_icms_display: '',
+  fiscal_codigo_beneficio_fiscal: '',
+  fiscal_aliquota_pis_display: '',
+  fiscal_aliquota_cofins_display: '',
+  fiscal_cst_pis: '',
+  fiscal_cst_cofins: '',
+  fiscal_c_class_trib: '',
+  fiscal_cst_ibs_cbs: '',
+  fiscal_aliquota_ibs_display: '',
+  fiscal_aliquota_cbs_display: '',
+  fiscal_c_benef: '',
 };
 
 // =============================================
@@ -89,6 +112,29 @@ export interface ProductFormContext {
 
   imageFile: Ref<File | null>;
   image_url: Ref<string | null>;
+
+  // Dados fiscais
+  fiscal_ncm: Ref<string>;
+  fiscal_cest: Ref<string>;
+  fiscal_cfop_padrao: Ref<string>;
+  fiscal_origem_mercadoria: Ref<string>;
+  fiscal_unidade_tributavel: Ref<string>;
+  fiscal_gtin_tributavel: Ref<string>;
+  fiscal_cst_icms: Ref<string>;
+  fiscal_csosn: Ref<string>;
+  fiscal_aliquota_icms_display: Ref<string>;
+  fiscal_reducao_base_icms_display: Ref<string>;
+  fiscal_codigo_beneficio_fiscal: Ref<string>;
+  fiscal_aliquota_pis_display: Ref<string>;
+  fiscal_aliquota_cofins_display: Ref<string>;
+  fiscal_cst_pis: Ref<string>;
+  fiscal_cst_cofins: Ref<string>;
+  fiscal_c_class_trib: Ref<string>;
+  fiscal_cst_ibs_cbs: Ref<string>;
+  fiscal_aliquota_ibs_display: Ref<string>;
+  fiscal_aliquota_cbs_display: Ref<string>;
+  fiscal_c_benef: Ref<string>;
+  nfeDisponivel: boolean;
 
   errors: Ref<Record<string, string | undefined>>;
   submitCount: Ref<number>;
@@ -148,9 +194,32 @@ export function useProductFormProvider() {
   
   const [image_url] = defineField('image_url');
 
+  // Campos fiscais
+  const nfeDisponivel = recursoDisponivel('nfe');
+  const [fiscal_ncm] = defineField('fiscal_ncm');
+  const [fiscal_cest] = defineField('fiscal_cest');
+  const [fiscal_cfop_padrao] = defineField('fiscal_cfop_padrao');
+  const [fiscal_origem_mercadoria] = defineField('fiscal_origem_mercadoria');
+  const [fiscal_unidade_tributavel] = defineField('fiscal_unidade_tributavel');
+  const [fiscal_gtin_tributavel] = defineField('fiscal_gtin_tributavel');
+  const [fiscal_cst_icms] = defineField('fiscal_cst_icms');
+  const [fiscal_csosn] = defineField('fiscal_csosn');
+  const [fiscal_aliquota_icms_display] = defineField('fiscal_aliquota_icms_display');
+  const [fiscal_reducao_base_icms_display] = defineField('fiscal_reducao_base_icms_display');
+  const [fiscal_codigo_beneficio_fiscal] = defineField('fiscal_codigo_beneficio_fiscal');
+  const [fiscal_aliquota_pis_display] = defineField('fiscal_aliquota_pis_display');
+  const [fiscal_aliquota_cofins_display] = defineField('fiscal_aliquota_cofins_display');
+  const [fiscal_cst_pis] = defineField('fiscal_cst_pis');
+  const [fiscal_cst_cofins] = defineField('fiscal_cst_cofins');
+  const [fiscal_c_class_trib] = defineField('fiscal_c_class_trib');
+  const [fiscal_cst_ibs_cbs] = defineField('fiscal_cst_ibs_cbs');
+  const [fiscal_aliquota_ibs_display] = defineField('fiscal_aliquota_ibs_display');
+  const [fiscal_aliquota_cbs_display] = defineField('fiscal_aliquota_cbs_display');
+  const [fiscal_c_benef] = defineField('fiscal_c_benef');
+
   const apiError = ref<string | null>(null);
 
-  function populateForm(product: ProdutoRead) {
+  async function populateForm(product: ProdutoRead) {
     setValues({
       nome: product.nome,
       codigo_produto: product.codigo_produto,
@@ -170,6 +239,39 @@ export function useProductFormProvider() {
       quantidade_ideal: product.estoque.quantidade_ideal || 0,
       image_url: product.fotos?.find((foto) => foto.principal)?.url || null,
     });
+
+    // Carrega dados fiscais em paralelo (se módulo ativo)
+    if (nfeDisponivel) {
+      try {
+        const fiscal = await getProdutoFiscal(product.id);
+        if (fiscal) {
+          setValues({
+            fiscal_ncm: fiscal.ncm ?? '',
+            fiscal_cest: fiscal.cest ?? '',
+            fiscal_cfop_padrao: fiscal.cfop_padrao ?? '',
+            fiscal_origem_mercadoria: fiscal.origem_mercadoria != null ? String(fiscal.origem_mercadoria) : '',
+            fiscal_unidade_tributavel: fiscal.unidade_tributavel ?? '',
+            fiscal_gtin_tributavel: fiscal.gtin_tributavel ?? '',
+            fiscal_cst_icms: fiscal.cst_icms ?? '',
+            fiscal_csosn: fiscal.csosn ?? '',
+            fiscal_aliquota_icms_display: fiscal.aliquota_icms != null ? String(fiscal.aliquota_icms / 100) : '',
+            fiscal_reducao_base_icms_display: fiscal.reducao_base_icms != null ? String(fiscal.reducao_base_icms / 100) : '',
+            fiscal_codigo_beneficio_fiscal: fiscal.codigo_beneficio_fiscal ?? '',
+            fiscal_aliquota_pis_display: fiscal.aliquota_pis != null ? String(fiscal.aliquota_pis / 100) : '',
+            fiscal_aliquota_cofins_display: fiscal.aliquota_cofins != null ? String(fiscal.aliquota_cofins / 100) : '',
+            fiscal_cst_pis: fiscal.cst_pis ?? '',
+            fiscal_cst_cofins: fiscal.cst_cofins ?? '',
+            fiscal_c_class_trib: fiscal.c_class_trib ?? '',
+            fiscal_cst_ibs_cbs: fiscal.cst_ibs_cbs ?? '',
+            fiscal_aliquota_ibs_display: fiscal.aliquota_ibs != null ? String(Math.round(fiscal.aliquota_ibs / 100)) : '',
+            fiscal_aliquota_cbs_display: fiscal.aliquota_cbs != null ? String(Math.round(fiscal.aliquota_cbs / 100)) : '',
+            fiscal_c_benef: fiscal.c_benef ?? '',
+          } as any, false);
+        }
+      } catch {
+        // Falha ao carregar fiscal não deve bloquear a edição do produto
+      }
+    }
   }
 
   watch(
@@ -247,7 +349,7 @@ export function useProductFormProvider() {
           },
         });
       } else if (selectedProduct.value) {
-        const updateData: ProdutoUpdate = {
+        const updateData: ProdutoUpdate & { fiscal?: Record<string, unknown> } = {
           nome: formData.nome,
           codigo_produto: formData.codigo_produto,
           codigo_barras: formData.codigo_barras || undefined,
@@ -266,6 +368,46 @@ export function useProductFormProvider() {
             quantidade_ideal: formData.quantidade_ideal || undefined,
           },
         };
+
+        // Inclui dados fiscais no payload (o service chama o endpoint separado)
+        if (nfeDisponivel) {
+          updateData.fiscal = {
+            ncm: formData.fiscal_ncm || null,
+            cest: formData.fiscal_cest || null,
+            cfop_padrao: formData.fiscal_cfop_padrao || null,
+            origem_mercadoria: formData.fiscal_origem_mercadoria !== '' && formData.fiscal_origem_mercadoria != null
+              ? Number(formData.fiscal_origem_mercadoria)
+              : null,
+            unidade_tributavel: formData.fiscal_unidade_tributavel || null,
+            gtin_tributavel: formData.fiscal_gtin_tributavel || null,
+            cst_icms: formData.fiscal_cst_icms || null,
+            csosn: formData.fiscal_csosn || null,
+            aliquota_icms: formData.fiscal_aliquota_icms_display
+              ? Math.round(Number(formData.fiscal_aliquota_icms_display) * 100)
+              : null,
+            reducao_base_icms: formData.fiscal_reducao_base_icms_display
+              ? Math.round(Number(formData.fiscal_reducao_base_icms_display) * 100)
+              : null,
+            codigo_beneficio_fiscal: formData.fiscal_codigo_beneficio_fiscal || null,
+            aliquota_pis: formData.fiscal_aliquota_pis_display
+              ? Math.round(Number(formData.fiscal_aliquota_pis_display) * 100)
+              : null,
+            aliquota_cofins: formData.fiscal_aliquota_cofins_display
+              ? Math.round(Number(formData.fiscal_aliquota_cofins_display) * 100)
+              : null,
+            cst_pis: formData.fiscal_cst_pis || null,
+            cst_cofins: formData.fiscal_cst_cofins || null,
+            c_class_trib: formData.fiscal_c_class_trib || null,
+            cst_ibs_cbs: formData.fiscal_cst_ibs_cbs || null,
+            aliquota_ibs: formData.fiscal_aliquota_ibs_display
+              ? Math.round(Number(formData.fiscal_aliquota_ibs_display) * 100)
+              : null,
+            aliquota_cbs: formData.fiscal_aliquota_cbs_display
+              ? Math.round(Number(formData.fiscal_aliquota_cbs_display) * 100)
+              : null,
+            c_benef: formData.fiscal_c_benef || null,
+          };
+        }
 
         updateMutation.mutate(
           { id: selectedProduct.value.id, data: updateData },
@@ -311,6 +453,27 @@ export function useProductFormProvider() {
     quantidade_ideal,
     imageFile,
     image_url,
+    fiscal_ncm,
+    fiscal_cest,
+    fiscal_cfop_padrao,
+    fiscal_origem_mercadoria,
+    fiscal_unidade_tributavel,
+    fiscal_gtin_tributavel,
+    fiscal_cst_icms,
+    fiscal_csosn,
+    fiscal_aliquota_icms_display,
+    fiscal_reducao_base_icms_display,
+    fiscal_codigo_beneficio_fiscal,
+    fiscal_aliquota_pis_display,
+    fiscal_aliquota_cofins_display,
+    fiscal_cst_pis,
+    fiscal_cst_cofins,
+    fiscal_c_class_trib,
+    fiscal_cst_ibs_cbs,
+    fiscal_aliquota_ibs_display,
+    fiscal_aliquota_cbs_display,
+    fiscal_c_benef,
+    nfeDisponivel,
     errors,
     submitCount,
     values,

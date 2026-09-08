@@ -60,6 +60,10 @@ const filteredSidebar = computed(() => {
         // Loja sem Ordem de Serviço não vê o módulo. Único item gateado por
         // segmento aqui; todo o resto continua sendo só permissão.
         if (opt.id === 'services' && !usaOrdemServico.value) return false;
+        // Recurso fora do plano SOME -- diferente de módulo não contratado,
+        // que fica com cadeado. Ver `featureFlag` em layout.types.ts para
+        // quando usar cada um.
+        if (opt.featureFlag && !opt.featureFlag()) return false;
         return hasPermission(opt.requiredPermission);
       })
       .map((opt) => ({
