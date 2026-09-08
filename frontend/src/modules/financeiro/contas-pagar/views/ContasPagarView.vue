@@ -8,10 +8,11 @@
  */
 import { computed, ref } from 'vue';
 import { useRoute } from 'vue-router';
-import { Filter, ChevronLeft, ChevronRight, Plus, Undo2, RotateCcw } from 'lucide-vue-next';
+import { Filter, ChevronLeft, ChevronRight, Plus, Undo2, RotateCcw, Wallet, AlertTriangle, CheckCircle2 } from 'lucide-vue-next';
 
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
 import PageReview from '@/shared/components/layout/PageReview/PageReview.vue';
+import BaseStatsCard from '@/shared/components/layout/StatsCard/BaseStatsCard.vue';
 import BaseSearchInput from '@/shared/components/ui/BaseSearchInput/BaseSearchInput.vue';
 import BaseConfirmModal from '@/shared/components/commons/BaseConfirmModal/BaseConfirmModal.vue';
 import { useConfirmacao } from '@/shared/composables/useConfirmacao';
@@ -213,24 +214,25 @@ function rotuloStatus(conta: ContaPagar): string {
     </div>
 
     <!-- Totais: do filtro inteiro, não da página -->
+    <!-- Indicadores. Mesmo card do resto do sistema; o tom `perigo`
+         acende quando ha atraso -- e o numero que o dono ve primeiro. -->
     <div v-if="listagem" class="grid gap-3 sm:grid-cols-3">
-      <div class="rounded-xl border border-zinc-100 bg-white px-4 py-3 shadow-sm">
-        <p class="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Em aberto</p>
-        <p class="mt-1 text-lg font-bold text-zinc-800 tabular-nums">{{ formatCurrency(listagem.total_pendente) }}</p>
-      </div>
-      <div class="rounded-xl border px-4 py-3 shadow-sm"
-           :class="listagem.total_vencido > 0 ? 'border-rose-200 bg-rose-50' : 'border-zinc-100 bg-white'">
-        <p class="text-[11px] font-semibold uppercase tracking-wide"
-           :class="listagem.total_vencido > 0 ? 'text-rose-600' : 'text-zinc-500'">Vencido</p>
-        <p class="mt-1 text-lg font-bold tabular-nums"
-           :class="listagem.total_vencido > 0 ? 'text-rose-700' : 'text-zinc-800'">
-          {{ formatCurrency(listagem.total_vencido) }}
-        </p>
-      </div>
-      <div class="rounded-xl border border-zinc-100 bg-white px-4 py-3 shadow-sm">
-        <p class="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Pago no período</p>
-        <p class="mt-1 text-lg font-bold text-zinc-800 tabular-nums">{{ formatCurrency(listagem.total_pago) }}</p>
-      </div>
+      <BaseStatsCard
+        :icon="Wallet"
+        label="Em aberto"
+        :value="formatCurrency(listagem.total_pendente)"
+      />
+      <BaseStatsCard
+        :icon="AlertTriangle"
+        label="Vencido"
+        :value="formatCurrency(listagem.total_vencido)"
+        :tone="listagem.total_vencido > 0 ? 'perigo' : 'neutro'"
+      />
+      <BaseStatsCard
+        :icon="CheckCircle2"
+        label="Pago no período"
+        :value="formatCurrency(listagem.total_pago)"
+      />
     </div>
 
     <!-- Lista -->
