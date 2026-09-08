@@ -50,3 +50,12 @@ from app.db.models.alerta_dispensado import AlertaDispensado  # noqa: F401
 from app.db.models.conta_pagar import ContaPagar  # noqa: F401
 from app.db.models.historico_financeiro import HistoricoFinanceiro  # noqa: F401
 from app.db.models.conta_receber import ContaReceber  # noqa: F401
+
+# --- Modulo fiscal (NF-e) ---
+from app.db.models.produto_fiscal import ProdutoFiscal  # noqa: F401
+from app.db.models.servico_fiscal import ServicoFiscal  # noqa: F401
+from app.db.models.venda_nota_fiscal import VendaNotaFiscal  # noqa: F401
+from app.db.models.ordem_servico_nota_fiscal import OrdemServicoNotaFiscal  # noqa: F401
+from app.db.models.documento_fiscal import DocumentoFiscal  # noqa: F401
+from app.db.models.inutilizacao_fiscal import InutilizacaoFiscal  # noqa: F401
+from app.db.models.aliquota_uf import AliquotaUF  # noqa: F401

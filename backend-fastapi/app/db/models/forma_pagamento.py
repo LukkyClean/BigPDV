@@ -17,6 +17,10 @@ class FormaPagamento(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True, doc="ID unico da forma de pagamento (PK)")
     nome: Mapped[str] = mapped_column(String(50), unique=True, nullable=False, doc="Nome da forma de pagamento")
     ativo: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, doc="Status ativo/inativo")
+    codigo_sefaz: Mapped[Optional[str]] = mapped_column(
+        String(2), nullable=True,
+        doc="Código SEFAZ da forma de pagamento (01-99). Obrigatório para emissão fiscal."
+    )
 
     # --- Quando e onde o dinheiro DESTA forma cai ---
     #
