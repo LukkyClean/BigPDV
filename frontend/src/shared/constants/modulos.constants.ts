@@ -39,6 +39,17 @@ export const MODULOS = {
    * `requer_modulo("NFE")` e com a que a plataforma emite no JWT.
    */
   NFE: 'NFE',
+
+  /**
+   * Cupom fiscal eletrônico (NFC-e, modelo 65).
+   *
+   * SEPARADO do NFE, e não por capricho: a plataforma tem família de rotas
+   * (`/erp/fiscal/nfce/...`), cota e concessão próprias para o modelo 65. Uma
+   * loja pode ter NF-e e não ter cupom, e o contrário também.
+   *
+   * Também NEGA por padrão. Ver `MODULOS_NEGADOS_SEM_RESPOSTA`.
+   */
+  NFCE: 'NFCE',
 } as const;
 
 export type Modulo = (typeof MODULOS)[keyof typeof MODULOS];

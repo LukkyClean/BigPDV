@@ -138,7 +138,9 @@ class FiscalClientMock:
             "</infNFe></NFe></nfeProc>"
         )
 
-    def consultar_nfe(self, ref: str) -> EmissaoResultado:
+    def consultar_nfe(
+        self, ref: str, tipo_documento: str = "NFE"
+    ) -> EmissaoResultado:
         logger.info("[FISCAL MOCK] consultar_nfe ref=%s", ref)
         self._simular_latencia()
 
@@ -154,7 +156,9 @@ class FiscalClientMock:
             "mensagem_sefaz": "Autorizado o uso da NF-e (HOMOLOGAÇÃO - SEM VALOR FISCAL)",
         }
 
-    def cancelar_nfe(self, ref: str, justificativa: str) -> EmissaoResultado:
+    def cancelar_nfe(
+        self, ref: str, justificativa: str, tipo_documento: str = "NFE"
+    ) -> EmissaoResultado:
         logger.info("[FISCAL MOCK] cancelar_nfe ref=%s justificativa=%s", ref, justificativa)
         self._simular_latencia()
 

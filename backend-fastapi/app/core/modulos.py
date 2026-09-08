@@ -41,7 +41,10 @@ from app.services import licenca as licenca_service
 #
 # Para conceder: a plataforma inclui "NFE" na lista de módulos da licença,
 # por plano ou por cliente.
-MODULOS_NEGADOS_SEM_RESPOSTA = frozenset({"NFE"})
+# NFCE entra pelo mesmo motivo do NFE, e e um modulo SEPARADO na plataforma:
+# familia de rotas, cota e concessao proprias. Uma loja pode ter NF-e sem ter
+# cupom.
+MODULOS_NEGADOS_SEM_RESPOSTA = frozenset({"NFE", "NFCE"})
 
 
 def requer_modulo(identificador: str) -> Callable:

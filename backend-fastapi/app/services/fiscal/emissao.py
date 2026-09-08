@@ -633,7 +633,7 @@ def consultar_documento(db: Session, documento_id: int, empresa_id: int) -> Docu
     client = get_fiscal_client(fiscal_settings.ambiente_emissao, token)
 
     try:
-        resultado = client.consultar_nfe(doc.ref_api)
+        resultado = client.consultar_nfe(doc.ref_api, doc.tipo_documento)
         _aplicar_resultado(doc, resultado)
     except NotImplementedError:
         pass
@@ -762,7 +762,9 @@ def cancelar_documento(
     client = get_fiscal_client(fiscal_settings.ambiente_emissao, token)
 
     try:
-        resultado = client.cancelar_nfe(doc.ref_api, justificativa)
+        resultado = client.cancelar_nfe(
+            doc.ref_api, justificativa, doc.tipo_documento
+        )
         _aplicar_resultado(doc, resultado)
     except NotImplementedError as e:
         raise HTTPException(

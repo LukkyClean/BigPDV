@@ -80,11 +80,15 @@ class FiscalClientProtocol(Protocol):
         """
         ...
 
-    def consultar_nfe(self, ref: str) -> EmissaoResultado:
+    def consultar_nfe(
+        self, ref: str, tipo_documento: str = "NFE"
+    ) -> EmissaoResultado:
         """Consulta status de uma NF-e já enviada."""
         ...
 
-    def cancelar_nfe(self, ref: str, justificativa: str) -> EmissaoResultado:
+    def cancelar_nfe(
+        self, ref: str, justificativa: str, tipo_documento: str = "NFE"
+    ) -> EmissaoResultado:
         """Solicita cancelamento de NF-e autorizada."""
         ...
 

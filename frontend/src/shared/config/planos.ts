@@ -25,8 +25,15 @@ import { MODULOS } from '@/shared/constants/modulos.constants';
 import { useModulosStore } from '@/shared/stores/modulos.store';
 
 type Recursos = {
-  /** Emissão de notas fiscais (NF-e/NFC-e/NFS-e) e configurações fiscais. */
+  /** Emissão de NF-e (modelo 55) e configurações fiscais. */
   nfe: boolean;
+  /**
+   * Emissão de NFC-e (cupom, modelo 65).
+   *
+   * Contratação SEPARADA da NF-e: na plataforma são módulos, famílias de rota
+   * e cotas diferentes. Uma loja pode ter um sem o outro.
+   */
+  nfce: boolean;
 };
 
 export type Recurso = keyof Recursos;
@@ -34,6 +41,7 @@ export type Recurso = keyof Recursos;
 /** Qual módulo da licença responde por cada recurso. */
 const MODULO_DO_RECURSO: Record<Recurso, string> = {
   nfe: MODULOS.NFE,
+  nfce: MODULOS.NFCE,
 };
 
 /**

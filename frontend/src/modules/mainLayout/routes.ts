@@ -121,7 +121,7 @@ const homeRoutes: RouteRecordRaw[] = [
               subtitle: 'Notas Fiscais de Consumidor',
               tabId: 'fiscal-nfce',
               requiresAuth: true,
-              exigeModulo: MODULOS.NFE,
+              exigeModulo: MODULOS.NFCE,
             },
           },
           {

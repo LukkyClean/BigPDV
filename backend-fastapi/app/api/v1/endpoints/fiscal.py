@@ -254,6 +254,11 @@ def emitir_nfe(
 
 @router.post(
     "/preview/nfce",
+    # NFC-e exige o modulo NFCE, SEPARADO do NFE: a plataforma tem familia,
+    # cota e modulo proprios para o modelo 65 (/erp/fiscal/nfce/...). Uma loja
+    # pode ter NF-e e nao ter cupom. Sem esta trava o lojista so descobriria no
+    # 403 da plataforma, com a venda ja fechada.
+    dependencies=[Depends(requer_modulo("NFCE"))],
     response_model=EmissaoPreviewResponse,
     summary="Pré-visualizar NFC-e",
     description="Gera um resumo da NFC-e para conferência antes da emissão.",
@@ -271,6 +276,11 @@ def preview_nfce(
 
 @router.post(
     "/emitir/nfce",
+    # NFC-e exige o modulo NFCE, SEPARADO do NFE: a plataforma tem familia,
+    # cota e modulo proprios para o modelo 65 (/erp/fiscal/nfce/...). Uma loja
+    # pode ter NF-e e nao ter cupom. Sem esta trava o lojista so descobriria no
+    # 403 da plataforma, com a venda ja fechada.
+    dependencies=[Depends(requer_modulo("NFCE"))],
     response_model=EmissaoResponse,
     summary="Emitir NFC-e",
     description=(

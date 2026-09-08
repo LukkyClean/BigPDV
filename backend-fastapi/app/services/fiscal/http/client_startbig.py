@@ -90,6 +90,17 @@ class FiscalClientStartBig:
             "Content-Type": "application/json"
         }
 
+
+    @staticmethod
+    def _segmento(tipo_documento: str) -> str:
+        """Caminho da API para o modelo do documento.
+
+        A plataforma tem famílias SEPARADAS -- /erp/fiscal/nfe/... e
+        /erp/fiscal/nfce/... --, com módulo e cota próprios cada uma. Consultar
+        um cupom no caminho da NF-e não acha a referência.
+        """
+        return "nfce" if (tipo_documento or "").upper() == "NFCE" else "nfe"
+
     @staticmethod
     def _primeiro(dados: dict, *chaves: str):
         """Primeiro valor presente entre as chaves, na ordem dada.
@@ -253,8 +264,10 @@ class FiscalClientStartBig:
             logger.warning("[FISCAL] Falha ao baixar XML em %s: %s", url, exc)
             return None
 
-    def consultar_nfe(self, ref: str) -> EmissaoResultado:
-        url = f"{self.base_url}/erp/fiscal/nfe/consultar"
+    def consultar_nfe(
+        self, ref: str, tipo_documento: str = "NFE"
+    ) -> EmissaoResultado:
+        url = f"{self.base_url}/erp/fiscal/{self._segmento(tipo_documento)}/consultar"
         params = {"ref": ref}
         
         try:
@@ -272,8 +285,10 @@ class FiscalClientStartBig:
             logger.error("[FISCAL] Falha na requisição de consulta: %s", exc)
             return {"status": "erro", "mensagem_sefaz": str(exc)}
 
-    def cancelar_nfe(self, ref: str, justificativa: str) -> EmissaoResultado:
-        url = f"{self.base_url}/erp/fiscal/nfe/cancelar"
+    def cancelar_nfe(
+        self, ref: str, justificativa: str, tipo_documento: str = "NFE"
+    ) -> EmissaoResultado:
+        url = f"{self.base_url}/erp/fiscal/{self._segmento(tipo_documento)}/cancelar"
         body = {
             "ref": ref,
             "justificativa": justificativa
@@ -295,10 +310,32 @@ class FiscalClientStartBig:
             return {"status": "erro", "mensagem_sefaz": str(exc)}
 
     def inutilizar_numeracao(
-        self, ref: str, payload: dict, idempotency_key: Optional[str] = None
+        self,
+        ref: str,
+        payload: dict,
+        idempotency_key: Optional[str] = None,
+        tipo_documento: str = "NFE",
     ) -> EmissaoResultado:
-        url = f"{self.base_url}/erp/fiscal/nfe/inutilizar"
-        body = {"ref": ref, "payload": payload}
+        """
+        Inutiliza uma faixa de numeração.
+
+        A plataforma NÃO recebe `ref` aqui -- a Focus identifica a operação pela
+        própria faixa --, nem o modelo, que vem da rota. O corpo é PLANO, e não
+        {ref, payload} como na emissão.
+
+        `ref` continua na assinatura porque é a nossa chave local de rastreio
+        (fica em InutilizacaoFiscal.ref_api) e entra no log.
+
+        Aqui o `X-Idempotency-Key` é a PROTEÇÃO PRINCIPAL: sem ref, é ele que
+        impede uma retentativa de queimar uma segunda faixa.
+        """
+        url = f"{self.base_url}/erp/fiscal/{self._segmento(tipo_documento)}/inutilizar"
+        body = {
+            "serie": payload.get("serie"),
+            "numero_inicial": payload.get("numero_inicial"),
+            "numero_final": payload.get("numero_final"),
+            "justificativa": payload.get("justificativa"),
+        }
         headers = dict(self.headers)
         if idempotency_key:
             headers["X-Idempotency-Key"] = idempotency_key

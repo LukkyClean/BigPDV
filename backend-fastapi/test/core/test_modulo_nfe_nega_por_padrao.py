@@ -71,10 +71,32 @@ def test_financeiro_continua_liberando_sem_resposta(monkeypatch, sem_resposta):
     assert _rodar(monkeypatch, "FINANCEIRO", sem_resposta) is None
 
 
-def test_apenas_nfe_esta_na_lista_de_excecao():
-    """A exceção é estreita de propósito.
+@pytest.mark.parametrize("sem_resposta", [None, []])
+def test_nfce_tambem_nega_por_padrao(monkeypatch, sem_resposta):
+    """NFCE é módulo SEPARADO do NFE na plataforma.
 
-    Cada módulo aqui dentro é um recurso que some quando a rede falha. Só entra
-    o que ainda não está em uso por ninguém.
+    Família de rotas, cota e concessão próprias -- uma loja pode ter NF-e e não
+    ter cupom. Se NFCE não estivesse na exceção, a lista vazia liberaria o
+    cupom fiscal para todo mundo enquanto a NF-e ficava barrada.
     """
-    assert MODULOS_NEGADOS_SEM_RESPOSTA == frozenset({"NFE"})
+    with pytest.raises(HTTPException) as exc:
+        _rodar(monkeypatch, "NFCE", sem_resposta)
+
+    assert exc.value.detail["modulo"] == "NFCE"
+
+
+def test_nfe_concedido_nao_concede_nfce(monkeypatch):
+    """Ter NF-e não dá direito a cupom. São contratações distintas."""
+    assert _rodar(monkeypatch, "NFE", ["NFE"]) is None
+
+    with pytest.raises(HTTPException):
+        _rodar(monkeypatch, "NFCE", ["NFE"])
+
+
+def test_a_lista_de_excecao_e_estreita():
+    """Cada módulo aqui dentro é um recurso que some quando a rede falha.
+
+    Só entra o que ainda não está em uso por ninguém -- por isso a lista é
+    conferida por igualdade, e não por `in`.
+    """
+    assert MODULOS_NEGADOS_SEM_RESPOSTA == frozenset({"NFE", "NFCE"})
