@@ -6,13 +6,14 @@
  * página — somar os itens aqui daria o total da página, e a diferença só
  * apareceria quando a loja já tivesse contas o bastante para paginar.
  */
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { Filter, ChevronLeft, ChevronRight, Plus, Undo2, RotateCcw, Wallet, AlertTriangle, CheckCircle2 } from 'lucide-vue-next';
 
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
 import PageReview from '@/shared/components/layout/PageReview/PageReview.vue';
 import BaseStatsCard from '@/shared/components/layout/StatsCard/BaseStatsCard.vue';
+import BaseTableContainer from '@/shared/components/commons/BaseTableContainer/BaseTableContainer.vue';
 import BaseSearchInput from '@/shared/components/ui/BaseSearchInput/BaseSearchInput.vue';
 import BaseConfirmModal from '@/shared/components/commons/BaseConfirmModal/BaseConfirmModal.vue';
 import { useConfirmacao } from '@/shared/composables/useConfirmacao';
@@ -55,7 +56,14 @@ const ROTULO_RECORTE: Record<string, string> = {
   'sem-categoria': 'só as contas sem categoria',
 };
 
+// Quantas linhas por pagina. O backend aceita ate 500; 20 e o que cabe na tela
+// sem rolar, e e o mesmo ritmo das outras listagens do sistema.
+const POR_PAGINA = 20;
+const pagina = ref(1);
+
 const filtros = computed(() => ({
+  limit: POR_PAGINA,
+  offset: (pagina.value - 1) * POR_PAGINA,
   inicio: range.value.inicio,
   fim: range.value.fim,
   status: statusFiltro.value || undefined,
@@ -64,7 +72,16 @@ const filtros = computed(() => ({
   sem_categoria: recorte.value === 'sem-categoria' || undefined,
 }));
 
-const { data: listagem, isLoading } = useContasPagarQuery(filtros);
+// Trocar de mes, de status ou de busca volta para a primeira pagina. Sem isto
+// quem estava na pagina 4 e filtra veria uma tela vazia -- ha resultado, mas
+// nao na altura em que ele parou.
+watch([range, statusFiltro, busca, recorte], () => { pagina.value = 1; });
+
+const { data: listagem, isLoading, isError } = useContasPagarQuery(filtros);
+
+const totalPaginas = computed(() =>
+  Math.max(1, Math.ceil((listagem.value?.total_itens ?? 0) / POR_PAGINA)),
+);
 const cancelar = useCancelarContaPagar();
 const reativar = useReativarContaPagar();
 const confirmacao = useConfirmacao();
@@ -235,120 +252,126 @@ function rotuloStatus(conta: ContaPagar): string {
       />
     </div>
 
-    <!-- Lista -->
-    <div v-if="isLoading" class="text-sm text-zinc-500">Carregando…</div>
-
-    <div v-else-if="!listagem?.itens.length" class="rounded-2xl border border-dashed border-zinc-200 px-6 py-12 text-center">
-      <p class="text-sm font-medium text-zinc-700">Nenhuma conta neste período</p>
-      <p class="mt-1 text-sm text-zinc-400">Lance aluguel, fornecedores e despesas fixas para ver o resultado real do mês.</p>
-    </div>
-
-    <div v-else class="overflow-x-auto rounded-2xl border border-zinc-100 bg-white shadow-sm">
-      <table class="w-full min-w-180 text-sm">
-        <thead>
-          <tr class="border-b border-zinc-100 text-left text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
-            <th class="px-5 py-3">Descrição</th>
-            <th class="px-5 py-3">Categoria</th>
-            <th class="px-5 py-3">Vencimento</th>
-            <th class="px-5 py-3 text-right">Valor</th>
-            <th class="px-5 py-3">Situação</th>
-            <th class="px-5 py-3 text-right">Ações</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-zinc-100">
-          <tr v-for="conta in listagem.itens" :key="conta.id" class="hover:bg-zinc-50/60">
-            <td class="px-5 py-3">
-              <!-- Abre o DETALHE, como em Contas a Receber — não o formulário.
-                   A trilha de auditoria só existe aqui dentro, e enquanto este
-                   clique chamava `editar` ela era inalcançável: o modal estava
-                   montado na tela e nada nunca o preenchia. Editar continua a
-                   um clique, na coluna de ações. -->
-              <button
-                type="button"
-                class="text-left font-medium text-zinc-800 hover:underline underline-offset-2 cursor-pointer"
-                @click="contaParaDetalhe = conta"
-              >
-                {{ conta.descricao }}
-              </button>
-              <!-- Uma marca ou outra, nunca as duas: parcelado e mensal são
-                   mecanismos que se excluem. -->
-              <span
-                v-if="conta.parcela_total"
-                class="ml-2 rounded-full bg-violet-50 px-1.5 py-0.5 text-[10px] font-medium text-violet-600 tabular-nums"
-              >
-                {{ conta.parcela_numero }}/{{ conta.parcela_total }}
-              </span>
-              <span v-else-if="conta.recorrente" class="ml-2 rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-600">
-                mensal
-              </span>
-            </td>
-            <td class="px-5 py-3 text-zinc-500">{{ conta.plano_conta_nome ?? '—' }}</td>
-            <td class="px-5 py-3 text-zinc-600">{{ formatDataPura(conta.vencimento) }}</td>
-            <td class="px-5 py-3 text-right font-semibold text-zinc-800 tabular-nums">
-              {{ formatCurrency(conta.valor_pago ?? conta.valor) }}
-            </td>
-            <td class="px-5 py-3">
-              <span class="rounded-full px-2 py-0.5 text-[11px] font-semibold" :class="classeStatus(conta)">
-                {{ rotuloStatus(conta) }}
-              </span>
-            </td>
-            <td class="px-5 py-3">
-              <div class="flex items-center justify-end gap-3">
-                <template v-if="conta.status === 'PENDENTE'">
-                  <button type="button" class="text-xs font-semibold text-brand-primary cursor-pointer" @click="contaParaBaixa = conta">
-                    Pagar
-                  </button>
-                  <!-- Discreto ao lado de "Pagar", mas nunca cinza-desabilitado:
-                       em `text-zinc-400` ele lia como rótulo morto e ninguém
-                       achava a ação. Continua secundário pela ausência de cor
-                       de marca, não pela falta de contraste. -->
-                  <button type="button" class="text-xs font-medium text-zinc-600 underline-offset-2 hover:text-zinc-900 hover:underline cursor-pointer" @click="editar(conta)">
-                    Editar
-                  </button>
-                  <button type="button" class="text-xs font-medium text-zinc-600 underline-offset-2 hover:text-zinc-900 hover:underline cursor-pointer" @click="confirmarCancelamento(conta)">
-                    Cancelar
-                  </button>
-                </template>
-                <template v-else-if="conta.status === 'PAGA'">
-                  <!-- Classificar uma conta PAGA é permitido de propósito: a
-                       categoria nunca entrou no livro do dinheiro, e sem esta
-                       ação o alerta "gastos sem categoria" não teria como sair
-                       da tela — ele conta justamente as despesas pagas. -->
-                  <button
-                    type="button"
-                    class="text-xs font-medium text-zinc-600 underline-offset-2 hover:text-zinc-900 hover:underline cursor-pointer"
-                    @click="contaParaClassificar = conta"
-                  >
-                    Classificar
-                  </button>
-                  <button
-                    type="button"
-                    class="flex items-center gap-1 text-xs font-medium text-zinc-500 hover:text-zinc-700 cursor-pointer"
-                    @click="contaParaEstorno = conta"
-                  >
-                    <Undo2 :size="13" /> Estornar
-                  </button>
-                </template>
-                <!-- CANCELADA tinha um "—" e nada mais: a conta saía da lista
-                     de "em aberto" e não voltava nunca. Numa parcela 9/72 de um
-                     empréstimo, o controle inteiro ficava furado por um clique
-                     errado. -->
-                <template v-else-if="conta.status === 'CANCELADA'">
-                  <button
-                    type="button"
-                    class="flex items-center gap-1 text-xs font-medium text-brand-primary cursor-pointer"
-                    @click="confirmarReativacao(conta)"
-                  >
-                    <RotateCcw :size="13" /> Reativar
-                  </button>
-                </template>
-                <span v-else class="text-xs text-zinc-300">—</span>
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+    <!-- Lista. O container padrao do sistema cuida da moldura, dos estados
+         (carregando / vazio / erro) e da paginacao. -->
+    <BaseTableContainer
+      :is-loading="isLoading"
+      :is-error="isError"
+      :is-empty="!listagem?.itens.length"
+      :current-page="pagina"
+      :total-pages="totalPaginas"
+      :total-items="listagem?.total_itens ?? 0"
+      item-label="conta"
+      item-label-plural="contas"
+      empty-title="Nenhuma conta neste período"
+      empty-description="Lance aluguel, fornecedores e despesas fixas para ver o que a loja deve."
+      @update:current-page="pagina = $event"
+    >
+    <table class="w-full min-w-180 text-sm">
+      <thead>
+        <tr class="border-b border-zinc-100 text-left text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+          <th class="px-5 py-3">Descrição</th>
+          <th class="px-5 py-3">Categoria</th>
+          <th class="px-5 py-3">Vencimento</th>
+          <th class="px-5 py-3 text-right">Valor</th>
+          <th class="px-5 py-3">Situação</th>
+          <th class="px-5 py-3 text-right">Ações</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-zinc-100">
+        <tr v-for="conta in listagem?.itens ?? []" :key="conta.id" class="hover:bg-zinc-50/60">
+          <td class="px-5 py-3">
+            <!-- Abre o DETALHE, como em Contas a Receber — não o formulário.
+                 A trilha de auditoria só existe aqui dentro, e enquanto este
+                 clique chamava `editar` ela era inalcançável: o modal estava
+                 montado na tela e nada nunca o preenchia. Editar continua a
+                 um clique, na coluna de ações. -->
+            <button
+              type="button"
+              class="text-left font-medium text-zinc-800 hover:underline underline-offset-2 cursor-pointer"
+              @click="contaParaDetalhe = conta"
+            >
+              {{ conta.descricao }}
+            </button>
+            <!-- Uma marca ou outra, nunca as duas: parcelado e mensal são
+                 mecanismos que se excluem. -->
+            <span
+              v-if="conta.parcela_total"
+              class="ml-2 rounded-full bg-violet-50 px-1.5 py-0.5 text-[10px] font-medium text-violet-600 tabular-nums"
+            >
+              {{ conta.parcela_numero }}/{{ conta.parcela_total }}
+            </span>
+            <span v-else-if="conta.recorrente" class="ml-2 rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-600">
+              mensal
+            </span>
+          </td>
+          <td class="px-5 py-3 text-zinc-500">{{ conta.plano_conta_nome ?? '—' }}</td>
+          <td class="px-5 py-3 text-zinc-600">{{ formatDataPura(conta.vencimento) }}</td>
+          <td class="px-5 py-3 text-right font-semibold text-zinc-800 tabular-nums">
+            {{ formatCurrency(conta.valor_pago ?? conta.valor) }}
+          </td>
+          <td class="px-5 py-3">
+            <span class="rounded-full px-2 py-0.5 text-[11px] font-semibold" :class="classeStatus(conta)">
+              {{ rotuloStatus(conta) }}
+            </span>
+          </td>
+          <td class="px-5 py-3">
+            <div class="flex items-center justify-end gap-3">
+              <template v-if="conta.status === 'PENDENTE'">
+                <button type="button" class="text-xs font-semibold text-brand-primary cursor-pointer" @click="contaParaBaixa = conta">
+                  Pagar
+                </button>
+                <!-- Discreto ao lado de "Pagar", mas nunca cinza-desabilitado:
+                     em `text-zinc-400` ele lia como rótulo morto e ninguém
+                     achava a ação. Continua secundário pela ausência de cor
+                     de marca, não pela falta de contraste. -->
+                <button type="button" class="text-xs font-medium text-zinc-600 underline-offset-2 hover:text-zinc-900 hover:underline cursor-pointer" @click="editar(conta)">
+                  Editar
+                </button>
+                <button type="button" class="text-xs font-medium text-zinc-600 underline-offset-2 hover:text-zinc-900 hover:underline cursor-pointer" @click="confirmarCancelamento(conta)">
+                  Cancelar
+                </button>
+              </template>
+              <template v-else-if="conta.status === 'PAGA'">
+                <!-- Classificar uma conta PAGA é permitido de propósito: a
+                     categoria nunca entrou no livro do dinheiro, e sem esta
+                     ação o alerta "gastos sem categoria" não teria como sair
+                     da tela — ele conta justamente as despesas pagas. -->
+                <button
+                  type="button"
+                  class="text-xs font-medium text-zinc-600 underline-offset-2 hover:text-zinc-900 hover:underline cursor-pointer"
+                  @click="contaParaClassificar = conta"
+                >
+                  Classificar
+                </button>
+                <button
+                  type="button"
+                  class="flex items-center gap-1 text-xs font-medium text-zinc-500 hover:text-zinc-700 cursor-pointer"
+                  @click="contaParaEstorno = conta"
+                >
+                  <Undo2 :size="13" /> Estornar
+                </button>
+              </template>
+              <!-- CANCELADA tinha um "—" e nada mais: a conta saía da lista
+                   de "em aberto" e não voltava nunca. Numa parcela 9/72 de um
+                   empréstimo, o controle inteiro ficava furado por um clique
+                   errado. -->
+              <template v-else-if="conta.status === 'CANCELADA'">
+                <button
+                  type="button"
+                  class="flex items-center gap-1 text-xs font-medium text-brand-primary cursor-pointer"
+                  @click="confirmarReativacao(conta)"
+                >
+                  <RotateCcw :size="13" /> Reativar
+                </button>
+              </template>
+              <span v-else class="text-xs text-zinc-300">—</span>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    </BaseTableContainer>
 
     <ContaPagarFormModal
       :aberto="formAberto"

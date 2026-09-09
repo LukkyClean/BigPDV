@@ -226,6 +226,13 @@ export interface ContaPagarFiltros {
   // esconderia justamente a conta do alerta.
   vencidas?: boolean;
   sem_categoria?: boolean;
+  /**
+   * Paginação. O backend sempre aceitou (`limit`/`offset`, padrão 200), e o
+   * frontend nunca mandou -- a tela pedia a lista inteira e desenhava tudo.
+   * Numa loja com um ano de contas isso e uma pagina de centenas de linhas.
+   */
+  limit?: number;
+  offset?: number;
 }
 
 // ===========================================================================
