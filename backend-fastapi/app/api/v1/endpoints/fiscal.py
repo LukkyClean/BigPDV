@@ -471,7 +471,11 @@ def obter_configuracao(
     return FiscalConfiguracao(
         ambiente=ambiente,
         ambiente_label="Homologação" if ambiente == 2 else "Produção",
-        mock_ativo=settings.FISCAL_MOCK_ENABLED or ambiente == 2,
+        # `or ambiente == 2` saiu: quem escolhe o client e a factory, e ela
+        # olha SO o FISCAL_MOCK_ENABLED. Em homologacao a tela mostrava
+        # "(mock)" enquanto a emissao batia de verdade na plataforma --
+        # exatamente o tipo de mentira que atrapalha um diagnostico.
+        mock_ativo=settings.FISCAL_MOCK_ENABLED,
         certificado_configurado=cert_configurado,
         certificado_valido=cert_valido,
         certificado_status=fs.certificado_status if fs else None,
@@ -577,7 +581,7 @@ def atualizar_configuracao(
     return FiscalConfiguracao(
         ambiente=ambiente,
         ambiente_label="Homologação" if ambiente == 2 else "Produção",
-        mock_ativo=settings.FISCAL_MOCK_ENABLED or ambiente == 2,
+        mock_ativo=settings.FISCAL_MOCK_ENABLED,
         certificado_configurado=cert_configurado,
         certificado_valido=cert_valido,
         certificado_status=fs.certificado_status if fs else None,
