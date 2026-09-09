@@ -214,21 +214,6 @@ function rotuloStatus(conta: ContaPagar): string {
 
     </div>
 
-    <div class="flex flex-wrap items-center gap-3">
-      <div class="flex rounded-xl bg-zinc-100 p-1">
-        <button
-          v-for="aba in ABAS" :key="aba.valor" type="button"
-          class="rounded-lg px-3 py-1.5 text-sm font-medium transition cursor-pointer"
-          :class="statusFiltro === aba.valor ? 'bg-white text-zinc-800 shadow-sm' : 'text-zinc-500 hover:text-zinc-700'"
-          @click="statusFiltro = aba.valor"
-        >
-          {{ aba.rotulo }}
-        </button>
-      </div>
-      <div class="w-full sm:w-64">
-        <BaseSearchInput v-model="busca" placeholder="Buscar pela descrição" />
-      </div>
-    </div>
 
     <!-- Totais: do filtro inteiro, não da página -->
     <!-- Indicadores. Mesmo card do resto do sistema; o tom `perigo`
@@ -267,6 +252,22 @@ function rotuloStatus(conta: ContaPagar): string {
       empty-description="Lance aluguel, fornecedores e despesas fixas para ver o que a loja deve."
       @update:current-page="pagina = $event"
     >
+      <!-- Busca e filtro moram DENTRO da tabela, como em Clientes e
+           Produtos: sao ferramentas da listagem, nao da pagina. -->
+      <template #toolbar>
+        <BaseSearchInput v-model="busca" placeholder="Buscar pela descrição" />
+        <div class="flex rounded-xl bg-zinc-100 p-1">
+          <button
+            v-for="aba in ABAS" :key="aba.valor" type="button"
+            class="rounded-lg px-3 py-1.5 text-sm font-medium transition cursor-pointer"
+            :class="statusFiltro === aba.valor ? 'bg-white text-zinc-800 shadow-sm' : 'text-zinc-500 hover:text-zinc-700'"
+            @click="statusFiltro = aba.valor"
+          >
+            {{ aba.rotulo }}
+          </button>
+        </div>
+      </template>
+
     <table class="w-full min-w-180 text-sm">
       <thead>
         <tr class="border-b border-zinc-100 text-left text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
