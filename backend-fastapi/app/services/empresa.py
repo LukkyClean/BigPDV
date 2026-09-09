@@ -457,19 +457,53 @@ def upload_certificado_focus(
             detail=f"Certificado expirado em {cert_validade.strftime('%d/%m/%Y')}"
         )
 
-    # 5. Envio para a API Online -- AINDA MOCK.
-    import time
-    time.sleep(0.5)
+    # 5. Entrega a plataforma, que cadastra o certificado na emissora.
+    #
+    # Era `time.sleep(0.5)` com um comentario dizendo "AINDA MOCK": o arquivo
+    # morria na memoria do processo e o cadastro era gravado como
+    # CONECTADO_NUVEM. A tela dizia "Conectado" e nada tinha sido enviado --
+    # uma mentira que so aparecia na primeira emissao, longe daqui.
+    #
+    # A rota do outro lado ainda nao existe (docs/fiscal-onboarding-plano.md
+    # secao 4.1). Ate existir, o resultado volta `indisponivel=True` e o
+    # cadastro fica VALIDADO_LOCAL -- que e a verdade: o arquivo foi conferido
+    # aqui e nao chegou na emissora. No dia em que a rota subir, o mesmo codigo
+    # passa a gravar CONECTADO_NUVEM sem precisar de instalador novo.
+    import base64
+
+    from app.services.fiscal.http import get_fiscal_client
+    from app.db.crud import fiscal as fiscal_crud
+
+    settings_fiscais = get_or_create_fiscal_settings(db, empresa_id)
+
+    resultado = get_fiscal_client(
+        settings_fiscais.ambiente_emissao or 2,
+        fiscal_crud.get_licenca_token(db),
+    ).enviar_certificado(
+        base64.b64encode(file_content).decode("ascii"),
+        senha,
+    )
+
+    # Recusa EXPLICITA (CNPJ divergente, certificado invalido para a emissora)
+    # e erro do lojista, e precisa parar aqui com a frase que a plataforma deu.
+    # Indisponibilidade nao: essa segue, e o cadastro diz o que de fato houve.
+    if not resultado["aceito"] and not resultado["indisponivel"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=resultado.get("mensagem") or "A emissora recusou o certificado.",
+        )
 
     # 6. Atualizar configuracoes fiscais
-    settings_fiscais = get_or_create_fiscal_settings(db, empresa_id)
     settings_fiscais.tipo_certificado = "NUVEM"
     settings_fiscais.certificado_digital_path = None
     settings_fiscais.certificado_validade = cert_validade
     settings_fiscais.certificado_subject = cert_subject
     settings_fiscais.certificado_thumbprint = None
+    # A senha NAO fica: quem assina e o servico remoto.
     settings_fiscais.certificado_senha = None
-    settings_fiscais.certificado_status = "CONECTADO_NUVEM"
+    settings_fiscais.certificado_status = (
+        "CONECTADO_NUVEM" if resultado["aceito"] else "VALIDADO_LOCAL"
+    )
     if cert_cnpj:
         settings_fiscais.certificado_cnpj = cert_cnpj
 

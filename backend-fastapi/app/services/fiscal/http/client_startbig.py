@@ -7,7 +7,7 @@ import logging
 import httpx
 from typing import Optional
 
-from .client import EmissaoResultado
+from .client import EmissaoResultado, EnvioCertificadoResultado
 
 logger = logging.getLogger(__name__)
 
@@ -263,6 +263,84 @@ class FiscalClientStartBig:
             # impressão.
             logger.warning("[FISCAL] Falha ao baixar XML em %s: %s", url, exc)
             return None
+
+    def enviar_certificado(
+        self, arquivo_base64: str, senha: str
+    ) -> EnvioCertificadoResultado:
+        """
+        Entrega o certificado A1 à plataforma, que o cadastra na emissora.
+
+        É a plataforma quem tem a conta na Focus e o `POST /v2/empresas` com
+        `arquivo_certificado_base64` — o ERP nunca fala com a emissora direto.
+
+        ROTA AINDA NÃO EXISTE do outro lado (ver docs/fiscal-onboarding-plano.md
+        §4.1). Enquanto não existir, o 404 volta como `indisponivel=True`, e não
+        como recusa: quem chama grava o certificado como validado localmente e
+        diz a verdade na tela. Confundir "ainda não dá" com "recusado" mandaria
+        o lojista procurar defeito no arquivo dele.
+
+        Nem a senha nem o arquivo entram em log -- `_CHAVES_SENSIVEIS` ja
+        censura, e aqui nem chegamos a montar corpo para o logger.
+        """
+        url = f"{self.base_url}/erp/fiscal/certificado"
+        corpo = {"arquivo_base64": arquivo_base64, "senha": senha}
+
+        try:
+            with httpx.Client(timeout=60.0) as client:
+                resposta = client.post(url, json=corpo, headers=self.headers)
+        except Exception as exc:
+            logger.warning("[FISCAL] Sem resposta ao enviar certificado: %s", exc)
+            return {
+                "aceito": False,
+                "indisponivel": True,
+                "mensagem": "Não foi possível falar com a plataforma de emissão.",
+            }
+
+        if resposta.status_code in (404, 405, 501):
+            logger.info(
+                "[FISCAL] A plataforma ainda nao recebe certificado (HTTP %s).",
+                resposta.status_code,
+            )
+            return {
+                "aceito": False,
+                "indisponivel": True,
+                "mensagem": (
+                    "A plataforma de emissão ainda não recebe o certificado. "
+                    "Ele ficou validado neste computador."
+                ),
+            }
+
+        if resposta.status_code >= 400:
+            logger.error(
+                "[FISCAL] Certificado recusado: %s - %s",
+                resposta.status_code, _resposta_para_log(resposta),
+            )
+            detalhe = None
+            try:
+                corpo_erro = resposta.json()
+                detalhe = corpo_erro.get("mensagem") or corpo_erro.get("message")
+            except Exception:
+                pass
+            return {
+                "aceito": False,
+                "indisponivel": False,
+                "mensagem": detalhe or (
+                    f"A plataforma recusou o certificado (HTTP {resposta.status_code})."
+                ),
+            }
+
+        try:
+            dados = resposta.json() or {}
+        except Exception:
+            dados = {}
+
+        return {
+            "aceito": True,
+            "indisponivel": False,
+            "mensagem": dados.get("mensagem"),
+            "cnpj": dados.get("cnpj"),
+            "valido_ate": dados.get("valido_ate") or dados.get("certificado_valido_ate"),
+        }
 
     def consultar_config(self) -> dict:
         """

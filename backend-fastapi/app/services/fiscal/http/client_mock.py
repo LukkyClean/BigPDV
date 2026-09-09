@@ -138,6 +138,17 @@ class FiscalClientMock:
             "</infNFe></NFe></nfeProc>"
         )
 
+    def enviar_certificado(self, arquivo_base64: str, senha: str) -> dict:
+        """No mock o envio sempre dá certo -- senão o modo de teste barraria a si mesmo."""
+        logger.info("[FISCAL MOCK] enviar_certificado (%d bytes)", len(arquivo_base64 or ""))
+        return {
+            "aceito": True,
+            "indisponivel": False,
+            "mensagem": "Certificado aceito (mock).",
+            "cnpj": None,
+            "valido_ate": None,
+        }
+
     def consultar_config(self) -> dict:
         """No mock tudo está configurado -- senão o modo de teste barraria a si mesmo."""
         return {

@@ -172,9 +172,17 @@ Sem isto, o cadastro passa no nosso gate e a Focus recusa.
   (`fiscal/validators.py` e `verificacao_fiscal.py`). Hoje contam a mesma coisa
   com textos diferentes; o card da Empresa usa uma e o gate usa a outra.
 
-### Fase 2 — o cano do certificado — **BLOQUEADA** pela §4.1
+### Fase 2 — o cano do certificado — **FEITA do nosso lado**
 
-Depende da rota nova na plataforma (§4.1).
+O ERP já faz a chamada. Falta a rota do outro lado (§4.1) — até ela existir, o
+404 volta como *indisponível* e o cadastro fica `VALIDADO_LOCAL`. No dia em que
+a rota subir, **o mesmo código passa a gravar `CONECTADO_NUVEM` sem instalador
+novo**.
+
+⚠️ A correção do `commit` (`8960ee8`) tinha piorado a mentira: antes o upload não
+gravava e o card ficava "Não configurado", acidentalmente honesto; depois passou
+a gravar `CONECTADO_NUVEM` com o certificado parado na máquina. Agora existem
+três estados, e o card mostra os três.
 
 - **2.1** Trocar o `time.sleep(0.5)` por uma chamada real ao
   `POST /erp/fiscal/certificado`, mandando o `.pfx` em base64 + senha.
@@ -301,10 +309,12 @@ divergência.
 4. **§4.2** do lado de vocês — **é o que trava a emissão hoje**, e é uma leitura
    de código para descobrir de onde o controller lê o CNPJ.
 5. **§4.2b** — um campo na resposta do `/config`, e a comparação de CNPJ fecha.
-6. **§4.1 + Fase 2** — o certificado passa a percorrer o cano de verdade.
+6. ~~**Fase 2**~~ — feita do lado do ERP; espera a §4.1 para deixar de gravar
+   `VALIDADO_LOCAL`.
 
-Do lado do ERP, o que sobra depende de vocês: a fase 2 espera a rota do
-certificado, e a fase 4 (NF-e por OS, NFS-e) é escopo novo.
+**Do lado do ERP não sobra nada que possamos fazer sozinhos.** Fases 0, 1, 2 e 3
+estão implementadas; a 2 só termina com a §4.1, e a fase 4 (NF-e por OS, NFS-e)
+é escopo novo, não conserto.
 
 ## 6. Fontes
 

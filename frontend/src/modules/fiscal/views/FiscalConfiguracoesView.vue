@@ -83,6 +83,16 @@ function aoEnviarCertificado() {
               <LucideIcon :icon="CheckCircle" class="w-3.5 h-3.5" />
               Conectado
             </span>
+            <!-- Terceiro estado: o arquivo foi conferido AQUI e nao chegou na
+                 emissora. Antes isso aparecia como "Conectado", e o lojista so
+                 descobria na primeira emissao recusada. -->
+            <span
+              v-else-if="config?.certificado_status === 'VALIDADO_LOCAL'"
+              class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200"
+            >
+              <LucideIcon :icon="AlertCircle" class="w-3.5 h-3.5" />
+              Validado, não enviado
+            </span>
             <span
               v-else
               class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200"
@@ -95,6 +105,16 @@ function aoEnviarCertificado() {
           <p class="text-sm text-zinc-600 mb-6 leading-relaxed">
             Faça o upload do seu certificado digital A1 (.pfx) para autenticar transmissões na SEFAZ. O certificado é transmitido diretamente para a nuvem de emissão com segurança.
           </p>
+
+          <div
+            v-if="config?.certificado_status === 'VALIDADO_LOCAL'"
+            class="mb-6 p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800 leading-relaxed"
+          >
+            O certificado foi conferido neste computador (senha e validade estão certas),
+            mas <strong>ainda não chegou à emissora</strong> — a plataforma de emissão
+            ainda não recebe certificado. Enquanto isso, a emissão não vai funcionar.
+            Fale com o suporte.
+          </div>
 
           <div v-if="config?.certificado_cnpj" class="mb-6 p-3 rounded-xl bg-zinc-50 border border-zinc-100 text-xs text-zinc-600 flex items-center gap-2">
             <LucideIcon :icon="FileCheck" class="w-4 h-4 text-brand-primary shrink-0" />

@@ -463,8 +463,18 @@ def obter_configuracao(
     fs = fiscal_crud.get_fiscal_settings(db, empresa_id)
 
     ambiente = fs.ambiente_emissao if fs else 2
+    # "Configurado" passou a significar CHEGOU NA EMISSORA.
+    #
+    # `tipo_certificado == "NUVEM"` saiu desta conta: ele e gravado no upload
+    # mesmo quando a plataforma nao recebeu o arquivo, e era o que fazia o card
+    # exibir "Conectado" com o certificado parado nesta maquina. VALIDADO_LOCAL
+    # e um estado proprio, e a tela o mostra como tal.
     cert_configurado = bool(
-        fs and (fs.certificado_digital_path or fs.certificado_thumbprint or fs.tipo_certificado == "NUVEM" or fs.certificado_status == "CONECTADO_NUVEM")
+        fs and (
+            fs.certificado_digital_path
+            or fs.certificado_thumbprint
+            or fs.certificado_status == "CONECTADO_NUVEM"
+        )
     )
     cert_valido = bool(
         cert_configurado and fs.certificado_validade and fs.certificado_validade.replace(tzinfo=None) > datetime.now()
@@ -574,7 +584,11 @@ def atualizar_configuracao(
     
     ambiente = fs.ambiente_emissao if fs else 2
     cert_configurado = bool(
-        fs and (fs.certificado_digital_path or fs.certificado_thumbprint or fs.tipo_certificado == "NUVEM" or fs.certificado_status == "CONECTADO_NUVEM")
+        fs and (
+            fs.certificado_digital_path
+            or fs.certificado_thumbprint
+            or fs.certificado_status == "CONECTADO_NUVEM"
+        )
     )
     cert_valido = bool(
         cert_configurado and fs.certificado_validade and fs.certificado_validade.replace(tzinfo=None) > datetime.now()

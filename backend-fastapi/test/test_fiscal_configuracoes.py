@@ -182,9 +182,17 @@ def test_put_configuracao_fiscal_sobrevive_a_requisicao(
 
 
 def test_upload_certificado_focus_sobrevive_a_requisicao(
-    client: TestClient, header_with_token: dict, setup_fiscal_settings
+    client: TestClient, header_with_token: dict, setup_fiscal_settings, monkeypatch
 ):
-    """O certificado aceito precisa aparecer como configurado depois."""
+    """O certificado aceito precisa aparecer como configurado depois.
+
+    A plataforma é fingida como ACEITANDO de propósito: o que este teste prova é
+    o `commit`, não o envio. Sem o fingimento o client real tentaria a rede,
+    voltaria `indisponivel` e o certificado ficaria VALIDADO_LOCAL — correto,
+    mas outro assunto (ver os testes de envio, mais abaixo).
+    """
+    _fingir_envio(monkeypatch, {"aceito": True, "indisponivel": False, "mensagem": None})
+
     senha = b"senha-do-pfx"
     arquivo = {"file": ("cert.pfx", _gerar_pfx(senha), "application/x-pkcs12")}
 
@@ -304,3 +312,123 @@ def test_diagnostico_compara_quando_a_plataforma_manda_o_cnpj(
     # divergência falsa.
     assert dados["cnpj_plataforma"] == "11222333000181"
     assert dados["cnpj_confere"] == (dados["cnpj_erp"] == "11222333000181")
+
+
+# ---------------------------------------------------------------------------
+# ENVIO DO CERTIFICADO
+#
+# O upload deixou de terminar em `time.sleep(0.5)`. Agora ele entrega o arquivo
+# à plataforma — e o que se grava depende do que ela responde. A distinção que
+# estes testes protegem: "a plataforma ainda não recebe" NÃO é "conectado", e
+# também NÃO é "o seu certificado é ruim".
+# ---------------------------------------------------------------------------
+
+class _ClienteCertificado:
+    def __init__(self, resultado):
+        self._resultado = resultado
+        self.recebeu = None
+
+    def enviar_certificado(self, arquivo_base64, senha):
+        self.recebeu = (arquivo_base64, senha)
+        return self._resultado
+
+    def consultar_config(self):
+        return {}
+
+
+def _fingir_envio(monkeypatch, resultado):
+    from app.services.fiscal import http as http_mod
+
+    fake = _ClienteCertificado(resultado)
+    monkeypatch.setattr(http_mod, "get_fiscal_client", lambda ambiente, token="": fake)
+    return fake
+
+
+def _subir_certificado(client: TestClient, headers: dict):
+    senha = b"senha-do-pfx"
+    return client.post(
+        "/api/v1/fiscal/certificado/upload-focus",
+        headers=headers,
+        data={"senha": senha.decode()},
+        files={"file": ("cert.pfx", _gerar_pfx(senha), "application/x-pkcs12")},
+    )
+
+
+def test_plataforma_sem_rota_grava_validado_local(
+    client: TestClient, header_with_token: dict, setup_fiscal_settings, monkeypatch
+):
+    """A rota do certificado ainda não existe na plataforma.
+
+    Enquanto não existir, o cadastro NÃO pode dizer "conectado": o arquivo foi
+    conferido aqui e não chegou à emissora. Antes disto, gravava-se
+    CONECTADO_NUVEM sem nada ter sido enviado, e a mentira só aparecia na
+    primeira emissão recusada — longe da tela que a produziu.
+    """
+    _fingir_envio(monkeypatch, {
+        "aceito": False, "indisponivel": True,
+        "mensagem": "A plataforma ainda não recebe o certificado.",
+    })
+
+    assert _subir_certificado(client, header_with_token).status_code == 200
+
+    dados = client.get("/api/v1/fiscal/configuracao", headers=header_with_token).json()
+    assert dados["certificado_status"] == "VALIDADO_LOCAL"
+    assert dados["certificado_configurado"] is False, (
+        "certificado parado nesta máquina não pode aparecer como configurado"
+    )
+
+
+def test_plataforma_aceitou_grava_conectado(
+    client: TestClient, header_with_token: dict, setup_fiscal_settings, monkeypatch
+):
+    fake = _fingir_envio(monkeypatch, {
+        "aceito": True, "indisponivel": False, "mensagem": "ok",
+    })
+
+    assert _subir_certificado(client, header_with_token).status_code == 200
+
+    dados = client.get("/api/v1/fiscal/configuracao", headers=header_with_token).json()
+    assert dados["certificado_status"] == "CONECTADO_NUVEM"
+    assert dados["certificado_configurado"] is True
+
+    enviado, senha = fake.recebeu
+    assert senha == "senha-do-pfx"
+    import base64
+    assert base64.b64decode(enviado), "o arquivo precisa viajar em base64 legível"
+
+
+def test_recusa_da_plataforma_para_o_upload(
+    client: TestClient, header_with_token: dict, setup_fiscal_settings, monkeypatch
+):
+    """Recusa explícita é erro do lojista e para aqui, com a frase que veio de lá.
+
+    É o oposto da indisponibilidade: aqui o arquivo chegou e foi rejeitado —
+    CNPJ divergente, por exemplo. Tratar os dois igual mandaria o lojista
+    procurar defeito no arquivo quando o problema é a plataforma, ou o
+    contrário.
+    """
+    _fingir_envio(monkeypatch, {
+        "aceito": False, "indisponivel": False,
+        "mensagem": "O CNPJ do certificado não confere com o da empresa.",
+    })
+
+    resposta = _subir_certificado(client, header_with_token)
+    assert resposta.status_code == 400
+    assert "não confere" in resposta.json()["detail"]
+
+    dados = client.get("/api/v1/fiscal/configuracao", headers=header_with_token).json()
+    assert dados["certificado_status"] != "CONECTADO_NUVEM"
+
+
+def test_senha_do_certificado_nunca_e_guardada(
+    client: TestClient, header_with_token: dict, setup_fiscal_settings,
+    db_session: Session, monkeypatch,
+):
+    """Quem assina é o serviço remoto; a loja não precisa guardar o segredo."""
+    _fingir_envio(monkeypatch, {"aceito": True, "indisponivel": False, "mensagem": None})
+    assert _subir_certificado(client, header_with_token).status_code == 200
+
+    fs = db_session.query(EmpresaFiscalSettings).first()
+    db_session.refresh(fs)
+    assert fs.certificado_senha is None
+    assert fs.certificado_digital_path is None

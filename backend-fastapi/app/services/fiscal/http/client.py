@@ -34,8 +34,35 @@ class EmissaoResultado(TypedDict):
     valor_tributos: NotRequired[Optional[float]]
 
 
+class EnvioCertificadoResultado(TypedDict):
+    """Retorno do envio do certificado A1 para a plataforma.
+
+    `aceito=False` com `indisponivel=True` significa "a plataforma ainda não
+    recebe certificado" — é diferente de "recusou o certificado". O primeiro é
+    uma funcionalidade que falta do outro lado; o segundo é problema do arquivo
+    ou do CNPJ, e o lojista precisa saber qual dos dois aconteceu.
+    """
+
+    aceito: bool
+    indisponivel: bool
+    mensagem: Optional[str]
+    cnpj: NotRequired[Optional[str]]
+    valido_ate: NotRequired[Optional[str]]
+
+
 class FiscalClientProtocol(Protocol):
     """Contrato que todo client de emissão fiscal deve implementar."""
+
+    def enviar_certificado(
+        self, arquivo_base64: str, senha: str
+    ) -> "EnvioCertificadoResultado":
+        """
+        Entrega o certificado A1 à plataforma, que o cadastra na emissora.
+
+        NUNCA levanta por indisponibilidade: quem chama precisa distinguir
+        "ainda não dá" de "recusado", e uma exceção apaga essa diferença.
+        """
+        ...
 
     def emitir_nfe(
         self, ref: str, payload: dict, idempotency_key: Optional[str] = None
