@@ -475,6 +475,13 @@ def test_nfce_respeita_a_entrega_a_domicilio():
     # Transporte proprio por conta do remetente.
     assert payload["modalidade_frete"] == 3
 
+    # O documento do transportador segue a mesma regra do emitente: so digitos.
+    # Este bloco so existe na NFC-e com entrega a domicilio, e por isso passou
+    # batido quando a normalizacao entrou -- meio payload normalizado esconde
+    # justamente o caso que falta.
+    documento = payload["transportador"].get("cnpj") or payload["transportador"].get("cpf")
+    assert documento is None or documento.isdigit()
+
 
 @pytest.mark.parametrize("indicador", [2, 3, 9])
 def test_nfce_recusa_indicador_nao_presencial(indicador):

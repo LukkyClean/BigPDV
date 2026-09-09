@@ -553,8 +553,12 @@ def montar_payload_nfce(
     transportador = None
     if entrega_domicilio:
         transportador = {
-            "cnpj": empresa.documento if empresa.is_cnpj else None,
-            "cpf": None if empresa.is_cnpj else empresa.documento,
+            # Mesma normalização do emitente: documento vai sem pontuação.
+            # Ficou de fora quando `_so_digitos` entrou (5e4f934) porque este
+            # bloco só existe na NFC-e com entrega a domicílio -- e meio payload
+            # normalizado é pior do que nenhum, porque esconde o caso que falta.
+            "cnpj": _so_digitos(empresa.documento) if empresa.is_cnpj else None,
+            "cpf": None if empresa.is_cnpj else _so_digitos(empresa.documento),
             "razao_social": _sanitizar_texto_sefaz(
                 empresa.razao_social or empresa.nome_fantasia
             ),
