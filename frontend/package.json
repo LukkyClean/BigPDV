@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently \"vite\"",
-    "build": "npm run check:tokens && npm run check:print-bw && npm run check:paleta && npm run check:pix && npm run check:balcao && vite build",
+    "build": "npm run check:sidecar && npm run check:tokens && npm run check:print-bw && npm run check:paleta && npm run check:pix && npm run check:balcao && vite build",
     "preview": "vite preview",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
