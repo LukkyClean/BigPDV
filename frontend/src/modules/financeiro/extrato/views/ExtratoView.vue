@@ -15,6 +15,7 @@ import { computed, nextTick, ref } from 'vue';
 
 import PageReview from '@/shared/components/layout/PageReview/PageReview.vue';
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
+import BaseSelect from '@/shared/components/ui/BaseSelect/BaseSelect.vue';
 import { useRoute } from 'vue-router';
 import { ChevronLeft, ChevronRight, ArrowDownLeft, ArrowUpRight, Printer } from 'lucide-vue-next';
 
