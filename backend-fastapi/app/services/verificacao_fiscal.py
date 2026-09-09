@@ -84,7 +84,7 @@ def _verificar_emitente(db: Session, empresa_id: int) -> list[PendenciaFiscal]:
     if not empresa.indicador_ie:
         pendencias.append(_p(
             "emitente", "indicador_ie",
-            "Indicador de IE não definido. Acesse Configurações da Empresa > Dados Fiscais."
+            "Indicador de IE não definido em Dados da Empresa (1 = contribuinte de ICMS, 2 = isento, 9 = não contribuinte)."
         ))
 
     # Inscrição Estadual (obrigatória se contribuinte ICMS)

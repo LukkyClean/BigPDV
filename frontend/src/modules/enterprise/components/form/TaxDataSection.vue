@@ -54,14 +54,25 @@ const {
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
       <!-- Inscrição Estadual -->
-      <BaseInput
-        v-model="inscricao_estadual"
-        label="Inscrição Estadual (IE)"
-        type="text"
-        placeholder="Ex: Isento"
-        :disabled="disabled"
-        :error="submitCount > 0 ? errors.inscricao_estadual : ''"
-      />
+      <!-- "Inscrição Estadual" e "Indicador de IE" sao campos DIFERENTES com
+           nomes quase iguais. Quem nao e contador preenche um achando que
+           preencheu o outro, e a pendencia continua aparecendo sem explicacao.
+           A linha de ajuda existe para desfazer essa confusao no lugar onde ela
+           acontece. -->
+      <div>
+        <BaseInput
+          v-model="inscricao_estadual"
+          label="Inscrição Estadual (IE)"
+          type="text"
+          placeholder="Ex: Isento"
+          :disabled="disabled"
+          :error="submitCount > 0 ? errors.inscricao_estadual : ''"
+        />
+        <p class="text-xs text-zinc-500 mt-1.5">
+          O número da inscrição na Secretaria da Fazenda do seu estado. Não confundir
+          com o "Indicador de IE" abaixo.
+        </p>
+      </div>
 
       <!-- Inscrição Municipal -->
       <BaseInput
@@ -85,13 +96,21 @@ const {
       </div>
 
       <!-- Indicador de IE -->
-      <BaseSelect
-        v-model="indicador_ie"
-        label="Indicador de IE"
-        :options="INDICADOR_IE_OPTIONS"
-        placeholder="Selecione..."
-        :disabled="disabled"
-      />
+      <div>
+        <BaseSelect
+          v-model="indicador_ie"
+          label="Indicador de IE"
+          :options="INDICADOR_IE_OPTIONS"
+          placeholder="Selecione..."
+          :disabled="disabled"
+        />
+        <p class="text-xs text-zinc-500 mt-1.5">
+          Obrigatório para emitir NF-e. Diz à SEFAZ a sua situação perante o ICMS:
+          <strong>1</strong> se você tem Inscrição Estadual,
+          <strong>2</strong> se é isento e
+          <strong>9</strong> se não é contribuinte de ICMS.
+        </p>
+      </div>
 
       <!-- Natureza Jurídica -->
       <BaseSelect
