@@ -61,10 +61,24 @@ export const AMBIENTE_EMISSAO_OPTIONS: SelectOptionWithVariant[] = [
 // Opções de regime tributário
 // =============================================
 
+/**
+ * Regimes tributários — os rótulos são numerados pelo CRT da NF-e.
+ *
+ * O valor viaja como texto e o backend o traduz em `_ROTULO_PARA_CRT`
+ * (services/fiscal/helpers.py). Mudar um `value` aqui muda o CRT das notas.
+ *
+ * MEI entrou porque faltava, e a falta era grave: o backend inteiro já sabia
+ * lidar com CRT 4 (`usa_csosn`, `pis_cofins_por_fora`), mas esta lista não o
+ * oferecia — e `crt_efetivo` dá prioridade ao rótulo do regime sobre a natureza
+ * jurídica. Um MEI só podia escolher "Simples Nacional" e saía com CRT 1, mesmo
+ * com a Natureza Jurídica marcada como MEI. A SEFAZ exige CRT 4 para MEI desde
+ * a NT 2021.004, e o erro não aparece: a nota é aceita e fica errada.
+ */
 export const REGIME_TRIBUTARIO_OPTIONS: SelectOption[] = [
   { value: 'Simples Nacional', label: '1 - Simples Nacional' },
   { value: 'Simples Nacional (Excesso de Sublimite)', label: '2 - Simples Nacional (Excesso de Sublimite)' },
   { value: 'Regime Normal', label: '3 - Regime Normal' },
+  { value: 'MEI', label: '4 - MEI (Microempreendedor Individual)' },
 ] as const;
 
 // =============================================

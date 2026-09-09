@@ -51,6 +51,7 @@ def _p(categoria: str, campo: str, mensagem: str,
 
 # Cópia local removida: a regra de CRT vive em services/fiscal/helpers.py.
 from app.services.fiscal.helpers import obter_crt, usa_csosn
+from app.services.fiscal.validators import verificar_emitente as verificar_emitente_fiscal
 
 
 # ---------------------------------------------------------------------------
@@ -58,81 +59,20 @@ from app.services.fiscal.helpers import obter_crt, usa_csosn
 # ---------------------------------------------------------------------------
 
 def _verificar_emitente(db: Session, empresa_id: int) -> list[PendenciaFiscal]:
-    pendencias: list[PendenciaFiscal] = []
+    """Pendências do emitente — delega para a implementação do pacote fiscal.
 
-    empresa = db.query(Empresa).filter(Empresa.id == empresa_id).first()
-    if not empresa:
-        pendencias.append(_p("emitente", "empresa", "Empresa não encontrada no sistema."))
-        return pendencias
+    Existiam DUAS cópias desta verificação: esta e a de
+    `services/fiscal/validators.py`. Checavam as mesmas condições com textos
+    diferentes, e cada caminho usava uma — o painel de pendências e o card da
+    tela de Empresa vinham por aqui, enquanto o gate da emissão passava pela
+    outra. Enquanto ninguém mexia, elas concordavam; qualquer regra nova em uma
+    só apareceria em metade do sistema, sem erro nenhum para denunciar.
 
-    # CNPJ
-    if not empresa.documento:
-        pendencias.append(_p("emitente", "documento", "CNPJ da empresa não está preenchido."))
-    elif empresa.is_cnpj:
-        try:
-            resultado = validar_cnpj(empresa.documento)
-            if resultado is None:
-                pendencias.append(_p("emitente", "documento", "CNPJ da empresa é inválido."))
-        except Exception:
-            pendencias.append(_p("emitente", "documento", "CNPJ da empresa é inválido."))
-
-    # Regime tributário
-    if not empresa.regime_tributario:
-        pendencias.append(_p("emitente", "regime_tributario", "Regime tributário da empresa não está definido."))
-
-    # Indicador de IE (obrigatório para emissão)
-    if not empresa.indicador_ie:
-        pendencias.append(_p(
-            "emitente", "indicador_ie",
-            "Indicador de IE não definido em Dados da Empresa (1 = contribuinte de ICMS, 2 = isento, 9 = não contribuinte)."
-        ))
-
-    # Inscrição Estadual (obrigatória se contribuinte ICMS)
-    if empresa.indicador_ie == "1" and not empresa.inscricao_estadual:
-        pendencias.append(_p(
-            "emitente", "inscricao_estadual",
-            "Inscrição Estadual é obrigatória para contribuinte ICMS (indicador IE = 1)."
-        ))
-
-    # Endereço
-    endereco = (
-        db.query(Endereco)
-        .filter(
-            Endereco.id_entidade == empresa_id,
-            Endereco.tipo_entidade == EntityType.EMPRESA,
-        )
-        .first()
-    )
-    if not endereco:
-        pendencias.append(_p("emitente", "endereco", "Empresa não possui endereço cadastrado."))
-    else:
-        for campo in ["logradouro", "numero", "bairro", "cidade", "cep"]:
-            if not getattr(endereco, campo, None):
-                pendencias.append(_p(
-                    "emitente", campo,
-                    f"Campo '{campo}' do endereço da empresa está vazio.",
-                ))
-        if not endereco.estado:
-            pendencias.append(_p("emitente", "estado", "UF do endereço da empresa está vazia."))
-
-    # Fiscal Settings
-    fiscal_settings = (
-        db.query(EmpresaFiscalSettings)
-        .filter(EmpresaFiscalSettings.empresa_id == empresa_id)
-        .first()
-    )
-    if not fiscal_settings:
-        pendencias.append(_p(
-            "emitente", "fiscal_settings",
-            "Configurações fiscais da empresa não estão cadastradas."
-        ))
-    else:
-        # Certificado digital — desabilitado temporariamente.
-        # A API Online usa Bearer token (licença), não certificado local.
-        # Reativar quando integração direta com SEFAZ for implementada.
-        pass
-
-    return pendencias
+    A do pacote fiscal ficou como fonte única por ser a que decide se a nota
+    sai. Esta função permanece porque `pendencias_globais` a importa por este
+    nome.
+    """
+    return verificar_emitente_fiscal(db, empresa_id)
 
 
 # ---------------------------------------------------------------------------

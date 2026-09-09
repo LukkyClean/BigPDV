@@ -41,22 +41,43 @@ def verificar_emitente(db: Session, empresa_id: int) -> list[PendenciaFiscal]:
         return [_p("emitente", "empresa", "Empresa não encontrada no sistema.")]
 
     if not empresa.documento:
-        pendencias.append(_p("emitente", "documento", "CNPJ da empresa não está preenchido."))
+        pendencias.append(_p(
+            "emitente", "documento",
+            "CNPJ da empresa não está preenchido em Dados da Empresa.",
+        ))
     elif empresa.is_cnpj:
         try:
             if validar_cnpj(empresa.documento) is None:
                 pendencias.append(_p("emitente", "documento", "CNPJ da empresa é inválido."))
         except Exception:
             pendencias.append(_p("emitente", "documento", "CNPJ da empresa é inválido."))
+    else:
+        # Cadastro com CPF no lugar do CNPJ.
+        #
+        # Não havia trava: o payload manda `empresa.documento` no campo `cnpj`,
+        # então um CPF de 11 dígitos saía como se fosse CNPJ. A recusa vinha lá
+        # da frente -- da plataforma ou da SEFAZ -- com uma mensagem que não
+        # aponta para o cadastro, e foi exatamente esse o rastro que custou caro
+        # de seguir ("CNPJ do emitente não autorizado").
+        #
+        # Emitente pessoa física existe na NF-e (produtor rural usa `cpf_emitente`
+        # na Focus), mas o nosso payload não tem esse campo e o resto do fluxo
+        # pressupõe CNPJ. Enquanto não houver suporte de verdade, barrar aqui é
+        # honesto: a alternativa é uma nota que não sai e ninguém sabe por quê.
+        pendencias.append(_p(
+            "emitente", "documento",
+            "A NF-e exige CNPJ, e esta empresa está cadastrada com CPF. "
+            "Corrija o documento em Dados da Empresa.",
+        ))
 
     if not empresa.regime_tributario:
-        pendencias.append(_p("emitente", "regime_tributario", "Regime tributário não definido."))
+        pendencias.append(_p("emitente", "regime_tributario", "Regime tributário não definido em Dados da Empresa."))
 
     if not empresa.indicador_ie:
         pendencias.append(_p("emitente", "indicador_ie", "Indicador de IE não definido em Dados da Empresa (1 = contribuinte de ICMS, 2 = isento, 9 = não contribuinte)."))
 
     if empresa.indicador_ie == "1" and not empresa.inscricao_estadual:
-        pendencias.append(_p("emitente", "inscricao_estadual", "Inscrição Estadual obrigatória para IE=1."))
+        pendencias.append(_p("emitente", "inscricao_estadual", "Inscrição Estadual é obrigatória para contribuinte de ICMS (Indicador de IE = 1)."))
 
     endereco = crud.get_endereco_empresa(db, empresa_id)
     if not endereco:

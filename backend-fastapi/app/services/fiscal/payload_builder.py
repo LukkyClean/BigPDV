@@ -119,9 +119,27 @@ def _codigo_barras_para_sefaz(codigo: Optional[str]) -> str:
     return codigo.strip() if _gtin_valido(codigo) else SEM_GTIN
 
 
+def _so_digitos(valor) -> Optional[str]:
+    """Remove tudo que não for dígito. Usado só na SAÍDA, nunca no banco.
+
+    CNPJ, CPF e CEP viajam sem pontuação para a SEFAZ. Hoje o cadastro guarda
+    esses campos limpos, então isto é rede de proteção e não conserto: se um dia
+    entrar um documento mascarado -- por importação, por colagem, por um campo
+    novo sem máscara na borda --, a nota é recusada longe daqui, com uma
+    mensagem que não aponta para o cadastro.
+
+    Normalizar na borda e não no banco é deliberado: o que o lojista digitou
+    continua sendo o que ele vê na tela.
+    """
+    if valor is None:
+        return None
+    limpo = re.sub(r"\D", "", str(valor))
+    return limpo or None
+
+
 def _montar_emitente(empresa: Empresa, endereco: Endereco, fiscal_settings: EmpresaFiscalSettings) -> dict:
     return {
-        "cnpj": empresa.documento,
+        "cnpj": _so_digitos(empresa.documento),
         "razao_social": _sanitizar_texto_sefaz(empresa.razao_social),
         "nome_fantasia": _sanitizar_texto_sefaz(empresa.nome_fantasia or empresa.razao_social),
         "inscricao_estadual": empresa.inscricao_estadual,
@@ -137,7 +155,7 @@ def _montar_emitente(empresa: Empresa, endereco: Endereco, fiscal_settings: Empr
             "bairro": endereco.bairro,
             "cidade": endereco.cidade,
             "uf": endereco.estado.value if hasattr(endereco.estado, "value") else str(endereco.estado),
-            "cep": endereco.cep,
+            "cep": _so_digitos(endereco.cep),
         },
     }
 
@@ -146,14 +164,14 @@ def _montar_destinatario(cliente: Cliente) -> dict:
     dest: dict = {}
 
     if isinstance(cliente, ClientePJ):
-        dest["cnpj"] = cliente.cnpj
+        dest["cnpj"] = _so_digitos(cliente.cnpj)
         dest["razao_social"] = _sanitizar_texto_sefaz(cliente.razao_social)
         dest["nome"] = _sanitizar_texto_sefaz(cliente.razao_social)
         dest["inscricao_estadual"] = cliente.ie or ""
         # indicador_ie: 1=Contribuinte (tem IE), 9=Não contribuinte (sem IE)
         dest["indicador_ie"] = "1" if cliente.ie else "9"
     elif isinstance(cliente, ClientePF):
-        dest["cpf"] = cliente.cpf
+        dest["cpf"] = _so_digitos(cliente.cpf)
         dest["nome"] = _sanitizar_texto_sefaz(cliente.nome)
         dest["indicador_ie"] = "9"  # PF é sempre não contribuinte
     else:
@@ -248,7 +266,7 @@ def _montar_endereco_destinatario(end: Endereco) -> Optional[dict]:
         "bairro": end.bairro,
         "cidade": end.cidade,
         "uf": uf,
-        "cep": end.cep,
+        "cep": _so_digitos(end.cep),
     }
 
 
