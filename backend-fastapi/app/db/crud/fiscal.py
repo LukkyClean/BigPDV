@@ -164,6 +164,19 @@ def get_documento_ativo_por_venda(db: Session, numero_venda: int):
         DocumentoFiscal.status.in_(["PROCESSANDO", "PENDENTE", "AUTORIZADA", "INDETERMINADA"]),
     ).first()
 
+def get_documento_ativo_por_os(db: Session, numero_os: str):
+    """Documento fiscal vivo desta OS — o que bloqueia uma segunda emissão.
+
+    Mesmos status de `get_documento_ativo_por_venda`: INDETERMINADA entra na
+    lista porque uma emissão sem resposta confirmada PODE estar autorizada, e
+    reemitir por cima produziria nota duplicada no mesmo CNPJ.
+    """
+    return db.query(DocumentoFiscal).filter(
+        DocumentoFiscal.origem_tipo == "OS",
+        DocumentoFiscal.origem_numero_os == numero_os,
+        DocumentoFiscal.status.in_(["PROCESSANDO", "PENDENTE", "AUTORIZADA", "INDETERMINADA"]),
+    ).first()
+
 def get_documentos_ativos_por_vendas(db: Session, numeros_venda: list[int]) -> dict[int, DocumentoFiscal]:
     """Retorna {numero_venda: DocumentoFiscal} para docs ativos (bloqueiam nova emissão)."""
     if not numeros_venda:
@@ -208,6 +221,14 @@ def contar_documentos_por_venda(db: Session, numero_venda: int) -> int:
     return db.query(func.count(DocumentoFiscal.id)).filter(
         DocumentoFiscal.origem_tipo == "VENDA",
         DocumentoFiscal.origem_id == numero_venda,
+    ).scalar() or 0
+
+def contar_documentos_por_os(db: Session, numero_os: str) -> int:
+    """Tentativas já feitas para esta OS — usado para compor a `ref` única."""
+    from sqlalchemy import func
+    return db.query(func.count(DocumentoFiscal.id)).filter(
+        DocumentoFiscal.origem_tipo == "OS",
+        DocumentoFiscal.origem_numero_os == numero_os,
     ).scalar() or 0
 
 def get_nomes_destinatarios_por_vendas(db: Session, numeros_venda: list[int]) -> dict[int, str]:

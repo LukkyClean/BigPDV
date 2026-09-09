@@ -209,11 +209,12 @@ def preview_nfe(
     db: Session = Depends(get_db),
     payload: EmissaoNFeRequest = Body(...),
 ):
-    from app.services.fiscal.emissao import preview_nfe_venda
-    # FIXME: no futuro deve suportar preview_nfe_os também
+    from app.services.fiscal.emissao import preview_nfe_os, preview_nfe_venda
+
+    empresa_id = user_token["empresa_id"]
     if payload.venda_id:
-        return preview_nfe_venda(db, payload.venda_id, user_token["empresa_id"])
-    raise HTTPException(status_code=400, detail="Somente pre-visualização de vendas está implementada")
+        return preview_nfe_venda(db, payload.venda_id, empresa_id)
+    return preview_nfe_os(db, payload.numero_os, empresa_id)
 
 @router.post(
     "/emitir/nfe",
@@ -228,18 +229,21 @@ def emitir_nfe(
     db: Session = Depends(get_db),
     payload: EmissaoNFeRequest = Body(...),
 ):
-    from app.services.fiscal.emissao import emitir_nfe_venda, poll_nfe_status_async
+    from app.services.fiscal.emissao import (
+        emitir_nfe_os, emitir_nfe_venda, poll_nfe_status_async,
+    )
 
     empresa_id = user_token["empresa_id"]
 
+    # A NF-e de uma OS cobre os itens de PRODUTO. A mao de obra e servico e
+    # pede NFS-e municipal, que este sistema ainda nao emite.
     if payload.venda_id:
         doc = _handle_db_transaction(
             db, emitir_nfe_venda, payload.venda_id, empresa_id,
         )
     else:
-        raise HTTPException(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail="Emissão de NF-e para OS será implementada em fase futura.",
+        doc = _handle_db_transaction(
+            db, emitir_nfe_os, payload.numero_os, empresa_id,
         )
 
     if doc.status == "PROCESSANDO":

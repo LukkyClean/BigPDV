@@ -215,12 +215,35 @@ três estados, e o card mostra os três.
   aquela correção estava certa e invisível. O componente segue no repositório,
   morto.
 
-### Fase 4 — o que fica para depois
+### Fase 4 — **NF-e por OS FEITA**; o resto continua fora de alcance
 
-- NF-e a partir de OS (hoje 501). Para oficina e serigrafia, é onde está o
-  faturamento.
-- NFS-e municipal.
-- Reconciliação de numeração e inutilização em produção.
+- **NF-e a partir de OS — FEITA.** O botão já existia na tela da OS e batia num
+  `501` no `POST /ordens-servico/{os}/emitir-fiscal`, que rodava o gate e
+  desistia. Agora ele emite.
+
+  A OS é apresentada ao motor com a forma de uma venda
+  (`services/fiscal/adaptador_os.py`), então alíquotas, rateio, montagem de
+  itens e fechamento de pagamentos continuam tendo **uma implementação só** —
+  a que tem os testes e as cicatrizes. Três decisões que não eram óbvias:
+
+  | Decisão | Por quê |
+  |---|---|
+  | Só item de PRODUTO, e não reprovado | Mão de obra é serviço e pede NFS-e. Mesmo filtro do gate — se divergissem, o gate aprovaria uma nota diferente da que sai |
+  | O desconto da OS entra pela fatia dos produtos | A OS desconta no total (peças + mão de obra). Levar o desconto inteiro subfatura; ignorá-lo faz a nota valer mais do que se pagou pelas peças |
+  | Pagamentos reduzidos proporcionalmente | A SEFAZ audita `Σ pagamentos − troco == total` (Rejeição 767). Os pagamentos da OS cobrem a mão de obra também; mandá-los inteiros derruba a emissão. Proporcional preserva as formas usadas e fecha a conta |
+
+  Pedir `tipo_documento=ambos` emite a NF-e das peças **e diz na resposta** que
+  a mão de obra depende da NFS-e. Pedir `nfse` continua respondendo 501, com a
+  frase explicando que é a prefeitura.
+
+- **NFS-e municipal — fora de alcance daqui.** Não é o mesmo tamanho dos
+  outros itens: cada município tem seu portal, seu leiaute e seu
+  credenciamento, e a plataforma não tem rota nenhuma para isso. Precisa de
+  decisão comercial (quais municípios) antes de virar tarefa.
+
+- **Inutilização em produção — bloqueada.** O ERP tem a tela e o controle de
+  gaps prontos; falta `POST /erp/fiscal/nfe/inutilizar` na plataforma (§4.4,
+  item 4).
 
 ---
 
@@ -323,9 +346,14 @@ divergência.
 6. ~~**Fase 2**~~ — feita do lado do ERP; espera a §4.1 para deixar de gravar
    `VALIDADO_LOCAL`.
 
-**Do lado do ERP não sobra nada que possamos fazer sozinhos.** Fases 0, 1, 2 e 3
-estão implementadas; a 2 só termina com a §4.1, e a fase 4 (NF-e por OS, NFS-e)
-é escopo novo, não conserto.
+**Do lado do ERP não sobra nada que possamos fazer sozinhos.** Fases 0, 1, 2, 3
+e a parte alcançável da 4 estão implementadas. A fase 2 só termina com a §4.1; a
+inutilização espera a §4.4; e a NFS-e precisa de decisão comercial antes de
+virar tarefa.
+
+⚠️ **Nenhuma NF-e foi autorizada ainda** — nem de venda, nem de OS. O caminho da
+OS foi construído sobre o mesmo motor da venda e testado unitariamente, mas a
+primeira prova de verdade é a mesma para os dois: a §4.2 do lado da plataforma.
 
 ## 6. Fontes
 

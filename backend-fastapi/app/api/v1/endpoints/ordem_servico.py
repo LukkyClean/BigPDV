@@ -26,11 +26,12 @@
 #   DELETE /{os_number}/fotos/{foto_id}   → Remover foto
 # ---------------------------------------------------------------------------
 
-from fastapi import APIRouter, Depends, status, Path, Query, UploadFile, File, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, status, Path, Query, UploadFile, File, Response
 from sqlalchemy.orm import Session
 
 from app.core.depends import check_permission, get_current_active_user, _handle_db_transaction, is_visao_gerencial, requer_modulo_fiscal
 from app.schemas.verificacao_fiscal import ResultadoVerificacaoFiscal
+from app.schemas.emissao_fiscal import EmissaoResponse
 from app.services import verificacao_fiscal as verificacao_fiscal_service
 from app.schemas.ordem_servico_nota_fiscal import OrdemServicoNotaFiscalRead, OrdemServicoNotaFiscalUpdate
 from app.services import ordem_servico_nota_fiscal as os_nota_fiscal_service
@@ -612,23 +613,48 @@ def verificar_fiscal_os(
 
 @router.post(
     "/{os_number}/emitir-fiscal",
-    response_model=ResultadoVerificacaoFiscal,
+    response_model=EmissaoResponse,
     summary="Emitir Nota Fiscal da OS",
     description=(
-        "Executa o gate de verificação fiscal. Se completo, retorna placeholder "
-        "(integração com SEFAZ ainda não disponível)."
+        "Emite a NF-e das PEÇAS da OS. A mão de obra é serviço e depende da "
+        "NFS-e municipal, ainda não disponível."
     ),
 )
 def emitir_fiscal_os(
+    background_tasks: BackgroundTasks,
     user_token: dict = Depends(check_permission(required_permission=module_permission)),
     _fiscal: dict = Depends(requer_modulo_fiscal),
     os_number: str = Path(..., description="Número da OS"),
     tipo_documento: str = Query("ambos", description="nfe, nfse ou ambos"),
     db: Session = Depends(get_db),
 ):
+    from app.services.fiscal.emissao import emitir_nfe_os, poll_nfe_status_async
+
     empresa_id = user_token["empresa_id"]
+
+    # NFS-e (mão de obra) é municipal e este sistema não a emite. Dizer isso
+    # aqui, com todas as letras, é melhor do que emitir a NF-e das peças em
+    # silêncio e deixar o lojista achar que a OS inteira foi documentada.
+    if tipo_documento == "nfse":
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail={
+                "codigo": "NFSE_NAO_DISPONIVEL",
+                "mensagem": (
+                    "A nota de serviço (NFS-e) é emitida pela prefeitura e ainda "
+                    "não está disponível no sistema. A NF-e das peças pode ser "
+                    "emitida normalmente."
+                ),
+            },
+        )
+
+    # O gate roda sobre "nfe", mesmo quando pediram "ambos".
+    #
+    # Com "ambos" ele também exigiria código LC 116 de cada serviço — e
+    # reprovaria a emissão das PEÇAS por falta de dado de uma nota que nem
+    # sabemos emitir. A verificação do que se pretende emitir é a que vale.
     resultado = verificacao_fiscal_service.verificar_completude_os(
-        db, os_number, empresa_id, tipo_documento
+        db, os_number, empresa_id, "nfe"
     )
     if not resultado.completo:
         raise HTTPException(
@@ -639,10 +665,23 @@ def emitir_fiscal_os(
                 "pendencias": [p.model_dump() for p in resultado.pendencias],
             },
         )
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail={
-            "codigo": "API_NAO_DISPONIVEL",
-            "mensagem": "Verificação fiscal aprovada. A integração com a SEFAZ ainda não está disponível.",
-        },
+
+    doc = _handle_db_transaction(db, emitir_nfe_os, os_number, empresa_id)
+
+    if doc.status == "PROCESSANDO":
+        background_tasks.add_task(poll_nfe_status_async, doc.id, empresa_id)
+
+    mensagem = doc.mensagem_sefaz or f"NF-e {doc.status.lower()}."
+    if tipo_documento == "ambos":
+        mensagem += (
+            " A nota cobre as peças; a mão de obra depende da NFS-e da "
+            "prefeitura, ainda não disponível."
+        )
+
+    return EmissaoResponse(
+        documento_id=doc.id,
+        ref_api=doc.ref_api,
+        status=doc.status,
+        mensagem=mensagem,
+        ambiente=doc.ambiente_emissao,
     )
