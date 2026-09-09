@@ -6,7 +6,7 @@ import BaseSelect from '@/shared/components/ui/BaseSelect/BaseSelect.vue';
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
 import { useFiscalConfiguracaoMutation } from '../../composables/useFiscalConfiguracaoMutation';
 import type { FiscalConfiguracao } from '../../types/fiscal.types';
-import { Building, ShieldAlert, CheckCircle2 } from 'lucide-vue-next';
+import { Building, ShieldAlert, CheckCircle2, AlertTriangle } from 'lucide-vue-next';
 import LucideIcon from '@/shared/components/icons/LucideIcon.vue';
 
 const props = defineProps<{
@@ -112,12 +112,26 @@ async function handleSave() {
         </div>
         <BaseSelect
           v-model="ambiente"
-          label="Ambiente SEFAZ"
+          label="Ambiente SEFAZ (trava deste computador)"
           :options="ambienteOptions"
           :disabled="isPending || success"
         />
+        <!-- O texto anterior dizia "Altere para Produção apenas quando tudo
+             estiver homologado", como se este campo decidisse. Ele não decide:
+             quem escolhe o ambiente é a plataforma, por loja. Um lojista podia
+             ler "Homologação" aqui com a plataforma em produção e emitir nota
+             REAL achando que testava. -->
         <p class="text-xs text-zinc-500 leading-relaxed">
-          * Em homologação, as notas emitidas não possuem valor fiscal. Altere para Produção apenas quando tudo estiver homologado.
+          Em homologação, as notas não têm valor fiscal.
+        </p>
+        <p class="flex items-start gap-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 leading-relaxed">
+          <LucideIcon :icon="AlertTriangle" class="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-500" />
+          <span>
+            <strong>Mudar aqui não muda na emissora.</strong> Quem define o ambiente de
+            verdade é a plataforma de emissão, por loja — este campo só arma as travas
+            deste computador. Confira o ambiente real no cartão
+            <strong>Plataforma de Emissão</strong>, no Centro Fiscal.
+          </span>
         </p>
       </div>
 

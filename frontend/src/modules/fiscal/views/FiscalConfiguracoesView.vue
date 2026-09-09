@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useQueryClient } from '@tanstack/vue-query';
 import { Shield, Building, MapPin, CheckCircle, AlertCircle, FileCheck, ArrowLeft } from 'lucide-vue-next';
@@ -10,6 +10,7 @@ import FiscalCertificadoModal from '../components/configuracoes/FiscalCertificad
 import FiscalEmissaoEstadualModal from '../components/configuracoes/FiscalEmissaoEstadualModal.vue';
 import FiscalPlataformaCard from '../components/configuracoes/FiscalPlataformaCard.vue';
 import { useFiscalConfiguracaoQuery } from '../composables/useFiscalConfiguracaoQuery';
+import { useFiscalPlataformaQuery } from '../composables/useFiscalPlataformaQuery';
 import { fiscalKeys } from '../constants/fiscal.constants';
 
 const showCertificadoModal = ref(false);
@@ -18,6 +19,31 @@ const showEstadualModal = ref(false);
 const { data: config, isLoading } = useFiscalConfiguracaoQuery();
 const queryClient = useQueryClient();
 const router = useRouter();
+
+/**
+ * Quem decide o ambiente é a PLATAFORMA, por loja — o campo daqui só arma as
+ * travas locais. Enquanto o chip lia o valor local, ele podia anunciar
+ * "Homologação" com a plataforma emitindo em produção: nota real saindo de um
+ * teste, sem nada na tela para denunciar.
+ *
+ * Mesma queryKey do card de diagnóstico, então isto não gera uma segunda
+ * requisição.
+ */
+const { data: plataforma } = useFiscalPlataformaQuery();
+
+const ambienteVigente = computed(() =>
+  plataforma.value?.consultou && plataforma.value.ambiente != null
+    ? plataforma.value.ambiente
+    : config.value?.ambiente,
+);
+
+/** A plataforma respondeu E discorda do que está gravado aqui. */
+const ambienteDivergente = computed(() =>
+  plataforma.value?.consultou === true &&
+  plataforma.value.ambiente != null &&
+  config.value?.ambiente != null &&
+  plataforma.value.ambiente !== config.value.ambiente,
+);
 
 function openCertificadoModal() {
   showCertificadoModal.value = true;
@@ -140,15 +166,22 @@ function aoEnviarCertificado() {
                 <p class="text-xs text-zinc-500">Parâmetros de numeração, séries e CSC</p>
               </div>
             </div>
+            <!-- O ambiente exibido e o da PLATAFORMA quando ela responde. -->
             <span
               :class="[
                 'inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border',
-                config?.ambiente === 1
-                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                  : 'bg-blue-50 text-blue-700 border-blue-200'
+                ambienteDivergente
+                  ? 'bg-red-50 text-red-700 border-red-200'
+                  : ambienteVigente === 1
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    : 'bg-blue-50 text-blue-700 border-blue-200'
               ]"
+              :title="ambienteDivergente
+                ? 'A plataforma está em outro ambiente. Veja o cartão Plataforma de Emissão.'
+                : undefined"
             >
-              {{ config?.ambiente === 1 ? 'Produção' : 'Homologação' }}
+              <LucideIcon v-if="ambienteDivergente" :icon="AlertCircle" class="w-3 h-3" />
+              {{ ambienteVigente === 1 ? 'Produção' : 'Homologação' }}
             </span>
           </div>
 

@@ -204,6 +204,17 @@ três estados, e o card mostra os três.
   plataforma**, não o palpite local — ou some. Hoje ela deixa emitir nota real
   achando que testa.
 
+  Feito assim: o chip do Centro Fiscal mostra o ambiente **da plataforma**
+  quando ela responde (e fica vermelho quando os dois discordam), e o seletor no
+  modal passou a se chamar "trava deste computador", com um aviso de que mudar
+  ali não muda na emissora. O campo local continua existindo porque é ele que
+  arma o `emitir_teste`; o que sumiu foi a impressão de que ele decide.
+
+  Achado ao revisar: `FiscalAmbienteBadge.vue` **nunca foi usado** — o chip é
+  inline na view. É o componente onde vivia o `(mock)` do item 0.4, então
+  aquela correção estava certa e invisível. O componente segue no repositório,
+  morto.
+
 ### Fase 4 — o que fica para depois
 
 - NF-e a partir de OS (hoje 501). Para oficina e serigrafia, é onde está o
