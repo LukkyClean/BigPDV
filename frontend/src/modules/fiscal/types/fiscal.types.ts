@@ -86,6 +86,27 @@ export interface PendenciaGlobalItem {
   campo_faltante: string;
 }
 
+/**
+ * O que a plataforma de emissão enxerga desta licença.
+ *
+ * `consultou: false` é "não sei" — a plataforma não respondeu. A tela precisa
+ * mostrar isso como indisponibilidade, nunca como "não configurado".
+ */
+export interface DiagnosticoPlataforma {
+  consultou: boolean;
+  ambiente?: number | null;
+  ambiente_nome?: string | null;
+  configurado?: boolean | null;
+  token_configurado?: boolean | null;
+  csc_configurado?: boolean | null;
+  certificado_status?: string | null;
+  pendencias: string[];
+  cnpj_erp?: string | null;
+  cnpj_plataforma?: string | null;
+  /** null = a plataforma ainda não devolve o CNPJ dela; não é divergência. */
+  cnpj_confere?: boolean | null;
+}
+
 export interface PendenciasGlobais {
   emitente_completo: boolean;
   emitente_pendencias: string[];

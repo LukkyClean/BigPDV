@@ -11,6 +11,7 @@ import type { EmissaoPreviewResponse,
   EmissaoBatchResponse,
   FiscalConfiguracao,
   PendenciasGlobais,
+  DiagnosticoPlataforma,
   ResultadoVerificacaoBatch,
   VendaCorrecaoFiscalPayload,
   SugestoesFiscaisResponse,
@@ -46,6 +47,13 @@ export const fiscalService = {
     const { data } = await api.get<DocumentoFiscalResumo>(
       `${FISCAL_ENDPOINT}/resumo`,
       { params: tipo ? { tipo } : undefined },
+    );
+    return data;
+  },
+
+  async obterDiagnosticoPlataforma(): Promise<DiagnosticoPlataforma> {
+    const { data } = await api.get<DiagnosticoPlataforma>(
+      `${FISCAL_ENDPOINT}/plataforma`,
     );
     return data;
   },

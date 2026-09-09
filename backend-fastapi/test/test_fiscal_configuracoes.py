@@ -205,3 +205,102 @@ def test_upload_certificado_focus_sobrevive_a_requisicao(
     )
     assert dados["certificado_status"] == "CONECTADO_NUVEM"
     assert dados["certificado_valido"] is True
+
+
+# ---------------------------------------------------------------------------
+# DIAGNÓSTICO DA PLATAFORMA
+#
+# Responde "de quem é o problema" sem abrir chamado. Nasceu do episódio em que a
+# loja recebeu "CNPJ do emitente não autorizado" e não havia como saber, de
+# dentro do sistema, se a recusa vinha do cadastro daqui ou da ficha de lá.
+# ---------------------------------------------------------------------------
+
+class _ClienteFake:
+    def __init__(self, config):
+        self._config = config
+
+    def consultar_config(self):
+        return self._config
+
+
+def _fingir_plataforma(monkeypatch, config):
+    from app.services.fiscal import http as http_mod
+
+    monkeypatch.setattr(
+        http_mod, "get_fiscal_client", lambda ambiente, token="": _ClienteFake(config)
+    )
+
+
+def test_diagnostico_sem_resposta_da_plataforma_nao_acusa(
+    client: TestClient, header_with_token: dict, setup_fiscal_settings, monkeypatch
+):
+    """Plataforma muda: "não sei" NUNCA pode virar "não configurado"."""
+    _fingir_plataforma(monkeypatch, {})
+
+    resposta = client.get("/api/v1/fiscal/plataforma", headers=header_with_token)
+    assert resposta.status_code == 200
+    dados = resposta.json()
+
+    assert dados["consultou"] is False
+    assert dados["configurado"] is None, "silêncio da plataforma virou acusação"
+    assert dados["csc_configurado"] is None
+    # O lado de cá a gente sabe mesmo sem ela.
+    assert dados["cnpj_erp"] is None or dados["cnpj_erp"].isdigit()
+
+
+def test_diagnostico_mapeia_o_que_a_plataforma_responde(
+    client: TestClient, header_with_token: dict, setup_fiscal_settings, monkeypatch
+):
+    _fingir_plataforma(monkeypatch, {
+        "ambiente": 2,
+        "ambienteNome": "Homologação",
+        "configurado": True,
+        "tokenConfigurado": True,
+        "cscConfigurado": False,
+        "certificadoStatus": "OK",
+        "pendencias": ["CSC não cadastrado"],
+    })
+
+    dados = client.get("/api/v1/fiscal/plataforma", headers=header_with_token).json()
+
+    assert dados["consultou"] is True
+    assert dados["ambiente"] == 2
+    assert dados["ambiente_nome"] == "Homologação"
+    assert dados["token_configurado"] is True
+    assert dados["csc_configurado"] is False
+    assert dados["certificado_status"] == "OK"
+    assert dados["pendencias"] == ["CSC não cadastrado"]
+
+
+def test_diagnostico_nao_inventa_divergencia_de_cnpj(
+    client: TestClient, header_with_token: dict, setup_fiscal_settings, monkeypatch
+):
+    """Sem o CNPJ da plataforma, `cnpj_confere` é None — não é False.
+
+    Hoje o `GET /erp/fiscal/config` não devolve o CNPJ da ficha. Enquanto não
+    devolver, a tela precisa dizer "a plataforma não informa" em vez de acusar
+    uma divergência que ninguém mediu.
+    """
+    _fingir_plataforma(monkeypatch, {"ambiente": 2, "configurado": True})
+
+    dados = client.get("/api/v1/fiscal/plataforma", headers=header_with_token).json()
+
+    assert dados["cnpj_plataforma"] is None
+    assert dados["cnpj_confere"] is None
+
+
+def test_diagnostico_compara_quando_a_plataforma_manda_o_cnpj(
+    client: TestClient, header_with_token: dict, setup_fiscal_settings, monkeypatch
+):
+    _fingir_plataforma(monkeypatch, {
+        "ambiente": 2,
+        "configurado": True,
+        "cnpj": "11.222.333/0001-81",
+    })
+
+    dados = client.get("/api/v1/fiscal/plataforma", headers=header_with_token).json()
+
+    # Comparação sempre em dígitos: máscara dos dois lados não pode virar
+    # divergência falsa.
+    assert dados["cnpj_plataforma"] == "11222333000181"
+    assert dados["cnpj_confere"] == (dados["cnpj_erp"] == "11222333000181")

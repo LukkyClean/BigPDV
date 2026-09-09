@@ -101,6 +101,34 @@ class FiscalConfiguracao(BaseModel):
     limite_consumidor_anonimo: Optional[int] = 1000000
 
 
+class DiagnosticoPlataforma(BaseModel):
+    """O que a PLATAFORMA enxerga desta licença, ao lado do que o ERP manda.
+
+    Existe por causa de um episódio concreto: a loja recebeu "CNPJ do emitente
+    não autorizado" e não havia como saber, de dentro do sistema, se o problema
+    era o cadastro daqui ou a ficha de lá. A investigação levou um dia e
+    terminou numa leitura de código.
+
+    `consultou=False` significa "não sei" — a plataforma não respondeu. Nunca
+    tratar isso como "não configurado": é a mesma regra do `_assert_csc_configurado`.
+    """
+
+    consultou: bool
+    ambiente: Optional[int] = None
+    ambiente_nome: Optional[str] = None
+    configurado: Optional[bool] = None
+    token_configurado: Optional[bool] = None
+    csc_configurado: Optional[bool] = None
+    certificado_status: Optional[str] = None
+    pendencias: list[str] = []
+
+    # O lado de cá, para a comparação ficar na mesma tela.
+    cnpj_erp: Optional[str] = None
+    cnpj_plataforma: Optional[str] = None
+    # None = não dá para comparar (a plataforma ainda não devolve o CNPJ dela).
+    cnpj_confere: Optional[bool] = None
+
+
 class EmissaoPreviewItem(BaseModel):
     numero_item: int
     produto_id: Optional[int] = None

@@ -36,6 +36,7 @@ export const fiscalKeys = {
   pendencias: () => ['fiscal', 'pendencias'] as const,
   documento: (id: number) => ['fiscal', 'documento', id] as const,
   configuracao: () => ['fiscal', 'configuracao'] as const,
+  plataforma: () => ['fiscal', 'plataforma'] as const,
   historico: (id: number) => ['fiscal', 'historico', id] as const,
   verificacaoBatch: (ids: number[]) => ['fiscal', 'verificacao-batch', ...ids] as const,
 };

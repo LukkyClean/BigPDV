@@ -32,6 +32,7 @@ from app.schemas.documento_fiscal import (
     PendenciasGlobais,
 )
 from app.schemas.emissao_fiscal import (
+    DiagnosticoPlataforma,
     GapNumeracao,
     InutilizacaoRead,
     InutilizacaoRequest,
@@ -46,6 +47,7 @@ from app.schemas.emissao_fiscal import (
 from app.services import documento_fiscal as documento_fiscal_service
 from app.services import pendencias_globais as pendencias_globais_service
 from app.services.fiscal.helpers import mascarar_csc, obter_csc_token
+from app.services.fiscal.payload_builder import _so_digitos
 from app.core.modulos import requer_modulo
 
 # A LOJA contratou a NF-e? Trava de licenca, no router inteiro, como no
@@ -597,6 +599,67 @@ def atualizar_configuracao(
             fs.limite_consumidor_anonimo if fs else 1000000
         ),
     )
+
+@router.get(
+    "/plataforma",
+    response_model=DiagnosticoPlataforma,
+    summary="Diagnóstico da Plataforma",
+    description=(
+        "O que a plataforma de emissão enxerga desta licença — ambiente, token, "
+        "CSC e certificado — ao lado do CNPJ que este ERP envia como emitente."
+    ),
+)
+def obter_diagnostico_plataforma(
+    user_token: dict = Depends(get_current_active_user),
+    *,
+    db: Session = Depends(get_db),
+):
+    """
+    Responde "de quem é o problema" sem abrir chamado.
+
+    Quando a emissão é recusada, hoje o lojista só vê a mensagem que a
+    plataforma devolveu — e ela costuma parecer da SEFAZ, porque o corpo do 4xx
+    vira `mensagem_sefaz`. Não havia como olhar o outro lado.
+
+    "Não sei" NUNCA vira "não configurado": se a consulta falhar,
+    `consultar_config` devolve {} e esta rota responde `consultou=False`. Um
+    diagnóstico indisponível não pode virar acusação.
+    """
+    from app.services.fiscal.http import get_fiscal_client
+
+    empresa_id = user_token["empresa_id"]
+    fs = fiscal_crud.get_fiscal_settings(db, empresa_id)
+    ambiente = fs.ambiente_emissao if fs else 2
+
+    empresa = fiscal_crud.get_empresa(db, empresa_id)
+    cnpj_erp = _so_digitos(empresa.documento) if empresa else None
+
+    config = get_fiscal_client(ambiente, fiscal_crud.get_licenca_token(db)).consultar_config()
+    if not config:
+        return DiagnosticoPlataforma(consultou=False, cnpj_erp=cnpj_erp)
+
+    # A plataforma ainda não devolve o CNPJ da ficha dela. Aceitamos as duas
+    # grafias prováveis para o dia em que devolver — até lá, `cnpj_confere` fica
+    # None, que a tela mostra como "a plataforma não informa", e não como
+    # divergência.
+    cnpj_plataforma = _so_digitos(config.get("cnpj") or config.get("cnpjEmitente"))
+
+    return DiagnosticoPlataforma(
+        consultou=True,
+        ambiente=config.get("ambiente"),
+        ambiente_nome=config.get("ambienteNome"),
+        configurado=config.get("configurado"),
+        token_configurado=config.get("tokenConfigurado"),
+        csc_configurado=config.get("cscConfigurado"),
+        certificado_status=config.get("certificadoStatus"),
+        pendencias=[str(p) for p in (config.get("pendencias") or [])],
+        cnpj_erp=cnpj_erp,
+        cnpj_plataforma=cnpj_plataforma,
+        cnpj_confere=(
+            None if not (cnpj_erp and cnpj_plataforma) else cnpj_erp == cnpj_plataforma
+        ),
+    )
+
 
 @router.post(
     "/certificado/upload-focus",

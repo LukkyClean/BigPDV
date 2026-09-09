@@ -142,7 +142,7 @@ O ERP manda **aninhado** (`emitente.cnpj`, `destinatario.cpf`,
 
 ## 3. Plano do lado do ERP
 
-### Fase 0 — parar de mentir (nada depende da plataforma)
+### Fase 0 — parar de mentir (nada depende da plataforma) — **FEITA**
 
 Tudo aqui é defeito de tela e sai sozinho.
 
@@ -155,7 +155,7 @@ Tudo aqui é defeito de tela e sai sozinho.
 | 0.5 | Ajuda nos campos: uma linha explicando Indicador de IE (1 contribuinte, 2 isento, 9 não contribuinte) e a diferença para a Inscrição Estadual | `TaxDataSection.vue` |
 | 0.6 | Recolocar `check:sidecar` no `npm run build` — saiu em `ad032ff` (22/07), dentro de um commit sobre o formulário de vistoria | `frontend/package.json` |
 
-### Fase 1 — o cadastro que a Focus exige
+### Fase 1 — o cadastro que a Focus exige — **FEITA** (`5e4f934`)
 
 Sem isto, o cadastro passa no nosso gate e a Focus recusa.
 
@@ -172,7 +172,7 @@ Sem isto, o cadastro passa no nosso gate e a Focus recusa.
   (`fiscal/validators.py` e `verificacao_fiscal.py`). Hoje contam a mesma coisa
   com textos diferentes; o card da Empresa usa uma e o gate usa a outra.
 
-### Fase 2 — o cano do certificado
+### Fase 2 — o cano do certificado — **BLOQUEADA** pela §4.1
 
 Depende da rota nova na plataforma (§4.1).
 
@@ -185,7 +185,7 @@ Depende da rota nova na plataforma (§4.1).
 - **2.4** Falha de envio precisa aparecer como falha. Hoje o único jeito de o
   upload falhar é senha errada.
 
-### Fase 3 — enxergar o outro lado
+### Fase 3 — enxergar o outro lado — **FEITA**
 
 - **3.1** Expor `consultar_config()` numa rota nossa e mostrar no Centro Fiscal
   o que a plataforma enxerga: ambiente, `tokenConfigurado`, `cscConfigurado`,
@@ -246,6 +246,26 @@ Enquanto isso não existe, confiram **de onde o controller lê o CNPJ**. Se for
 que é exatamente o "CNPJ do emitente não autorizado" que a loja está vendo. O
 mapa completo campo a campo está em `contrato-api-fiscal-plataforma.md` §3.
 
+### 4.2b Devolver o CNPJ da ficha no `GET /erp/fiscal/config`
+
+Descoberto ao construir a fase 3. Hoje a resposta traz `ambiente`,
+`configurado`, `tokenConfigurado`, `cscConfigurado`, `certificadoStatus` e
+`pendencias[]` — mas **não traz o CNPJ que a plataforma tem cadastrado**.
+
+Sem ele, a tela do Centro Fiscal mostra "o CNPJ que este sistema envia" e, do
+outro lado, "a plataforma não informa". Justamente a comparação que encerraria a
+dúvida do "CNPJ do emitente não autorizado" fica pela metade.
+
+É um campo:
+
+```json
+{ "ambiente": 2, "configurado": true, "cnpj": "11222333000181", ... }
+```
+
+O ERP já aceita `cnpj` ou `cnpjEmitente`, com ou sem máscara — compara sempre em
+dígitos. Enquanto não vier, o campo aparece como "não informado" e **nunca** como
+divergência.
+
 ### 4.3 Conferências que valem mesmo que 4.2 seja a causa
 
 - **CNPJ na `EmpresaFiscalConfig`: só dígitos, sem máscara.**
@@ -275,12 +295,16 @@ mapa completo campo a campo está em `contrato-api-fiscal-plataforma.md` §3.
 
 ## 5. Ordem sugerida
 
-1. **Fase 0** — sai hoje, sozinha, e para de dar informação errada ao lojista.
-2. **§4.2** do lado de vocês — sem isso nenhuma nota sai, e é uma leitura de
-   código para descobrir.
-3. **Fase 1** — o cadastro correto, com MEI resolvido.
-4. **Fase 3** — o diagnóstico, para a próxima investigação não custar um dia.
-5. **§4.1 + Fase 2** — o certificado passa a percorrer o cano de verdade.
+1. ~~**Fase 0**~~ — feita.
+2. ~~**Fase 1**~~ — feita (`5e4f934`).
+3. ~~**Fase 3**~~ — feita. O Centro Fiscal passou a mostrar o outro lado.
+4. **§4.2** do lado de vocês — **é o que trava a emissão hoje**, e é uma leitura
+   de código para descobrir de onde o controller lê o CNPJ.
+5. **§4.2b** — um campo na resposta do `/config`, e a comparação de CNPJ fecha.
+6. **§4.1 + Fase 2** — o certificado passa a percorrer o cano de verdade.
+
+Do lado do ERP, o que sobra depende de vocês: a fase 2 espera a rota do
+certificado, e a fase 4 (NF-e por OS, NFS-e) é escopo novo.
 
 ## 6. Fontes
 

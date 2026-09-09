@@ -8,6 +8,7 @@ import LucideIcon from '@/shared/components/icons/LucideIcon.vue';
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
 import FiscalCertificadoModal from '../components/configuracoes/FiscalCertificadoModal.vue';
 import FiscalEmissaoEstadualModal from '../components/configuracoes/FiscalEmissaoEstadualModal.vue';
+import FiscalPlataformaCard from '../components/configuracoes/FiscalPlataformaCard.vue';
 import { useFiscalConfiguracaoQuery } from '../composables/useFiscalConfiguracaoQuery';
 import { fiscalKeys } from '../constants/fiscal.constants';
 
@@ -188,6 +189,10 @@ function aoEnviarCertificado() {
         </BaseButton>
       </div>
     </div>
+
+    <!-- O outro lado do cano: sem isto, uma recusa da plataforma chega
+         disfarcada de SEFAZ e nao ha como saber de quem e o problema. -->
+    <FiscalPlataformaCard :configuracao="config" />
 
     <!-- Modais -->
     <FiscalCertificadoModal
