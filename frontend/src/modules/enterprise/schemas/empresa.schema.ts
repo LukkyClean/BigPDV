@@ -44,7 +44,11 @@ export const FiscalSettingsSchema = z.object({
   prefeitura_senha: z.string().nullish(),
   prefeitura_token_api: z.string().nullish(),
   regime_tributacao_iss: z.number().int().min(1).max(6).nullish(),
-  tipo_certificado: z.enum(['ARQUIVO', 'WINDOWS', 'NENHUM']).nullish().default('ARQUIVO'),
+  // 'NUVEM' é gravado pelo upload de certificado (services/empresa.py).
+  tipo_certificado: z
+    .enum(['ARQUIVO', 'WINDOWS', 'NUVEM', 'NENHUM'])
+    .nullish()
+    .default('ARQUIVO'),
   certificado_digital_path: z.string().nullish(),
   certificado_validade: z.string().nullish(),
   certificado_subject: z.string().nullish(),
@@ -134,7 +138,11 @@ export const FiscalSettingsFormSchema = z.object({
   prefeitura_senha: z.string().nullish().or(z.literal('')),
   prefeitura_token_api: z.string().nullish().or(z.literal('')),
   regime_tributacao_iss: z.coerce.number().int().min(1).max(6).nullish(),
-  tipo_certificado: z.enum(['ARQUIVO', 'WINDOWS', 'NENHUM']).nullish().default('ARQUIVO'),
+  // 'NUVEM' é gravado pelo upload de certificado (services/empresa.py).
+  tipo_certificado: z
+    .enum(['ARQUIVO', 'WINDOWS', 'NUVEM', 'NENHUM'])
+    .nullish()
+    .default('ARQUIVO'),
   certificado_digital_path: z.string().nullish().or(z.literal('')),
   certificado_validade: z.string().nullish().or(z.literal('')),
   certificado_subject: z.string().nullish().or(z.literal('')),
@@ -178,7 +186,24 @@ export const EmpresaFormValidationSchema = z.object({
   endereco_principal: EnderecoFormValidationSchema.partial(),
 
   // Configurações Fiscais (nested)
-  fiscal_settings: FiscalSettingsFormSchema.partial(),
+  //
+  // DELIBERADAMENTE FROUXO AQUI. Nenhum destes campos é editável nesta tela --
+  // eles vivem no Centro Fiscal, que os valida lá. Nesta tela eles só
+  // transitam: chegam do servidor, ficam no formulário e voltam no Salvar.
+  //
+  // Validá-los aqui não protege nada e cria um beco: um valor que o servidor
+  // gravou e que este schema não conhece reprova o `handleSubmit`, e o erro
+  // aponta para um campo que não está na tela. O lojista clica em Salvar e o
+  // formulário inteiro para, sem indicação de onde.
+  //
+  // Foi exatamente o que aconteceu quando o upload de certificado passou a
+  // gravar `tipo_certificado: 'NUVEM'` de verdade (8960ee8): a tela de Empresa
+  // parou de salvar, com um toast dizendo "fiscal_settings" e nada mais. Mesmo
+  // formato do caso do `complemento`, que bloqueou o cadastro de uma loja.
+  //
+  // O `EmpresaFormSchema` (normalização) segue estrito de propósito: é ele que
+  // coage série e numeração para número antes de enviar.
+  fiscal_settings: z.record(z.unknown()).optional(),
 
   // Campo apenas do form
   certificado_senha: z.string().optional().or(z.literal('')),
