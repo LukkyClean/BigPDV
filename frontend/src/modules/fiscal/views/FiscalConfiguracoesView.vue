@@ -1,17 +1,22 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import { Shield, Building, MapPin, CheckCircle, AlertCircle, FileCheck } from 'lucide-vue-next';
+import { useRouter } from 'vue-router';
+import { useQueryClient } from '@tanstack/vue-query';
+import { Shield, Building, MapPin, CheckCircle, AlertCircle, FileCheck, ArrowLeft } from 'lucide-vue-next';
 import PageReview from '@/shared/components/layout/PageReview/PageReview.vue';
 import LucideIcon from '@/shared/components/icons/LucideIcon.vue';
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
 import FiscalCertificadoModal from '../components/configuracoes/FiscalCertificadoModal.vue';
 import FiscalEmissaoEstadualModal from '../components/configuracoes/FiscalEmissaoEstadualModal.vue';
 import { useFiscalConfiguracaoQuery } from '../composables/useFiscalConfiguracaoQuery';
+import { fiscalKeys } from '../constants/fiscal.constants';
 
 const showCertificadoModal = ref(false);
 const showEstadualModal = ref(false);
 
 const { data: config, isLoading } = useFiscalConfiguracaoQuery();
+const queryClient = useQueryClient();
+const router = useRouter();
 
 function openCertificadoModal() {
   showCertificadoModal.value = true;
@@ -20,10 +25,33 @@ function openCertificadoModal() {
 function openEstadualModal() {
   showEstadualModal.value = true;
 }
+
+/**
+ * O upload gravou; a tela precisa saber disso.
+ *
+ * O modal ja emitia `uploaded`, e ninguem escutava. Como a configuracao tem
+ * `staleTime` de 30s, o card continuava dizendo "Nao configurado" depois de um
+ * upload BEM-SUCEDIDO -- ate o operador sair da tela e voltar. Foi o que fez
+ * parecer que o certificado nao tinha sido salvo.
+ */
+function aoEnviarCertificado() {
+  queryClient.invalidateQueries({ queryKey: fiscalKeys.configuracao() });
+}
 </script>
 
 <template>
   <div class="space-y-6">
+    <!-- Daqui nao havia caminho de volta: quem chega pelo card da tela de
+         Empresa so saia pelo menu lateral. -->
+    <button
+      type="button"
+      class="inline-flex items-center gap-1.5 text-xs font-semibold text-zinc-500 hover:text-brand-primary transition-colors"
+      @click="router.push('/empresa')"
+    >
+      <LucideIcon :icon="ArrowLeft" class="w-3.5 h-3.5" />
+      Dados da Empresa
+    </button>
+
     <!-- Page Header (padrão do sistema) -->
     <div class="flex flex-col flex-wrap sm:flex-row sm:justify-between sm:items-end gap-4">
       <PageReview
@@ -162,8 +190,9 @@ function openEstadualModal() {
     </div>
 
     <!-- Modais -->
-    <FiscalCertificadoModal 
-      v-model:is-open="showCertificadoModal" 
+    <FiscalCertificadoModal
+      v-model:is-open="showCertificadoModal"
+      @uploaded="aoEnviarCertificado"
     />
     <FiscalEmissaoEstadualModal
       v-model:is-open="showEstadualModal"
