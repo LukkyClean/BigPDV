@@ -558,7 +558,13 @@ def atualizar_configuracao(
     payload: FiscalSettingsUpdate = Body(...)
 ):
     empresa_id = user_token["empresa_id"]
-    fs = update_fiscal_settings(db, empresa_id, payload)
+    # `update_fiscal_settings` termina em `flush`, nunca em `commit`, e o
+    # `get_db` so fecha a sessao -- fechar com transacao pendente DESCARTA a
+    # escrita. A tela dizia "salvo", devolvia os valores novos (que estao na
+    # sessao) e no proximo GET tudo voltava ao que era: serie, numero, CSC e
+    # limite nunca chegaram ao disco. Quem comita nesta base e o
+    # `_handle_db_transaction`, como nos outros oito endpoints deste arquivo.
+    fs = _handle_db_transaction(db, update_fiscal_settings, empresa_id, payload)
     
     ambiente = fs.ambiente_emissao if fs else 2
     cert_configurado = bool(
@@ -601,7 +607,11 @@ def upload_certificado_focus_endpoint(
     senha: str = Form(...)
 ):
     empresa_id = user_token["empresa_id"]
-    upload_certificado_focus(db, empresa_id, file, senha)
+    # Mesmo defeito do PUT /configuracao acima: o servico so dava `flush`, e a
+    # sessao morria sem `commit`. O lojista via "Certificado enviado com
+    # sucesso!", reabria o Centro Fiscal e lia "Nao configurado" -- porque de
+    # fato nada tinha sido gravado.
+    _handle_db_transaction(db, upload_certificado_focus, empresa_id, file, senha)
     return {"message": "Certificado enviado e configurado com sucesso."}
 
 

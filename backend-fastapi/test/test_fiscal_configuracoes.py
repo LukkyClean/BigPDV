@@ -108,3 +108,100 @@ def test_upload_certificado_focus_invalid_password(client: TestClient, header_wi
     )
     # We'll see what it actually returns. If we need to mock, we'll patch it.
     assert response.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# PERSISTÊNCIA — a configuração precisa SOBREVIVER à requisição
+#
+# Os testes acima olham só o corpo da resposta, e por isso passavam com o
+# defeito: `update_fiscal_settings` e `upload_certificado_focus` terminavam em
+# `flush`, nunca em `commit`, e o objeto devolvido vinha da sessão ainda aberta
+# -- a resposta mostrava os valores novos que o banco nunca recebeu. Como o
+# `get_db` só FECHA a sessão, e fechar com transação pendente descarta a
+# escrita, o lojista via "salvo com sucesso" e encontrava tudo como antes na
+# volta.
+#
+# Ler de novo, numa requisição NOVA (o TestClient abre outra sessão a cada
+# chamada, como em produção), é o que separa "a resposta disse" de "o banco
+# gravou".
+# ---------------------------------------------------------------------------
+
+def _gerar_pfx(senha: bytes, dias_de_validade: int = 365) -> bytes:
+    """Certificado A1 autoassinado, só para exercitar o upload."""
+    from datetime import datetime, timedelta, timezone
+
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.hazmat.primitives.serialization import pkcs12
+    from cryptography.x509.oid import NameOID
+
+    chave = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    nome = x509.Name([
+        x509.NameAttribute(NameOID.COMMON_NAME, "LOJA TESTE LTDA:12345678000199"),
+    ])
+    agora = datetime.now(timezone.utc)
+    certificado = (
+        x509.CertificateBuilder()
+        .subject_name(nome)
+        .issuer_name(nome)
+        .public_key(chave.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(agora - timedelta(days=1))
+        .not_valid_after(agora + timedelta(days=dias_de_validade))
+        .sign(chave, hashes.SHA256())
+    )
+
+    return pkcs12.serialize_key_and_certificates(
+        name=b"teste",
+        key=chave,
+        cert=certificado,
+        cas=None,
+        encryption_algorithm=serialization.BestAvailableEncryption(senha),
+    )
+
+
+def test_put_configuracao_fiscal_sobrevive_a_requisicao(
+    client: TestClient, header_with_token: dict, setup_fiscal_settings
+):
+    """O que o PUT grava tem que estar lá no GET seguinte."""
+    payload = {"ambiente_emissao": 1, "serie_nfe": 7, "tipo_certificado": "NUVEM"}
+
+    resposta_put = client.put(
+        "/api/v1/fiscal/configuracao", json=payload, headers=header_with_token
+    )
+    assert resposta_put.status_code == 200
+    assert resposta_put.json()["serie_nfe"] == 7
+
+    # Requisição nova, sessão nova -- é aqui que o `flush` sem `commit` some.
+    resposta_get = client.get("/api/v1/fiscal/configuracao", headers=header_with_token)
+    assert resposta_get.status_code == 200
+    dados = resposta_get.json()
+    assert dados["serie_nfe"] == 7, "a série voltou ao valor antigo: não foi commitada"
+    assert dados["ambiente"] == 1, "o ambiente voltou ao valor antigo: não foi commitado"
+
+
+def test_upload_certificado_focus_sobrevive_a_requisicao(
+    client: TestClient, header_with_token: dict, setup_fiscal_settings
+):
+    """O certificado aceito precisa aparecer como configurado depois."""
+    senha = b"senha-do-pfx"
+    arquivo = {"file": ("cert.pfx", _gerar_pfx(senha), "application/x-pkcs12")}
+
+    resposta_upload = client.post(
+        "/api/v1/fiscal/certificado/upload-focus",
+        headers=header_with_token,
+        data={"senha": senha.decode()},
+        files=arquivo,
+    )
+    assert resposta_upload.status_code == 200
+
+    resposta_get = client.get("/api/v1/fiscal/configuracao", headers=header_with_token)
+    assert resposta_get.status_code == 200
+    dados = resposta_get.json()
+    assert dados["certificado_configurado"] is True, (
+        "o Centro Fiscal continua dizendo 'Não configurado' depois de um upload "
+        "bem-sucedido — o certificado não foi commitado"
+    )
+    assert dados["certificado_status"] == "CONECTADO_NUVEM"
+    assert dados["certificado_valido"] is True
