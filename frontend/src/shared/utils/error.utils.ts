@@ -4,7 +4,7 @@
  */
 
 import type { AxiosError } from 'axios';
-import type { ApiError, ValidationError } from '@/shared/types/axios.types';
+import type { ApiError, DetalheErroEstruturado, ValidationError } from '@/shared/types/axios.types';
 import { ERROR_MESSAGES, NETWORK_ERROR_MESSAGE, ConflictedData } from '@/shared/types/axios.types';
 
 /**
@@ -84,6 +84,31 @@ function formatConflictErrors(errors: ConflictedData[]): string {
 }
 
 /**
+ * Transforma o detalhe estruturado na frase que o toast mostra.
+ *
+ * As `pendencias` entram resumidas: a lista completa pode ter dezenas de itens
+ * e não cabe num toast -- quem quiser vê-las inteiras tem a tela de pendências
+ * do Centro Fiscal e, para o emitente, o card na tela da Empresa.
+ */
+function formatDetailObject(detalhe: DetalheErroEstruturado, padrao: string): string {
+  const base = detalhe?.mensagem ?? padrao;
+  const pendencias = detalhe?.pendencias;
+
+  if (!Array.isArray(pendencias) || pendencias.length === 0) return base;
+
+  const primeiras = pendencias
+    .slice(0, 2)
+    .map((p) => (typeof p === 'string' ? p : (p as { mensagem?: string })?.mensagem))
+    .filter(Boolean);
+
+  if (primeiras.length === 0) return base;
+
+  const resto = pendencias.length - primeiras.length;
+  const lista = resto > 0 ? `${primeiras.join(' • ')} (e mais ${resto})` : primeiras.join(' • ');
+  return `${base} ${lista}`;
+}
+
+/**
  * Extrai mensagem de erro amigável de um AxiosError
  * @param error - Erro do Axios
  * @param defaultMessage - Mensagem padrão caso não encontre
@@ -116,6 +141,17 @@ export function getErrorMessage(
       }
       // 422 Validation: array de {loc, msg, type}
       return formatValidationErrors(data.detail);
+    }
+    // Se detail for um OBJETO com {codigo, mensagem, ...}.
+    //
+    // Vários erros do módulo fiscal são assim -- NF_JA_AUTORIZADA,
+    // NF_INDETERMINADA, CSC_NAO_CONFIGURADO, EMITENTE_INCOMPLETO --, porque o
+    // frontend precisa do `codigo` para decidir o que oferecer. Sem este ramo o
+    // objeto caía no `return data.detail` abaixo e o toast exibia
+    // "[object Object]": justamente nos erros mais graves, o lojista ficava sem
+    // saber o que aconteceu.
+    if (typeof data.detail === 'object') {
+      return formatDetailObject(data.detail, defaultMessage);
     }
     // Se detail for uma string
     return data.detail;

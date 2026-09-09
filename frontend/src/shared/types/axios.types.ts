@@ -16,8 +16,24 @@ export interface ValidationError {
 /**
  * Interface para erro da API
  */
+/**
+ * Detalhe estruturado de erro: `{codigo, mensagem, ...}`.
+ *
+ * O backend usa esta forma quando o frontend precisa REAGIR ao erro e não só
+ * exibi-lo — é o `codigo` que diz se cabe oferecer "consultar antes de
+ * reemitir" (NF_INDETERMINADA) ou "complete o cadastro" (EMITENTE_INCOMPLETO).
+ * Estava fora deste tipo, o que obrigava cada leitor a um cast; ver
+ * `formatDetailObject` em `shared/utils/error.utils.ts`.
+ */
+export interface DetalheErroEstruturado {
+  codigo?: string;
+  mensagem?: string;
+  pendencias?: unknown;
+  [chave: string]: unknown;
+}
+
 export interface ApiError {
-  detail?: string | ValidationError[];
+  detail?: string | ValidationError[] | DetalheErroEstruturado;
   message?: string;
   status?: number;
 }
