@@ -128,3 +128,32 @@ def intervalo_utc(inicio: date, fim: date) -> Tuple[datetime, datetime]:
     sao datas locais) e precisam de duas bordas em UTC.
     """
     return inicio_do_dia_utc(inicio), fim_do_dia_utc(fim)
+
+
+def data_local_sql(coluna):
+    """Expressao SQL que extrai a DATA LOCAL de uma coluna gravada em UTC.
+
+    Para agrupar por dia -- `GROUP BY func.date(coluna)` -- nao basta ter
+    convertido as bordas do periodo. `date()` no SQLite le a coluna como esta
+    gravada, ou seja em UTC, e a venda das 22:30 de 09/03 (01:30 UTC de 10/03)
+    e agrupada em 10/03.
+
+    O efeito era estranho de diagnosticar, porque o total do periodo saia
+    CERTO: a janela ja era convertida pelo `intervalo_utc`. Errada era so a
+    quebra por dia, e as duas viajavam na MESMA resposta -- o numero grande nao
+    batia com a soma das linhas logo abaixo dele.
+
+    Vale para o relatorio de faturamento e para o grafico da Home.
+
+    LIMITE CONHECIDO: usa o deslocamento vigente no momento da consulta, e o
+    aplica a todo o periodo. O Brasil nao tem mais horario de verao, entao aqui
+    isso nao muda nada; num fuso que tenha, um relatorio que atravesse a virada
+    erraria por uma hora nas linhas da fronteira. Resolver de verdade exigiria
+    converter linha a linha, o que o SQLite nao faz sem tabela de fusos.
+    """
+    from sqlalchemy import func
+
+    offset = datetime.now(fuso_local()).utcoffset() or timedelta(0)
+    minutos = int(offset.total_seconds() // 60)
+    # SQLite aceita modificadores como '-180 minutes' direto no date().
+    return func.date(coluna, f"{minutos} minutes")

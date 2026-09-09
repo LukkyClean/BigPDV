@@ -1,5 +1,18 @@
 # ---------------------------------------------------------------------------
 # Testes do modulo de Relatorios — Fase 1 (Faturamento).
+#
+# POR QUE `datetime.now()` E NAO `utcnow()` PARA MONTAR AS DATAS DA CONSULTA:
+#
+# As rotas de relatorio recebem datas do FRONTEND, que sao datas LOCAIS -- o
+# dia que o lojista ve no calendario. O servico converte para UTC na borda
+# (`intervalo_utc`, em app/core/tempo.py), porque as colunas do banco guardam
+# UTC.
+#
+# Usar `utcnow().date()` aqui montava a consulta com a data em UTC. Das 21h a
+# meia-noite no horario de Brasilia isso ja e o DIA SEGUINTE, entao o teste
+# pedia o relatorio de amanha e nao encontrava o registro que tinha acabado de
+# criar. Dezesseis testes deste arquivo falhavam so depois das 21h e voltavam a
+# passar de manha -- um detector que so acusa em parte do dia nao serve.
 # ---------------------------------------------------------------------------
 
 from datetime import datetime
@@ -144,7 +157,7 @@ def test_faturamento_soma_os_finalizada(client, db_session):
     fp_id = _forma_pagamento(client, header)
     _os_finalizada(client, header, cliente_id, fp_id, "SERIAL-R1", 14000)
 
-    hoje = datetime.utcnow().date().isoformat()
+    hoje = datetime.now().date().isoformat()
     r = client.get(f"/api/v1/relatorios/faturamento?inicio={hoje}&fim={hoje}", headers=header)
     assert r.status_code == 200, r.text
     body = r.json()
@@ -201,7 +214,7 @@ def test_faturamento_juros_absorvido_reduz_o_liquido(client, db_session):
     fp_id = _forma_pagamento(client, header)
     _os_finalizada_com_juros(client, header, cliente_id, fp_id, "SERIAL-JA", 14000, 700, "LOJA")
 
-    hoje = datetime.utcnow().date().isoformat()
+    hoje = datetime.now().date().isoformat()
     r = client.get(f"/api/v1/relatorios/faturamento?inicio={hoje}&fim={hoje}", headers=header)
     assert r.status_code == 200, r.text
     body = r.json()
@@ -220,7 +233,7 @@ def test_faturamento_juros_repassado_sai_do_liquido(client, db_session):
     fp_id = _forma_pagamento(client, header)
     _os_finalizada_com_juros(client, header, cliente_id, fp_id, "SERIAL-JR", 14000, 700, "CLIENTE")
 
-    hoje = datetime.utcnow().date().isoformat()
+    hoje = datetime.now().date().isoformat()
     r = client.get(f"/api/v1/relatorios/faturamento?inicio={hoje}&fim={hoje}", headers=header)
     assert r.status_code == 200, r.text
     body = r.json()
@@ -239,7 +252,7 @@ def test_faturamento_sem_juros_liquido_igual_ao_bruto(client, db_session):
     fp_id = _forma_pagamento(client, header)
     _os_finalizada(client, header, cliente_id, fp_id, "SERIAL-SJ", 14000)
 
-    hoje = datetime.utcnow().date().isoformat()
+    hoje = datetime.now().date().isoformat()
     r = client.get(f"/api/v1/relatorios/faturamento?inicio={hoje}&fim={hoje}", headers=header)
     body = r.json()
 
@@ -264,7 +277,7 @@ def test_faturamento_conta_no_dia_da_FINALIZACAO_nao_no_da_abertura(client, db_s
     os_db.data_criacao = datetime.utcnow() - timedelta(days=5)
     db_session.commit()
 
-    hoje = datetime.utcnow().date()
+    hoje = datetime.now().date()
     abertura = (hoje - timedelta(days=5)).isoformat()
 
     # Período que contém SÓ o dia da abertura: não pode ter faturamento.
@@ -285,7 +298,7 @@ def test_faturamento_conta_no_dia_da_FINALIZACAO_nao_no_da_abertura(client, db_s
 def test_faturamento_periodo_vazio_zera(client, db_session):
     header = _auth(client)
     # sem nenhuma transação, faturamento zerado e ticket 0 (sem divisão por zero)
-    hoje = datetime.utcnow().date().isoformat()
+    hoje = datetime.now().date().isoformat()
     r = client.get(f"/api/v1/relatorios/faturamento?inicio={hoje}&fim={hoje}", headers=header)
     assert r.status_code == 200, r.text
     body = r.json()
@@ -301,7 +314,7 @@ def test_ranking_funcionario_soma_faturamento(client, db_session):
     func_id = _funcionario(client, header)
     _os_finalizada(client, header, cliente_id, fp_id, "SERIAL-RK", 20000, funcionario_id=func_id)
 
-    hoje = datetime.utcnow().date().isoformat()
+    hoje = datetime.now().date().isoformat()
     r = client.get(f"/api/v1/relatorios/ranking-funcionarios?inicio={hoje}&fim={hoje}", headers=header)
     assert r.status_code == 200, r.text
     itens = r.json()["itens"]
@@ -333,7 +346,7 @@ def test_comissao_calcula_pela_taxa_do_cargo(client, db_session):
     # OS de R$1.000,00 finalizada, atribuída ao funcionário → base de serviço
     _os_finalizada(client, header, cliente_id, fp_id, "SERIAL-COM", 100000, funcionario_id=func_id)
 
-    hoje = datetime.utcnow().date().isoformat()
+    hoje = datetime.now().date().isoformat()
     r = client.get(f"/api/v1/relatorios/comissoes?inicio={hoje}&fim={hoje}", headers=header)
     assert r.status_code == 200, r.text
     body = r.json()
@@ -372,7 +385,7 @@ def test_comissao_modo_meta_bloqueia_abaixo_da_meta(client, db_session):
     # Faturou R$1.000,00 < meta R$2.000,00 → não bateu, comissão zero
     _os_finalizada(client, header, cliente_id, fp_id, "SERIAL-META1", 100000, funcionario_id=func_id)
 
-    hoje = datetime.utcnow().date().isoformat()
+    hoje = datetime.now().date().isoformat()
     r = client.get(f"/api/v1/relatorios/comissoes?inicio={hoje}&fim={hoje}", headers=header)
     assert r.status_code == 200, r.text
     body = r.json()
@@ -406,7 +419,7 @@ def test_comissao_modo_meta_libera_ao_atingir(client, db_session):
     # Faturou R$1.000,00 >= meta R$500,00 → libera; 8% de 100000 = 8000
     _os_finalizada(client, header, cliente_id, fp_id, "SERIAL-META2", 100000, funcionario_id=func_id)
 
-    hoje = datetime.utcnow().date().isoformat()
+    hoje = datetime.now().date().isoformat()
     r = client.get(f"/api/v1/relatorios/comissoes?inicio={hoje}&fim={hoje}", headers=header)
     assert r.status_code == 200, r.text
     body = r.json()
@@ -447,7 +460,7 @@ def test_comissao_override_funcionario_vence_cargo(client, db_session):
 
     _os_finalizada(client, header, cliente_id, fp_id, "SERIAL-OVR", 100000, funcionario_id=func_id)
 
-    hoje = datetime.utcnow().date().isoformat()
+    hoje = datetime.now().date().isoformat()
     r = client.get(f"/api/v1/relatorios/comissoes?inicio={hoje}&fim={hoje}", headers=header)
     assert r.status_code == 200, r.text
     body = r.json()
@@ -480,7 +493,7 @@ def test_estoque_curva_abc_classifica_por_faturamento(client, db_session):
     _venda_finalizada(client, header, func_id, prod_b, 10, fp_id)
     _venda_finalizada(client, header, func_id, prod_c, 10, fp_id)
 
-    hoje = datetime.utcnow().date().isoformat()
+    hoje = datetime.now().date().isoformat()
     r = client.get(f"/api/v1/relatorios/estoque?inicio={hoje}&fim={hoje}", headers=header)
     assert r.status_code == 200, r.text
     body = r.json()
@@ -506,7 +519,7 @@ def test_estoque_kpis_reposicao_e_parados(client, db_session):
     # 3 un com mínimo 10 → abaixo do mínimo; também sem venda → parado
     prod_baixo = _produto(client, header, "STK-BAIXO", varejo=1000, entrada=500, quantidade=3, minima=10)
 
-    hoje = datetime.utcnow().date().isoformat()
+    hoje = datetime.now().date().isoformat()
     r = client.get(f"/api/v1/relatorios/estoque?inicio={hoje}&fim={hoje}", headers=header)
     assert r.status_code == 200, r.text
     body = r.json()
@@ -543,7 +556,7 @@ def test_os_performance_throughput_reparo_e_tecnico(client, db_session):
     _os_finalizada(client, header, cliente_id, fp_id, "PERF-2", 20000, funcionario_id=func_id, situacao="SEM_REPARO")
     _os_aberta(client, header, cliente_id, "PERF-3", funcionario_id=func_id)
 
-    hoje = datetime.utcnow().date().isoformat()
+    hoje = datetime.now().date().isoformat()
     r = client.get(f"/api/v1/relatorios/os-performance?inicio={hoje}&fim={hoje}", headers=header)
     assert r.status_code == 200, r.text
     body = r.json()
@@ -634,7 +647,7 @@ def test_faturamento_do_funcionario_traz_so_o_que_ele_fez(client, db_session):
     _venda_finalizada(client, header, eu, produto_id, 1, fp_id)      # R$ 100,00
     _venda_finalizada(client, header, colega, produto_id, 3, fp_id)  # R$ 300,00
 
-    hoje = datetime.utcnow().date().isoformat()
+    hoje = datetime.now().date().isoformat()
     rota = f"/api/v1/relatorios/faturamento?inicio={hoje}&fim={hoje}"
 
     # O dono continua vendo a loja inteira — guarda contra regressao.
@@ -683,7 +696,7 @@ def test_relatorios_gerenciais_sao_exclusivos_do_master(client, db_session):
     )
     h_func = _login(client, "bloqueado@empresa.com", "SenhaForte123!")
 
-    hoje = datetime.utcnow().date().isoformat()
+    hoje = datetime.now().date().isoformat()
     for nome in ("ranking-funcionarios", "comissoes", "estoque", "os-performance"):
         r = client.get(f"/api/v1/relatorios/{nome}?inicio={hoje}&fim={hoje}", headers=h_func)
         assert r.status_code == status.HTTP_403_FORBIDDEN, (nome, r.status_code, r.text)
@@ -752,7 +765,7 @@ def test_extrato_traz_so_os_servicos_daquele_funcionario(client, db_session):
         ("SERVICO", "Balanceamento", 7000),
     ], funcionario_id=colega)
 
-    hoje = datetime.utcnow().date().isoformat()
+    hoje = datetime.now().date().isoformat()
     r = client.get(
         f"/api/v1/relatorios/extrato-funcionario?funcionario_id={eu}&inicio={hoje}&fim={hoje}",
         headers=header,
@@ -795,7 +808,7 @@ def test_qtd_os_conta_OS_DISTINTAS_e_nao_linhas(client, db_session):
         ("SERVICO", "Servico C", 3000),
     ], funcionario_id=eu)
 
-    hoje = datetime.utcnow().date().isoformat()
+    hoje = datetime.now().date().isoformat()
     r = client.get(
         f"/api/v1/relatorios/extrato-funcionario?funcionario_id={eu}&inicio={hoje}&fim={hoje}",
         headers=header,
@@ -830,7 +843,7 @@ def test_extrato_bate_com_o_ranking_no_mesmo_periodo(client, db_session):
         ("SERVICO", "Troca de pastilha", 16000),
     ], funcionario_id=eu)
 
-    hoje = datetime.utcnow().date().isoformat()
+    hoje = datetime.now().date().isoformat()
     extrato = client.get(
         f"/api/v1/relatorios/extrato-funcionario?funcionario_id={eu}&inicio={hoje}&fim={hoje}",
         headers=header,
@@ -868,7 +881,7 @@ def test_os_ainda_aberta_nao_entra_no_extrato(client, db_session):
     }, headers=header)
     assert r.status_code == status.HTTP_201_CREATED, r.text
 
-    hoje = datetime.utcnow().date().isoformat()
+    hoje = datetime.now().date().isoformat()
     body = client.get(
         f"/api/v1/relatorios/extrato-funcionario?funcionario_id={eu}&inicio={hoje}&fim={hoje}",
         headers=header,
@@ -906,7 +919,7 @@ def test_extrato_e_exclusivo_do_master(client, db_session):
     )
     h_func = _login(client, "bloqueado.extrato@empresa.com", "SenhaForte123!")
 
-    hoje = datetime.utcnow().date().isoformat()
+    hoje = datetime.now().date().isoformat()
     r = client.get(
         f"/api/v1/relatorios/extrato-funcionario?funcionario_id=1&inicio={hoje}&fim={hoje}",
         headers=h_func,

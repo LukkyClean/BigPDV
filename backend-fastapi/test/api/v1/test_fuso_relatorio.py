@@ -160,6 +160,69 @@ def test_venda_das_22h_nao_vaza_para_o_dia_seguinte(client, db_session):
 
 
 # ===========================================================================
+# A OUTRA METADE DO BUG: a serie POR DIA
+# ===========================================================================
+#
+# Os dois testes acima cobrem a JANELA da consulta, e ela ja estava certa: o
+# `intervalo_utc` desloca as bordas e o total do dia sai correto.
+#
+# A quebra por dia nao. As consultas agrupam com `func.date(coluna)`, que
+# extrai a data em UTC, enquanto a serie e montada com as datas LOCAIS do
+# periodo pedido. A venda das 22:30 entra no total do dia certo e, no mesmo
+# JSON, aparece com zero na linha daquele dia -- o total e a soma dos dias
+# discordam entre si na mesma resposta.
+#
+# Vale para o relatorio de faturamento E para o grafico da Home.
+
+def _serie_por_dia(client, header, dia):
+    r = client.get("/api/v1/relatorios/faturamento",
+                   params={"inicio": dia, "fim": dia}, headers=header)
+    assert r.status_code == 200, r.text
+    return r.json()["por_dia"]
+
+
+def test_venda_das_22h_entra_na_linha_do_dia_local(client, db_session):
+    """A venda da noite tem de aparecer NA LINHA de 09/03, e nao so no total.
+
+    Este e o teste que faltava. Agrupando por data UTC, a venda cai em 10/03 e
+    a linha de 09/03 -- a unica que a resposta traz, porque foi o dia pedido --
+    vem zerada.
+    """
+    header = _auth(client)
+    funcionario_id = _funcionario(client, header)
+    fp_id = _forma_pagamento(client, header)
+    produto_id = _produto(client, header)
+
+    total = _venda_da_noite(client, header, db_session, funcionario_id, produto_id, fp_id)
+
+    linha = next((d for d in _serie_por_dia(client, header, DIA_LOCAL_DA_VENDA)
+                  if d["dia"] == DIA_LOCAL_DA_VENDA), None)
+    assert linha is not None, "a serie nem trouxe o dia pedido"
+    assert linha["total_geral"] == total
+
+
+def test_o_total_e_a_soma_dos_dias_nao_podem_discordar(client, db_session):
+    """Invariante que vale sempre, e que o bug quebrava em silencio.
+
+    Nao ha como o usuario notar um `func.date` errado; ele nota que o numero
+    grande nao bate com a soma das linhas logo abaixo dele.
+    """
+    header = _auth(client)
+    funcionario_id = _funcionario(client, header)
+    fp_id = _forma_pagamento(client, header)
+    produto_id = _produto(client, header)
+
+    _venda_da_noite(client, header, db_session, funcionario_id, produto_id, fp_id)
+
+    r = client.get("/api/v1/relatorios/faturamento",
+                   params={"inicio": DIA_LOCAL_DA_VENDA, "fim": DIA_LOCAL_DA_VENDA},
+                   headers=header)
+    corpo = r.json()
+
+    assert sum(d["total_geral"] for d in corpo["por_dia"]) == corpo["faturamento_total"]
+
+
+# ===========================================================================
 # O helper de conversao, isolado
 # ===========================================================================
 
