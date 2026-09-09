@@ -882,6 +882,33 @@ def emitir_teste_nfe(db: Session, empresa_id: int) -> DocumentoFiscal:
             detail="Empresa ou endereço não cadastrados.",
         )
 
+    # O emitente precisa estar completo ANTES de reservar numeração.
+    #
+    # A emissão real passa por `_preparar_dados_emissao`, que já verifica isto.
+    # A de teste não passava por nada: com CNPJ, IE ou regime tributário em
+    # branco ela reservava o número, montava a nota, e a plataforma recusava com
+    # 4xx antes de chegar na Focus. Como o corpo do 4xx vira `mensagem_sefaz`, o
+    # lojista lia "CNPJ do emitente não autorizado" achando que era a SEFAZ
+    # falando -- quando o dado faltava aqui e a nota nunca saiu da nossa rede.
+    #
+    # Verificar antes do `ultimo_numero_nfe + 1` também evita queimar numeração
+    # à toa: a reversão existe, mas depende de o fluxo chegar até ela.
+    from . import validators
+
+    pendencias = validators.verificar_emitente(db, empresa_id)
+    if pendencias:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "codigo": "EMITENTE_INCOMPLETO",
+                "mensagem": (
+                    "Os dados da empresa ainda não permitem emitir. "
+                    "Complete-os em Dados da Empresa e tente de novo."
+                ),
+                "pendencias": [p.mensagem for p in pendencias],
+            },
+        )
+
     payload = montar_payload_teste_nfe(empresa, endereco, fiscal_settings)
 
     ref = f"teste-{uuid.uuid4().hex[:12]}"
