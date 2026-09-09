@@ -15,6 +15,8 @@ import PageReview from '@/shared/components/layout/PageReview/PageReview.vue';
 import BaseStatsCard from '@/shared/components/layout/StatsCard/BaseStatsCard.vue';
 import BaseTableContainer from '@/shared/components/commons/BaseTableContainer/BaseTableContainer.vue';
 import BaseSearchInput from '@/shared/components/ui/BaseSearchInput/BaseSearchInput.vue';
+import BaseFilter from '@/shared/components/ui/BaseFilter/BaseFilter.vue';
+import type { FilterOption } from '@/shared/types/filter.types';
 import BaseConfirmModal from '@/shared/components/commons/BaseConfirmModal/BaseConfirmModal.vue';
 import { useConfirmacao } from '@/shared/composables/useConfirmacao';
 import { useToast } from '@/shared/composables/useToast';
@@ -37,7 +39,8 @@ import type { ContaPagar } from '../../shared/schemas/financeiro.schema';
 const toast = useToast();
 const { range, rotulo, anterior, proximo } = usePeriodoMes();
 
-const statusFiltro = ref('');
+// `null` = todas. E o vocabulario do BaseFilter.
+const statusFiltro = ref<string | null>(null);
 const busca = ref('');
 
 /**
@@ -93,12 +96,18 @@ const contaParaEstorno = ref<ContaPagar | null>(null);
 const contaParaDetalhe = ref<ContaPagar | null>(null);
 const contaParaClassificar = ref<ContaPagar | null>(null);
 
-const ABAS = [
-  { valor: '', rotulo: 'Todas' },
-  { valor: 'PENDENTE', rotulo: 'Em aberto' },
-  { valor: 'PAGA', rotulo: 'Pagas' },
-  { valor: 'CANCELADA', rotulo: 'Canceladas' },
-];
+/**
+ * Status para o BaseFilter. NAO tem "Todas": no componente, `null` ja significa
+ * sem filtro -- e a opcao vem com um "Limpar" proprio.
+ *
+ * As cores sao as MESMAS que a coluna Situacao usa na tabela (`classeStatus`),
+ * senao o filtro e a linha falariam linguas diferentes sobre o mesmo estado.
+ */
+const STATUS_CONFIG: Record<string, FilterOption> = {
+  PENDENTE: { label: 'Em aberto', class: 'bg-amber-50 text-amber-700 border border-amber-200', color: 'bg-amber-500' },
+  PAGA: { label: 'Pagas', class: 'bg-emerald-50 text-emerald-700 border border-emerald-200', color: 'bg-emerald-500' },
+  CANCELADA: { label: 'Canceladas', class: 'bg-zinc-100 text-zinc-500 border border-zinc-200', color: 'bg-zinc-400' },
+};
 
 function novaConta() {
   contaEmEdicao.value = null;
@@ -256,16 +265,7 @@ function rotuloStatus(conta: ContaPagar): string {
            Produtos: sao ferramentas da listagem, nao da pagina. -->
       <template #toolbar>
         <BaseSearchInput v-model="busca" placeholder="Buscar pela descrição" />
-        <div class="flex rounded-xl bg-zinc-100 p-1">
-          <button
-            v-for="aba in ABAS" :key="aba.valor" type="button"
-            class="rounded-lg px-3 py-1.5 text-sm font-medium transition cursor-pointer"
-            :class="statusFiltro === aba.valor ? 'bg-white text-zinc-800 shadow-sm' : 'text-zinc-500 hover:text-zinc-700'"
-            @click="statusFiltro = aba.valor"
-          >
-            {{ aba.rotulo }}
-          </button>
-        </div>
+        <BaseFilter v-model="statusFiltro" :filterConfig="STATUS_CONFIG" />
       </template>
 
     <table class="w-full min-w-180 text-sm">
