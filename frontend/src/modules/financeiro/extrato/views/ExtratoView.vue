@@ -14,6 +14,7 @@
 import { computed, nextTick, ref } from 'vue';
 
 import PageReview from '@/shared/components/layout/PageReview/PageReview.vue';
+import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
 import { useRoute } from 'vue-router';
 import { ChevronLeft, ChevronRight, ArrowDownLeft, ArrowUpRight, Printer } from 'lucide-vue-next';
 
@@ -140,6 +141,17 @@ const OPCOES_ORIGEM = computed(() =>
     .map(([valor, texto]) => ({ valor, texto })),
 );
 
+// O BaseSelect fala {value,label}; a lista interna fala {valor,texto}. O item
+// vazio entra explicito porque e ele que devolve o filtro para "todas" -- sem
+// ele, quem escolhe uma origem nao consegue mais desescolher.
+//
+// Deriva de OPCOES_ORIGEM, e nao de ROTULO_ORIGEM: e la que mora o filtro por
+// segmento, que esconde ORDEM_SERVICO em loja que nao usa OS.
+const OPCOES_ORIGEM_SELECT = computed(() => [
+  { value: '', label: 'Todas as origens' },
+  ...OPCOES_ORIGEM.value.map((o) => ({ value: o.valor, label: o.texto })),
+]);
+
 function rotuloOrigem(valor: string): string {
   return ROTULO_ORIGEM[valor] ?? valor;
 }
@@ -189,7 +201,7 @@ function limparFiltros() {
           ]"
           :key="opcao.valor"
           type="button"
-          class="rounded-lg border px-3 py-1.5 text-xs font-semibold cursor-pointer"
+          class="inline-flex items-center rounded-lg border px-3 py-1.5 text-xs font-semibold min-h-9 cursor-pointer"
           :class="
             tipo === opcao.valor
               ? 'border-brand-primary bg-brand-primary/5 text-brand-primary'
@@ -200,15 +212,13 @@ function limparFiltros() {
           {{ opcao.texto }}
         </button>
 
-        <select
-          v-model="origem"
-          class="rounded-lg border border-zinc-200 px-3 py-1.5 text-xs text-zinc-700 cursor-pointer"
-        >
-          <option value="">Todas as origens</option>
-          <option v-for="o in OPCOES_ORIGEM" :key="o.valor" :value="o.valor">
-            {{ o.texto }}
-          </option>
-        </select>
+        <div class="w-56">
+          <BaseSelect
+            v-model="origem"
+            :options="OPCOES_ORIGEM_SELECT"
+            placeholder="Todas as origens"
+          />
+        </div>
 
         <button
           v-if="temFiltro"
@@ -222,14 +232,15 @@ function limparFiltros() {
         <!-- O papel respeita o recorte da tela, e o diz impresso: uma folha só
              de entradas sem avisar faria o leitor concluir que a loja não teve
              despesa no mês. -->
-        <button
-          type="button"
+        <BaseButton
+          size="sm"
+          class="ml-auto"
           :disabled="imprimindo || !extrato?.itens?.length"
-          class="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-brand-primary px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-brand-primary/90 disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
           @click="imprimir"
         >
-          <Printer :size="14" /> {{ imprimindo ? 'Montando…' : 'Imprimir extrato' }}
-        </button>
+          <Printer :size="14" class="mr-1.5" />
+          {{ imprimindo ? 'Montando…' : 'Imprimir extrato' }}
+        </BaseButton>
       </div>
     </div>
 
