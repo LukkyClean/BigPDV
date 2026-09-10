@@ -40,7 +40,13 @@ class DocumentoFiscal(Base):
     origem_numero_os: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, index=True)
 
     # --- Status ---
-    # PENDENTE, PROCESSANDO, AUTORIZADA, REJEITADA, CANCELADA, DENEGADA
+    # PENDENTE, PROCESSANDO, AUTORIZADA, REJEITADA, CANCELADA, DENEGADA,
+    # INDETERMINADA, NAO_TRANSMITIDA.
+    #
+    # NAO_TRANSMITIDA e PENDENTE nao sao sinonimos: PENDENTE e "criado, ainda
+    # nao houve tentativa"; NAO_TRANSMITIDA e "houve tentativa e a nota nao
+    # chegou a SEFAZ". Nenhum dos dois entra em `get_documento_ativo_por_*`
+    # depois da limpeza, para nao trancar a venda para sempre.
     status: Mapped[str] = mapped_column(String(15), nullable=False, default="PENDENTE", index=True)
 
     # --- Dados do documento emitido ---
@@ -57,6 +63,16 @@ class DocumentoFiscal(Base):
     # --- SEFAZ feedback ---
     mensagem_sefaz: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     codigo_status_sefaz: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    status_focus: Mapped[Optional[str]] = mapped_column(
+        String(30), nullable=True,
+        doc=(
+            "Status CRU devolvido pela emissora (ex.: 'autorizado', "
+            "'denegado', 'erro_autorizacao'). Fica ao lado do `status` "
+            "normalizado porque 'denegado' e 'erro_autorizacao' viram ambos "
+            "uma recusa, e sao coisas diferentes: denegada e decisao da SEFAZ "
+            "sobre o contribuinte e reenviar nao adianta."
+        )
+    )
     motivo_rejeicao: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # --- Valor total (centavos) ---

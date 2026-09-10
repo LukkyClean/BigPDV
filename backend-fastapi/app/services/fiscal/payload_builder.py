@@ -179,8 +179,17 @@ def _montar_destinatario(cliente: Cliente) -> dict:
         dest["indicador_ie"] = "9"
 
     # Endereço do destinatário (primeiro endereço cadastrado).
-    # Grupo incompleto é rejeitado pela SEFAZ; melhor omitir do que enviar com
-    # campos vazios. O gate valida o endereço do emitente, nunca o do cliente.
+    #
+    # Grupo incompleto é rejeitado pela SEFAZ, e OMITIR TAMBÉM É — o comentário
+    # anterior dizia que omitir era o mal menor, e a nota de teste provou o
+    # contrário: 422 nomeando logradouro, número, bairro e município do
+    # destinatário. Na NF-e o enderDest é obrigatório.
+    #
+    # A omissão continua aqui porque este mesmo construtor serve à NFC-e com
+    # entrega a domicílio, e porque quem impede uma NF-e de chegar até aqui sem
+    # endereço agora é o gate (`verificar_endereco_destinatario`), que recusa
+    # ANTES de montar payload e reservar número, nomeando os campos que faltam
+    # no cadastro do cliente. Este ponto é o último recurso, não a defesa.
     enderecos = getattr(cliente, "endereco", None)
     if enderecos and len(enderecos) > 0:
         endereco = _montar_endereco_destinatario(enderecos[0])
@@ -719,12 +728,47 @@ def montar_payload_teste_nfe(
         "finalidade_emissao": 1,
         "consumidor_final": 1,
         "presenca_comprador": 1,
+        # modFrete 9 = sem transporte. Obrigatorio na NF-e 4.0 mesmo quando nao
+        # ha frete: a Focus recusou a nota de teste por "modalidade_frete nao
+        # pode ser vazio" antes mesmo de chegar na SEFAZ.
+        "modalidade_frete": 9,
         "numero": numero,
         "serie": serie,
         "emitente": _montar_emitente(empresa, endereco_empresa, fiscal_settings),
         "destinatario": {
-            "cpf": "00000000000",
+            # CNPJ ficticio padrao de homologacao. Era "00000000000", que a
+            # SEFAZ recusa: homologacao dispensa a EXISTENCIA do destinatario,
+            # nunca o digito verificador -- e onze zeros nao fecha o modulo 11.
+            #
+            # Nao inventamos um CPF valido no lugar. Qualquer CPF que passe no
+            # digito verificador PODE ser de uma pessoa real, e este numero fica
+            # gravado no XML de teste de toda loja. A raiz 99999999 nunca e
+            # atribuida pela Receita, entao este CNPJ e valido no calculo e
+            # impossivel de colidir com contribuinte de verdade.
+            "cnpj": "99999999000191",
+            "indicador_ie": "9",  # indIEDest 9 = nao contribuinte
             "nome": "NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL",
+            # O enderDest e OBRIGATORIO na NF-e (modelo 55). Este destinatario
+            # ficticio saia so com CPF e nome, e a nota de teste era recusada
+            # com 422 nomeando os cinco campos de endereco.
+            #
+            # O endereco e o DO PROPRIO EMITENTE de proposito, e nao um endereco
+            # inventado: a Focus resolve o par municipio/UF para codigo IBGE, e
+            # um municipio que nao existe naquela UF derruba a nota por um
+            # motivo que nada tem a ver com o teste. O endereco da loja ja foi
+            # aceito no cadastro, entao o par e valido por construcao.
+            "endereco": {
+                "logradouro": endereco_empresa.logradouro,
+                "numero": endereco_empresa.numero,
+                "bairro": endereco_empresa.bairro,
+                "cidade": endereco_empresa.cidade,
+                "uf": (
+                    endereco_empresa.estado.value
+                    if hasattr(endereco_empresa.estado, "value")
+                    else str(endereco_empresa.estado)
+                ),
+                "cep": _so_digitos(endereco_empresa.cep),
+            },
         },
         "items": [
             {

@@ -122,6 +122,77 @@ def verificar_documento_cliente(cliente: Cliente) -> list[PendenciaFiscal]:
                 pendencias.append(_p("destinatario", "cnpj", f"CNPJ inválido.", cliente.id, nome))
     return pendencias
 
+# Campos do enderDest, e como o lojista os ve no cadastro do cliente.
+#
+# O rotulo importa: a mensagem que o operador le tem que apontar para o campo da
+# tela dele, nao para o nome do campo da SEFAZ. "logradouro_destinatario nao pode
+# ser vazio" -- que foi o que a Focus devolveu -- nao diz a ninguem que a rua do
+# cliente esta em branco no cadastro.
+_CAMPOS_ENDERECO_DESTINATARIO = (
+    ("logradouro", "Logradouro (rua)"),
+    ("numero", "Numero"),
+    ("bairro", "Bairro"),
+    ("cidade", "Cidade"),
+    ("cep", "CEP"),
+)
+
+
+def verificar_endereco_destinatario(cliente: Cliente) -> list[PendenciaFiscal]:
+    """Endereco do destinatario -- obrigatorio na NF-e, PROIBIDO na NFC-e.
+
+    So chame isto para o modelo 55. Na NFC-e (modelo 65) o grupo `dest` e
+    opcional e o endereco deve ser OMITIDO -- a venda de balcao nao tem endereco
+    de comprador para informar. A unica excecao e indPres 4 (entrega a
+    domicilio), tratada em `_montar_destinatario_nfce`. Unificar as duas regras
+    quebraria um dos dois modelos, e o que quebraria e o cupom do caixa.
+
+    Por que existe: `_montar_endereco_destinatario` devolve None quando o
+    endereco esta incompleto, e o payload entao OMITE o grupo -- com o
+    comentario de que "grupo incompleto e rejeitado pela SEFAZ; melhor omitir do
+    que enviar com campos vazios". Omitir tambem e rejeitado, e a nota de teste
+    provou isso: 422 nomeando logradouro, numero, bairro e municipio do
+    destinatario.
+
+    Sem esta conferencia, uma venda para cliente com cadastro incompleto so
+    falharia depois da viagem ate a emissora, com uma mensagem em vocabulario de
+    SEFAZ que o operador nao sabe resolver -- e, pior, depois de a numeracao ter
+    sido reservada.
+    """
+    nome = get_nome_cliente(cliente)
+
+    enderecos = getattr(cliente, "endereco", None)
+    if not enderecos or len(enderecos) == 0:
+        return [_p(
+            "destinatario", "endereco",
+            f"Cliente '{nome}' nao possui endereco cadastrado. A NF-e exige o "
+            f"endereco completo do destinatario.",
+            cliente.id, nome,
+        )]
+
+    end = enderecos[0]
+    pendencias = []
+
+    for campo, rotulo in _CAMPOS_ENDERECO_DESTINATARIO:
+        if not getattr(end, campo, None):
+            pendencias.append(_p(
+                "destinatario", f"endereco_{campo}",
+                f"Endereco do cliente '{nome}' sem {rotulo}.",
+                cliente.id, nome,
+            ))
+
+    # A UF sai de um enum e por isso e conferida a parte: `not end.estado` nao
+    # basta quando o valor existe mas e vazio.
+    uf = end.estado.value if hasattr(end.estado, "value") else str(end.estado or "")
+    if not uf:
+        pendencias.append(_p(
+            "destinatario", "endereco_uf",
+            f"Endereco do cliente '{nome}' sem UF.",
+            cliente.id, nome,
+        ))
+
+    return pendencias
+
+
 def verificar_produto_fiscal(db: Session, produto, pendencias: list, simples_nacional: bool):
     fiscal = crud.get_produto_fiscal(db, produto.id)
     if not fiscal:

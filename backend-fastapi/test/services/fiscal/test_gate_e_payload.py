@@ -6,7 +6,7 @@
 #   A6  CEST obrigatório sob ICMS-ST
 #   A7  GTIN GS1 e sanitização de NCM
 #   C5  trava interestadual por operação, não por endereço do cliente
-#   C6  enderDest omitido quando incompleto
+#   C6  enderDest omitido quando incompleto (e o gate que impede isso na NF-e)
 #   C8  modelo, idDest e modFrete no payload
 #   C13 gate recusa CST/CSOSN fora da cobertura do motor
 # ---------------------------------------------------------------------------
@@ -31,11 +31,16 @@ from app.services.fiscal.payload_builder import (
     _codigo_barras_para_sefaz,
     _gtin_valido,
     _montar_destinatario,
+    _montar_destinatario_nfce,
     _sanitizar_ncm,
 )
 from app.services.fiscal.tax_engine.exceptions import OperacaoInterestadualError
 from app.services.fiscal.tax_engine.resolver import resolver_aliquotas_venda
-from app.services.fiscal.validators import _exige_cest, verificar_produto_fiscal
+from app.services.fiscal.validators import (
+    _exige_cest,
+    verificar_endereco_destinatario,
+    verificar_produto_fiscal,
+)
 
 
 # =========================
@@ -246,8 +251,13 @@ def test_endereco_completo_vai_no_payload():
 @pytest.mark.parametrize("campo_vazio", ["logradouro", "numero", "bairro", "cidade", "cep"])
 def test_endereco_incompleto_e_omitido_por_inteiro(campo_vazio):
     """
-    Enviar o grupo com campo vazio é rejeição. Omitir é aceito para NF-e a
-    consumidor final — melhor omitir do que mandar quebrado.
+    Enviar o grupo com campo vazio é rejeição — e OMITIR TAMBÉM É, na NF-e: a
+    primeira nota de teste em homologação voltou 422 nomeando logradouro,
+    número, bairro e município do destinatário.
+
+    O comportamento aqui continua sendo omitir porque este construtor também
+    serve à NFC-e, onde omitir é o certo. Quem impede uma NF-e de chegar neste
+    ponto sem endereço é o gate — ver a seção 5b.
     """
     dest = _montar_destinatario(_cliente_com_endereco(**{campo_vazio: None}))
 
@@ -262,6 +272,65 @@ def test_cliente_sem_endereco_nao_quebra():
     dest = _montar_destinatario(cliente)
 
     assert "endereco" not in dest
+
+
+# =========================
+# 5b. Gate do endereço do destinatário — NF-e exige, NFC-e não
+# =========================
+
+def test_gate_aponta_cada_campo_faltando_do_endereco():
+    """
+    A recusa tem que nomear o campo do CADASTRO, não o da SEFAZ.
+
+    A Focus devolve "logradouro_destinatario não pode ser vazio", que não diz a
+    ninguém que a rua do cliente está em branco na ficha dele — e chega depois
+    da viagem até a emissora, com a numeração já reservada.
+    """
+    cliente = _cliente_com_endereco(logradouro=None, bairro=None)
+
+    pendencias = verificar_endereco_destinatario(cliente)
+
+    campos = {p.campo for p in pendencias}
+    assert campos == {"endereco_logradouro", "endereco_bairro"}
+    assert all(p.categoria == "destinatario" for p in pendencias)
+    assert all("Maria Souza" in p.mensagem for p in pendencias)
+
+
+def test_gate_aceita_endereco_completo():
+    assert verificar_endereco_destinatario(_cliente_com_endereco()) == []
+
+
+def test_gate_acusa_cliente_sem_endereco_nenhum():
+    cliente = ClientePF(id=1, nome="Maria Souza", cpf="52998224725")
+    cliente.endereco = []
+
+    pendencias = verificar_endereco_destinatario(cliente)
+
+    assert len(pendencias) == 1
+    assert pendencias[0].campo == "endereco"
+
+
+def test_regra_do_endereco_e_oposta_entre_nfe_e_nfce():
+    """
+    A trava desta inversão.
+
+    Na NF-e (modelo 55) o enderDest é obrigatório; na NFC-e (65) o grupo `dest`
+    é opcional e o endereço deve ser OMITIDO — a venda de balcão não tem
+    endereço de comprador a informar. Unificar as duas regras quebra um dos dois
+    modelos, e o que quebraria é o cupom do caixa: todo consumidor que só
+    informou o CPF seria reprovado.
+
+    Por isso o gate recebe `tipo_documento`, e por isso este teste existe.
+    """
+    cliente_incompleto = _cliente_com_endereco(logradouro=None)
+
+    # NF-e: reprova.
+    assert verificar_endereco_destinatario(cliente_incompleto) != []
+
+    # NFC-e: o destinatário sai só com o documento, sem endereço nenhum — e
+    # nada aqui depende do endereço estar completo.
+    dest_nfce = _montar_destinatario_nfce(cliente_incompleto, None)
+    assert dest_nfce == {"cpf": "52998224725", "indicador_ie": "9"}
 
 
 # =========================

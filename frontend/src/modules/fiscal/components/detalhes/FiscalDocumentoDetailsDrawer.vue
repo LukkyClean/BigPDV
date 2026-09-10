@@ -28,7 +28,7 @@ import {
 
 import { useToast } from '@/shared/composables/useToast';
 import { abrirArquivo } from '../../utils/abrirArquivo';
-import { STATUS_COLORS } from '../../constants/fiscal.constants';
+import { STATUS_COLORS, STATUS_LABELS } from '../../constants/fiscal.constants';
 import { useFiscalHistoricoQuery } from '../../composables/useFiscalHistoricoQuery';
 import { useFiscalConsultarMutation } from '../../composables/useFiscalConsultarMutation';
 import { useFiscalCancelarMutation } from '../../composables/useFiscalCancelarMutation';
@@ -117,7 +117,12 @@ function getStatusIcon(status: string) {
       return Ban;
     case 'PENDENTE':
     case 'PROCESSANDO':
+    // Sem retorno confirmado ainda conta como "em aberto" — o relogio diz isso
+    // melhor que o triangulo de alerta, que sugeriria recusa.
+    case 'INDETERMINADA':
       return Clock;
+    case 'NAO_TRANSMITIDA':
+      return Ban;
     default:
       return Loader2;
   }
@@ -316,7 +321,7 @@ function formatarData(iso?: string | null): string {
                           getStatusColors(documento.status).text,
                         ]"
                       >
-                        {{ documento.status }}
+                        {{ STATUS_LABELS[documento.status] ?? documento.status }}
                       </span>
                     </div>
                     <p v-if="documento" class="text-xs text-zinc-500 mt-0.5">

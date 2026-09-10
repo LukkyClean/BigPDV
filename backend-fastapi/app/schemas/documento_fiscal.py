@@ -44,6 +44,9 @@ class DocumentoFiscalRead(BaseModel):
     mensagem_sefaz: Optional[str] = None
     codigo_status_sefaz: Optional[int] = None
     motivo_rejeicao: Optional[str] = None
+    # Status cru da emissora, ao lado do normalizado. A tela usa para
+    # separar denegada de rejeitada e para o suporte ver o termo original.
+    status_focus: Optional[str] = None
     valor_total: Optional[int] = None
     # --- NFC-e: o que o DANFE térmico precisa imprimir ---
     # Vêm aqui (e não só na nota da venda) porque a REIMPRESSÃO parte do

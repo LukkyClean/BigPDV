@@ -8,10 +8,50 @@
 from typing import NotRequired, Optional, Protocol, TypedDict
 
 
+# ---------------------------------------------------------------------------
+# Vocabulário de `EmissaoResultado.status`
+# ---------------------------------------------------------------------------
+# Existe como constante, e não como literal espalhado, porque estes valores são
+# escritos pelo client e lidos por `_aplicar_resultado` — dois arquivos que
+# precisam concordar. Enquanto eram strings soltas, um teste conferia o literal
+# `"erro"` embaixo de uma docstring que dizia "nada foi para a SEFAZ": a
+# intenção e a codificação viviam separadas, e só a codificação estava travada.
+RESULTADO_AUTORIZADO = "autorizado"
+RESULTADO_PROCESSANDO = "processando"
+RESULTADO_CANCELADO = "cancelado"
+
+# A SEFAZ respondeu "não".
+RESULTADO_ERRO = "erro"
+
+# Recusa ANTES da SEFAZ (4xx na emissão). Nada foi transmitido: não há
+# protocolo, não há código de rejeição, e o número reservado não foi queimado.
+RESULTADO_NAO_TRANSMITIDO = "nao_transmitido"
+
+# 404 na consulta. Sozinho NÃO conclui nada — ver `CODIGO_NOTA_INEXISTENTE`.
+RESULTADO_NAO_ENCONTRADO = "nao_encontrado"
+
+
+# ---------------------------------------------------------------------------
+# Códigos que a plataforma põe no corpo do 404
+# ---------------------------------------------------------------------------
+# Três situações muito diferentes chegavam como o mesmo 404, e uma delas produz
+# nota duplicada se for lida errado:
+#
+#   NOTA_NAO_ENCONTRADA_NA_EMISSORA -> a nota não chegou lá. Conclusivo.
+#   LICENCA_NAO_ENCONTRADA          -> pré-voo da plataforma. Não diz nada
+#   SEM_CONFIGURACAO_FISCAL            sobre a nota.
+#
+# Só o primeiro autoriza marcar o documento como não transmitido. Os outros
+# dois, e a AUSÊNCIA de código (plataforma antiga, ainda não atualizada),
+# deixam o status intocado — que é o padrão seguro durante a janela em que uma
+# loja já atualizou e a outra não.
+CODIGO_NOTA_INEXISTENTE = "NOTA_NAO_ENCONTRADA_NA_EMISSORA"
+
+
 class EmissaoResultado(TypedDict):
     """Retorno padronizado de qualquer operação de emissão/consulta/cancelamento."""
 
-    status: str  # "autorizado" | "processando" | "erro" | "cancelado"
+    status: str  # ver as constantes RESULTADO_* acima
     chave_acesso: Optional[str]
     protocolo: Optional[str]
     numero: Optional[int]
@@ -20,6 +60,10 @@ class EmissaoResultado(TypedDict):
     url_xml: Optional[str]
     codigo_sefaz: Optional[int]
     mensagem_sefaz: Optional[str]
+
+    # Código estável do corpo do erro da plataforma (ver CODIGO_NOTA_INEXISTENTE).
+    # NotRequired: só a consulta o preenche, e só quando a plataforma o manda.
+    codigo: NotRequired[Optional[str]]
 
     # --- Só na NFC-e (modelo 65) ---
     # NotRequired porque a NF-e não devolve nenhum dos três, e exigi-los

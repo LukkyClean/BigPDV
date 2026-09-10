@@ -181,8 +181,9 @@ def test_indeterminada_bloqueia_nova_emissao_da_mesma_venda(db, empresa_com_cont
     assert ativo.status == "INDETERMINADA"
 
 
-@pytest.mark.parametrize("status_doc", ["AUTORIZADA", "PROCESSANDO", "PENDENTE", "INDETERMINADA"])
+@pytest.mark.parametrize("status_doc", ["AUTORIZADA", "PROCESSANDO", "INDETERMINADA"])
 def test_todos_os_estados_ativos_bloqueiam_reemissao(db, empresa_com_contador, status_doc):
+    """Os três estados em que a nota PODE existir na SEFAZ."""
     db.add(DocumentoFiscal(
         tipo_documento="NFE", origem_tipo="VENDA", origem_id=2002,
         status=status_doc, numero_documento=50, serie=1,
@@ -190,6 +191,28 @@ def test_todos_os_estados_ativos_bloqueiam_reemissao(db, empresa_com_contador, s
     db.commit()
 
     assert crud.get_documento_ativo_por_venda(db, 2002) is not None
+
+
+@pytest.mark.parametrize("status_doc", ["PENDENTE", "NAO_TRANSMITIDA"])
+def test_documento_nunca_transmitido_nao_tranca_a_venda(db, empresa_com_contador, status_doc):
+    """PENDENTE saiu da lista de bloqueio, e isto documenta por quê.
+
+    PENDENTE não significa "prestes a transmitir": a emissão cria o documento já
+    como PROCESSANDO. Quem cria PENDENTE é a reemissão, que monta a linha e NÃO
+    transmite. Enquanto isso bloqueava, cada clique em "reemitir" trancava a
+    venda em "já possui uma emissão em andamento" — para sempre, por uma nota
+    que nunca saiu do prédio.
+
+    Bloquear aqui nunca protegeu nada: a proteção contra nota duplicada é
+    INDETERMINADA, que continua na lista (teste acima).
+    """
+    db.add(DocumentoFiscal(
+        tipo_documento="NFE", origem_tipo="VENDA", origem_id=2003,
+        status=status_doc, numero_documento=50, serie=1,
+    ))
+    db.commit()
+
+    assert crud.get_documento_ativo_por_venda(db, 2003) is None
 
 
 @pytest.mark.parametrize("status_doc", ["REJEITADA", "DENEGADA", "CANCELADA"])

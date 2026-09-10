@@ -56,6 +56,31 @@ export const STATUS_COLORS: Record<
   REJEITADA: { bg: 'bg-red-100', text: 'text-red-600', border: 'border-red-200' },
   CANCELADA: { bg: 'bg-zinc-100', text: 'text-zinc-500', border: 'border-zinc-200' },
   DENEGADA: { bg: 'bg-red-100', text: 'text-red-600', border: 'border-red-200' },
+  // Transmitida, desfecho desconhecido. Nao e vermelho de proposito: nao houve
+  // recusa nenhuma, e pintar de vermelho convidaria a reemitir — que e
+  // exatamente o que produz nota duplicada.
+  INDETERMINADA: { bg: 'bg-orange-100', text: 'text-orange-700', border: 'border-orange-200' },
+  // Nunca chegou na SEFAZ. Cinza, e nao vermelho, porque nao ha rejeicao:
+  // separar as duas na cor e metade do motivo de este status existir.
+  NAO_TRANSMITIDA: { bg: 'bg-slate-100', text: 'text-slate-600', border: 'border-slate-200' },
+};
+
+/**
+ * Rotulo humano por status.
+ *
+ * O badge mostrava `doc.status` cru quando o status nao estava no mapa de
+ * filtros — entao INDETERMINADA ja aparecia assim, em caixa alta, e
+ * NAO_TRANSMITIDA apareceria com o underline no meio.
+ */
+export const STATUS_LABELS: Record<string, string> = {
+  PENDENTE: 'Pendente',
+  PROCESSANDO: 'Processando',
+  AUTORIZADA: 'Autorizada',
+  REJEITADA: 'Rejeitada',
+  CANCELADA: 'Cancelada',
+  DENEGADA: 'Denegada',
+  INDETERMINADA: 'Sem retorno',
+  NAO_TRANSMITIDA: 'Nao transmitida',
 };
 
 export const STATUS_FILTER_OPTIONS = [
@@ -65,6 +90,11 @@ export const STATUS_FILTER_OPTIONS = [
   { value: 'REJEITADA', label: 'Rejeitadas' },
   { value: 'CANCELADA', label: 'Canceladas' },
   { value: 'DENEGADA', label: 'Denegadas' },
+  // Os dois que faltavam, e que sao justamente os que respondem "quais
+  // chegaram na SEFAZ?" — a pergunta que uma lista so de "rejeitadas" nao
+  // conseguia responder.
+  { value: 'INDETERMINADA', label: 'Sem retorno' },
+  { value: 'NAO_TRANSMITIDA', label: 'Nao transmitidas' },
 ];
 
 export const TIPO_FILTER_OPTIONS = [

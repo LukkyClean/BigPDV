@@ -52,6 +52,9 @@ def _p(categoria: str, campo: str, mensagem: str,
 # Cópia local removida: a regra de CRT vive em services/fiscal/helpers.py.
 from app.services.fiscal.helpers import obter_crt, usa_csosn
 from app.services.fiscal.validators import verificar_emitente as verificar_emitente_fiscal
+from app.services.fiscal.validators import (
+    verificar_endereco_destinatario as _verificar_endereco_destinatario,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -79,7 +82,18 @@ def _verificar_emitente(db: Session, empresa_id: int) -> list[PendenciaFiscal]:
 # 2. Verificação do Destinatário (Cliente)
 # ---------------------------------------------------------------------------
 
-def _verificar_destinatario_venda(venda: Venda) -> list[PendenciaFiscal]:
+def _verificar_destinatario_venda(
+    venda: Venda, tipo_documento: str = "nfe",
+) -> list[PendenciaFiscal]:
+    """
+    `tipo_documento` separa o que muda entre os modelos: o endereço do
+    destinatário é obrigatório na NF-e (55) e omitido na NFC-e (65).
+
+    Esta função é a que a TELA consulta, e o gate da emissão é outro
+    (`fiscal/core.py`). Os dois precisam concordar — se só a emissão exigisse o
+    endereço, a tela diria "pronto para emitir" e a emissão recusaria em
+    seguida, que é a pior forma de descobrir.
+    """
     pendencias: list[PendenciaFiscal] = []
 
     if not venda.cliente_id or not venda.cliente:
@@ -89,10 +103,15 @@ def _verificar_destinatario_venda(venda: Venda) -> list[PendenciaFiscal]:
         ))
         return pendencias
 
-    return _verificar_documento_cliente(venda.cliente)
+    pendencias.extend(_verificar_documento_cliente(venda.cliente))
+    if tipo_documento == "nfe":
+        pendencias.extend(_verificar_endereco_destinatario(venda.cliente))
+    return pendencias
 
 
-def _verificar_destinatario_os(os_obj: OrdemServico) -> list[PendenciaFiscal]:
+def _verificar_destinatario_os(
+    os_obj: OrdemServico, tipo_documento: str = "nfe",
+) -> list[PendenciaFiscal]:
     cliente = getattr(os_obj.objeto, "cliente", None) if os_obj.objeto else None
     if not cliente:
         return [_p(
@@ -100,7 +119,11 @@ def _verificar_destinatario_os(os_obj: OrdemServico) -> list[PendenciaFiscal]:
             "OS não possui cliente vinculado ao objeto de serviço."
         )]
 
-    return _verificar_documento_cliente(cliente)
+    pendencias = list(_verificar_documento_cliente(cliente))
+    # "ambos" inclui a NF-e das peças, que é o documento que exige o endereço.
+    if tipo_documento in ("nfe", "ambos"):
+        pendencias.extend(_verificar_endereco_destinatario(cliente))
+    return pendencias
 
 
 def _verificar_documento_cliente(cliente: Cliente) -> list[PendenciaFiscal]:
@@ -407,7 +430,7 @@ def _verificar_pagamentos(pagamentos: list) -> list[PendenciaFiscal]:
 # ---------------------------------------------------------------------------
 
 def verificar_completude_venda(
-    db: Session, venda_id: int, empresa_id: int
+    db: Session, venda_id: int, empresa_id: int, tipo_documento: str = "nfe"
 ) -> ResultadoVerificacaoFiscal:
     venda = (
         db.query(Venda)
@@ -427,7 +450,7 @@ def verificar_completude_venda(
 
     pendencias: list[PendenciaFiscal] = []
     pendencias.extend(_verificar_emitente(db, empresa_id))
-    pendencias.extend(_verificar_destinatario_venda(venda))
+    pendencias.extend(_verificar_destinatario_venda(venda, tipo_documento))
     pendencias.extend(_verificar_itens_venda(db, venda, simples_nacional))
     pendencias.extend(_verificar_pagamentos(venda.pagamentos))
 
@@ -475,7 +498,7 @@ def verificar_completude_os(
 
     pendencias: list[PendenciaFiscal] = []
     pendencias.extend(_verificar_emitente(db, empresa_id))
-    pendencias.extend(_verificar_destinatario_os(os_obj))
+    pendencias.extend(_verificar_destinatario_os(os_obj, tipo_documento))
 
     if tipo_documento in ("nfe", "ambos") and emitir_nfe:
         pendencias.extend(_verificar_itens_os_nfe(db, os_obj, simples_nacional))

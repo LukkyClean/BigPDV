@@ -24,6 +24,8 @@ Estes testes existem para que a captura larga não volte.
 import httpx
 import pytest
 
+from app.db.models.documento_fiscal import DocumentoFiscal
+from app.services.fiscal.emissao import STATUS_NAO_TRANSMITIDA, _aplicar_resultado
 from app.services.fiscal.http.client_startbig import (
     EmissaoIncertaError,
     FiscalClientStartBig,
@@ -90,7 +92,14 @@ def test_erro_5xx_e_incerto(monkeypatch):
 def test_4xx_e_recusa_e_nao_incerteza(monkeypatch):
     """4xx é recusa ANTES de transmitir: CNPJ divergente, sem config, rota
     inexistente. Nada foi para a SEFAZ, então NÃO é incerteza -- e o texto
-    precisa dizer isso, senão o lojista vai procurar o erro na SEFAZ."""
+    precisa dizer isso, senão o lojista vai procurar o erro na SEFAZ.
+
+    O status era `erro`, e `erro` vira REJEITADA em `_aplicar_resultado`. A
+    intenção deste teste sempre foi "nada chegou na SEFAZ" — mas o valor que ele
+    conferia dizia o contrário na tela: a nota aparecia na lista de rejeitadas,
+    ao lado das que de fato foram recusadas lá, e ninguém conseguia separar as
+    duas. `nao_transmitido` é a mesma intenção, agora dita por inteiro.
+    """
 
     def _resposta_404(*_a, **_k):
         return httpx.Response(
@@ -99,10 +108,24 @@ def test_4xx_e_recusa_e_nao_incerteza(monkeypatch):
 
     monkeypatch.setattr(httpx.Client, "post", _resposta_404)
 
+    # Metade da invariante: com resposta, NUNCA é incerteza. Se um dia isto
+    # virar EmissaoIncertaError, o documento fica INDETERMINADA e tranca a
+    # venda por uma nota que nem saiu.
     resultado = _client().emitir_nfe("venda-1", PAYLOAD)
 
-    assert resultado["status"] == "erro"
-    assert "antes de enviar" in resultado["mensagem_sefaz"]
+    # A outra metade, afirmada pela CONSEQUÊNCIA e não pelo valor da string.
+    #
+    # A versão anterior conferia o literal `"erro"` embaixo de uma docstring que
+    # dizia "nada foi para a SEFAZ": documentava a intenção e travava a
+    # codificação. O que precisa valer é o que acontece com o DOCUMENTO — e é
+    # isso que a renomeação seguinte não pode quebrar sem quebrar a regra junto.
+    doc = DocumentoFiscal(tipo_documento="NFE", origem_tipo="VENDA", status="PROCESSANDO")
+    _aplicar_resultado(doc, resultado)
+
+    assert doc.status == STATUS_NAO_TRANSMITIDA
+    assert doc.status != "REJEITADA"          # não foi a SEFAZ que recusou
+    assert doc.codigo_status_sefaz is None    # e por isso não existe código
+    assert "antes de enviar" in doc.mensagem_sefaz
 
 
 def test_resposta_boa_continua_passando(monkeypatch):

@@ -139,7 +139,10 @@ export function useEmitirFiscal() {
         await saleService.upsertVendaNotaFiscal(vendaId, dadosFiscais);
       }
 
-      const resultado = await saleService.verificarFiscal(vendaId);
+      // 'nfce' e obrigatorio aqui: no padrao ('nfe') o gate exigiria o endereco
+      // do destinatario, e o cupom de balcao seria recusado por um campo que o
+      // modelo 65 nem carrega.
+      const resultado = await saleService.verificarFiscal(vendaId, 'nfce');
       if (!resultado.completo) {
         pendencias.value = resultado.pendencias;
         pendenciasModalOpen.value = true;

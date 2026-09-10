@@ -143,9 +143,20 @@ export const saleService = {
     return parseSchema(VendaNotaFiscalReadSchema, data, 'saleService.upsertVendaNotaFiscal.response');
   },
 
-  async verificarFiscal(venda_id: number): Promise<ResultadoVerificacaoFiscal> {
+  /**
+   * Pendencias fiscais da venda.
+   *
+   * `tipoDocumento` nao e detalhe: a NF-e exige o endereco do destinatario e a
+   * NFC-e o omite. Conferir um cupom de balcao com as regras da NF-e reprovaria
+   * todo consumidor que so informou o CPF -- que e o caso normal do PDV.
+   */
+  async verificarFiscal(
+    venda_id: number,
+    tipoDocumento: 'nfe' | 'nfce' = 'nfe',
+  ): Promise<ResultadoVerificacaoFiscal> {
     const { data } = await api.get<ResultadoVerificacaoFiscal>(
       `${SALE_ENDPOINT}/${venda_id}/verificar-fiscal`,
+      { params: { tipo_documento: tipoDocumento } },
     );
     return data;
   },

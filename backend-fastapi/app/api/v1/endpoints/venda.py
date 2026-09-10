@@ -524,16 +524,28 @@ def corrigir_venda_fiscal(
     "/{venda_id}/verificar-fiscal",
     response_model=ResultadoVerificacaoFiscal,
     summary="Verificar Completude Fiscal da Venda",
-    description="Retorna lista de pendências fiscais que impedem a emissão de NF-e.",
+    description=(
+        "Retorna lista de pendências fiscais que impedem a emissão. Use "
+        "`tipo_documento=nfce` antes de emitir cupom: a NFC-e não exige o "
+        "endereço do destinatário, que a NF-e exige."
+    ),
 )
 def verificar_fiscal_venda(
     user_token: dict = Depends(check_permission(required_permission=module_permission)),
     _fiscal: dict = Depends(requer_modulo_fiscal),
     venda_id: int = Path(..., ge=1),
+    tipo_documento: str = Query("nfe", description="nfe ou nfce"),
     db: Session = Depends(get_db),
 ):
+    """
+    O padrão é `nfe` porque é a conferência mais restritiva: quem esquecer de
+    informar o tipo vê uma pendência a mais, e não um cupom recusado pela SEFAZ
+    depois de a numeração já ter sido reservada.
+    """
     empresa_id = user_token["empresa_id"]
-    return verificacao_fiscal_service.verificar_completude_venda(db, venda_id, empresa_id)
+    return verificacao_fiscal_service.verificar_completude_venda(
+        db, venda_id, empresa_id, tipo_documento,
+    )
 
 
 @router.post(

@@ -15,7 +15,11 @@ export function useFiscalReemitirMutation() {
   return useMutation({
     mutationFn: (documentoId: number) => fiscalService.reemitirDocumento(documentoId),
     onSuccess: (novoDoc) => {
-      toast.success(`Nova tentativa #${novoDoc.numero_documento ?? novoDoc.id} criada para reemissão.`);
+      // "criada para reemissão" ainda sugeria que a transmissão viria sozinha.
+      // Nao vem: a linha nasce PENDENTE e so sai quando alguem manda emitir.
+      toast.success(
+        `Nova tentativa #${novoDoc.numero_documento ?? novoDoc.id} criada. Emita para transmitir.`,
+      );
       queryClient.invalidateQueries({ queryKey: fiscalKeys.documentos() });
       queryClient.invalidateQueries({ queryKey: fiscalKeys.resumo() });
       queryClient.invalidateQueries({ queryKey: fiscalKeys.historico(novoDoc.id) });

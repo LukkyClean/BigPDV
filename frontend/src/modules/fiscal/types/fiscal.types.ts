@@ -1,4 +1,16 @@
-export type DocumentoFiscalStatus = 'PENDENTE' | 'PROCESSANDO' | 'AUTORIZADA' | 'REJEITADA' | 'CANCELADA' | 'DENEGADA';
+export type DocumentoFiscalStatus =
+  | 'PENDENTE'
+  | 'PROCESSANDO'
+  | 'AUTORIZADA'
+  | 'REJEITADA'
+  | 'CANCELADA'
+  | 'DENEGADA'
+  // Transmitida, sem resposta confirmada. NUNCA reemitir: pode estar
+  // autorizada na SEFAZ, e a segunda nota valeria tanto quanto a primeira.
+  | 'INDETERMINADA'
+  // Houve tentativa e a nota nao chegou na SEFAZ. Nao e rejeicao: nao ha
+  // protocolo, nao ha codigo, e o numero reservado nao foi queimado.
+  | 'NAO_TRANSMITIDA';
 export type DocumentoFiscalTipo = 'NFE' | 'NFCE' | 'NFSE';
 export type DocumentoFiscalOrigem = 'VENDA' | 'ORDEM_SERVICO';
 
@@ -31,6 +43,8 @@ export interface DocumentoFiscalRead {
   url_xml: string | null;
   mensagem_sefaz: string | null;
   codigo_status_sefaz: number | null;
+  /** Status cru da emissora ('autorizado', 'denegado', 'erro_autorizacao'). */
+  status_focus?: string | null;
   motivo_rejeicao: string | null;
   valor_total: number | null;
   /** Texto do QR Code do DANFE NFC-e, montado pelo provedor com o CSC. */

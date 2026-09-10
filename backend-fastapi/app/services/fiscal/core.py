@@ -8,7 +8,19 @@ from app.db.crud import fiscal as crud
 from . import validators
 from .helpers import obter_crt, usa_csosn, criar_pendencia as _p
 
-def verificar_completude_venda(db: Session, venda_id: int, empresa_id: int) -> ResultadoVerificacaoFiscal:
+def verificar_completude_venda(
+    db: Session, venda_id: int, empresa_id: int, tipo_documento: str = "nfe",
+) -> ResultadoVerificacaoFiscal:
+    """Pendencias que impedem a emissao desta venda.
+
+    `tipo_documento` existe por causa do ENDERECO do destinatario, que e o unico
+    requisito que muda entre os dois modelos: obrigatorio na NF-e (55), omitido
+    na NFC-e (65). Exigi-lo dos dois reprovaria o cupom de balcao de todo
+    consumidor que so informou o CPF -- que e o caso normal do PDV.
+
+    O padrao e "nfe" porque a NF-e e o caminho que reprova mais; quem emite
+    cupom passa "nfce" explicitamente.
+    """
     venda = crud.get_venda_completa(db, venda_id)
     if not venda:
         raise HTTPException(status_code=404, detail="Venda não encontrada.")
@@ -23,7 +35,9 @@ def verificar_completude_venda(db: Session, venda_id: int, empresa_id: int) -> R
         pendencias.append(_p("destinatario", "cliente", "Venda não possui destinatário."))
     else:
         pendencias.extend(validators.verificar_documento_cliente(venda.cliente))
-        
+        if tipo_documento == "nfe":
+            pendencias.extend(validators.verificar_endereco_destinatario(venda.cliente))
+
     pendencias.extend(validators.verificar_itens_venda(db, venda, simples))
     pendencias.extend(validators.verificar_pagamentos(venda.pagamentos))
 
@@ -49,6 +63,8 @@ def verificar_completude_os(db: Session, numero_os: str, empresa_id: int, tipo_d
         pendencias.append(_p("destinatario", "cliente", "OS sem cliente no objeto."))
     else:
         pendencias.extend(validators.verificar_documento_cliente(cliente))
+        if tipo_documento in ("nfe", "ambos") and emitir_nfe:
+            pendencias.extend(validators.verificar_endereco_destinatario(cliente))
 
     if tipo_documento in ("nfe", "ambos") and emitir_nfe:
         pendencias.extend(validators.verificar_itens_os_nfe(db, os_obj, simples))

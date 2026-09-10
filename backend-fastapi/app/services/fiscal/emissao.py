@@ -24,6 +24,14 @@ from app.db.crud import fiscal as crud
 from .core import verificar_completude_venda
 from .helpers import obter_crt, obter_csc_token, regime_apuracao, usa_csosn
 from .http import get_fiscal_client, EmissaoResultado
+from .http.client import (
+    CODIGO_NOTA_INEXISTENTE,
+    RESULTADO_AUTORIZADO,
+    RESULTADO_CANCELADO,
+    RESULTADO_NAO_ENCONTRADO,
+    RESULTADO_NAO_TRANSMITIDO,
+    RESULTADO_PROCESSANDO,
+)
 from .payload_builder import (
     montar_payload_nfce,
     montar_payload_nfe,
@@ -37,17 +45,72 @@ from .tributos_xml import extrair_valor_tributos
 logger = logging.getLogger(__name__)
 
 
+# Status que significam "esta nota FOI transmitida e o desfecho ainda está em
+# aberto". São os únicos que vale consultar na emissora.
+#
+# PENDENTE ficou de fora de propósito: a emissão cria o documento já como
+# PROCESSANDO, e `salvar_documento` só dá flush dentro da transação da request —
+# um processo que morre no meio do HTTP não deixa linha nenhuma. Logo PENDENTE
+# só nasce da reemissão, que NÃO transmite. Consultar um desses dava 404 eterno,
+# e o 404 virava REJEITADA: nota que nunca saiu do prédio aparecia na tela como
+# recusada pela SEFAZ.
+STATUS_CONSULTAVEIS = ("PROCESSANDO", "INDETERMINADA")
+
+# A nota não chegou à SEFAZ. Não é rejeição — não há protocolo, não há código de
+# rejeição, e o número reservado não foi queimado.
+STATUS_NAO_TRANSMITIDA = "NAO_TRANSMITIDA"
+
+
 def _aplicar_resultado(doc: DocumentoFiscal, resultado: EmissaoResultado) -> None:
-    """Atualiza DocumentoFiscal com o resultado da API."""
+    """Atualiza DocumentoFiscal com o resultado da API.
+
+    Três desfechos que antes viravam um só, e é por isso que uma lista de
+    "rejeitadas" não dizia quais tinham chegado na SEFAZ:
+
+      nunca transmitida (404 na consulta)     -> status intocado + mensagem
+      recusada antes da SEFAZ (4xx na emissão) -> NAO_TRANSMITIDA
+      rejeitada PELA SEFAZ                     -> REJEITADA, com o código
+    """
     status_api = resultado.get("status", "")
 
-    if status_api == "autorizado":
+    if status_api == RESULTADO_NAO_ENCONTRADO:
+        # 404. Quem decide o que ele significa é o CÓDIGO do corpo, não o status
+        # HTTP: a plataforma responde 404 tanto para "a nota não está na
+        # emissora" quanto para os pré-voos dela (licença não encontrada,
+        # empresa sem configuração fiscal), e os pré-voos não afirmam nada sobre
+        # a nota.
+        #
+        # Só `NOTA_NAO_ENCONTRADA_NA_EMISSORA` conclui. Sem ele — pré-voo, ou
+        # plataforma antiga que ainda não manda código — o status fica INTOCADO.
+        #
+        # Errar para o lado de mexer seria o pior desfecho possível: uma
+        # INDETERMINADA que na verdade está autorizada na SEFAZ deixaria de
+        # trancar a venda, e a próxima emissão viraria nota duplicada, as duas
+        # válidas, no mesmo CNPJ. É o que o `EmissaoIncertaError` impede na
+        # emissão — e que entrava por esta porta.
+        #
+        # Nada além da mensagem é sobrescrito: os campos lá embaixo apagariam
+        # chave de acesso e protocolo de um documento que já os tinha.
+        doc.mensagem_sefaz = resultado.get("mensagem_sefaz")
+        if resultado.get("codigo") == CODIGO_NOTA_INEXISTENTE:
+            doc.status = STATUS_NAO_TRANSMITIDA
+        return
+
+    if status_api == RESULTADO_AUTORIZADO:
         doc.status = "AUTORIZADA"
         doc.data_autorizacao = datetime.now(timezone.utc)
-    elif status_api == "processando":
+    elif status_api == RESULTADO_PROCESSANDO:
         doc.status = "PROCESSANDO"
-    elif status_api == "cancelado":
+    elif status_api == RESULTADO_CANCELADO:
         doc.status = "CANCELADA"
+    elif status_api == RESULTADO_NAO_TRANSMITIDO:
+        # A plataforma ou a emissora recusaram o payload. A SEFAZ não viu nada.
+        doc.status = STATUS_NAO_TRANSMITIDA
+    elif resultado.get("status_focus") == "denegado":
+        # Denegada é decisão da SEFAZ sobre o CONTRIBUINTE, não sobre a nota:
+        # reenviar não adianta, e o lojista precisa saber que a diferença existe.
+        # Caía no balde `erro` -> REJEITADA, que convida a reemitir para sempre.
+        doc.status = "DENEGADA"
     else:
         # A SEFAZ respondeu "não". Isso é diferente de não sabermos a resposta
         # — falha de comunicação vira INDETERMINADA, nunca REJEITADA.
@@ -57,8 +120,14 @@ def _aplicar_resultado(doc: DocumentoFiscal, resultado: EmissaoResultado) -> Non
     doc.protocolo_autorizacao = resultado.get("protocolo")
     doc.url_pdf = resultado.get("url_pdf")
     doc.url_xml = resultado.get("url_xml")
+    # O número é o que não engana. O texto da SEFAZ já chegou dizendo
+    # "destinatário" enquanto citava o CNPJ do emitente — meia hora perdida
+    # atrás do campo errado. Os dois são gravados: o código para decidir, o
+    # texto para ler.
     doc.codigo_status_sefaz = resultado.get("codigo_sefaz")
     doc.mensagem_sefaz = resultado.get("mensagem_sefaz")
+    if resultado.get("status_focus"):
+        doc.status_focus = resultado["status_focus"]
 
     if resultado.get("numero"):
         doc.numero_documento = resultado["numero"]
@@ -85,10 +154,17 @@ def _obter_fiscal_settings(db: Session, empresa_id: int) -> EmpresaFiscalSetting
     return fs
 
 
-def _preparar_dados_emissao(db: Session, venda_id: int, empresa_id: int):
+def _preparar_dados_emissao(
+    db: Session, venda_id: int, empresa_id: int, tipo_documento: str = "nfe",
+):
     """
     Setup compartilhado entre preview e emissão.
     Verifica completude, carrega dados e calcula tributos.
+
+    `tipo_documento` decide se o endereço do destinatário é exigido: a NF-e não
+    sai sem ele, a NFC-e não o quer. Quem chama daqui de dentro precisa dizer
+    qual está emitindo — o padrão "nfe" é o caminho mais restritivo, então
+    esquecer de passar reprova em vez de deixar passar.
 
     Returns:
         Tupla (empresa, endereco, venda, simples, resultado_calculo).
@@ -97,7 +173,7 @@ def _preparar_dados_emissao(db: Session, venda_id: int, empresa_id: int):
         HTTPException 422 se dados incompletos ou cálculo falhar.
         HTTPException 404 se venda não encontrada.
     """
-    verificacao = verificar_completude_venda(db, venda_id, empresa_id)
+    verificacao = verificar_completude_venda(db, venda_id, empresa_id, tipo_documento)
     if not verificacao.completo:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -507,9 +583,13 @@ def emitir_nfce_venda(db: Session, venda_id: int, empresa_id: int) -> DocumentoF
     3. É SÍNCRONA: não há polling. O caixa está com o cliente na frente.
     4. Bloqueia duplicata pelo documento ativo da venda, igual à NF-e — uma
        venda não pode ter NF-e e NFC-e ao mesmo tempo.
+
+    O gate roda como "nfce", e isso é a quinta diferença: o modelo 65 omite o
+    endereço do destinatário, então exigi-lo aqui reprovaria o cupom de todo
+    consumidor de balcão — que é o caso normal do PDV.
     """
     empresa, endereco, venda, simples, resultado_calculo = _preparar_dados_emissao(
-        db, venda_id, empresa_id,
+        db, venda_id, empresa_id, tipo_documento="nfce",
     )
 
     fiscal_settings = _obter_fiscal_settings(db, empresa_id)
@@ -650,7 +730,8 @@ def consultar_documento(db: Session, documento_id: int, empresa_id: int) -> Docu
             detail="Documento não possui referência de API para consulta.",
         )
 
-    if doc.status not in ("PROCESSANDO", "PENDENTE", "INDETERMINADA"):
+    # Documento não transmitido não tem o que consultar. Ver STATUS_CONSULTAVEIS.
+    if doc.status not in STATUS_CONSULTAVEIS:
         return doc
 
     fiscal_settings = _obter_fiscal_settings(db, empresa_id)
@@ -684,7 +765,7 @@ async def poll_nfe_status_async(documento_id: int, empresa_id: int):
         try:
             doc = consultar_documento(db, documento_id, empresa_id)
             db.commit()
-            if doc.status not in ("PROCESSANDO", "PENDENTE", "INDETERMINADA"):
+            if doc.status not in STATUS_CONSULTAVEIS:
                 break
         except Exception as e:
             db.rollback()

@@ -157,24 +157,36 @@ def salvar_documento(db: Session, documento: DocumentoFiscal):
     db.flush()
     return documento
 
+# Status que tornam um documento VIVO — os que impedem uma segunda emissão para
+# a mesma origem.
+#
+# PENDENTE saiu da lista. Ele só nasce da reemissão, que cria a linha e NÃO
+# transmite: como documento vivo, cada tentativa dessas trancava a venda em "já
+# possui uma emissão em andamento" para sempre, por uma nota que nunca saiu do
+# prédio. NAO_TRANSMITIDA fica fora pela mesma razão, e é o que a limpeza da
+# migration 89eb6b730bb3 gravou nos fantasmas antigos.
+#
+# INDETERMINADA CONTINUA na lista: emissão sem resposta confirmada PODE estar
+# autorizada, e emitir por cima produz nota duplicada no mesmo CNPJ.
+STATUS_DOCUMENTO_VIVO = ["PROCESSANDO", "AUTORIZADA", "INDETERMINADA"]
+
+
 def get_documento_ativo_por_venda(db: Session, numero_venda: int):
     return db.query(DocumentoFiscal).filter(
         DocumentoFiscal.origem_tipo == "VENDA",
         DocumentoFiscal.origem_id == numero_venda,
-        DocumentoFiscal.status.in_(["PROCESSANDO", "PENDENTE", "AUTORIZADA", "INDETERMINADA"]),
+        DocumentoFiscal.status.in_(STATUS_DOCUMENTO_VIVO),
     ).first()
 
 def get_documento_ativo_por_os(db: Session, numero_os: str):
     """Documento fiscal vivo desta OS — o que bloqueia uma segunda emissão.
 
-    Mesmos status de `get_documento_ativo_por_venda`: INDETERMINADA entra na
-    lista porque uma emissão sem resposta confirmada PODE estar autorizada, e
-    reemitir por cima produziria nota duplicada no mesmo CNPJ.
+    Mesmos status de `get_documento_ativo_por_venda` — ver STATUS_DOCUMENTO_VIVO.
     """
     return db.query(DocumentoFiscal).filter(
         DocumentoFiscal.origem_tipo == "OS",
         DocumentoFiscal.origem_numero_os == numero_os,
-        DocumentoFiscal.status.in_(["PROCESSANDO", "PENDENTE", "AUTORIZADA", "INDETERMINADA"]),
+        DocumentoFiscal.status.in_(STATUS_DOCUMENTO_VIVO),
     ).first()
 
 def get_documentos_ativos_por_vendas(db: Session, numeros_venda: list[int]) -> dict[int, DocumentoFiscal]:
@@ -184,7 +196,7 @@ def get_documentos_ativos_por_vendas(db: Session, numeros_venda: list[int]) -> d
     docs = db.query(DocumentoFiscal).filter(
         DocumentoFiscal.origem_tipo == "VENDA",
         DocumentoFiscal.origem_id.in_(numeros_venda),
-        DocumentoFiscal.status.in_(["PROCESSANDO", "PENDENTE", "AUTORIZADA", "INDETERMINADA"]),
+        DocumentoFiscal.status.in_(STATUS_DOCUMENTO_VIVO),
     ).all()
     return {doc.origem_id: doc for doc in docs}
 
@@ -195,11 +207,19 @@ def get_documentos_relevantes_por_vendas(db: Session, numeros_venda: list[int]) 
     docs = db.query(DocumentoFiscal).filter(
         DocumentoFiscal.origem_tipo == "VENDA",
         DocumentoFiscal.origem_id.in_(numeros_venda),
-        DocumentoFiscal.status.in_(["PROCESSANDO", "PENDENTE", "AUTORIZADA", "INDETERMINADA", "REJEITADA", "DENEGADA"]),
+        DocumentoFiscal.status.in_([
+            "PROCESSANDO", "PENDENTE", "AUTORIZADA", "INDETERMINADA",
+            "REJEITADA", "DENEGADA", "NAO_TRANSMITIDA",
+        ]),
     ).all()
-    # Prioridade: AUTORIZADA > PROCESSANDO/PENDENTE > REJEITADA/DENEGADA
+    # Esta lista é para EXIBIR, não para bloquear — por isso inclui os desfechos
+    # que não trancam a venda. NAO_TRANSMITIDA entra com a prioridade mais
+    # baixa: se a venda tem qualquer outro documento, é o outro que interessa.
     resultado = {}
-    prioridade = {"AUTORIZADA": 0, "INDETERMINADA": 1, "PROCESSANDO": 2, "PENDENTE": 3, "REJEITADA": 4, "DENEGADA": 5}
+    prioridade = {
+        "AUTORIZADA": 0, "INDETERMINADA": 1, "PROCESSANDO": 2, "PENDENTE": 3,
+        "REJEITADA": 4, "DENEGADA": 5, "NAO_TRANSMITIDA": 6,
+    }
     for doc in docs:
         existente = resultado.get(doc.origem_id)
         if not existente or prioridade.get(doc.status, 99) < prioridade.get(existente.status, 99):

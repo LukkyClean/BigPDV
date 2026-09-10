@@ -7,7 +7,13 @@ import logging
 import httpx
 from typing import Optional
 
-from .client import EmissaoResultado, EnvioCertificadoResultado
+from .client import (
+    CODIGO_NOTA_INEXISTENTE,
+    EmissaoResultado,
+    EnvioCertificadoResultado,
+    RESULTADO_NAO_ENCONTRADO,
+    RESULTADO_NAO_TRANSMITIDO,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +138,13 @@ class FiscalClientStartBig:
 
         return {
             "status": response_data.get("status", "erro"),
+            # O status CRU da emissora, ao lado do normalizado.
+            #
+            # `denegado` e `erro_autorizacao` viram os dois "erro" no campo
+            # acima, e sao coisas diferentes: denegada e decisao da SEFAZ sobre
+            # o contribuinte, e reenviar nao adianta. Sem isto o ERP nao tem
+            # como separar as duas.
+            "status_focus": response_data.get("status_focus"),
             "chave_acesso": self._primeiro(response_data, "chave_acesso", "chave_nfe"),
             "protocolo": self._primeiro(response_data, "protocolo", "numero_protocolo"),
             "numero": response_data.get("numero"),
@@ -154,6 +167,39 @@ class FiscalClientStartBig:
                 response_data, "valor_tributos", "valor_total_tributos",
             ),
         }
+
+    def _recusa_local(self, resposta) -> EmissaoResultado:
+        """Recusa que aconteceu ANTES de a nota chegar na SEFAZ.
+
+        Um 4xx da plataforma -- Zod, cota, CNPJ divergente, schema recusado pela
+        Focus -- significa que nada foi transmitido. Isso NAO e rejeicao: a
+        SEFAZ nao viu a nota, nao ha protocolo, nao ha codigo de rejeicao e o
+        numero reservado nao foi queimado.
+
+        O codigo antigo devolvia `{"status": "erro"}` para este caso, e `erro`
+        vira REJEITADA em `_aplicar_resultado`. Era assim que uma nota que nunca
+        saiu do predio virava "rejeitada pela SEFAZ" na tela -- misturada, na
+        mesma lista, com as que de fato foram recusadas la.
+
+        O discriminador e o `codigo_sefaz`: se a SEFAZ respondeu, existe numero.
+        Quando ele vier, respeitamos o que a resposta diz e nao chutamos.
+        """
+        try:
+            resultado = self._parse_response(resposta.json())
+        except Exception:
+            return {
+                "status": RESULTADO_NAO_TRANSMITIDO,
+                "mensagem_sefaz": (
+                    f"A plataforma recusou a emissao (HTTP {resposta.status_code}) "
+                    f"antes de enviar a SEFAZ."
+                ),
+            }
+
+        if resultado.get("codigo_sefaz") is not None:
+            return resultado
+
+        resultado["status"] = RESULTADO_NAO_TRANSMITIDO
+        return resultado
 
     def emitir_nfe(
         self, ref: str, payload: dict, idempotency_key: Optional[str] = None
@@ -181,17 +227,9 @@ class FiscalClientStartBig:
                     f"Servidor respondeu {exc.response.status_code} ao emitir."
                 ) from exc
             # 4xx: recusa ANTES de transmitir (CNPJ divergente, sem config,
-            # rota inexistente). Nada foi para a SEFAZ.
-            try:
-                return self._parse_response(exc.response.json())
-            except Exception:
-                return {
-                    "status": "erro",
-                    "mensagem_sefaz": (
-                        f"A API recusou a emissão (HTTP {exc.response.status_code}) "
-                        f"antes de enviar à SEFAZ."
-                    ),
-                }
+            # rota inexistente). Nada foi para a SEFAZ -- e por isso NAO e
+            # rejeicao. Ver `_recusa_local`.
+            return self._recusa_local(exc.response)
         except (httpx.TimeoutException, httpx.TransportError) as exc:
             # Sem resposta: a nota PODE estar autorizada. Ver EmissaoIncertaError.
             logger.error("[FISCAL] Sem resposta ao emitir NF-e: %s", exc)
@@ -225,16 +263,10 @@ class FiscalClientStartBig:
                 raise EmissaoIncertaError(
                     f"Servidor respondeu {exc.response.status_code} ao emitir NFC-e."
                 ) from exc
-            try:
-                return self._parse_response(exc.response.json())
-            except Exception:
-                return {
-                    "status": "erro",
-                    "mensagem_sefaz": (
-                        f"A API recusou a emissão (HTTP {exc.response.status_code}) "
-                        f"antes de enviar à SEFAZ."
-                    ),
-                }
+            # 4xx: recusa ANTES de transmitir (CNPJ divergente, sem config,
+            # rota inexistente). Nada foi para a SEFAZ -- e por isso NAO e
+            # rejeicao. Ver `_recusa_local`.
+            return self._recusa_local(exc.response)
         except (httpx.TimeoutException, httpx.TransportError) as exc:
             logger.error("[FISCAL] Sem resposta ao emitir NFC-e: %s", exc)
             raise EmissaoIncertaError(str(exc)) from exc
@@ -380,6 +412,28 @@ class FiscalClientStartBig:
                 return self._parse_response(response.json())
         except httpx.HTTPStatusError as exc:
             logger.error("[FISCAL] Erro HTTP ao consultar NF-e: %s", exc.response.status_code)
+            if exc.response.status_code == 404:
+                # Desfecho PROPRIO, nao "erro desconhecido" -- e, sobretudo,
+                # nao rejeicao.
+                #
+                # Tres situacoes chegam aqui como o mesmo 404: a emissora
+                # dizendo "essa ref nao existe", e a plataforma dizendo
+                # "licenca nao encontrada" ou "empresa sem configuracao
+                # fiscal". So a primeira afirma algo sobre a NOTA. O `codigo`
+                # do corpo e o que separa as tres; quem decide e
+                # `_aplicar_resultado`.
+                corpo = {}
+                try:
+                    corpo = exc.response.json() or {}
+                except Exception:
+                    pass
+                return {
+                    "status": RESULTADO_NAO_ENCONTRADO,
+                    "codigo": corpo.get("codigo"),
+                    "mensagem_sefaz": corpo.get("message") or corpo.get("mensagem") or (
+                        "Esta nota nao consta na emissora."
+                    ),
+                }
             try:
                 return self._parse_response(exc.response.json())
             except Exception:

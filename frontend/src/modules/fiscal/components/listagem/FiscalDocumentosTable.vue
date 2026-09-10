@@ -17,7 +17,7 @@ import type { ApiError } from '@/shared/types/axios.types';
 import { useFiscalDocumentosQuery } from '../../composables/useFiscalDocumentosQuery';
 import { useFiscalConsultarMutation } from '../../composables/useFiscalConsultarMutation';
 import { fiscalService } from '../../services/fiscal.service';
-import { fiscalKeys, STATUS_COLORS, ORIGEM_LABELS } from '../../constants/fiscal.constants';
+import { fiscalKeys, STATUS_COLORS, STATUS_LABELS, ORIGEM_LABELS } from '../../constants/fiscal.constants';
 import { abrirArquivo } from '../../utils/abrirArquivo';
 import FiscalCancelarModal from '../detalhes/FiscalCancelarModal.vue';
 import type { DocumentoFiscalFilters, DocumentoFiscalStatus, DocumentoFiscalTipo } from '../../types/fiscal.types';
@@ -73,6 +73,8 @@ const statusFilterConfig: Record<string, { label: string; class: string; color: 
   REJEITADA: { label: 'Rejeitadas', class: '', color: 'bg-red-400' },
   CANCELADA: { label: 'Canceladas', class: '', color: 'bg-zinc-400' },
   DENEGADA: { label: 'Denegadas', class: '', color: 'bg-red-400' },
+  INDETERMINADA: { label: 'Sem retorno', class: '', color: 'bg-orange-400' },
+  NAO_TRANSMITIDA: { label: 'Nao transmitidas', class: '', color: 'bg-slate-400' },
 };
 
 const tipoFilterConfig: Record<string, { label: string; class: string; color: string }> = {
@@ -84,7 +86,11 @@ const tipoFilterConfig: Record<string, { label: string; class: string; color: st
 const reemitirMutation = useMutation({
   mutationFn: (id: number) => fiscalService.reemitirDocumento(id),
   onSuccess: () => {
-    toast.success('Documento reenviado para emissão.');
+    // A frase era 'Documento reenviado para emissão.' e NADA era enviado:
+    // `reemitir_documento` cria a linha nova e nao transmite. O operador saia
+    // daqui convencido de que a nota tinha ido, e so descobria o contrario
+    // quando alguem perguntava pela nota — no lugar errado, dias depois.
+    toast.success('Nova tentativa criada. Emita para transmitir — nada foi enviado ainda.');
     queryClient.invalidateQueries({ queryKey: fiscalKeys.documentos() });
     queryClient.invalidateQueries({ queryKey: fiscalKeys.resumo() });
   },
@@ -293,7 +299,7 @@ async function reemitirLote() {
                 statusFilterConfig[doc.status]?.class || statusClasses(doc.status)
               ]"
             >
-              {{ statusFilterConfig[doc.status]?.label || doc.status }}
+              {{ STATUS_LABELS[doc.status] ?? doc.status }}
             </span>
           </td>
           <td class="px-4 md:px-6 py-3 md:py-4 text-xs md:text-sm font-medium text-zinc-600 group-hover:text-brand-primary transition-colors whitespace-nowrap">
