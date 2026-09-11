@@ -8,7 +8,7 @@ from app.db.models.cliente import Cliente, ClientePF, ClientePJ
 from app.db.models.venda import Venda
 from app.db.models.ordem_servico import OrdemServico
 
-from .helpers import criar_pendencia as _p, get_nome_cliente
+from .helpers import criar_pendencia as _p, dias_para_vencer_certificado, get_nome_cliente
 from app.db.crud import fiscal as crud
 
 from app.services.fiscal.tax_engine.constants import (
@@ -92,9 +92,18 @@ def verificar_emitente(db: Session, empresa_id: int) -> list[PendenciaFiscal]:
     fiscal_settings = crud.get_fiscal_settings(db, empresa_id)
     if not fiscal_settings:
         pendencias.append(_p("emitente", "fiscal_settings", "Configurações fiscais não cadastradas."))
-    # Certificado digital será validado quando a integração com a API real estiver pronta.
-    # elif not (fiscal_settings.certificado_digital_path or fiscal_settings.certificado_thumbprint):
-    #     pendencias.append(_p("emitente", "certificado", "Certificado digital não configurado."))
+    else:
+        # Só o VENCIDO barra. "Vence em 20 dias" é aviso do painel, não recusa:
+        # a nota ainda sai. E a ausência de certificado não barra porque ele
+        # vive na plataforma -- o ERP só sabe a validade do que passou por aqui.
+        dias = dias_para_vencer_certificado(fiscal_settings.certificado_validade)
+        if dias is not None and dias < 0:
+            pendencias.append(_p(
+                "emitente", "certificado",
+                f"Certificado digital vencido em "
+                f"{fiscal_settings.certificado_validade.strftime('%d/%m/%Y')}. "
+                f"Envie o certificado novo em Centro Fiscal > Configurações.",
+            ))
 
     return pendencias
 

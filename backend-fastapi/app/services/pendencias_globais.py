@@ -14,6 +14,8 @@ from app.db.models.servico_fiscal import ServicoFiscal
 from app.db.models.forma_pagamento import FormaPagamento
 from app.schemas.documento_fiscal import PendenciaGlobalItem, PendenciasGlobais
 from app.services.verificacao_fiscal import _verificar_emitente
+from app.services.fiscal.helpers import aviso_certificado, dias_para_vencer_certificado
+from app.db.crud import fiscal as fiscal_crud
 
 
 def obter_pendencias_globais(db: Session, empresa_id: int) -> PendenciasGlobais:
@@ -21,6 +23,10 @@ def obter_pendencias_globais(db: Session, empresa_id: int) -> PendenciasGlobais:
     pendencias_emitente = _verificar_emitente(db, empresa_id)
     emitente_completo = len(pendencias_emitente) == 0
     emitente_msgs = [p.mensagem for p in pendencias_emitente]
+
+    # 1b. Certificado vencendo -- aviso com antecedencia, nao pendencia
+    fs = fiscal_crud.get_fiscal_settings(db, empresa_id)
+    validade = fs.certificado_validade if fs else None
 
     # 2. Produtos ativos sem NCM
     produtos_sem_ncm_rows = (
@@ -71,6 +77,8 @@ def obter_pendencias_globais(db: Session, empresa_id: int) -> PendenciasGlobais:
     return PendenciasGlobais(
         emitente_completo=emitente_completo,
         emitente_pendencias=emitente_msgs,
+        certificado_aviso=aviso_certificado(validade),
+        certificado_dias_restantes=dias_para_vencer_certificado(validade),
         produtos_sem_ncm=produtos_sem_ncm,
         servicos_sem_lc116=servicos_sem_lc116,
         pagamentos_sem_sefaz=pagamentos_sem_sefaz,

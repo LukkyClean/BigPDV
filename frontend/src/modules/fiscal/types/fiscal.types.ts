@@ -124,6 +124,10 @@ export interface DiagnosticoPlataforma {
 export interface PendenciasGlobais {
   emitente_completo: boolean;
   emitente_pendencias: string[];
+  /** Aviso (não pendência): certificado vence em até 30 dias, ou já venceu. */
+  certificado_aviso?: string | null;
+  /** Negativo = vencido; null = sem validade conhecida. */
+  certificado_dias_restantes?: number | null;
   produtos_sem_ncm: PendenciaGlobalItem[];
   servicos_sem_lc116: PendenciaGlobalItem[];
   pagamentos_sem_sefaz: PendenciaGlobalItem[];
@@ -168,6 +172,9 @@ export interface FiscalConfiguracao {
   certificado_valido: boolean;
   certificado_status?: string | null;
   certificado_cnpj?: string | null;
+  certificado_validade?: string | null;
+  /** Negativo = vencido; null = sem validade conhecida. */
+  certificado_dias_restantes?: number | null;
   serie_nfe?: number;
   ultimo_numero_nfe?: number;
   serie_nfce?: number;

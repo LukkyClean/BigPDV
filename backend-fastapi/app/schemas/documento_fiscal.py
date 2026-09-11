@@ -104,6 +104,10 @@ class PendenciasGlobais(BaseModel):
 
     emitente_completo: bool
     emitente_pendencias: list[str]
+    # Aviso (nao pendencia): o certificado vence em ate 30 dias, ou ja venceu.
+    # Vencido tambem entra em `emitente_pendencias`, porque ai barra o gate.
+    certificado_aviso: Optional[str] = None
+    certificado_dias_restantes: Optional[int] = None
     produtos_sem_ncm: list[PendenciaGlobalItem]
     servicos_sem_lc116: list[PendenciaGlobalItem]
     pagamentos_sem_sefaz: list[PendenciaGlobalItem]

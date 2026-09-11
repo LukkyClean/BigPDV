@@ -2,7 +2,8 @@
 import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useQueryClient } from '@tanstack/vue-query';
-import { Shield, Building, MapPin, CheckCircle, AlertCircle, FileCheck, ArrowLeft } from 'lucide-vue-next';
+import { Shield, Building, MapPin, CheckCircle, AlertCircle, FileCheck, ArrowLeft, CalendarClock } from 'lucide-vue-next';
+import { formatData } from '@/shared/utils/date.utils';
 import PageReview from '@/shared/components/layout/PageReview/PageReview.vue';
 import LucideIcon from '@/shared/components/icons/LucideIcon.vue';
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
@@ -17,6 +18,14 @@ const showCertificadoModal = ref(false);
 const showEstadualModal = ref(false);
 
 const { data: config, isLoading } = useFiscalConfiguracaoQuery();
+
+// Mesmo número que o backend usa no gate e no painel (helpers.py): negativo é
+// vencido, até 30 é aviso. Sem validade conhecida, nem um nem outro.
+const certificadoVencido = computed(() => (config.value?.certificado_dias_restantes ?? 1) < 0);
+const certificadoVencendo = computed(() => {
+  const dias = config.value?.certificado_dias_restantes;
+  return dias != null && dias >= 0 && dias <= 30;
+});
 const queryClient = useQueryClient();
 const router = useRouter();
 
@@ -102,8 +111,26 @@ function aoEnviarCertificado() {
                 <p class="text-xs text-zinc-500">Autenticação com a SEFAZ via Focus NFe</p>
               </div>
             </div>
+            <!-- Vencido / vencendo vem ANTES de "Conectado": um certificado
+                 vencido continua "conectado" na emissora e não emite nada. -->
             <span
-              v-if="config?.certificado_configurado"
+              v-if="config?.certificado_configurado && certificadoVencido"
+              class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-200"
+              data-chip-certificado="vencido"
+            >
+              <LucideIcon :icon="AlertCircle" class="w-3.5 h-3.5" />
+              Vencido
+            </span>
+            <span
+              v-else-if="config?.certificado_configurado && certificadoVencendo"
+              class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200"
+              data-chip-certificado="vencendo"
+            >
+              <LucideIcon :icon="AlertCircle" class="w-3.5 h-3.5" />
+              Vence em {{ config?.certificado_dias_restantes }} dia{{ config?.certificado_dias_restantes === 1 ? '' : 's' }}
+            </span>
+            <span
+              v-else-if="config?.certificado_configurado"
               class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200"
             >
               <LucideIcon :icon="CheckCircle" class="w-3.5 h-3.5" />
@@ -142,9 +169,34 @@ function aoEnviarCertificado() {
             Fale com o suporte.
           </div>
 
-          <div v-if="config?.certificado_cnpj" class="mb-6 p-3 rounded-xl bg-zinc-50 border border-zinc-100 text-xs text-zinc-600 flex items-center gap-2">
-            <LucideIcon :icon="FileCheck" class="w-4 h-4 text-brand-primary shrink-0" />
-            <span>CNPJ Vinculado: <strong>{{ config.certificado_cnpj }}</strong></span>
+          <div
+            v-if="certificadoVencido || certificadoVencendo"
+            :class="[
+              'mb-6 p-3 rounded-xl border text-xs leading-relaxed',
+              certificadoVencido ? 'bg-red-50 border-red-200 text-red-800' : 'bg-amber-50 border-amber-200 text-amber-800',
+            ]"
+          >
+            <template v-if="certificadoVencido">
+              O certificado <strong>venceu em {{ formatData(config?.certificado_validade) }}</strong>.
+              A SEFAZ recusa toda emissão até um novo ser enviado — renove com a
+              certificadora e faça o upload aqui.
+            </template>
+            <template v-else>
+              O certificado <strong>vence em {{ formatData(config?.certificado_validade) }}</strong>.
+              Renove com a certificadora antes disso e envie o novo por aqui; a
+              emissão para no dia do vencimento.
+            </template>
+          </div>
+
+          <div v-if="config?.certificado_cnpj || config?.certificado_validade" class="mb-6 p-3 rounded-xl bg-zinc-50 border border-zinc-100 text-xs text-zinc-600 flex flex-wrap items-center gap-x-4 gap-y-1">
+            <span v-if="config?.certificado_cnpj" class="inline-flex items-center gap-2">
+              <LucideIcon :icon="FileCheck" class="w-4 h-4 text-brand-primary shrink-0" />
+              CNPJ Vinculado: <strong>{{ config.certificado_cnpj }}</strong>
+            </span>
+            <span v-if="config?.certificado_validade" class="inline-flex items-center gap-2">
+              <LucideIcon :icon="CalendarClock" class="w-4 h-4 text-brand-primary shrink-0" />
+              Válido até: <strong>{{ formatData(config.certificado_validade) }}</strong>
+            </span>
           </div>
         </div>
 

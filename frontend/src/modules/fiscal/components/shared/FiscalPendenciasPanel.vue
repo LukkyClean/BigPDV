@@ -11,6 +11,7 @@ import {
   CheckCircle,
   AlertOctagon,
   ExternalLink,
+  ShieldAlert,
   ShieldCheck,
   Sparkles,
 } from 'lucide-vue-next';
@@ -87,9 +88,17 @@ const healthTextColor = computed(() => {
   return 'text-red-600';
 });
 
+const certificadoVencido = computed(
+  () => (pendencias.value?.certificado_dias_restantes ?? 1) < 0,
+);
+
 // --- Deep Linking (Recomendação 1) ---
 function navegarEmpresa() {
   router.push({ name: 'enterprise' });
+}
+
+function navegarConfiguracoesFiscais() {
+  router.push({ name: 'fiscal' });
 }
 
 function navegarServico(_servicoId: number) {
@@ -187,6 +196,33 @@ const secoes = computed<Secao[]>(() => [
         <p class="text-[10px] text-zinc-400 mt-1">
           {{ resolvedChecks }} de {{ totalChecks }} categorias resolvidas
         </p>
+      </div>
+    </div>
+
+    <!-- Certificado vencendo: fica FORA da cadeia das seções de propósito.
+         Não é pendência de cadastro (a nota ainda sai), então não entra na
+         conta nem na barra; mas precisa aparecer mesmo quando está "Tudo
+         pronto", porque é exatamente nesse estado que ninguém olha a tela. -->
+    <div
+      v-if="!isLoading && pendencias?.certificado_aviso"
+      :class="[
+        'mx-4 mt-3 md:mx-6 flex items-start gap-2 rounded-lg border p-2.5',
+        certificadoVencido ? 'bg-red-50 border-red-100' : 'bg-amber-50 border-amber-200',
+      ]"
+      data-aviso-certificado
+    >
+      <ShieldAlert :size="14" :class="['mt-0.5 shrink-0', certificadoVencido ? 'text-red-500' : 'text-amber-600']" />
+      <div class="min-w-0">
+        <p :class="['text-[11px] leading-relaxed', certificadoVencido ? 'text-red-700' : 'text-amber-800']">
+          {{ pendencias.certificado_aviso }}
+        </p>
+        <button
+          @click="navegarConfiguracoesFiscais"
+          class="mt-1 inline-flex items-center gap-1.5 text-xs font-semibold text-brand-primary hover:underline cursor-pointer"
+        >
+          <ExternalLink :size="12" />
+          Enviar certificado novo
+        </button>
       </div>
     </div>
 

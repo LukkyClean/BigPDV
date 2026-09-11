@@ -88,6 +88,9 @@ class FiscalConfiguracao(BaseModel):
     certificado_valido: bool
     certificado_status: Optional[str] = None
     certificado_cnpj: Optional[str] = None
+    certificado_validade: Optional[datetime] = None
+    # Negativo = vencido. None = sem certificado ou sem validade conhecida.
+    certificado_dias_restantes: Optional[int] = None
     serie_nfe: Optional[int] = 1
     ultimo_numero_nfe: Optional[int] = 0
     serie_nfce: Optional[int] = 1

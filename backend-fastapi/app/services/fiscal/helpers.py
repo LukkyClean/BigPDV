@@ -1,8 +1,41 @@
 # app/services/fiscal/helpers.py
+from datetime import datetime, timezone
 from typing import Optional
 
 from app.schemas.verificacao_fiscal import PendenciaFiscal
 from app.db.models.cliente import Cliente, ClientePF, ClientePJ
+
+
+# ---------------------------------------------------------------------------
+# Validade do certificado A1
+# ---------------------------------------------------------------------------
+# Um certificado vencido para a loja inteira, e a SEFAZ nao avisa antes: a
+# primeira noticia e uma rejeicao. Quem conta os dias e este helper, para o
+# gate, o painel de pendencias e o card lerem o MESMO numero.
+DIAS_AVISO_CERTIFICADO = 30
+
+
+def dias_para_vencer_certificado(validade: Optional[datetime]) -> Optional[int]:
+    """Dias inteiros ate a validade (negativo = vencido); None se nao ha validade."""
+    if validade is None:
+        return None
+    agora = datetime.now(timezone.utc)
+    if validade.tzinfo is None:
+        validade = validade.replace(tzinfo=timezone.utc)
+    return (validade.date() - agora.date()).days
+
+
+def aviso_certificado(validade: Optional[datetime]) -> Optional[str]:
+    """Frase para a tela quando o certificado esta a 30 dias ou menos do fim."""
+    dias = dias_para_vencer_certificado(validade)
+    if dias is None or dias > DIAS_AVISO_CERTIFICADO:
+        return None
+    data = validade.strftime("%d/%m/%Y")
+    if dias < 0:
+        return f"Certificado digital vencido em {data}. A SEFAZ recusa toda emissao ate um novo ser enviado."
+    if dias == 0:
+        return f"Certificado digital vence HOJE ({data}). Renove e envie o novo antes de emitir."
+    return f"Certificado digital vence em {dias} dia{'s' if dias != 1 else ''} ({data}). Renove e envie o novo em Centro Fiscal > Configuracoes."
 
 
 # ---------------------------------------------------------------------------

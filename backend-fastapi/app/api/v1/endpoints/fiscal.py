@@ -46,7 +46,7 @@ from app.schemas.emissao_fiscal import (
 )
 from app.services import documento_fiscal as documento_fiscal_service
 from app.services import pendencias_globais as pendencias_globais_service
-from app.services.fiscal.helpers import mascarar_csc, obter_csc_token
+from app.services.fiscal.helpers import dias_para_vencer_certificado, mascarar_csc, obter_csc_token
 from app.services.fiscal.payload_builder import _so_digitos
 from app.core.modulos import requer_modulo
 
@@ -501,6 +501,8 @@ def obter_configuracao(
         certificado_valido=cert_valido,
         certificado_status=fs.certificado_status if fs else None,
         certificado_cnpj=fs.certificado_cnpj if fs else None,
+        certificado_validade=fs.certificado_validade if fs else None,
+        certificado_dias_restantes=dias_para_vencer_certificado(fs.certificado_validade) if fs else None,
         serie_nfe=fs.serie_nfe if fs else 1,
         ultimo_numero_nfe=fs.ultimo_numero_nfe if fs else 0,
         serie_nfce=fs.serie_nfce if fs else 1,
@@ -611,6 +613,8 @@ def atualizar_configuracao(
         certificado_valido=cert_valido,
         certificado_status=fs.certificado_status if fs else None,
         certificado_cnpj=fs.certificado_cnpj if fs else None,
+        certificado_validade=fs.certificado_validade if fs else None,
+        certificado_dias_restantes=dias_para_vencer_certificado(fs.certificado_validade) if fs else None,
         serie_nfe=fs.serie_nfe if fs else 1,
         ultimo_numero_nfe=fs.ultimo_numero_nfe if fs else 0,
         serie_nfce=fs.serie_nfce if fs else 1,
