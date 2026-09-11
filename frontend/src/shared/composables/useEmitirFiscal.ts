@@ -10,7 +10,7 @@ import {
   MENSAGEM_EMISSAO_INCERTA,
 } from '@/modules/fiscal/composables/useEmissaoIncerta';
 import type { PendenciaFiscal } from '@/shared/types/fiscal.types';
-import type { DocumentoFiscalRead } from '@/modules/fiscal/types/fiscal.types';
+import type { DocumentoFiscalRead, EmissaoResponse } from '@/modules/fiscal/types/fiscal.types';
 import type { VendaNotaFiscalUpdate } from '@/modules/sales/schemas/sale.schema';
 import type { ApiError } from '@/shared/types/axios.types';
 import type { AxiosError } from 'axios';
@@ -70,40 +70,64 @@ export function useEmitirFiscal() {
   }
 
   /**
-   * @deprecated SEM CHAMADORES desde 05/09/2026.
+   * Emite a NF-e (modelo 55) de uma venda finalizada, a partir do próprio
+   * modal da venda.
    *
-   * Vai em `POST /vendas/{id}/emitir-fiscal`, que hoje é um stub: responde 422
-   * (pendências) ou 501 (não implementado) e NUNCA emite. Os dois botões que a
-   * usavam — SaleTable e SaleModal/NotaFiscalSection — passaram a levar o
-   * usuário ao Centro Fiscal, onde a emissão de NF-e realmente acontece, com
-   * preview e confirmação.
+   * Vai no MESMO `POST /fiscal/emitir/nfe` do Centro Fiscal. Até 11/09/2026
+   * batia em `/vendas/{id}/emitir-fiscal`, um stub que respondia 422 ou 501 e
+   * nunca emitia -- o botão "Emitir NF-e" do modal da venda existia e não
+   * emitia nada. A docstring dizia que a função não tinha chamadores; tinha.
    *
-   * Mantida porque o endpoint existe, está gated e testado: se a integração
-   * direta for implementada, este é o ponto de religação. Se a decisão for
-   * abandoná-la, remova esta função junto com `saleService.emitirFiscal`.
+   * Devolve o desfecho para quem chamou decidir a tela; o toast já foi dado.
    */
-  async function emitirVenda(vendaId: number) {
+  async function emitirVenda(vendaId: number): Promise<EmissaoResponse | null> {
     isVerificando.value = true;
     try {
-      const resultado = await saleService.verificarFiscal(vendaId);
+      const resultado = await saleService.verificarFiscal(vendaId, 'nfe');
       if (!resultado.completo) {
         pendencias.value = resultado.pendencias;
         pendenciasModalOpen.value = true;
-        return;
+        return null;
       }
       try {
-        await saleService.emitirFiscal(vendaId);
-        toast.success('Nota fiscal emitida com sucesso!');
+        const emissao = await fiscalService.emitirNfe({ venda_id: vendaId });
+        informarDesfecho('NF-e', emissao);
+        return emissao;
       } catch (err) {
+        if (ehEmissaoIncerta(err)) {
+          await handleEmissaoIncerta(vendaId);
+          return null;
+        }
         handleErroEmissao(err);
+        return null;
       }
     } catch (err) {
       toast.error(
         'Não conseguimos conferir os dados desta venda',
         getErrorMessage(err as AxiosError<ApiError>),
       );
+      return null;
     } finally {
       isVerificando.value = false;
+    }
+  }
+
+  /** Um toast por desfecho -- a NF-e é assíncrona na SEFAZ, então PROCESSANDO é normal. */
+  function informarDesfecho(rotulo: string, emissao: EmissaoResponse) {
+    switch (emissao.status) {
+      case 'AUTORIZADA':
+        toast.success(`${rotulo} autorizada!`);
+        break;
+      case 'PROCESSANDO':
+        toast.info(`${rotulo} enviada`, 'Aguardando a resposta da SEFAZ. Acompanhe no Centro Fiscal.');
+        break;
+      default:
+        // REJEITADA e INDETERMINADA precisam de tratamento humano, e a
+        // mensagem da SEFAZ é o que diz o que fazer.
+        toast.warning(
+          `${rotulo} ${emissao.status.toLowerCase()}`,
+          emissao.mensagem ?? 'Consulte o Centro Fiscal.',
+        );
     }
   }
 

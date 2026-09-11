@@ -40,6 +40,7 @@ from .payload_builder import (
 from .tax_engine import calcular_impostos
 from .tax_engine.resolver import resolver_aliquotas_venda
 from .snapshot import gravar_snapshot
+from .espelho_nota import espelhar_na_nota_da_venda
 from .tributos_xml import extrair_valor_tributos
 
 logger = logging.getLogger(__name__)
@@ -457,6 +458,7 @@ def emitir_nfe_venda(
     #    causa Rejeição 204 e trava a sequência de vez. Buraco se resolve com
     #    inutilização; duplicidade, não.
 
+    espelhar_na_nota_da_venda(db, doc)
     return doc
 
 
@@ -717,16 +719,7 @@ def emitir_nfce_venda(
     _completar_tributos_pelo_xml(doc, client)
 
     # Espelha na nota da venda o que a tela do PDV lê para imprimir o cupom.
-    nota = venda.nota_fiscal
-    if nota is not None:
-        nota.status_nota = doc.status
-        nota.chave_acesso = doc.chave_acesso
-        nota.numero_nota = doc.numero_documento
-        nota.serie = doc.serie
-        nota.protocolo_autorizacao = doc.protocolo_autorizacao
-        nota.data_autorizacao = doc.data_autorizacao
-        nota.qrcode = doc.qrcode
-        nota.mensagem_sefaz = doc.mensagem_sefaz
+    espelhar_na_nota_da_venda(db, doc)
 
     # O contador NÃO é revertido — ver a nota em `emitir_nfe_venda`.
     return doc
@@ -755,6 +748,7 @@ def consultar_documento(db: Session, documento_id: int, empresa_id: int) -> Docu
     try:
         resultado = client.consultar_nfe(doc.ref_api, doc.tipo_documento)
         _aplicar_resultado(doc, resultado)
+        espelhar_na_nota_da_venda(db, doc)
     except NotImplementedError:
         pass
     except Exception as e:
@@ -898,6 +892,7 @@ def cancelar_documento(
             detail=f"Erro de comunicação ao cancelar: {str(e)[:400]}",
         )
 
+    espelhar_na_nota_da_venda(db, doc)
     return doc
 
 

@@ -16,7 +16,8 @@ import SaleCard from './SaleModal/SaleCard.vue';
 import SaleItemsTable from './SaleModal/SaleItemsTable.vue';
 import SaleSummary from './SaleModal/SaleSummary.vue';
 import ItemModal from './SaleModal/ItemModal.vue';
-import FinishSaleModal from './SaleModal/FinishSaleModal.vue';
+import FinishSaleModal, { type FiscalFechamento } from './SaleModal/FinishSaleModal.vue';
+import PendenciasFiscaisModal from '@/shared/components/commons/PendenciasFiscaisModal.vue';
 import AddProductModal from './SaleModal/AddProductModal.vue';
 import CancelSaleModal from './SaleModal/CancelSaleModal.vue';
 import GerenteAprovacaoModal from '@/shared/components/commons/GerenteAprovacaoModal/GerenteAprovacaoModal.vue';
@@ -32,6 +33,9 @@ import { useUpdateSaleMutation } from '../composables/mutates/useUpdateSaleMutat
 import { useCustomerSearchModal } from '../composables/flows/useCustomerSearchModal';
 import { useSaleShortcuts } from '../composables/useSaleShortcuts';
 import { useSalePrintFlow } from '../composables/flows/useSalePrintFlow';
+import { useNfcePrintFlow } from '../composables/flows/useNfcePrintFlow';
+import { useEmitirFiscal } from '@/shared/composables/useEmitirFiscal';
+import { recursoDisponivel } from '@/shared/config/planos';
 import { useSaleDetailsForm } from '../composables/flows/useSaleDetailsForm';
 import { useAddProductModal } from '../composables/flows/useAddProductModal';
 import type { SaleRead } from '../schemas/sale.schema';
@@ -201,13 +205,52 @@ watch(saleModalIsOpen, (isOpen) => {
   if (isOpen) focarBuscaDeProduto();
 }, { immediate: true });
 
+const { emitirNFCeVenda, pendencias, pendenciasModalOpen } = useEmitirFiscal();
+const { imprimirDanfeNfce } = useNfcePrintFlow(resolvePaymentMethodName);
+
 /**
  * Emenda só depois da impressão, porque é o `afterPrint` que roda quando o
  * cupom saiu — trocar a venda da tela antes disso mexeria no que está sendo
  * impresso.
+ *
+ * Com NFC-e existe um passo ENTRE finalizar e imprimir: a SEFAZ. A venda já
+ * está paga quando chega aqui, então nenhum desfecho fiscal a desfaz -- o que
+ * muda é o papel que sai:
+ *
+ *   autorizada        -> cupom fiscal (DANFE NFC-e com QR Code), e nada mais;
+ *   qualquer outro    -> comprovante gerencial marcado como NAO FISCAL, e o
+ *                        operador resolve pelo Centro Fiscal (pendência de
+ *                        cadastro, rejeição, ou emissão sem resposta).
+ *
+ * Nunca saem os dois, e o Modo Balcão só emenda a próxima venda depois do
+ * desfecho -- `encerrarAtendimento` é chamado no fim de cada caminho, nunca
+ * antes.
  */
-function handleFinalized(finishedSale: SaleRead) {
-  imprimirAposFinalizar(finishedSale, encerrarAtendimento);
+async function handleFinalized(finishedSale: SaleRead, fiscal?: FiscalFechamento) {
+  if (!fiscal?.emitir) {
+    // Numa loja COM módulo fiscal, o comprovante gerencial sai marcado como
+    // não fiscal -- senão o cliente leva um papel que parece cupom e não é.
+    // Sem o módulo, nada muda: é o comprovante de sempre.
+    imprimirAposFinalizar(finishedSale, encerrarAtendimento, {
+      naoFiscal: recursoDisponivel('nfe'),
+    });
+    return;
+  }
+
+  const documento = await emitirNFCeVenda(
+    finishedSale.id, fiscal.documento, fiscal.indicadorPresenca,
+  );
+
+  if (documento) {
+    await imprimirDanfeNfce(finishedSale, documento, {
+      documentoConsumidor: fiscal.documento,
+      abrirGaveta: true,
+    });
+    encerrarAtendimento();
+    return;
+  }
+
+  imprimirAposFinalizar(finishedSale, encerrarAtendimento, { naoFiscal: true });
 }
 
 function handleChangeCliente() {
@@ -526,4 +569,15 @@ const saleDisplay = computed(() => {
       :payment-method-resolver="resolvePaymentMethodName"
     />
   </BaseModal>
+
+  <!-- FORA do BaseModal de propósito: ele desmonta os filhos ao fechar, e a
+       venda fecha (e no Modo Balcão a próxima abre) logo depois de a NFC-e
+       não sair. As pendências de cadastro precisam sobreviver a isso -- é o
+       que o operador vai corrigir para emitir depois pelo Centro Fiscal. -->
+  <PendenciasFiscaisModal
+    :is-open="pendenciasModalOpen"
+    :pendencias="pendencias"
+    titulo="NFC-e não emitida — pendências de cadastro"
+    @close="pendenciasModalOpen = false"
+  />
 </template>

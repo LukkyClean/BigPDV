@@ -28,6 +28,7 @@ import BaseDateInput from '@/shared/components/ui/BaseDateInput/BaseDateInput.vu
 import BaseMoneyInput from '@/shared/components/ui/BaseMoneyInput/MoneyInput.vue';
 import BaseSelect from '@/shared/components/ui/BaseSelect/BaseSelect.vue';
 import BaseCheckbox from '@/shared/components/ui/BaseCheckbox/BaseCheckbox.vue';
+import FiscalFechamentoSection from './FiscalFechamentoSection.vue';
 
 import { useConfiguracoesStore } from '@/shared/stores/configuracoes.store';
 import { useBalcaoStore } from '@/shared/stores/balcao.store';
@@ -39,6 +40,7 @@ import {
   JUROS_RESPONSAVEL_OPTIONS,
 } from '@/shared/composables/useJurosPagamento';
 
+import { documentoDoCliente } from '../../schemas/customers.schema';
 import type { SaleRead } from '../../schemas/sale.schema';
 import type { CardFlag } from '../../schemas/paymentSale.schema';
 import type { PaymentFormReadDataType } from '@/shared/schemas/payments/payment.schema';
@@ -47,11 +49,38 @@ const props = defineProps<{
   sale: SaleRead | undefined;
 }>();
 
+/**
+ * O que o caixa decidiu no bloco fiscal. Vai junto com a venda finalizada
+ * porque quem emite é o pai (SaleModal): a NFC-e acontece DEPOIS de a venda
+ * estar paga e ANTES de imprimir — "finalizar" não é "imprimir".
+ */
+export interface FiscalFechamento {
+  emitir: boolean;
+  /** CPF/CNPJ digitado no caixa (só dígitos), quando não veio do cadastro. */
+  documento: string | null;
+  /** indPres da NFC-e: 1 balcão, 4 entrega. */
+  indicadorPresenca: number;
+}
+
 const emit = defineEmits<{
-  finalized: [sale: SaleRead];
+  finalized: [sale: SaleRead, fiscal: FiscalFechamento];
 }>();
 
 const saleTotal = computed(() => props.sale?.total ?? 0);
+
+// ── Bloco fiscal (NFC-e) ─────────────────────────────────────────────────
+// O componente só renderiza quando o recurso 'nfe' está na licença; sem ele
+// `fiscalBloqueado` fica false e `emitirFiscal` false, e este modal se
+// comporta exatamente como antes -- é o que protege as lojas sem módulo.
+const emitirFiscal = ref(false);
+const documentoConsumidor = ref<string | null>(null);
+const indicadorPresenca = ref(1);
+const fiscalBloqueado = ref(false);
+
+const documentoClienteVenda = computed(() => documentoDoCliente(props.sale?.cliente));
+const clienteTemEndereco = computed(
+  () => (props.sale?.cliente?.endereco?.length ?? 0) > 0,
+);
 
 const {
   payments,
@@ -164,7 +193,7 @@ const temPagamentoAPrazo = computed(() =>
 const exigeConfirmacao = computed(() => !modoBalcao.value || temPagamentoAPrazo.value);
 
 const canFinishWithConfirmation = computed(
-  () => canFinish.value && (!exigeConfirmacao.value || confirmacao.value),
+  () => canFinish.value && (!exigeConfirmacao.value || confirmacao.value) && !fiscalBloqueado.value,
 );
 
 const paymentBaseCentavos = computed(() => Math.round(paymentValueReais.value * 100));
@@ -588,7 +617,11 @@ function handleFinish() {
       onSuccess: (finishedSale) => {
         confirmacao.value = false;
         closeFinishModal();
-        emit('finalized', finishedSale);
+        emit('finalized', finishedSale, {
+          emitir: emitirFiscal.value,
+          documento: documentoConsumidor.value,
+          indicadorPresenca: indicadorPresenca.value,
+        });
       },
     },
   );
@@ -718,8 +751,18 @@ function handleFinish() {
 
         </div><!-- fim coluna esquerda -->
 
-        <!-- Coluna direita: Resumo financeiro -->
-        <div class="border border-zinc-200 rounded-xl overflow-hidden flex flex-col">
+        <!-- Coluna direita: bloco fiscal (só com o módulo) + resumo financeiro -->
+        <div class="flex flex-col gap-3 min-h-0">
+        <FiscalFechamentoSection
+          :total-centavos="totalComAcrescimo"
+          :documento-cliente="documentoClienteVenda"
+          :cliente-tem-endereco="clienteTemEndereco"
+          @update:emitir-fiscal="emitirFiscal = $event"
+          @update:documento="documentoConsumidor = $event"
+          @update:indicador-presenca="indicadorPresenca = $event"
+          @update:bloqueado="fiscalBloqueado = $event"
+        />
+        <div class="border border-zinc-200 rounded-xl overflow-hidden flex flex-col flex-1 min-h-0">
           <div class="bg-zinc-100 px-4 py-2 border-b border-zinc-200">
             <p class="text-[10px] font-semibold text-zinc-500 uppercase tracking-wide">Resumo Financeiro</p>
           </div>
@@ -818,6 +861,8 @@ function handleFinish() {
             </div>
           </div>
         </div>
+
+        </div><!-- fim coluna direita -->
 
       </div><!-- fim grid -->
 

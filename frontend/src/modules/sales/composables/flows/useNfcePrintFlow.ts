@@ -24,6 +24,12 @@ interface OpcoesImpressaoNfce {
   documentoConsumidor?: string | null;
   /** Segunda via — imprime o aviso de reimpressão. */
   reimpressao?: boolean;
+  /**
+   * Impressão pós-venda: o pulso da gaveta viaja dentro do cupom, com a MESMA
+   * regra do comprovante gerencial (gaveta ativa + abrir na venda + pagamento
+   * em dinheiro). A segunda via nunca abre a gaveta.
+   */
+  abrirGaveta?: boolean;
 }
 
 export function useNfcePrintFlow(resolverPagamento?: (id: number) => string) {
@@ -61,6 +67,10 @@ export function useNfcePrintFlow(resolverPagamento?: (id: number) => string) {
       const bobina = impressaoStore.config.bobina;
       const logoRaster = await carregarLogoRaster(companyInfo.value.logo, DOTS[bobina]);
 
+      const config = impressaoStore.config;
+      const temDinheiro = (sale.pagamentos ?? []).some((pg) =>
+        (resolverPagamento?.(pg.forma_pagamento_id) ?? '').toLowerCase().includes('dinheiro'),
+      );
       const dados = nfceToEscPos(sale, documento, {
         bobina,
         empresa: companyInfo.value,
@@ -68,6 +78,10 @@ export function useNfcePrintFlow(resolverPagamento?: (id: number) => string) {
         logoRaster,
         documentoConsumidor: opcoes.documentoConsumidor,
         reimpressao: opcoes.reimpressao,
+        abrirGaveta: Boolean(
+          opcoes.abrirGaveta && !opcoes.reimpressao
+          && config.gaveta_ativa && config.abrir_gaveta_na_venda && temDinheiro,
+        ),
       });
 
       return await impressao.imprimirCupom(dados);

@@ -186,6 +186,13 @@ const podeEmitir = computed(() => {
   const statusNota = notaFiscal.value?.status_nota ?? 'PENDENTE';
   return props.saleStatus === 'FINALIZADA' && (statusNota === 'PENDENTE' || !notaFiscal.value);
 });
+
+// A emissão espelha o desfecho em `venda_nota_fiscal` (backend); a tela só
+// precisa reler para o status e o botão acompanharem.
+async function handleEmitir() {
+  await emitirVenda(props.vendaId);
+  queryClient.invalidateQueries({ queryKey: vendaNotaFiscalKeys.detail(props.vendaId) });
+}
 </script>
 
 <template>
@@ -295,7 +302,7 @@ const podeEmitir = computed(() => {
           size="sm"
           class="mt-2 w-full"
           :is-loading="isVerificando"
-          @click="emitirVenda(props.vendaId)"
+          @click="handleEmitir"
         >
           <Send :size="14" class="mr-1.5" />
           Emitir NF-e

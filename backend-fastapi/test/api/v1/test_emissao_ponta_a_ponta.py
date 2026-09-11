@@ -238,6 +238,41 @@ def test_rejeicao_da_sefaz_grava_rejeitada_e_nao_devolve_o_numero(
     assert fs.ultimo_numero_nfe == 11, "o número não volta para o contador depois do disparo"
 
 
+def test_nfe_autorizada_espelha_na_nota_da_venda(client, db_session, header_with_token, venda_pronta, plataforma):
+    """A tela da venda lê `venda_nota_fiscal`, não o livro fiscal. Até 11/09
+    só a NFC-e espelhava: a NF-e emitida deixava a venda em PENDENTE e o botão
+    "Emitir NF-e" continuava na tela com a nota já autorizada."""
+    from app.db.models.venda_nota_fiscal import VendaNotaFiscal
+
+    venda_id, _ = venda_pronta
+    plataforma(AUTORIZADA(11))
+    corpo = _emitir(client, header_with_token, venda_id).json()
+
+    db_session.expire_all()
+    nota = db_session.query(VendaNotaFiscal).filter(VendaNotaFiscal.venda_id == venda_id).one()
+    assert nota.status_nota == "AUTORIZADA"
+    assert nota.numero_nota == 11
+    assert nota.protocolo_autorizacao == "135260000000011"
+    assert nota.url_danfe == "https://plataforma/danfe/11.pdf"
+
+
+def test_reemissao_tambem_espelha(client, db_session, header_with_token, venda_pronta, plataforma):
+    from app.db.models.venda_nota_fiscal import VendaNotaFiscal
+
+    venda_id, _ = venda_pronta
+    plataforma(REJEITADA_539, AUTORIZADA(12))
+    rejeitado_id = _emitir(client, header_with_token, venda_id).json()["documento_id"]
+    db_session.expire_all()
+    nota = db_session.query(VendaNotaFiscal).filter(VendaNotaFiscal.venda_id == venda_id).one()
+    assert nota.status_nota == "REJEITADA"
+
+    _reemitir(client, header_with_token, rejeitado_id)
+    db_session.expire_all()
+    db_session.refresh(nota)
+    assert nota.status_nota == "AUTORIZADA"
+    assert nota.numero_nota == 12
+
+
 # =========================
 # 2. A reemissão transmite
 # =========================

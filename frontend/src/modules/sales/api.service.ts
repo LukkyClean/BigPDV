@@ -161,9 +161,6 @@ export const saleService = {
     return data;
   },
 
-  async emitirFiscal(venda_id: number): Promise<void> {
-    await api.post(`${SALE_ENDPOINT}/${venda_id}/emitir-fiscal`);
-  },
 };
 
 export const productService = {

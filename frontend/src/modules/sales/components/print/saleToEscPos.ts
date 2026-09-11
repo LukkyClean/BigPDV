@@ -25,6 +25,12 @@ export interface SaleEscPosOptions {
   empresa: CompanyPrintInfo
   resolverPagamento?: (id: number) => string
   abrirGaveta?: boolean
+  /**
+   * A loja emite NFC-e e ESTE comprovante não é o cupom fiscal (o operador
+   * escolheu venda gerencial, ou a nota não saiu). Sem o aviso o cliente leva
+   * um papel que parece cupom fiscal e não é.
+   */
+  naoFiscal?: boolean
   /** 'ORCAMENTO' omite cliente, pagamentos e troco — igual ao SalePrintCupom.vue. */
   tipo?: SalePrintKind
   /** Logo já convertido em bitmap 1-bit; omitido = cupom sem logo. */
@@ -166,7 +172,15 @@ export function saleToEscPos(
 
   // Rodapé
   b.separador()
-    .linha(new Date().toLocaleString('pt-BR'))
+  if (opts.naoFiscal) {
+    b.alinhar('centro')
+      .negrito(true)
+      .linha('DOCUMENTO NAO FISCAL')
+      .linha('NAO E CUPOM FISCAL - SEM VALOR FISCAL')
+      .negrito(false)
+      .separador()
+  }
+  b.linha(new Date().toLocaleString('pt-BR'))
     .negrito(true)
     .linha('SISTEMA STARTBIG')
     .negrito(false)

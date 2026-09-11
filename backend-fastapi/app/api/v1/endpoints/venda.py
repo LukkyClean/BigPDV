@@ -548,37 +548,3 @@ def verificar_fiscal_venda(
     )
 
 
-@router.post(
-    "/{venda_id}/emitir-fiscal",
-    response_model=ResultadoVerificacaoFiscal,
-    summary="Emitir Nota Fiscal da Venda",
-    description=(
-        "Executa o gate de verificação fiscal. Se completo, retorna placeholder "
-        "(integração com SEFAZ ainda não disponível)."
-    ),
-)
-def emitir_fiscal_venda(
-    user_token: dict = Depends(check_permission(required_permission=module_permission)),
-    _fiscal: dict = Depends(requer_modulo_fiscal),
-    venda_id: int = Path(..., ge=1),
-    db: Session = Depends(get_db),
-):
-    empresa_id = user_token["empresa_id"]
-    resultado = verificacao_fiscal_service.verificar_completude_venda(db, venda_id, empresa_id)
-    if not resultado.completo:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail={
-                "codigo": "PENDENCIAS_FISCAIS",
-                "mensagem": "Existem pendências que impedem a emissão.",
-                "pendencias": [p.model_dump() for p in resultado.pendencias],
-            },
-        )
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail={
-            "codigo": "API_NAO_DISPONIVEL",
-            "mensagem": "Verificação fiscal aprovada. A integração com a SEFAZ ainda não está disponível.",
-        },
-    )
-

@@ -123,7 +123,11 @@ export function useSalePrintFlow() {
    * perguntar → modal de formato; não imprimir → só executa o callback.
    * Falha no ESC/POS cai no A4.
    */
-  async function imprimirAposFinalizar(sale: SaleRead, afterPrint?: () => void) {
+  async function imprimirAposFinalizar(
+    sale: SaleRead,
+    afterPrint?: () => void,
+    opcoes: { naoFiscal?: boolean } = {},
+  ) {
     const config = impressaoStore.config;
 
     if (config.auto_imprimir_venda === 'nao') {
@@ -156,6 +160,7 @@ export function useSalePrintFlow() {
         resolverPagamento: resolvePaymentMethodName,
         abrirGaveta: config.gaveta_ativa && config.abrir_gaveta_na_venda && vendaTemPagamentoDinheiro(sale),
         logoRaster,
+        naoFiscal: opcoes.naoFiscal,
       });
       if (await impressao.imprimirCupom(dados)) {
         afterPrint?.();
