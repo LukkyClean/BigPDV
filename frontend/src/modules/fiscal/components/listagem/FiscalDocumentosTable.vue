@@ -1,23 +1,18 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
 import { FileText, FileCode, RefreshCw, Search, Ban, AlertCircle, X, Ellipsis } from 'lucide-vue-next';
-import { useMutation, useQueryClient } from '@tanstack/vue-query';
 
 import BaseTableContainer from '@/shared/components/commons/BaseTableContainer/BaseTableContainer.vue';
 import BaseSearchInput from '@/shared/components/ui/BaseSearchInput/BaseSearchInput.vue';
 import BaseFilter from '@/shared/components/ui/BaseFilter/BaseFilter.vue';
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
-import { useToast } from '@/shared/composables/useToast';
-import { getErrorMessage } from '@/shared/utils/error.utils';
 import { formatCurrency } from '@/shared/utils/finance';
 import { formatDataHora } from '@/shared/utils/date.utils';
-import type { AxiosError } from 'axios';
-import type { ApiError } from '@/shared/types/axios.types';
 
 import { useFiscalDocumentosQuery } from '../../composables/useFiscalDocumentosQuery';
 import { useFiscalConsultarMutation } from '../../composables/useFiscalConsultarMutation';
-import { fiscalService } from '../../services/fiscal.service';
-import { fiscalKeys, STATUS_COLORS, STATUS_LABELS, ORIGEM_LABELS } from '../../constants/fiscal.constants';
+import { useFiscalReemitirMutation } from '../../composables/useFiscalReemitirMutation';
+import { STATUS_COLORS, STATUS_LABELS, ORIGEM_LABELS } from '../../constants/fiscal.constants';
 import { abrirArquivo } from '../../utils/abrirArquivo';
 import FiscalCancelarModal from '../detalhes/FiscalCancelarModal.vue';
 import type { DocumentoFiscalFilters, DocumentoFiscalStatus, DocumentoFiscalTipo } from '../../types/fiscal.types';
@@ -38,8 +33,6 @@ defineEmits<{
   (e: 'abrir-detalhes', id: number): void;
 }>();
 
-const toast = useToast();
-const queryClient = useQueryClient();
 
 const busca = ref('');
 const statusFilter = ref<string | null>(null);
@@ -83,21 +76,8 @@ const tipoFilterConfig: Record<string, { label: string; class: string; color: st
   NFSE: { label: 'NFS-e', class: '', color: 'bg-purple-400' },
 };
 
-const reemitirMutation = useMutation({
-  mutationFn: (id: number) => fiscalService.reemitirDocumento(id),
-  onSuccess: () => {
-    // A frase era 'Documento reenviado para emissão.' e NADA era enviado:
-    // `reemitir_documento` cria a linha nova e nao transmite. O operador saia
-    // daqui convencido de que a nota tinha ido, e so descobria o contrario
-    // quando alguem perguntava pela nota — no lugar errado, dias depois.
-    toast.success('Nova tentativa criada. Emita para transmitir — nada foi enviado ainda.');
-    queryClient.invalidateQueries({ queryKey: fiscalKeys.documentos() });
-    queryClient.invalidateQueries({ queryKey: fiscalKeys.resumo() });
-  },
-  onError: (error) => {
-    toast.error(getErrorMessage(error as AxiosError<ApiError>));
-  },
-});
+// A reemissão vai à SEFAZ e o toast diz o desfecho -- um lugar só para isso.
+const reemitirMutation = useFiscalReemitirMutation();
 
 const consultarMutation = useFiscalConsultarMutation();
 
@@ -134,8 +114,10 @@ function statusClasses(status: string) {
   return c ? `${c.bg} ${c.text}` : 'bg-zinc-100 text-zinc-500';
 }
 
+// DENEGADA ficou de fora: é decisão sobre o contribuinte, e reenviar volta
+// denegada gastando outro número. O backend recusa com 422.
 function podeReemitir(status: string): boolean {
-  return status === 'REJEITADA' || status === 'DENEGADA';
+  return status === 'REJEITADA';
 }
 
 // --- Seleção em lote ---

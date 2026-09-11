@@ -211,41 +211,6 @@ def obter_resumo(db: Session, tipo: Optional[str] = None) -> DocumentoFiscalResu
     )
 
 
-def reemitir_documento(db: Session, documento_id: int) -> DocumentoFiscal:
-    """Cria nova tentativa de emissão encadeada para um documento rejeitado/denegado."""
-    doc = db.query(DocumentoFiscal).filter(DocumentoFiscal.id == documento_id).first()
-    if not doc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Documento fiscal não encontrado.",
-        )
-
-    if doc.status not in ("REJEITADA", "DENEGADA"):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Apenas documentos rejeitados ou denegados podem ser reemitidos.",
-        )
-
-    import uuid
-    novo_doc = DocumentoFiscal(
-        tipo_documento=doc.tipo_documento,
-        origem_tipo=doc.origem_tipo,
-        origem_id=doc.origem_id,
-        origem_numero_os=doc.origem_numero_os,
-        status="PENDENTE",
-        numero_documento=doc.numero_documento,
-        serie=doc.serie,
-        ref_api=f"doc-{uuid.uuid4().hex[:12]}",
-        ambiente_emissao=doc.ambiente_emissao,
-        valor_total=doc.valor_total,
-        tentativa_anterior_id=doc.id,
-    )
-    db.add(novo_doc)
-    db.flush()
-
-    return novo_doc
-
-
 def obter_historico_tentativas(db: Session, documento_id: int) -> DocumentoFiscalHistorico:
     """Retorna cadeia completa de tentativas (do mais recente ao mais antigo) hidratada."""
     from app.services.fiscal.emissao import obter_historico_tentativas as _historico

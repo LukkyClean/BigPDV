@@ -15,11 +15,29 @@ export function useFiscalReemitirMutation() {
   return useMutation({
     mutationFn: (documentoId: number) => fiscalService.reemitirDocumento(documentoId),
     onSuccess: (novoDoc) => {
-      // "criada para reemissão" ainda sugeria que a transmissão viria sozinha.
-      // Nao vem: a linha nasce PENDENTE e so sai quando alguem manda emitir.
-      toast.success(
-        `Nova tentativa #${novoDoc.numero_documento ?? novoDoc.id} criada. Emita para transmitir.`,
-      );
+      // A reemissão vai à SEFAZ na hora (é a emissão da mesma origem, de novo),
+      // e o documento volta com o desfecho. O toast diz qual foi — o mesmo
+      // clique pode terminar autorizado, recusado de novo ou sem resposta.
+      const numero = novoDoc.numero_documento ?? novoDoc.id;
+      switch (novoDoc.status) {
+        case 'AUTORIZADA':
+          toast.success(`Nota nº ${numero} autorizada pela SEFAZ.`);
+          break;
+        case 'PROCESSANDO':
+          toast.info(`Nota nº ${numero} enviada. Aguardando a SEFAZ.`);
+          break;
+        case 'INDETERMINADA':
+          toast.warning(
+            `Nota nº ${numero} sem resposta confirmada.`,
+            'A SEFAZ será consultada de novo automaticamente. Não reemita antes disso.',
+          );
+          break;
+        default:
+          toast.error(
+            `Nota nº ${numero} ${novoDoc.status.toLowerCase()} de novo.`,
+            novoDoc.mensagem_sefaz ?? 'Veja o motivo nos detalhes do documento.',
+          );
+      }
       queryClient.invalidateQueries({ queryKey: fiscalKeys.documentos() });
       queryClient.invalidateQueries({ queryKey: fiscalKeys.resumo() });
       queryClient.invalidateQueries({ queryKey: fiscalKeys.historico(novoDoc.id) });

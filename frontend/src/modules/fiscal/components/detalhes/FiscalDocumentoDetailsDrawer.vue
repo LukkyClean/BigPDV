@@ -71,9 +71,10 @@ const { openEditModal, openViewModal } = useProductModal();
 
 const podeEditarDados = computed(() => {
   if (!documento.value) return false;
-  // Apenas notas rejeitadas ou denegadas podem ter dados corrigidos para reemissão.
-  // Notas AUTORIZADAS, CANCELADAS, PENDENTES ou PROCESSANDO são imutáveis e protegidas contra alteração indevida.
-  return documento.value.status === 'REJEITADA' || documento.value.status === 'DENEGADA';
+  // Só REJEITADA pode ter dados corrigidos para reemissão. DENEGADA não é
+  // reemitível (ver `podeReemitir`), e as demais são imutáveis: AUTORIZADA,
+  // CANCELADA e PROCESSANDO já estão (ou podem estar) na SEFAZ.
+  return documento.value.status === 'REJEITADA';
 });
 
 const close = () => {
@@ -145,10 +146,26 @@ const handleConsultar = async () => {
   }
 };
 
+// Reemite AGORA (vai à SEFAZ) e troca o drawer para o documento novo, que é
+// onde está o desfecho. Antes este handler só emitia o id do documento
+// atual: a view gravava o mesmo id e nada acontecia -- o único caminho que
+// funcionava era o "Salvar e Reemitir" do modal de edição.
 const handleReemitir = async () => {
   if (!documento.value) return;
-  emit('reemitir', documento.value.id);
+  try {
+    const novoDoc = await reemitirMutation.mutateAsync(documento.value.id);
+    emit('reemitir', novoDoc.id);
+  } catch {
+    // A mutação já mostrou o erro no toast.
+  }
 };
+
+// Só REJEITADA volta à SEFAZ. DENEGADA é decisão sobre o contribuinte:
+// reenviar volta denegada e queima outro número (o backend recusa com 422).
+const podeReemitir = computed(() => documento.value?.status === 'REJEITADA');
+const rotuloDocumento = computed(() =>
+  documento.value?.tipo_documento === 'NFCE' ? 'NFC-e' : 'NF-e',
+);
 
 // --- Abrir View/Edição de Item ---
 async function handleAbrirItemProduto(item: DocumentoItemResumo) {
@@ -553,14 +570,19 @@ function formatarData(iso?: string | null): string {
                         </button>
 
                         <button
+                          v-if="podeReemitir"
                           type="button"
                           @click="handleReemitir"
                           :disabled="reemitirMutation.isPending.value"
                           class="inline-flex items-center gap-2 rounded-xl bg-brand-primary px-4 py-2 text-xs font-bold text-white shadow-xs hover:opacity-90 transition-all cursor-pointer disabled:opacity-50"
                         >
                           <RotateCcw class="h-3.5 w-3.5" :class="{ 'animate-spin': reemitirMutation.isPending.value }" />
-                          <span>Corrigir e Reemitir NF-e</span>
+                          <span>{{ reemitirMutation.isPending.value ? 'Enviando à SEFAZ...' : `Reemitir ${rotuloDocumento}` }}</span>
                         </button>
+                        <p v-else class="text-xs text-zinc-500">
+                          Nota denegada: a SEFAZ recusou pela situação cadastral do contribuinte,
+                          e reenviar volta denegada. Regularize junto à SEFAZ antes de emitir de novo.
+                        </p>
                       </div>
                     </div>
 

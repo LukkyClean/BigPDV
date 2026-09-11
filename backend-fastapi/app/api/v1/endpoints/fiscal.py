@@ -12,7 +12,7 @@
 from datetime import date, datetime
 from typing import Optional
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, status
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Path, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -172,29 +172,34 @@ def obter_documento(
     response_model=DocumentoFiscalRead,
     summary="Reemitir Documento Fiscal",
     description=(
-        "Cria nova tentativa de emissão a partir de um documento rejeitado/denegado. "
-        "O documento original mantém seu status; o novo inicia como PENDENTE "
-        "com tentativa_anterior_id apontando para o original."
+        "Emite de novo a origem (venda ou OS) de um documento REJEITADO e devolve o "
+        "documento novo já com o desfecho da SEFAZ. O original mantém seu status; o "
+        "novo aponta para ele por tentativa_anterior_id e recebe número novo."
     ),
 )
 def reemitir_documento(
+    background_tasks: BackgroundTasks,
     user_token: dict = Depends(requer_modulo_fiscal),
     *,
     db: Session = Depends(get_db),
     documento_id: int = Path(..., ge=1, description="ID do documento fiscal"),
 ):
-    return _handle_db_transaction(
-        db,
-        documento_fiscal_service.reemitir_documento,
-        documento_id,
-    )
+    from app.services.fiscal.emissao import poll_nfe_status_async
+    from app.services.fiscal.reemissao import reemitir_documento as _reemitir
+
+    doc = _handle_db_transaction(db, _reemitir, documento_id, user_token["empresa_id"])
+
+    # Mesmo acompanhamento do /emitir/nfe: a NF-e é assíncrona na SEFAZ.
+    if doc.status == "PROCESSANDO":
+        background_tasks.add_task(poll_nfe_status_async, doc.id, user_token["empresa_id"])
+
+    return doc
 
 
 # ===========================================================================
 # EMISSÃO DE NF-e
 # ===========================================================================
 
-from fastapi import BackgroundTasks
 from app.schemas.emissao_fiscal import EmissaoPreviewResponse
 
 @router.post(

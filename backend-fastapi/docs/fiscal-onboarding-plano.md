@@ -1,5 +1,11 @@
 # Plano: fazer a NF-e sair de verdade
 
+> **11/09/2026:** as §3 e §5 deste documento foram sucedidas por
+> `fiscal-conclusao-plano.md`, que parte do estado real (uma nota chegou na
+> SEFAZ, certificado enviado, três desfechos na consulta) e cobre o que este
+> não cobria: a NFC-e nunca ligada ao caixa, reemissão, contador, produção.
+> A §4 (o que cabe à plataforma) continua valendo e é referenciada de lá.
+
 Documento de trabalho, escrito em 09/09/2026 a partir de dois sintomas reais na
 loja e da leitura do código. A última seção é a que vai para o time do servidor
 web.

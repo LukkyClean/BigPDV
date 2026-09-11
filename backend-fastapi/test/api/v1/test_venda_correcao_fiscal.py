@@ -365,46 +365,6 @@ def test_detalhe_documento_fiscal_hidratado(client: TestClient, db_session, head
     assert dados["itens_resumo"][0]["quantidade"] == 1
 
 
-def test_reemissao_documento_cria_tentativa_pendente(client: TestClient, db_session, header_with_token: dict):
-    _seed_contador_venda(db_session)
-    header = header_with_token
-
-    db_session.add(
-        EmpresaFiscalSettings(
-            empresa_id=1,
-            ambiente_emissao=2,
-            serie_nfe=1,
-            ultimo_numero_nfe=10,
-        )
-    )
-    db_session.commit()
-
-    doc_rejeitado = DocumentoFiscal(
-        tipo_documento="NFE",
-        origem_tipo="VENDA",
-        origem_id=101,
-        status="REJEITADA",
-        numero_documento=11,
-        serie=1,
-        ref_api="venda-101",
-        ambiente_emissao=2,
-        valor_total=5000,
-        mensagem_sefaz="Rejeição 204: Duplicidade de NF-e",
-        codigo_status_sefaz=204,
-    )
-    db_session.add(doc_rejeitado)
-    db_session.commit()
-
-    # Reemitir
-    r_reemitir = client.post(f"/api/v1/fiscal/documentos/{doc_rejeitado.id}/reemitir", headers=header)
-    assert r_reemitir.status_code == 200, r_reemitir.text
-    novo_doc = r_reemitir.json()
-
-    assert novo_doc["status"] == "PENDENTE"
-    assert novo_doc["tentativa_anterior_id"] == doc_rejeitado.id
-    assert novo_doc["origem_id"] == 101
-
-
 def test_produto_get_by_id_endpoint(client: TestClient, db_session, header_with_token: dict):
     """Garante que o novo endpoint GET /api/v1/produtos/{produto_id} funciona perfeitamente."""
     header = header_with_token

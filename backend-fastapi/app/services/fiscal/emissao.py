@@ -4,7 +4,7 @@
 #
 # Orquestra o fluxo: verificar → montar payload → chamar client → atualizar.
 # Cada tentativa de emissão cria uma NOVA linha em documento_fiscal.
-# Reemissões apontam para a tentativa anterior via tentativa_anterior_id.
+# Reemissões (reemissao.py) chamam os mesmos emitir_* com tentativa_anterior_id.
 # ---------------------------------------------------------------------------
 
 import logging
@@ -50,10 +50,11 @@ logger = logging.getLogger(__name__)
 #
 # PENDENTE ficou de fora de propósito: a emissão cria o documento já como
 # PROCESSANDO, e `salvar_documento` só dá flush dentro da transação da request —
-# um processo que morre no meio do HTTP não deixa linha nenhuma. Logo PENDENTE
-# só nasce da reemissão, que NÃO transmite. Consultar um desses dava 404 eterno,
-# e o 404 virava REJEITADA: nota que nunca saiu do prédio aparecia na tela como
-# recusada pela SEFAZ.
+# um processo que morre no meio do HTTP não deixa linha nenhuma. PENDENTE só
+# nascia da reemissão antiga, que NÃO transmitia (hoje ela emite de verdade, ver
+# reemissao.py); as linhas que sobraram foram convertidas pela migration
+# 89eb6b730bb3. Consultar uma dessas dava 404 eterno, e o 404 virava REJEITADA:
+# nota que nunca saiu do prédio aparecia na tela como recusada pela SEFAZ.
 STATUS_CONSULTAVEIS = ("PROCESSANDO", "INDETERMINADA")
 
 # A nota não chegou à SEFAZ. Não é rejeição — não há protocolo, não há código de
@@ -323,7 +324,10 @@ def preview_nfce_venda(db: Session, venda_id: int, empresa_id: int) -> dict:
     return preview
 
 
-def emitir_nfe_venda(db: Session, venda_id: int, empresa_id: int) -> DocumentoFiscal:
+def emitir_nfe_venda(
+    db: Session, venda_id: int, empresa_id: int,
+    tentativa_anterior_id: Optional[int] = None,
+) -> DocumentoFiscal:
     """
     Emite NF-e para uma venda.
 
@@ -331,6 +335,11 @@ def emitir_nfe_venda(db: Session, venda_id: int, empresa_id: int) -> DocumentoFi
     2. Valida status da venda e bloqueio de duplicata
     3. Monta payload e cria DocumentoFiscal
     4. Chama client fiscal e atualiza resultado
+
+    `tentativa_anterior_id` é o elo da reemissão (ver `reemissao.py`): o
+    documento novo aponta para o rejeitado e o histórico mostra a cadeia. Fora
+    isso a reemissão é IGUAL a uma emissão -- mesmo gate, número novo, mesma
+    transmissão.
     """
     empresa, endereco, venda, simples, resultado_calculo = _preparar_dados_emissao(
         db, venda_id, empresa_id,
@@ -413,6 +422,7 @@ def emitir_nfe_venda(db: Session, venda_id: int, empresa_id: int) -> DocumentoFi
         ambiente_emissao=fiscal_settings.ambiente_emissao,
         valor_total=venda.total,
         data_emissao=datetime.now(timezone.utc),
+        tentativa_anterior_id=tentativa_anterior_id,
     )
     # Congela o que vai ser transmitido, ANTES de transmitir: assim existe
     # registro mesmo se a resposta da SEFAZ se perder no caminho.
@@ -571,7 +581,10 @@ def _completar_tributos_pelo_xml(doc: DocumentoFiscal, client) -> None:
     doc.valor_tributos = valor
 
 
-def emitir_nfce_venda(db: Session, venda_id: int, empresa_id: int) -> DocumentoFiscal:
+def emitir_nfce_venda(
+    db: Session, venda_id: int, empresa_id: int,
+    tentativa_anterior_id: Optional[int] = None,
+) -> DocumentoFiscal:
     """
     Emite NFC-e (modelo 65) para uma venda do PDV.
 
@@ -677,6 +690,7 @@ def emitir_nfce_venda(db: Session, venda_id: int, empresa_id: int) -> DocumentoF
         ambiente_emissao=fiscal_settings.ambiente_emissao,
         valor_total=venda.total,
         data_emissao=datetime.now(timezone.utc),
+        tentativa_anterior_id=tentativa_anterior_id,
     )
     # Congela o que vai ser transmitido, ANTES de transmitir: assim existe
     # registro mesmo se a resposta da SEFAZ se perder no caminho.
@@ -887,60 +901,6 @@ def cancelar_documento(
     return doc
 
 
-def reemitir_documento(db: Session, documento_id: int, empresa_id: int) -> DocumentoFiscal:
-    """
-    Cria NOVA linha DocumentoFiscal apontando para a tentativa anterior.
-    O documento anterior mantém seu status original (REJEITADA/DENEGADA).
-    O novo documento inicia como PENDENTE para nova tentativa.
-    """
-    doc_anterior = crud.get_documento_fiscal(db, documento_id)
-    if not doc_anterior:
-        raise HTTPException(status_code=404, detail="Documento fiscal não encontrado.")
-
-    if doc_anterior.status not in ("REJEITADA", "DENEGADA"):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Apenas documentos rejeitados ou denegados podem ser reemitidos.",
-        )
-
-    # Limitar retentativas (máx 5)
-    MAX_RETENTATIVAS = 5
-    tentativas = 0
-    doc_chain = doc_anterior
-    while doc_chain and doc_chain.tentativa_anterior_id:
-        tentativas += 1
-        doc_chain = crud.get_documento_fiscal(db, doc_chain.tentativa_anterior_id)
-    if tentativas >= MAX_RETENTATIVAS:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Limite de {MAX_RETENTATIVAS} retentativas atingido para este documento.",
-        )
-
-    fiscal_settings = _obter_fiscal_settings(db, empresa_id)
-    ref = f"venda-{doc_anterior.origem_id}-retry-{doc_anterior.id}"
-
-    novo_doc = DocumentoFiscal(
-        tipo_documento=doc_anterior.tipo_documento,
-        origem_tipo=doc_anterior.origem_tipo,
-        origem_id=doc_anterior.origem_id,
-        origem_numero_os=doc_anterior.origem_numero_os,
-        status="PENDENTE",
-        # O número NÃO é herdado: o da tentativa anterior pode ter sido
-        # consumido na SEFAZ. Uma nova reserva acontece na emissão.
-        numero_documento=None,
-        serie=doc_anterior.serie,
-        ref_api=ref,
-        idempotency_key=str(uuid.uuid4()),
-        ambiente_emissao=fiscal_settings.ambiente_emissao,
-        valor_total=doc_anterior.valor_total,
-        tentativa_anterior_id=doc_anterior.id,
-        data_emissao=datetime.now(timezone.utc),
-    )
-    crud.salvar_documento(db, novo_doc)
-
-    return novo_doc
-
-
 def emitir_teste_nfe(db: Session, empresa_id: int) -> DocumentoFiscal:
     """
     Emissão de teste com dados fictícios. Apenas em homologação.
@@ -1118,7 +1078,10 @@ def preview_nfe_os(db: Session, numero_os: str, empresa_id: int) -> dict:
     }
 
 
-def emitir_nfe_os(db: Session, numero_os: str, empresa_id: int) -> DocumentoFiscal:
+def emitir_nfe_os(
+    db: Session, numero_os: str, empresa_id: int,
+    tentativa_anterior_id: Optional[int] = None,
+) -> DocumentoFiscal:
     """
     Emite NF-e para as peças de uma Ordem de Serviço.
 
@@ -1210,6 +1173,7 @@ def emitir_nfe_os(db: Session, numero_os: str, empresa_id: int) -> DocumentoFisc
         # autoriza e o que o relatório fiscal soma.
         valor_total=os_como_venda.total,
         data_emissao=datetime.now(timezone.utc),
+        tentativa_anterior_id=tentativa_anterior_id,
     )
     gravar_snapshot(doc, payload, venda=os_como_venda)
     crud.salvar_documento(db, doc)

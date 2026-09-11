@@ -1,4 +1,6 @@
 # app/services/verificacao_fiscal/crud.py
+from typing import Optional
+
 from sqlalchemy.orm import Session, joinedload, subqueryload
 from app.db.models.empresa import Empresa
 from app.db.models.empresa_fiscal_settings import EmpresaFiscalSettings
@@ -235,6 +237,10 @@ def get_vendas_completas_batch(db: Session, venda_ids: list[int]) -> list[Venda]
         subqueryload(Venda.itens).joinedload(ProdutoVenda.produto),
         subqueryload(Venda.pagamentos).joinedload(PagamentoVenda.forma_pagamento),
     ).filter(Venda.id.in_(venda_ids)).all()
+
+def get_venda_id_por_numero(db: Session, numero_venda: int) -> Optional[int]:
+    """PK da venda a partir do número -- `DocumentoFiscal.origem_id` guarda o número."""
+    return db.query(Venda.id).filter(Venda.numero_venda == numero_venda).scalar()
 
 def contar_documentos_por_venda(db: Session, numero_venda: int) -> int:
     from sqlalchemy import func

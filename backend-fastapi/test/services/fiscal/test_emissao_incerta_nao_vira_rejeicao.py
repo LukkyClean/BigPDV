@@ -8,8 +8,8 @@ O CENÁRIO QUE ISTO IMPEDE, na ordem em que acontece:
   2. O client devolvia {"status": "erro"} para QUALQUER exceção -- inclusive
      timeout -- e `_aplicar_resultado` mapeia "erro" para REJEITADA.
   3. REJEITADA é um estado REEMITÍVEL.
-  4. O operador reemite. A reemissão monta uma ref NOVA
-     (`venda-123-retry-45`, ver `reemitir_documento`).
+  4. O operador reemite. A reemissão é uma emissão nova da mesma origem,
+     com ref NOVA (`venda-123-2`, ver `reemissao.py`).
   5. A idempotência da plataforma é POR REF -- ela consulta a ref na Focus
      antes de emitir. Ref nova = não encontra nada = emite de novo.
   6. Resultado: DUAS notas autorizadas para a mesma venda, no mesmo CNPJ.
