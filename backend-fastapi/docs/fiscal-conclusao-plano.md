@@ -154,12 +154,22 @@ vale.
 | # | O quê | Onde | Custo |
 |---|---|---|---|
 | B1 | **Decidir o gatilho** (§7.2): botão "Emitir NFC-e" no fechamento, ou automático quando a loja marcou "caixa fiscal". Recomendação abaixo | dono | — |
-| B2 | Ligar `emitirNFCeVenda` no fechamento da venda, **antes** do `afterPrint`. Estados visíveis: verificando → autorizada (imprime cupom fiscal) / rejeitada (imprime não fiscal? — §7.3) / indeterminada (não imprime, manda ao Centro Fiscal) | `SaleModal`, `useNfcePrintFlow` | 1–2 d |
-| B3 | CPF na nota: campo já existe no composable (`documentoConsumidor`); pôr na tela do fechamento, opcional, com a máscara e o DV que o gate já valida | `SaleModal` | dentro de B2 |
-| B4 | `indicador_presenca` no fechamento (balcão × entrega) — o composable já grava antes de emitir; a tela precisa perguntar só quando a venda tem entrega | `SaleModal` | dentro de B2 |
-| B5 | Modo Balcão: a próxima venda só abre depois do desfecho fiscal (regra de ouro) | `useModoBalcao` ou equivalente | dentro de B2 |
+| B2 | **FEITA (11/09, `8d3d0da`).** Ligar `emitirNFCeVenda` no fechamento da venda, **antes** do `afterPrint`. Estados visíveis: verificando → autorizada (imprime cupom fiscal) / rejeitada (imprime não fiscal? — §7.3) / indeterminada (não imprime, manda ao Centro Fiscal) | `SaleModal`, `useNfcePrintFlow` | 1–2 d |
+| B3 | **FEITA** (já existia em `FiscalFechamentoSection`, só faltava montar). CPF na nota: campo já existe no composable (`documentoConsumidor`); pôr na tela do fechamento, opcional, com a máscara e o DV que o gate já valida | `SaleModal` | dentro de B2 |
+| B4 | **FEITA** (idem). `indicador_presenca` no fechamento (balcão × entrega) — o composable já grava antes de emitir; a tela precisa perguntar só quando a venda tem entrega | `SaleModal` | dentro de B2 |
+| B5 | **FEITA.** Modo Balcão: a próxima venda só abre depois do desfecho fiscal (regra de ouro) | `useModoBalcao` ou equivalente | dentro de B2 |
 | B6 | Primeira NFC-e autorizada em homologação, cupom impresso com QR lido pelo celular | loja | 1 h, **depende da §4.4.2-3** |
 | B7 | Cancelar dentro dos 30 min e ver CANCELADA | loja | 15 min |
+
+Achados ao fazer a Fase B (11/09): o bloco fiscal do fechamento
+(`FiscalFechamentoSection`) também existia e nunca tinha sido montado; e o
+"Emitir NF-e" do modal da venda batia num stub 501 — passou a emitir de
+verdade. A NF-e não espelhava em `venda_nota_fiscal` (só a NFC-e, e só na
+emissão): `espelho_nota.py` virou o único lugar que copia, chamado por emissão,
+reemissão, consulta e cancelamento. Decisões §7.2 e §7.3: seguidas as
+recomendações (o padrão do bloco é "Emitir Fiscal" quando certificado e CSC
+estão prontos — o operador troca com um clique; o comprovante gerencial de
+loja com módulo sai marcado DOCUMENTO NÃO FISCAL).
 
 **Recomendação para B1:** botão, não automático — pelo menos até a segunda
 loja. O automático transforma cada instabilidade da SEFAZ numa fila parada no
@@ -193,9 +203,9 @@ Sem isto a loja emite e a operação quebra no primeiro mês.
 
 | # | O quê | Onde | Custo |
 |---|---|---|---|
-| D1 | **Aviso de vencimento do certificado.** `certificado_validade` já é gravado; falta virar pendência em `pendencias_globais` com 30 e 7 dias, e no card do Centro Fiscal. Certificado vencido = loja parada sem aviso | backend + card | ½ d |
-| D2 | **Exportar XMLs do período.** Botão "XMLs do mês" no Centro Fiscal → ZIP com autorizadas + canceladas + inutilizações, nomeado pela chave. O `baixar_xml` do client já existe; falta o laço e o ZIP. É o que o contador pede todo dia 5 | backend (endpoint) + botão | 1 d |
-| D3 | Apagar `FiscalAmbienteBadge.vue` (morto desde sempre) | frontend | 10 min |
+| D1 | **FEITA (11/09, `3667afc`).** **Aviso de vencimento do certificado.** `certificado_validade` já é gravado; falta virar pendência em `pendencias_globais` com 30 e 7 dias, e no card do Centro Fiscal. Certificado vencido = loja parada sem aviso | backend + card | ½ d |
+| D2 | **FEITA (11/09, `209717c`).** **Exportar XMLs do período.** Botão "XMLs do mês" no Centro Fiscal → ZIP com autorizadas + canceladas + inutilizações, nomeado pela chave. O `baixar_xml` do client já existe; falta o laço e o ZIP. É o que o contador pede todo dia 5 | backend (endpoint) + botão | 1 d |
+| D3 | **FEITA.** Apagar `FiscalAmbienteBadge.vue` | frontend | — |
 
 O filtro por período e status que o D2 precisa **já existe** no
 `GET /fiscal/documentos` (`data_inicio`, `data_fim`, `status`, `tipo`); o ZIP
@@ -219,6 +229,13 @@ Só depois de A e B fecharem em homologação. É checklist, e quase nada é có
    derruba a Gestão Financeira.
 
 ---
+
+### Estado em 11/09/2026, fim do dia
+
+Tudo que não depende de ninguém está **feito e commitado** (`f692be9`,
+`3667afc`, `8d3d0da`, `209717c`): 1348 pytest, vue-tsc 0, sidecar e
+instalador gerados. O que resta é **prova em loja** (A1–A3, A6, B6–B7) e a
+**plataforma** (Fase C). A Fase E é checklist.
 
 ## 5. Ordem e custo
 
