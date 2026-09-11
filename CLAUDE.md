@@ -83,6 +83,26 @@ servidor da loja em 28/07/2026, quando o `7b8d129` trocou o nome para `startbig.
 (sem underscore). Se um rename for inevitável, acrescente o nome antigo em
 `LEGACY_DB_FILENAMES` (`app/core/config.py`) no mesmo commit.
 
+### Papel da máquina (servidor × terminal) e endereço do backend
+O papel fica em `%APPDATA%\br.com.startbig.erp\StartBigERP\system-config.json`
+(`is_server`, `server_ip`, `server_port`, `configured`, `servico_instalado`, `data_dir`),
+**por usuário do Windows**, escrito só por `src-tauri/src/network/config.rs`. Regras que
+não podem regredir (incidente do cliente em 09/2026 — servidor virou terminal apontando
+para o próprio IP de LAN, que mudava com o DHCP):
+- `get_api_url` devolve **loopback** para servidor; `resolver_papel_efetivo` corrige o
+  papel no startup quando o IP salvo é desta máquina **e** há backend/tarefa local
+  (regra conjuntiva — nunca converter só pelo IP).
+- `set_role_client` **recusa** IP desta máquina (`IP_LOCAL`); a auto-descoberta marca
+  `local: true` e o wizard não auto-conecta a si mesmo.
+- Servidor já configurado **nunca** volta ao wizard "Tipo de máquina" — vai para
+  `erro-conexao` em modo servidor (reiniciar/reparar serviço).
+- `backend.rs::ensure_backend` espera a tarefa `StartBigServer` (até 90 s) antes de subir
+  sidecar, e o sidecar sempre recebe `--data-dir` (senão abre outro banco).
+- Log persistente: `rede.log` ao lado do `system-config.json`; painel em
+  Configurações › Rede e Conexão (`diagnostico_rede`).
+- mDNS (`app/core/discovery.py`) anuncia todas as IPv4 locais via `ifaddr`, nunca
+  `127.0.0.1`, e re-anuncia quando os IPs mudam (`atualizar_anuncio`, a cada 45 s).
+
 ## Architecture
 
 ### Frontend (`frontend/src/`)

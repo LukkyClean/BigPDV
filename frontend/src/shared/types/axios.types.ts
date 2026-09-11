@@ -55,7 +55,10 @@ export const ERROR_MESSAGES: Record<number, string> = {
 /**
  * Mensagem padrão para erros de rede
  */
-export const NETWORK_ERROR_MESSAGE = 'Erro de conexão. Verifique sua internet e tente novamente.';
+// O backend é local (mesma máquina ou rede da loja) — não falar em "internet": numa
+// loja sem link isso manda o operador olhar para o lugar errado.
+export const NETWORK_ERROR_MESSAGE =
+  'Sem comunicação com o servidor. Verifique se o servidor está ligado e conectado à rede local.';
 
 export interface ConflictedData {
   campo: string,

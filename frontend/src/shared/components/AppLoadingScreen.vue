@@ -1,6 +1,18 @@
+<script setup lang="ts">
+defineProps<{
+  /** Texto opcional sob o spinner (ex.: "Iniciando servidor local… 12 s"). */
+  mensagem?: string | null
+  detalhe?: string | null
+}>()
+</script>
+
 <template>
-  <div class="fixed inset-0 z-9999 flex items-center justify-center bg-white">
+  <div class="fixed inset-0 z-9999 flex flex-col items-center justify-center gap-4 bg-white">
     <div class="loading-spinner" />
+    <div v-if="mensagem" class="text-center px-6">
+      <p class="text-sm font-medium text-gray-700">{{ mensagem }}</p>
+      <p v-if="detalhe" class="text-xs text-gray-400 mt-1">{{ detalhe }}</p>
+    </div>
   </div>
 </template>
 

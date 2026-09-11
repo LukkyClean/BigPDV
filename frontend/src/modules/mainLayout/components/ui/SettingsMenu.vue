@@ -14,6 +14,7 @@ import {
 } from 'lucide-vue-next';
 
 import { useAuthStore } from '@/shared/stores/auth.store';
+import { useNetworkConfigStore } from '@/shared/stores/networkConfig.store';
 import { useAppNavigation } from '@/shared/composables/useAppNavigation';
 import { useLayoutStore } from '../../store/layout.store';
 import { openUrl } from '@tauri-apps/plugin-opener';
@@ -24,7 +25,10 @@ import { getImageUrl } from '@/shared/utils/print.utils';
 const authStore = useAuthStore();
 const layoutStore = useLayoutStore();
 
+const networkStore = useNetworkConfigStore();
+
 const { userData } = storeToRefs(authStore);
+const { online, papel } = storeToRefs(networkStore);
 const { logoutAndRedirect } = useAppNavigation();
 
 function abrirMinhaConta() {
@@ -150,11 +154,27 @@ function abrirConfiguracoes() {
           <span class="text-xs text-zinc-700">Renovar Assinatura</span>
         </button>
 
-        <div class="flex items-center gap-1.5 px-1.5 py-1.5">
-          <Wifi :size="14" class="text-emerald-500" />
-          <span class="text-xs text-zinc-500">Status:</span>
-          <span class="text-xs text-emerald-500 font-medium">Online</span>
-        </div>
+        <!-- Status real do backend (alimentado pelo useHealthMonitor); abre o diagnóstico -->
+        <button
+          class="w-full flex items-center justify-between px-1.5 py-1.5 rounded-lg hover:bg-zinc-50 transition-colors cursor-pointer"
+          title="Diagnóstico de conexão"
+          @click="layoutStore.openConfiguracoes('rede')"
+        >
+          <div class="flex items-center gap-1.5">
+            <Wifi
+              :size="14"
+              :class="online === null ? 'text-zinc-400' : online ? 'text-emerald-500' : 'text-red-500'"
+            />
+            <span class="text-xs text-zinc-500">{{ papel === 'servidor' ? 'Servidor:' : 'Conexão:' }}</span>
+            <span
+              class="text-xs font-medium"
+              :class="online === null ? 'text-zinc-400' : online ? 'text-emerald-500' : 'text-red-500'"
+            >
+              {{ online === null ? 'verificando' : online ? 'Online' : 'Sem resposta' }}
+            </span>
+          </div>
+          <ChevronRight :size="12" class="text-zinc-400" />
+        </button>
 
         <button
           @click="logoutAndRedirect"

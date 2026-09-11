@@ -7,7 +7,7 @@ import { useNetworkConfig } from '../composables/useNetworkConfig';
 import { useAutoDiscovery } from '../composables/useAutoDiscovery';
 import { terminalConfigTypedSchema } from '../schemas/network-config.schema';
 
-const { configurarTerminal, voltar } = useNetworkConfig();
+const { configurarTerminal, configurarComoServidor, voltar } = useNetworkConfig();
 const { estado, servidorEncontrado, iniciarBusca, pararBusca, reiniciarBusca } = useAutoDiscovery();
 
 const modoManual = ref(false);
@@ -35,6 +35,9 @@ let countdownInterval: ReturnType<typeof setInterval> | null = null;
 
 watch(estado, (novo) => {
   if (novo === 'encontrado' && servidorEncontrado.value) {
+    // O servidor encontrado roda NESTA máquina: não auto-conectar como terminal
+    // (gravaria o próprio IP de LAN, que muda com o DHCP). Oferecer o papel certo.
+    if (servidorEncontrado.value.local) return;
     countdown.value = 3;
     countdownInterval = setInterval(() => {
       countdown.value--;
@@ -99,6 +102,33 @@ onUnmounted(() => {
         >
           Pular e configurar manualmente
         </button>
+      </div>
+    </template>
+
+    <!-- Estado: Encontrado nesta própria máquina -->
+    <template v-else-if="estado === 'encontrado' && !modoManual && servidorEncontrado?.local">
+      <div class="flex flex-col items-center gap-4 py-4">
+        <div class="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
+          <svg class="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 17v-2a4 4 0 014-4h5m0 0l-3-3m3 3l-3 3M5 21h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v14a2 2 0 002 2z" />
+          </svg>
+        </div>
+        <div class="text-center space-y-1">
+          <p class="text-base font-semibold text-gray-800">O servidor está neste computador</p>
+          <p class="text-sm text-gray-500">
+            O serviço StartBig foi encontrado rodando nesta própria máquina
+            (<span class="font-mono">{{ servidorEncontrado.ip }}:{{ servidorEncontrado.port }}</span>).
+            Ela deve operar como <strong>Servidor</strong>, não como terminal.
+          </p>
+        </div>
+      </div>
+
+      <div class="flex flex-col gap-3 pt-2">
+        <BaseButton class="w-full" @click="configurarComoServidor"> Configurar como Servidor </BaseButton>
+        <div class="flex gap-3">
+          <BaseButton class="flex-1" variant="secondary" @click="voltar"> Voltar </BaseButton>
+          <BaseButton class="flex-1" variant="secondary" @click="irParaManual"> Informar outro servidor </BaseButton>
+        </div>
       </div>
     </template>
 

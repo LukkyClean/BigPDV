@@ -21,32 +21,11 @@ pub struct ServidorDescoberto {
     porta: u16,
 }
 
-fn ip_e_privado(ip: IpAddr) -> bool {
-    if let IpAddr::V4(v4) = ip {
-        let o = v4.octets();
-        return o[0] == 10
-            || (o[0] == 172 && o[1] >= 16 && o[1] <= 31)
-            || (o[0] == 192 && o[1] == 168);
-    }
-    false
-}
-
-// Descobre o IP LAN privado deste PC tentando múltiplos destinos e filtrando
-// IPs públicos (ex: adaptadores Topaz Loopback, VPN, etc.)
+// IP LAN privado deste PC. Delegado a `network::local_ip` (enumera as interfaces
+// com `if-addrs`) — o truque antigo de `connect(8.8.8.8)` falhava sem rota para a
+// internet, exatamente o cenário de loja sem link.
 fn ip_lan_privado() -> Option<IpAddr> {
-    let candidatos = ["8.8.8.8:80", "192.168.0.1:80", "192.168.1.1:80", "10.0.0.1:80"];
-    for dest in &candidatos {
-        if let Ok(s) = UdpSocket::bind("0.0.0.0:0") {
-            if s.connect(dest).is_ok() {
-                if let Ok(addr) = s.local_addr() {
-                    if ip_e_privado(addr.ip()) {
-                        return Some(addr.ip());
-                    }
-                }
-            }
-        }
-    }
-    None
+    crate::network::ip_lan_privado().map(IpAddr::V4)
 }
 
 fn atender_conexao_impressao(

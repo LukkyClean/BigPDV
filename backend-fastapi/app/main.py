@@ -66,4 +66,18 @@ if os.path.exists(FORM_DIR):
 
 @app.get("/api/health", tags=["Health"])
 def health_check():
-    return {"status": "ok"}
+    # Campos extras alimentam o painel "Diagnóstico de conexão" do app e permitem a
+    # um terminal confirmar com QUEM está falando. `status` continua sendo o único
+    # campo que o health check do Tauri/frontend avalia.
+    import socket
+    from app.core.config import data_dir
+
+    return {
+        "status": "ok",
+        "role": "server",
+        "hostname": socket.gethostname(),
+        "host": os.getenv("STARTBIG_HOST", "0.0.0.0"),
+        "port": int(os.getenv("STARTBIG_PORT", "8080")),
+        "data_dir": data_dir,
+        "versao": app.version,
+    }

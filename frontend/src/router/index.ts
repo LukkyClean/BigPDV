@@ -71,8 +71,9 @@ router.beforeEach(async (to) => {
     return { name: 'network-config' };
   }
 
-  // Guard de conexão: bloqueia terminal sem conexão ao servidor
-  if (networkStore.erroConexaoTerminal && to.name !== 'erro-conexao' && to.name !== 'network-config') {
+  // Guard de conexão: bloqueia o app sem backend alcançável (terminal sem servidor
+  // ou servidor cujo serviço local não respondeu)
+  if (networkStore.semConexaoBackend && to.name !== 'erro-conexao' && to.name !== 'network-config') {
     return { name: 'erro-conexao' };
   }
 

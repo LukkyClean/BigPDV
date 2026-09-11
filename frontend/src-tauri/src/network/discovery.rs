@@ -1,6 +1,9 @@
 use mdns_sd::{ServiceDaemon, ServiceEvent};
 use serde::{Deserialize, Serialize};
 use std::net::IpAddr;
+
+use super::local_ip::{ip_e_desta_maquina, ip_e_privado, ip_na_mesma_subrede};
+use super::log::log_rede;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -15,12 +18,13 @@ pub struct DiscoveryPayload {
     pub role: String,
     pub ip: String,
     pub port: u16,
+    /// O IP anunciado é desta própria máquina — o wizard não deve auto-conectar
+    /// como terminal a ele (é o caminho que transformava o servidor em terminal).
+    pub local: bool,
 }
 
 #[derive(Default)]
 pub struct EstadoDescoberta {
-    daemon_servidor: Mutex<Option<ServiceDaemon>>,
-    nome_servico: Mutex<Option<String>>,
     daemon_cliente: Mutex<Option<ServiceDaemon>>,
     parar_cliente: Mutex<Option<Arc<AtomicBool>>>,
 }
@@ -37,10 +41,6 @@ impl EstadoDescoberta {
                 eprintln!("[discovery] Erro ao encerrar daemon cliente: {:?}", e);
             }
         }
-    }
-
-    pub fn shutdown(&self) {
-        self.parar_cliente();
     }
 }
 
@@ -76,17 +76,15 @@ pub fn discover_servers(estado: &EstadoDescoberta, handle: AppHandle) {
             match receiver.recv_timeout(Duration::from_secs(2)) {
                 Ok(ServiceEvent::ServiceResolved(info)) => {
                     let port = info.get_port();
-                    let ip = info
-                        .get_addresses()
-                        .iter()
-                        .find(|addr| ip_e_privado(**addr))
-                        .or_else(|| info.get_addresses().iter().next())
-                        .map(|addr| addr.to_string())
-                        .unwrap_or_default();
-
-                    if ip.is_empty() {
+                    let Some(ip) = escolher_endereco(info.get_addresses().iter().copied()) else {
+                        log_rede(&format!(
+                            "anúncio mDNS de {} ignorado: só endereços loopback/link-local",
+                            info.get_fullname()
+                        ));
                         continue;
-                    }
+                    };
+                    let ip = ip.to_string();
+                    let local = ip_e_desta_maquina(&ip);
 
                     let app_prop = info
                         .get_property_val_str("app")
@@ -100,12 +98,13 @@ pub fn discover_servers(estado: &EstadoDescoberta, handle: AppHandle) {
                         role: role_prop.to_string(),
                         ip: ip.clone(),
                         port,
+                        local,
                     };
 
-                    println!(
-                        "[discovery] Servidor encontrado via mDNS: IP={}, Porta={}",
-                        ip, port
-                    );
+                    log_rede(&format!(
+                        "servidor encontrado via mDNS: {}:{} (local={})",
+                        ip, port, local
+                    ));
 
                     handle.emit("server_discovered", &payload).unwrap_or_else(
                         |e| eprintln!("[discovery] Erro ao emitir evento: {}", e),
@@ -138,18 +137,47 @@ pub fn parar_descoberta_servidores(state: tauri::State<'_, EstadoDescoberta>) {
     println!("[discovery] Comando recebido para parar a descoberta.");
 }
 
-fn gethostname() -> String {
-    std::env::var("COMPUTERNAME")
-        .or_else(|_| std::env::var("HOSTNAME"))
-        .unwrap_or_else(|_| "startbig-host".to_string())
+/// Entre os endereços anunciados, descarta loopback/unspecified/link-local (um
+/// servidor sem rota default anunciava `127.0.0.1`, e o terminal tentava falar
+/// consigo mesmo) e prefere, nesta ordem: mesma sub-rede de uma interface local,
+/// IPv4 privado, qualquer IPv4 restante.
+fn escolher_endereco<I: Iterator<Item = IpAddr>>(enderecos: I) -> Option<IpAddr> {
+    let candidatos: Vec<IpAddr> = enderecos
+        .filter(|a| match a {
+            IpAddr::V4(v4) => !v4.is_loopback() && !v4.is_unspecified() && !v4.is_link_local(),
+            IpAddr::V6(_) => false,
+        })
+        .collect();
+
+    candidatos
+        .iter()
+        .copied()
+        .find(|a| matches!(a, IpAddr::V4(v4) if ip_na_mesma_subrede(*v4)))
+        .or_else(|| candidatos.iter().copied().find(|a| ip_e_privado(*a)))
+        .or_else(|| candidatos.first().copied())
 }
 
-fn ip_e_privado(ip: IpAddr) -> bool {
-    if let IpAddr::V4(v4) = ip {
-        let o = v4.octets();
-        return o[0] == 10
-            || (o[0] == 172 && o[1] >= 16 && o[1] <= 31)
-            || (o[0] == 192 && o[1] == 168);
+#[cfg(test)]
+mod tests {
+    use super::escolher_endereco;
+    use std::net::{IpAddr, Ipv4Addr};
+
+    #[test]
+    fn descarta_loopback() {
+        let so_loopback = [IpAddr::V4(Ipv4Addr::LOCALHOST)];
+        assert_eq!(escolher_endereco(so_loopback.into_iter()), None);
     }
-    false
+
+    #[test]
+    fn prefere_privado_a_publico() {
+        let lista = [
+            IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            IpAddr::V4(Ipv4Addr::new(10, 0, 0, 5)),
+        ];
+        assert_eq!(
+            escolher_endereco(lista.into_iter()),
+            Some(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 5)))
+        );
+    }
 }

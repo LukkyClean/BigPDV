@@ -14,13 +14,25 @@ from app.services.limpeza_temporal import cancelar_vendas_ativas_expiradas, limp
 from app.services.licenca import enviar_heartbeat, renovar_licenca_background, desconectar_terminal
 from app.db.crud import terminal_conectado as terminal_crud
 
-from app.core.discovery import register_service, stop_discovery
+from app.core.discovery import atualizar_anuncio, register_service, stop_discovery
 
 logger = logging.getLogger(__name__)
 
 INTERVALO_LIMPEZA_HORAS = 6
 INTERVALO_HEARTBEAT_SEGUNDOS = 100  # 5 minutos
 INTERVALO_RENOVACAO_SEGUNDOS = 3600  # 1 hora
+# Re-anúncio mDNS: troca de IP por DHCP ou placa que sobe depois do boot + 30 s.
+INTERVALO_MDNS_SEGUNDOS = 45
+
+
+async def _loop_mdns_watchdog():
+    """Re-anuncia o servidor via mDNS quando os IPs desta máquina mudam."""
+    while True:
+        await asyncio.sleep(INTERVALO_MDNS_SEGUNDOS)
+        try:
+            await asyncio.to_thread(atualizar_anuncio)
+        except Exception:
+            logger.exception("Erro no watchdog do mDNS")
 
 
 async def _loop_limpeza_temporal():
@@ -150,17 +162,19 @@ async def lifespan(app: FastAPI):
     print(f"Iniciando mDNS em {host}:{port}")
     
     await asyncio.to_thread(register_service, host, port)
+    tarefa_mdns = asyncio.create_task(_loop_mdns_watchdog())
 
     yield
 
     print("Encerrando mDNS...")
+    tarefa_mdns.cancel()
     await asyncio.to_thread(stop_discovery)
     
     print("Encerrando tarefas em segundo plano...")
     tarefa_limpeza.cancel()
     tarefa_heartbeat.cancel()
     tarefa_renovacao.cancel()
-    for tarefa in (tarefa_limpeza, tarefa_heartbeat, tarefa_renovacao):
+    for tarefa in (tarefa_limpeza, tarefa_heartbeat, tarefa_renovacao, tarefa_mdns):
         try:
             await tarefa
         except asyncio.CancelledError:

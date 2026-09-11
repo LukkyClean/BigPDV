@@ -29,6 +29,7 @@ chrono = "0.4.45"
 mdns-sd = "0.11"
 flume = "0.11"
 ureq = "3.3.0"
+if-addrs = "0.13"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winreg = "0.55"

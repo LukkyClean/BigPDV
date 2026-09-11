@@ -2,7 +2,7 @@
 import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue'
 import { useNetworkConfig } from '../composables/useNetworkConfig'
 
-const { tipoMaquina, portaConfigurada, tentandoConexao, erroConexao, tentarNovamente, voltar } = useNetworkConfig()
+const { tipoMaquina, portaConfigurada, tentandoConexao, erroConexao, sugerirServidor, tentarNovamente, configurarComoServidor, voltar } = useNetworkConfig()
 </script>
 
 <template>
@@ -15,7 +15,7 @@ const { tipoMaquina, portaConfigurada, tentandoConexao, erroConexao, tentarNovam
           {{ tipoMaquina === 'servidor' ? 'Iniciando servidor...' : 'Conectando ao servidor...' }}
         </p>
         <p class="text-sm text-gray-500">
-          {{ tipoMaquina === 'servidor' ? 'Aguarde enquanto o backend é inicializado' : 'Verificando comunicação com o servidor' }}
+          {{ tipoMaquina === 'servidor' ? 'Aguarde enquanto o serviço local é inicializado (pode levar até 2 minutos)' : 'Verificando comunicação com o servidor' }}
         </p>
         <p v-if="tipoMaquina === 'servidor' && portaConfigurada" class="text-xs text-gray-400 mt-2">
           Porta: {{ portaConfigurada }}
@@ -37,12 +37,16 @@ const { tipoMaquina, portaConfigurada, tentandoConexao, erroConexao, tentarNovam
         </div>
       </div>
 
+      <BaseButton v-if="sugerirServidor" class="w-full" @click="configurarComoServidor">
+        Configurar esta máquina como Servidor
+      </BaseButton>
+
       <div class="flex gap-3">
         <BaseButton variant="secondary" @click="voltar">
           Voltar
         </BaseButton>
-        <BaseButton class="flex-1" @click="tentarNovamente">
-          Tentar novamente
+        <BaseButton class="flex-1" :variant="sugerirServidor ? 'secondary' : 'primary'" @click="tentarNovamente">
+          {{ sugerirServidor ? 'Informar outro endereço' : 'Tentar novamente' }}
         </BaseButton>
       </div>
     </div>
