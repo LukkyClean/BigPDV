@@ -148,6 +148,49 @@ def listar_documentos(
 # DETALHE DO DOCUMENTO
 # ===========================================================================
 
+# Declarado ANTES de /documentos/{documento_id}: o path param captura
+# qualquer segmento, e 'exportar-xml' viraria um 422 de 'nao e inteiro'.
+@router.get(
+    "/documentos/exportar-xml",
+    summary="XMLs do período (ZIP para o contador)",
+    description=(
+        "Baixa um ZIP com o XML de cada NF-e/NFC-e autorizada ou cancelada no "
+        "período, as inutilizações homologadas e uma relação em CSV. O que a "
+        "emissora não devolver vai listado em nao_baixados.txt, sem derrubar o pacote."
+    ),
+)
+def exportar_xml_periodo(
+    user_token: dict = Depends(requer_modulo_fiscal),
+    *,
+    db: Session = Depends(get_db),
+    data_inicio: date = Query(..., description="Primeiro dia (YYYY-MM-DD, data local)"),
+    data_fim: date = Query(..., description="Último dia (YYYY-MM-DD, data local)"),
+    tipo: Optional[str] = Query(None, description="NFE ou NFCE; vazio = os dois"),
+):
+    from fastapi.responses import Response
+    from app.services.fiscal.exportacao_xml import montar_pacote_xml
+
+    if data_fim < data_inicio:
+        raise HTTPException(status_code=422, detail="data_fim anterior a data_inicio.")
+    if (data_fim - data_inicio).days > 366:
+        raise HTTPException(status_code=422, detail="O período máximo é de um ano.")
+
+    conteudo, resumo = montar_pacote_xml(
+        db, user_token["empresa_id"], data_inicio, data_fim, tipo,
+    )
+    nome = f"xml-fiscal-{data_inicio:%Y-%m-%d}_{data_fim:%Y-%m-%d}.zip"
+    return Response(
+        content=conteudo,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{nome}"',
+            "X-Fiscal-Documentos": str(resumo["documentos"]),
+            "X-Fiscal-Baixados": str(resumo["baixados"]),
+            "X-Fiscal-Nao-Baixados": str(resumo["nao_baixados"]),
+        },
+    )
+
+
 @router.get(
     "/documentos/{documento_id}",
     response_model=DocumentoFiscalRead,

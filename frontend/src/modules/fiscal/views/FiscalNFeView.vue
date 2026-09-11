@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import { FlaskConical, Send, Activity } from 'lucide-vue-next';
+import { FlaskConical, Send, Activity, FolderArchive } from 'lucide-vue-next';
 
 
 import PageReview from '@/shared/components/layout/PageReview/PageReview.vue';
@@ -9,6 +9,7 @@ import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
 import FiscalStats from '../components/listagem/FiscalStats.vue';
 import FiscalDocumentosTable from '../components/listagem/FiscalDocumentosTable.vue';
 import FiscalPendenciasPanel from '../components/shared/FiscalPendenciasPanel.vue';
+import FiscalExportarXmlModal from '../components/listagem/FiscalExportarXmlModal.vue';
 import FiscalEmitirTesteModal from '../components/emitir/FiscalEmitirTesteModal.vue';
 import FiscalEmitirNFeModal from '../components/emitir/FiscalEmitirNFeModal.vue';
 import FiscalDocumentoDetailsDrawer from '../components/detalhes/FiscalDocumentoDetailsDrawer.vue';
@@ -33,6 +34,7 @@ const showEmitirModal = ref(false);
 const showDetalhesDrawer = ref(false);
 const detalhesDocumentoId = ref<number | null>(null);
 const showPendenciasPopover = ref(false);
+const showExportarXmlModal = ref(false);
 const activeStatusFilter = ref<DocumentoFiscalStatus | null>(null);
 const showResolucaoDrawer = ref(false);
 
@@ -139,6 +141,16 @@ const healthTextColor = computed(() => {
         </div>
 
         <BaseButton
+          type="button"
+          variant="ghost"
+          class="text-sm"
+          data-exportar-xml
+          @click="showExportarXmlModal = true"
+        >
+          <FolderArchive :size="16" class="mr-1.5" />
+          XMLs do período
+        </BaseButton>
+        <BaseButton
           v-if="isHomologacao"
           type="button"
           variant="ghost"
@@ -198,6 +210,12 @@ const healthTextColor = computed(() => {
     <!-- Drawer de Resolução de Pendências -->
     <FiscalResolucaoProdutosDrawer
       v-model:is-open="showResolucaoDrawer"
+    />
+
+    <FiscalExportarXmlModal
+      :is-open="showExportarXmlModal"
+      tipo-inicial="NFE"
+      @close="showExportarXmlModal = false"
     />
   </div>
 </template>

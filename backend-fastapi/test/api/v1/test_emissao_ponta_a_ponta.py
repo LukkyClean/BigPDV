@@ -55,6 +55,12 @@ class PlataformaFalsa:
     def consultar_config(self):
         return {"configurado": True, "cscConfigurado": True}
 
+    def baixar_xml(self, caminho):
+        self.chamadas.append({"baixar_xml": caminho})
+        if caminho and "falha" in caminho:
+            return None
+        return f'<?xml version="1.0"?><nfeProc><ref>{caminho}</ref></nfeProc>'
+
 
 def AUTORIZADA(numero):
     return {
@@ -376,3 +382,127 @@ def test_reemitir_com_cadastro_quebrado_recusa_antes_de_reservar_numero(
     fs = db_session.query(EmpresaFiscalSettings).first()
     db_session.refresh(fs)
     assert fs.ultimo_numero_nfe == 11, "recusa do gate não pode queimar número"
+
+
+# =========================
+# 3. O pacote de XMLs do contador
+# =========================
+
+def _zip(resposta):
+    import io
+    import zipfile
+    return zipfile.ZipFile(io.BytesIO(resposta.content))
+
+
+def test_pacote_de_xml_do_periodo(client, db_session, header_with_token, venda_pronta, plataforma):
+    """Autorizada vai para NFe/, o CSV relaciona, e o ZIP sai mesmo que um XML não venha."""
+    from datetime import date
+
+    from app.services.fiscal import exportacao_xml as exp_mod
+
+    venda_id, _ = venda_pronta
+    falsa = plataforma(AUTORIZADA(11))
+    # O pacote instancia o client por conta própria: mesma falsa.
+    import pytest as _pytest
+    mp = _pytest.MonkeyPatch()
+    mp.setattr(exp_mod, "get_fiscal_client", lambda *a, **k: falsa)
+    try:
+        doc_id = _emitir(client, header_with_token, venda_id).json()["documento_id"]
+        doc = _doc(db_session, doc_id)
+
+        hoje = date.today()
+        r = client.get(
+            "/api/v1/fiscal/documentos/exportar-xml",
+            params={"data_inicio": hoje.isoformat(), "data_fim": hoje.isoformat()},
+            headers=header_with_token,
+        )
+        assert r.status_code == 200, r.text
+        assert r.headers["content-type"].startswith("application/zip")
+        assert r.headers["X-Fiscal-Documentos"] == "1"
+        assert r.headers["X-Fiscal-Baixados"] == "1"
+
+        pacote = _zip(r)
+        nomes = pacote.namelist()
+        assert f"NFe/{doc.chave_acesso}.xml" in nomes
+        assert "relacao.csv" in nomes and "LEIA-ME.txt" in nomes
+        assert "nao_baixados.txt" not in nomes
+
+        xml = pacote.read(f"NFe/{doc.chave_acesso}.xml").decode()
+        assert "https://plataforma/xml/11.xml" in xml
+
+        relacao = pacote.read("relacao.csv").decode("utf-8-sig")
+        linhas = relacao.strip().splitlines()
+        assert linhas[0].startswith("modelo;serie;numero;chave_acesso;status")
+        assert len(linhas) == 2
+        assert linhas[1].startswith(f"55;1;11;{doc.chave_acesso};AUTORIZADA;")
+        assert "200,00" in linhas[1]
+    finally:
+        mp.undo()
+
+
+def test_pacote_lista_o_que_nao_veio_sem_derrubar_o_resto(
+    client, db_session, header_with_token, venda_pronta, plataforma,
+):
+    from datetime import date
+
+    from app.services.fiscal import exportacao_xml as exp_mod
+
+    venda_id, _ = venda_pronta
+    falsa = plataforma(AUTORIZADA(11))
+    import pytest as _pytest
+    mp = _pytest.MonkeyPatch()
+    mp.setattr(exp_mod, "get_fiscal_client", lambda *a, **k: falsa)
+    try:
+        doc_id = _emitir(client, header_with_token, venda_id).json()["documento_id"]
+        doc = _doc(db_session, doc_id)
+        doc.url_xml = "https://plataforma/xml/falha.xml"
+        db_session.commit()
+
+        hoje = date.today()
+        r = client.get(
+            "/api/v1/fiscal/documentos/exportar-xml",
+            params={"data_inicio": hoje.isoformat(), "data_fim": hoje.isoformat()},
+            headers=header_with_token,
+        )
+        assert r.status_code == 200
+        assert r.headers["X-Fiscal-Nao-Baixados"] == "1"
+        pacote = _zip(r)
+        assert "nao_baixados.txt" in pacote.namelist()
+        assert doc.chave_acesso in pacote.read("nao_baixados.txt").decode()
+        assert not any(n.startswith("NFe/") for n in pacote.namelist())
+    finally:
+        mp.undo()
+
+
+def test_pacote_recusa_periodo_invertido(client, header_with_token, venda_pronta):
+    # `venda_pronta` só para a empresa ter configuração fiscal (senão é 403 antes).
+    r = client.get(
+        "/api/v1/fiscal/documentos/exportar-xml",
+        params={"data_inicio": "2026-09-30", "data_fim": "2026-09-01"},
+        headers=header_with_token,
+    )
+    assert r.status_code == 422, r.text
+
+
+def test_pacote_nao_inclui_rejeitada(client, db_session, header_with_token, venda_pronta, plataforma):
+    from datetime import date
+
+    from app.services.fiscal import exportacao_xml as exp_mod
+
+    venda_id, _ = venda_pronta
+    falsa = plataforma(REJEITADA_539)
+    import pytest as _pytest
+    mp = _pytest.MonkeyPatch()
+    mp.setattr(exp_mod, "get_fiscal_client", lambda *a, **k: falsa)
+    try:
+        _emitir(client, header_with_token, venda_id)
+        hoje = date.today()
+        r = client.get(
+            "/api/v1/fiscal/documentos/exportar-xml",
+            params={"data_inicio": hoje.isoformat(), "data_fim": hoje.isoformat()},
+            headers=header_with_token,
+        )
+        assert r.status_code == 200
+        assert r.headers["X-Fiscal-Documentos"] == "0"
+    finally:
+        mp.undo()

@@ -13,13 +13,14 @@
  */
 
 import { ref, computed } from 'vue';
-import { Activity, Clock, Receipt } from 'lucide-vue-next';
+import { Activity, Clock, Receipt, FolderArchive } from 'lucide-vue-next';
 
 import PageReview from '@/shared/components/layout/PageReview/PageReview.vue';
 
 import FiscalStats from '../components/listagem/FiscalStats.vue';
 import FiscalDocumentosTable from '../components/listagem/FiscalDocumentosTable.vue';
 import FiscalPendenciasPanel from '../components/shared/FiscalPendenciasPanel.vue';
+import FiscalExportarXmlModal from '../components/listagem/FiscalExportarXmlModal.vue';
 import FiscalDocumentoDetailsDrawer from '../components/detalhes/FiscalDocumentoDetailsDrawer.vue';
 import FiscalResolucaoProdutosDrawer from '../components/shared/FiscalResolucaoProdutosDrawer.vue';
 import { useFiscalResumoQuery } from '../composables/useFiscalResumoQuery';
@@ -34,6 +35,7 @@ const { data: configuracao } = useFiscalConfiguracaoQuery();
 const showDetalhesDrawer = ref(false);
 const detalhesDocumentoId = ref<number | null>(null);
 const showPendenciasPopover = ref(false);
+const showExportarXmlModal = ref(false);
 const activeStatusFilter = ref<DocumentoFiscalStatus | null>(null);
 const showResolucaoDrawer = ref(false);
 
@@ -142,6 +144,16 @@ const healthTextColor = computed(() => {
             @click="showPendenciasPopover = false"
           />
         </div>
+        <BaseButton
+          type="button"
+          variant="ghost"
+          class="text-sm"
+          data-exportar-xml
+          @click="showExportarXmlModal = true"
+        >
+          <FolderArchive :size="16" class="mr-1.5" />
+          XMLs do período
+        </BaseButton>
       </div>
     </div>
 
@@ -192,6 +204,12 @@ const healthTextColor = computed(() => {
     />
 
     <FiscalResolucaoProdutosDrawer v-model:is-open="showResolucaoDrawer" />
+
+    <FiscalExportarXmlModal
+      :is-open="showExportarXmlModal"
+      tipo-inicial="NFCE"
+      @close="showExportarXmlModal = false"
+    />
   </div>
 </template>
 

@@ -114,6 +114,31 @@ export const fiscalService = {
     return data;
   },
 
+  /**
+   * ZIP com os XMLs do período (autorizadas, canceladas, inutilizações e a
+   * relação em CSV). O contador pede isso todo dia 5. O timeout é o do lote:
+   * a plataforma entrega um XML por vez.
+   */
+  async exportarXmlPeriodo(
+    dataInicio: string,
+    dataFim: string,
+    tipo?: 'NFE' | 'NFCE',
+  ): Promise<{ arquivo: Blob; nome: string; documentos: number; baixados: number; naoBaixados: number }> {
+    const resposta = await api.get<Blob>(`${FISCAL_ENDPOINT}/documentos/exportar-xml`, {
+      params: { data_inicio: dataInicio, data_fim: dataFim, tipo },
+      responseType: 'blob',
+      timeout: TIMEOUT_LOTE,
+    });
+    const h = resposta.headers as Record<string, string | undefined>;
+    return {
+      arquivo: resposta.data,
+      nome: `xml-fiscal-${dataInicio}_${dataFim}.zip`,
+      documentos: Number(h['x-fiscal-documentos'] ?? 0),
+      baixados: Number(h['x-fiscal-baixados'] ?? 0),
+      naoBaixados: Number(h['x-fiscal-nao-baixados'] ?? 0),
+    };
+  },
+
   async emitirTesteNfe(): Promise<EmissaoResponse> {
     const { data } = await api.post<EmissaoResponse>(
       `${FISCAL_ENDPOINT}/emitir/teste/nfe`,
