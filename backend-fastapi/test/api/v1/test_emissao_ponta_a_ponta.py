@@ -506,3 +506,47 @@ def test_pacote_nao_inclui_rejeitada(client, db_session, header_with_token, vend
         assert r.headers["X-Fiscal-Documentos"] == "0"
     finally:
         mp.undo()
+
+
+# =========================
+# 4. O destinatário que FOI enviado fica no documento
+# =========================
+
+def test_detalhe_mostra_o_destinatario_enviado_e_nao_o_cadastro_atual(
+    client, db_session, header_with_token, venda_pronta, plataforma,
+):
+    """A SEFAZ cita o que recebeu. Se o cadastro mudar depois, a tela ainda
+    tem que mostrar o que saiu -- e o snapshot e a unica fonte disso."""
+    from app.db.models.cliente import ClientePF
+
+    venda_id, _ = venda_pronta
+    plataforma(REJEITADA_539)
+    doc_id = _emitir(client, header_with_token, venda_id).json()["documento_id"]
+
+    doc = _doc(db_session, doc_id)
+    assert doc.destinatario_documento_enviado == "52998224725"
+    assert doc.destinatario_nome_enviado == "Destinatária Completa"
+
+    # O lojista corrige o cliente depois da recusa: o detalhe continua
+    # mostrando o que a SEFAZ viu.
+    pf = db_session.query(ClientePF).filter(ClientePF.cpf == "52998224725").one()
+    pf.nome = "Nome Corrigido Depois"
+    db_session.commit()
+
+    r = client.get(f"/api/v1/fiscal/documentos/{doc_id}", headers=header_with_token)
+    assert r.status_code == 200, r.text
+    assert r.json()["destinatario_documento"] == "52998224725"
+    assert r.json()["destinatario_nome"] == "Destinatária Completa"
+
+
+def test_nota_de_teste_mostra_o_cnpj_ficticio_enviado(client, db_session, header_with_token, venda_pronta, plataforma):
+    """A nota de teste nao tem venda: sem o snapshot, o detalhe dizia
+    'Consumidor Final (Nao identificado)' numa nota que saiu com CNPJ."""
+    plataforma(REJEITADA_539)
+    r = client.post("/api/v1/fiscal/emitir/teste/nfe", headers=header_with_token)
+    assert r.status_code == 200, r.text
+    doc_id = r.json()["documento_id"]
+
+    det = client.get(f"/api/v1/fiscal/documentos/{doc_id}", headers=header_with_token).json()
+    assert det["destinatario_documento"] == "99999999000191"
+    assert "HOMOLOGACAO" in det["destinatario_nome"]

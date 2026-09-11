@@ -117,6 +117,16 @@ def gravar_snapshot(documento: DocumentoFiscal, payload: dict, venda=None) -> No
     """
     try:
         documento.itens = montar_itens_snapshot(payload, venda=venda)
+        # O destinatário como FOI no payload -- e o que a SEFAZ vai citar numa
+        # recusa. Congelado aqui pelo mesmo motivo dos itens.
+        dest = payload.get("destinatario") or {}
+        if isinstance(dest, dict):
+            documento.destinatario_documento_enviado = (
+                str(dest.get("cnpj") or dest.get("cpf") or "")[:14] or None
+            )
+            documento.destinatario_nome_enviado = (
+                str(dest.get("nome") or dest.get("razao_social") or "")[:120] or None
+            )
     except Exception as exc:  # pragma: no cover - rede de segurança
         # Um snapshot ausente degrada a tela de detalhes (que cai no
         # comportamento antigo); uma exceção aqui derrubaria a emissão.

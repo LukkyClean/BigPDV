@@ -193,6 +193,7 @@ ausência com defeito.
 | 4.4.5 | `denegado` como status próprio | já resolvido do nosso lado via `status_focus` | — |
 | 4.4.6 | `/licenca/conectar` remoeda o token? | concessão do NFE pode levar até 7 dias para aparecer | comercial |
 | 4.3 | `db:push` (`idempotencia_fiscal`, `cscConfigurado`) | idempotência não protege contra duplicata em retry | Fase A |
+| novo | **"CNPJ do destinatário não cadastrado na Receita Federal [CNPJ:66.544.279/0001-82]"** (11/09): a frase não está no código da plataforma nem no ERP, e o mapper (`focus-payload.mapper.ts`) traduz `destinatario.cnpj → cnpj_destinatario` sem trocar nada — então vem da Focus/SEFAZ. O CNPJ citado é o do **emitente**, mascarado. Falta ver no painel da Focus ou no `pm2 logs` o `cnpj_destinatario` que chegou lá e o `status_sefaz` que voltou | o ERP passou a congelar o destinatário enviado no snapshot (`9c4d7e2f1a05`), então a próxima recusa mostra na tela o que saiu | "Emitir Teste" e A2 |
 
 Conferir com o time da plataforma **antes** da Fase B qual desses já subiu.
 A `teste-56b6bf343d13` prova só a 4.2 e a 4.4.1 (os campos chegaram na SEFAZ).

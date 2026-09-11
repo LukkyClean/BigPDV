@@ -93,6 +93,7 @@ def _hidratar_documento_com_venda(db: Session, doc: DocumentoFiscal) -> Document
             else:
                 doc_read.destinatario_nome = "Consumidor Final"
 
+
             # Itens da venda para conferência fiscal
             itens_list = []
             for item in venda.itens:
@@ -123,6 +124,14 @@ def _hidratar_documento_com_venda(db: Session, doc: DocumentoFiscal) -> Document
             # Só sobrescreve se o snapshot não respondeu — ver comentário no topo.
             if not doc.itens:
                 doc_read.itens_resumo = itens_list
+
+    # O que FOI ENVIADO vence o cadastro atual: e o que a SEFAZ viu, e o
+    # cadastro pode ter sido corrigido depois da recusa. Documentos anteriores
+    # a 11/09/2026 nao tem isso e ficam com a hidratacao pela venda.
+    if doc.destinatario_documento_enviado:
+        doc_read.destinatario_documento = doc.destinatario_documento_enviado
+    if doc.destinatario_nome_enviado:
+        doc_read.destinatario_nome = doc.destinatario_nome_enviado
 
     return doc_read
 

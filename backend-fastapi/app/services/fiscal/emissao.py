@@ -963,6 +963,9 @@ def emitir_teste_nfe(db: Session, empresa_id: int) -> DocumentoFiscal:
     )
     
     fiscal_settings.ultimo_numero_nfe = numero
+    # A nota de teste nao tem venda, entao o detalhe so tem o snapshot para
+    # dizer o que foi enviado -- foi a falta dele que escondeu qual CNPJ saiu.
+    gravar_snapshot(doc, payload)
     crud.salvar_documento(db, doc)
 
     token = crud.get_licenca_token(db)

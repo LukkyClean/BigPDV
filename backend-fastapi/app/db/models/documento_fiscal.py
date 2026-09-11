@@ -60,6 +60,13 @@ class DocumentoFiscal(Base):
     url_pdf: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     url_xml: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
+    # --- Destinatario ENVIADO (parte do snapshot, gravado antes de transmitir) ---
+    # E o que a SEFAZ viu. A tela lia o cliente da venda, e a nota de teste nao
+    # tem venda: quando a SEFAZ recusou citando um CNPJ, nao havia como provar
+    # o que tinha ido no payload. So digitos; None em documentos anteriores.
+    destinatario_documento_enviado: Mapped[Optional[str]] = mapped_column(String(14), nullable=True)
+    destinatario_nome_enviado: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+
     # --- SEFAZ feedback ---
     mensagem_sefaz: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     codigo_status_sefaz: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
