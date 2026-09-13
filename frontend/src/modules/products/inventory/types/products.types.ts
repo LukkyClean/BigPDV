@@ -60,6 +60,12 @@ export interface ProdutoBase {
 
 export interface ProdutoCreate extends ProdutoBase {
   estoque: EstoqueCreate;
+  /**
+   * Dados fiscais do produto, gravados na MESMA transação do cadastro.
+   * Ausente para quem não tem o módulo fiscal — e o backend só exige a
+   * licença quando o bloco vem preenchido.
+   */
+  fiscal?: Record<string, unknown> | null;
 }
 
 export interface ProdutoRead extends ProdutoBase {

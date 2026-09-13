@@ -4,11 +4,11 @@
 # DESCRIÇÃO: Define rotas para manipulação de Produtos e Imagens.
 # ---------------------------------------------------------------------------
 
-from fastapi import APIRouter, Depends, status, Query, Path, UploadFile, File, Form, Response
+from fastapi import APIRouter, Depends, status, Query, Path, UploadFile, File, Form, Response, HTTPException
 from sqlalchemy.orm import Session
 from typing import Sequence, Optional
 
-from app.schemas.produto import ProdutoCreate, ProdutoRead, ProdutoSimpleRead, ProdutoUpdate
+from app.schemas.produto import ProdutoCreate, ProdutoCreateComFiscal, ProdutoRead, ProdutoSimpleRead, ProdutoUpdate
 from app.schemas.produto_fotos import ProdutoFotoRead
 from app.core.depends import check_permission, requer_modulo_fiscal, _handle_db_transaction
 from app.schemas.produto_fiscal import ProdutoFiscalRead, ProdutoFiscalUpdate
@@ -32,19 +32,27 @@ router = APIRouter()
 def create_new_produto(
     user_token: dict = Depends(check_permission(required_permission="produto")),
     *,
-    produto_to_add: ProdutoCreate,
+    produto_to_add: ProdutoCreateComFiscal,
     db: Session = Depends(get_db)
 ):
     """
     Endpoint para cadastro de produtos.
 
     Args:
-        produto_to_add (ProdutoCreate): Payload com dados do produto e estoque.
+        produto_to_add (ProdutoCreateComFiscal): Payload com dados do produto,
+            estoque e, opcionalmente, os dados fiscais.
         db (Session): Sessão de banco de dados.
 
     Returns:
         ProdutoRead: O produto criado com IDs gerados.
     """
+    # A trava fiscal é condicional: quem não manda `fiscal` cadastra produto
+    # como sempre cadastrou. Quem manda passa pela MESMA porta do
+    # `PUT /{id}/fiscal` — chamada à mão porque um `Depends` valeria para todo
+    # cadastro, inclusive o das lojas que não contrataram NF-e.
+    if produto_to_add.fiscal is not None:
+        requer_modulo_fiscal(usuario_token=user_token, db=db)
+
     return _handle_db_transaction(
         db,
         produto_service.create_produto,

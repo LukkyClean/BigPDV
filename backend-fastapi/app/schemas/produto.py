@@ -7,12 +7,15 @@ from pydantic import BaseModel, ConfigDict, Field, AliasPath
 from typing import Optional, Sequence
 from app.schemas.estoque import EstoqueCreate, EstoqueRead, EstoqueUpdate
 from app.schemas.produto_fotos import ProdutoFotoRead
+from app.schemas.produto_fiscal import ProdutoFiscalUpdate
 
 class ProdutoCreate(BaseModel):
     """Modelo de entrada para criação de Produto."""
     
     nome: str = Field(..., max_length=255, description="Nome comercial.")
-    codigo_produto: str = Field(..., max_length=50, description="Código SKU único.")
+    # 100 é o teto da coluna (`produtos.codigo_produto`) e o do Zod na tela.
+    # Estava 50 aqui: um SKU de 60 caracteres passava no formulário e voltava 422.
+    codigo_produto: str = Field(..., max_length=100, description="Código SKU único.")
     codigo_barras: Optional[str] = Field(None, description="Código de barras para NF-e")
     
     unidade_medida: Optional[str] = Field(None, max_length=10)
@@ -23,7 +26,7 @@ class ProdutoCreate(BaseModel):
     
     fornecedor_id: Optional[int] = Field(None, description="ID do fornecedor vinculado.")
 
-    # localizacao_estoque: Optional[str] = Field(None, max_length=100)
+    localizacao_estoque: Optional[str] = Field(None, max_length=255, description="Onde o produto fica guardado (corredor, prateleira).")
 
     estoque: EstoqueCreate = Field(..., description="Dados iniciais de estoque.")
 
@@ -44,6 +47,31 @@ class ProdutoCreate(BaseModel):
             }
         }
     )
+
+class ProdutoCreateComFiscal(ProdutoCreate):
+    """
+    Entrada do POST /produtos: o produto e, opcionalmente, seus dados fiscais.
+
+    POR QUE UMA CLASSE À PARTE, E NÃO UM CAMPO EM `ProdutoCreate`
+    -------------------------------------------------------------
+    `ProdutoRead` herda de `ProdutoCreate`. Um campo `fiscal` lá dentro
+    passaria a sair em TODA leitura de produto — inclusive na listagem — e
+    mudaria o payload de quem não tem módulo fiscal. A entrada do POST é o
+    único lugar que precisa do bloco.
+
+    O `fiscal` é opcional: quem não emite nota nunca o envia, e o cadastro
+    continua sendo o de sempre.
+    """
+
+    fiscal: Optional[ProdutoFiscalUpdate] = Field(
+        None,
+        description=(
+            "Dados fiscais do produto (NCM, CFOP, CST etc.). Gravados na MESMA "
+            "transação do produto: se forem inválidos, o produto também não nasce. "
+            "Exige módulo fiscal contratado e configurado."
+        ),
+    )
+
 
 class ProdutoRead(ProdutoCreate):
     """Modelo de saída (Response) para Produto."""
@@ -74,15 +102,16 @@ class ProdutoUpdate(BaseModel):
     """Modelo de entrada para atualização parcial de Produto."""
     
     nome: Optional[str] = Field(None, max_length=255)
-    codigo_produto: Optional[str] = Field(None, max_length=50)
-    codigo_barras: Optional[str] = Field(None, max_length=50)
+    # 100 nos dois, igual às colunas e ao Zod da tela.
+    codigo_produto: Optional[str] = Field(None, max_length=100)
+    codigo_barras: Optional[str] = Field(None, max_length=100)
     
     unidade_medida: Optional[str] = Field(None, max_length=10)
     observacao: Optional[str] = Field(None, max_length=500)
     
-    nota_fiscal: Optional[str] = Field(None, max_length=100)
     categoria: Optional[str] = Field(None, max_length=100)
     marca: Optional[str] = Field(None, max_length=100)
+    localizacao_estoque: Optional[str] = Field(None, max_length=255)
     
     fornecedor_id: Optional[int] = Field(None)
 

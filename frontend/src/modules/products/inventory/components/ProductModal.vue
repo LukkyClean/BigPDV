@@ -187,7 +187,6 @@ watch(isOpen, (open) => {
                   <DadosFiscaisSection
                     :submit-count="submitCount"
                     :disabled="isViewMode"
-                    :is-create-mode="isCreateMode"
                   />
                 </template>
               </form>

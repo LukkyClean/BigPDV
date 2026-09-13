@@ -6,6 +6,7 @@
  */
 
 import { computed, ref } from 'vue';
+import BaseAjuda from '../BaseAjuda/BaseAjuda.vue';
 
 interface InputProps {
   type?: 'text' | 'email' | 'password' | 'number' | 'tel' | 'date';
@@ -26,6 +27,8 @@ interface InputProps {
    * aceita só o separador decimal do locale do navegador.
    */
   inputmode?: 'text' | 'decimal' | 'numeric' | 'tel' | 'email' | 'url' | 'search';
+  /** Texto do "?" ao lado do rótulo. Sem ele, nada é renderizado a mais. */
+  ajuda?: string;
 }
 
 const props = withDefaults(defineProps<InputProps>(), {
@@ -112,6 +115,7 @@ function togglePasswordVisibility() {
       >
          *
       </span>
+      <BaseAjuda v-if="ajuda" :texto="ajuda" :campo="label" class="ml-1" />
     </label>
 
     <div class="relative">

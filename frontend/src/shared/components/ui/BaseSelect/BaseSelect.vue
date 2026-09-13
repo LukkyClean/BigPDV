@@ -10,6 +10,7 @@ import { computed, ref, watch } from 'vue';
 import { onClickOutside } from '@vueuse/core';
 
 import LucideIcon from '../../icons/LucideIcon.vue';
+import BaseAjuda from '../BaseAjuda/BaseAjuda.vue';
 import { ChevronDown } from 'lucide-vue-next';
 
 export interface SelectOption {
@@ -27,6 +28,8 @@ interface SelectProps {
   id?: string;
   emptyMessage?: string;
   hideChevron?: boolean;
+  /** Texto do "?" ao lado do rótulo. Sem ele, nada é renderizado a mais. */
+  ajuda?: string;
 }
 
 const props = withDefaults(defineProps<SelectProps>(), {
@@ -195,6 +198,7 @@ watch(
     >
       {{ label }}
       <span v-if="required" class="text-red-600"> * </span>
+      <BaseAjuda v-if="ajuda" :texto="ajuda" :campo="label" class="ml-1" />
     </label>
 
     <div class="relative">

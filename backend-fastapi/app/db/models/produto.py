@@ -36,10 +36,10 @@ class Produto(Base):
     observacao: Mapped[Optional[str]] = mapped_column(String(500), nullable=True, doc="Observações gerais sobre o produto")
     categoria: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, doc="Categoria à qual o produto pertence")
     marca: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, doc="Marca do produto")
+    localizacao_estoque: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, doc="Onde o produto fica guardado (corredor, prateleira)")
     @property
     def imagem_url(self) -> Optional[str]:
         return next((foto.url for foto in self.fotos if foto.principal), None)
-    # localizacao_estoque: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, doc="Localização do produto no estoque")
     
     # Chave estrangeira para o fornecedor (Muitos-para-Um)
     # A tipagem Mapped[int | None] reflete o nullable=True

@@ -6,6 +6,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query';
 import { useToast } from '@/shared/composables/useToast';
 import { useAuthStore } from '@/shared/stores/auth.store';
+import { fiscalKeys } from '@/modules/fiscal/constants/fiscal.constants';
 import {
   getEmpresa,
   updateEmpresa,
@@ -78,6 +79,12 @@ export function useUpdateEmpresaMutation() {
     onSuccess: async () => {
       toast.success(MESSAGES.success.save);
       await queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.empresa] });
+
+      // O mapa de campos fiscais do produto é DERIVADO do regime da empresa,
+      // e fica fresco por meia hora. Sem esta invalidação, trocar o regime e
+      // abrir o cadastro de produto mostrava os campos do regime ANTIGO até a
+      // próxima meia hora — e o lojista concluiria que a tela está quebrada.
+      await queryClient.invalidateQueries({ queryKey: fiscalKeys.camposProduto() });
 
       // Atualiza empresa no auth store
       authStore.revalidateUser()

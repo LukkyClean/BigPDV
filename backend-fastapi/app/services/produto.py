@@ -13,6 +13,7 @@ from app.db.models.produto import Produto as ProdutoModel
 from app.db.models.produto_fotos import ProdutoFoto as ProdutoFotoModel
 from app.db.models.estoque import Estoque as EstoqueModel
 from app.db.crud import produto as produto_crud
+from app.db.crud import produto_fiscal as produto_fiscal_crud
 from app.db.crud import funcionario as funcionario_crud
 from app.services import movimentacao_estoque as mov_service
 
@@ -50,11 +51,16 @@ _bad_request_exce = HTTPException(
 def create_produto(db: Session, produto_to_add: ProdutoCreate, usuario_token: dict) -> ProdutoModel:
     """
     Orquestra a criação de um novo produto.
-    
+
     1. Verifica unicidade do código.
-    2. Separa dados de Produto e Estoque.
+    2. Separa dados de Produto, Estoque e Fiscal.
     3. Cria instâncias ORM e vincula.
     4. Persiste.
+    5. Grava os dados fiscais, quando vierem, na MESMA transação.
+
+    O passo 5 existe para o produto poder ser cadastrado e ter nota emitida
+    sem passar pela edição: antes, o bloco fiscal só era aceito no update, e
+    o lojista precisava salvar, reabrir e preencher de novo.
     """
     # Verifica duplicidade
     produto_in_db = produto_crud.get_produto_by_code(db, produto_to_add.codigo_produto)
@@ -62,8 +68,8 @@ def create_produto(db: Session, produto_to_add: ProdutoCreate, usuario_token: di
     if produto_in_db and produto_in_db.ativo:
         raise conflict_codigo_produto_exce
     
-    # Prepara dados (separa estoque do produto principal)
-    produto_data = produto_to_add.model_dump(exclude={"estoque"})
+    # Prepara dados (separa estoque e fiscal do produto principal)
+    produto_data = produto_to_add.model_dump(exclude={"estoque", "fiscal"})
     produto_to_db = ProdutoModel(**produto_data)
 
     estoque_data = produto_to_add.estoque.model_dump()
@@ -96,6 +102,13 @@ def create_produto(db: Session, produto_to_add: ProdutoCreate, usuario_token: di
         observacao="Estoque inicial",
         custo_unitario=estoque_data.get("valor_entrada"),
     )
+
+    # Dados fiscais, quando vierem. `flush` e não `commit`: quem fecha a
+    # transação é o `_handle_db_transaction` do endpoint, então um NCM inválido
+    # derruba o produto junto — que é o ponto de gravar os dois de uma vez.
+    dados_fiscais = getattr(produto_to_add, "fiscal", None)
+    if dados_fiscais is not None:
+        produto_fiscal_crud.upsert(db, produto_in_db.id, dados_fiscais)
 
     return produto_in_db
 

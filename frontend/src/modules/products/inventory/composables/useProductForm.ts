@@ -54,7 +54,9 @@ const DEFAULT_FORM_VALUES: ProductFormData = {
   fiscal_ncm: '',
   fiscal_cest: '',
   fiscal_cfop_padrao: '',
-  fiscal_origem_mercadoria: '',
+  // 0 = Nacional. É a origem da esmagadora maioria do varejo, e o campo é
+  // obrigatório na emissão — nascer vazio só produzia pendência.
+  fiscal_origem_mercadoria: '0',
   fiscal_unidade_tributavel: '',
   fiscal_gtin_tributavel: '',
   fiscal_cst_icms: '',
@@ -86,6 +88,56 @@ function toNumberOrUndefined(value?: string): number | undefined {
   if (!value) return undefined;
   const parsed = parseInt(value, 10);
   return Number.isNaN(parsed) ? undefined : parsed;
+}
+
+/** Percentual digitado ("18", "1.65") → centésimos de ponto (1800, 165). */
+function percentualParaCentesimos(valor?: string): number | null {
+  if (!valor) return null;
+  const numero = Number(valor);
+  return Number.isNaN(numero) ? null : Math.round(numero * 100);
+}
+
+/**
+ * Monta o bloco fiscal a partir do formulário.
+ *
+ * Um só lugar para criação e edição: enquanto isto vivia dentro do `onSubmit`
+ * do update, o cadastro simplesmente não mandava dado fiscal nenhum, e o
+ * lojista precisava salvar, reabrir e preencher de novo.
+ *
+ * A unidade tributável cai para a comercial quando vazia — é a prática aceita
+ * no varejo fracionado e o que o `payload_builder` do backend já faz.
+ */
+function construirPayloadFiscal(formData: ProductFormData): Record<string, unknown> {
+  return {
+    ncm: formData.fiscal_ncm || null,
+    cest: formData.fiscal_cest || null,
+    cfop_padrao: formData.fiscal_cfop_padrao || null,
+    origem_mercadoria:
+      formData.fiscal_origem_mercadoria !== '' && formData.fiscal_origem_mercadoria != null
+        ? Number(formData.fiscal_origem_mercadoria)
+        : null,
+    unidade_tributavel: formData.fiscal_unidade_tributavel || formData.unidade_medida || null,
+    gtin_tributavel: formData.fiscal_gtin_tributavel || null,
+    cst_icms: formData.fiscal_cst_icms || null,
+    csosn: formData.fiscal_csosn || null,
+    aliquota_icms: percentualParaCentesimos(formData.fiscal_aliquota_icms_display),
+    reducao_base_icms: percentualParaCentesimos(formData.fiscal_reducao_base_icms_display),
+    codigo_beneficio_fiscal: formData.fiscal_codigo_beneficio_fiscal || null,
+    aliquota_pis: percentualParaCentesimos(formData.fiscal_aliquota_pis_display),
+    aliquota_cofins: percentualParaCentesimos(formData.fiscal_aliquota_cofins_display),
+    cst_pis: formData.fiscal_cst_pis || null,
+    cst_cofins: formData.fiscal_cst_cofins || null,
+    c_class_trib: formData.fiscal_c_class_trib || null,
+    cst_ibs_cbs: formData.fiscal_cst_ibs_cbs || null,
+    aliquota_ibs: percentualParaCentesimos(formData.fiscal_aliquota_ibs_display),
+    aliquota_cbs: percentualParaCentesimos(formData.fiscal_aliquota_cbs_display),
+    c_benef: formData.fiscal_c_benef || null,
+  };
+}
+
+/** True quando o lojista escreveu alguma coisa no bloco fiscal. */
+function temDadoFiscal(payload: Record<string, unknown>): boolean {
+  return Object.values(payload).some((valor) => valor !== null && valor !== '');
 }
 
 // =============================================
@@ -263,8 +315,10 @@ export function useProductFormProvider() {
             fiscal_cst_cofins: fiscal.cst_cofins ?? '',
             fiscal_c_class_trib: fiscal.c_class_trib ?? '',
             fiscal_cst_ibs_cbs: fiscal.cst_ibs_cbs ?? '',
-            fiscal_aliquota_ibs_display: fiscal.aliquota_ibs != null ? String(Math.round(fiscal.aliquota_ibs / 100)) : '',
-            fiscal_aliquota_cbs_display: fiscal.aliquota_cbs != null ? String(Math.round(fiscal.aliquota_cbs / 100)) : '',
+            // Sem `Math.round`: ele estava só neste par e comia a casa
+            // decimal — 5,5% era gravado como 550 e voltava 6.
+            fiscal_aliquota_ibs_display: fiscal.aliquota_ibs != null ? String(fiscal.aliquota_ibs / 100) : '',
+            fiscal_aliquota_cbs_display: fiscal.aliquota_cbs != null ? String(fiscal.aliquota_cbs / 100) : '',
             fiscal_c_benef: fiscal.c_benef ?? '',
           } as any, false);
         }
@@ -294,7 +348,13 @@ export function useProductFormProvider() {
   );
 
   function transformToCreateRequest(formData: ProductFormData): ProdutoCreate {
+    // O bloco fiscal viaja no MESMO POST: o backend grava os dois numa
+    // transação só, então um NCM torto derruba o produto junto em vez de
+    // deixar meio cadastro no banco.
+    const fiscal = nfeDisponivel ? construirPayloadFiscal(formData) : null;
+
     return {
+      ...(fiscal && temDadoFiscal(fiscal) ? { fiscal } : {}),
       nome: formData.nome,
       codigo_produto: formData.codigo_produto,
       codigo_barras: formData.codigo_barras || undefined,
@@ -369,44 +429,10 @@ export function useProductFormProvider() {
           },
         };
 
-        // Inclui dados fiscais no payload (o service chama o endpoint separado)
+        // Mesma montagem do cadastro (ver `construirPayloadFiscal`). Na edição
+        // o service chama o endpoint separado de fiscal.
         if (nfeDisponivel) {
-          updateData.fiscal = {
-            ncm: formData.fiscal_ncm || null,
-            cest: formData.fiscal_cest || null,
-            cfop_padrao: formData.fiscal_cfop_padrao || null,
-            origem_mercadoria: formData.fiscal_origem_mercadoria !== '' && formData.fiscal_origem_mercadoria != null
-              ? Number(formData.fiscal_origem_mercadoria)
-              : null,
-            unidade_tributavel: formData.fiscal_unidade_tributavel || null,
-            gtin_tributavel: formData.fiscal_gtin_tributavel || null,
-            cst_icms: formData.fiscal_cst_icms || null,
-            csosn: formData.fiscal_csosn || null,
-            aliquota_icms: formData.fiscal_aliquota_icms_display
-              ? Math.round(Number(formData.fiscal_aliquota_icms_display) * 100)
-              : null,
-            reducao_base_icms: formData.fiscal_reducao_base_icms_display
-              ? Math.round(Number(formData.fiscal_reducao_base_icms_display) * 100)
-              : null,
-            codigo_beneficio_fiscal: formData.fiscal_codigo_beneficio_fiscal || null,
-            aliquota_pis: formData.fiscal_aliquota_pis_display
-              ? Math.round(Number(formData.fiscal_aliquota_pis_display) * 100)
-              : null,
-            aliquota_cofins: formData.fiscal_aliquota_cofins_display
-              ? Math.round(Number(formData.fiscal_aliquota_cofins_display) * 100)
-              : null,
-            cst_pis: formData.fiscal_cst_pis || null,
-            cst_cofins: formData.fiscal_cst_cofins || null,
-            c_class_trib: formData.fiscal_c_class_trib || null,
-            cst_ibs_cbs: formData.fiscal_cst_ibs_cbs || null,
-            aliquota_ibs: formData.fiscal_aliquota_ibs_display
-              ? Math.round(Number(formData.fiscal_aliquota_ibs_display) * 100)
-              : null,
-            aliquota_cbs: formData.fiscal_aliquota_cbs_display
-              ? Math.round(Number(formData.fiscal_aliquota_cbs_display) * 100)
-              : null,
-            c_benef: formData.fiscal_c_benef || null,
-          };
+          updateData.fiscal = construirPayloadFiscal(formData);
         }
 
         updateMutation.mutate(
