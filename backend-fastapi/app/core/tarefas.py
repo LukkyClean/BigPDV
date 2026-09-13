@@ -364,6 +364,7 @@ async def lifespan(app: FastAPI):
 
     aplicar_migracoes()
     _seed_formas_pagamento()
+    _seed_ncm()
     _seed_contador_venda()
     print("Iniciando tarefa de baixa automatica de recebimentos...")
     tarefa_baixa_automatica = asyncio.create_task(_loop_baixa_automatica())
@@ -421,5 +422,84 @@ async def lifespan(app: FastAPI):
         print(f"Todos os {len(terminais)} terminais desconectados.")
     except Exception:
         print("Erro ao desconectar terminais no shutdown.")
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------------------------------
+# Tabela NCM
+# ---------------------------------------------------------------------------
+
+def _caminho_arquivo_ncm() -> str:
+    """
+    Onde está o `ncm.csv.gz`, em dev e no app instalado.
+
+    No sidecar o código roda OFUSCADO de dentro de `dist/`, e o PyArmor só
+    copia `.py` — arquivo de dado não vai junto. Quem o carrega é o
+    PyInstaller, via `run.spec`, e o destino é o `STARTBIG_BUNDLE_DIR` que o
+    `run.py` publica no ambiente.
+
+    Sem a variável (dev), cai no caminho do código-fonte.
+    """
+    bundle = os.environ.get("STARTBIG_BUNDLE_DIR")
+    if bundle:
+        empacotado = os.path.join(bundle, "app", "data", "ncm.csv.gz")
+        if os.path.exists(empacotado):
+            return empacotado
+
+    return os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "ncm.csv.gz"
+    )
+
+
+def _seed_ncm():
+    """
+    Carrega a tabela NCM no banco, uma vez.
+
+    POR QUE NO BOOT E NÃO NUMA MIGRATION: são 10.437 linhas de dado de
+    referência, não de negócio. Migration serve para mudar forma de tabela; o
+    conteúdo vem do arquivo, e o arquivo muda quando a Camex publica revisão —
+    aí basta trocá-lo e o boot seguinte reconcilia.
+
+    IDEMPOTENTE e barato: se a contagem já bate com o arquivo, sai sem ler
+    nada. Só recarrega quando o arquivo muda de tamanho (revisão nova) ou o
+    banco está vazio.
+
+    NUNCA derruba o boot. Sem a tabela, o campo NCM volta a ser digitação livre
+    — que é como ele funcionou até 13/09/2026.
+    """
+    import csv
+    import gzip
+
+    from app.db.models.ncm import Ncm
+
+    arquivo_ncm = _caminho_arquivo_ncm()
+    if not os.path.exists(arquivo_ncm):
+        logger.warning("[NCM] Arquivo de dados não encontrado em %s", arquivo_ncm)
+        return
+
+    db = SessionLocal()
+    try:
+        with gzip.open(arquivo_ncm, "rt", encoding="utf-8", newline="") as arquivo:
+            linhas = list(csv.DictReader(arquivo))
+
+        if db.query(Ncm).count() == len(linhas):
+            return
+
+        logger.info("[NCM] Carregando %d códigos...", len(linhas))
+        db.query(Ncm).delete()
+        db.bulk_save_objects([
+            Ncm(
+                codigo=linha["codigo"],
+                descricao=linha["descricao"][:500],
+                descricao_completa=linha["descricao_completa"][:2000],
+            )
+            for linha in linhas
+        ])
+        db.commit()
+        logger.info("[NCM] %d códigos disponíveis para busca.", len(linhas))
+    except Exception:
+        db.rollback()
+        logger.exception("[NCM] Falha ao carregar a tabela; o campo segue como digitação livre.")
     finally:
         db.close()

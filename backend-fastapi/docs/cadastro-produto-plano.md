@@ -407,6 +407,14 @@ confirmação.
 
 ### Fase 3 — validar no cadastro o que a SEFAZ cobra
 
+> **FEITA em 13/09/2026.** `conferir_fiscal_do_produto` extraída do
+> `validators.py` como função pura, e `POST /fiscal/validar/produto` a chama
+> sobre o rascunho **com a cascata já aplicada** — sem isso, produto só com NCM
+> apareceria cheio de erro que a tributação padrão já resolveu. A regra não foi
+> reescrita em Zod: duas conferências significam o cadastro aprovar o que a
+> emissão recusa. É AVISO, não trava: produto pode nascer incompleto de
+> propósito, e quem recusa é o gate.
+
 - Função pura extraída de `verificar_produto_fiscal` sobre um rascunho (D4).
 - Dry-run chamado no `blur` do que muda a regra e antes de salvar.
 - Pendência aparece **no campo**, e o campo precisa estar renderizado (T4).
@@ -417,6 +425,17 @@ pendências para o mesmo rascunho; no app, marcar ST e o CEST virar obrigatório
 hora.
 
 ### Fase 4 — NCM e CEST pesquisáveis
+
+> **NCM FEITO em 13/09/2026.** 10.437 códigos embarcados (250 KB), busca pelo
+> motor de `core/busca.py`, sem internet. Medido na tabela real: 25-30 ms nos
+> casos comuns depois de trocar a busca para DUAS PASSADAS (a segunda, que
+> varre a hierarquia, só roda quando a primeira não acha nada — antes eram
+> ~580 ms sempre). O campo não é `BaseSelect` porque o refiltro local dele
+> descartaria o que o servidor achou. `run.spec` ganhou `app/data`: o PyArmor
+> obfusca só `.py`, e sem essa linha a busca sumiria no app instalado.
+>
+> **CEST por NCM: NÃO FEITO.** Falta fonte confiável da tabela do Convênio
+> 142/2018 — é dataset diferente do da NCM.
 
 - Tabela NCM semeada (D5) + busca por descrição via `core/busca.py`.
 - Campo NCM vira busca ("mouse" → `8471.60.53`), aceitando o código digitado.

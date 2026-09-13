@@ -17,6 +17,8 @@ import type { EmissaoPreviewResponse,
   SugestoesFiscaisResponse,
   CamposFiscaisProdutoResponse,
   TributacaoPadrao,
+  ValidacaoFiscalProduto,
+  BuscaNcmResposta,
 } from '../types/fiscal.types';
 import { TIMEOUT_CONSULTA, TIMEOUT_EMISSAO, TIMEOUT_LOTE } from '../constants/fiscal.constants';
 
@@ -251,6 +253,39 @@ export const fiscalService = {
       `${FISCAL_ENDPOINT}/tributacao-padrao`,
       dados,
     );
+    return data;
+  },
+
+  /**
+   * Confere os dados fiscais de um produto SEM emitir nada.
+   *
+   * Roda a mesma regra do gate de emissão, sobre o rascunho e já com a cascata
+   * aplicada — por isso um produto só com NCM não aparece cheio de erro quando
+   * a loja já respondeu na tributação padrão.
+   */
+  async validarProdutoFiscal(
+    dados: Record<string, unknown>,
+    nomeProduto?: string,
+  ): Promise<ValidacaoFiscalProduto> {
+    const { data } = await api.post<ValidacaoFiscalProduto>(
+      `${FISCAL_ENDPOINT}/validar/produto`,
+      dados,
+      { params: nomeProduto ? { nome_produto: nomeProduto } : undefined },
+    );
+    return data;
+  },
+
+  /**
+   * Busca na tabela NCM embarcada. Funciona sem internet.
+   *
+   * Aceita o código (com ou sem pontos) e a descrição. Quem filtra é o
+   * servidor, com o mesmo motor de busca de produto e cliente.
+   */
+  async buscarNcm(termo: string, limite = 20): Promise<BuscaNcmResposta> {
+    const { data } = await api.get<BuscaNcmResposta>(`${FISCAL_ENDPOINT}/ncm`, {
+      params: { buscar: termo, limite },
+      timeout: TIMEOUT_CONSULTA,
+    });
     return data;
   },
 

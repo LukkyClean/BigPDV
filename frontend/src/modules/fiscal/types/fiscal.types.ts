@@ -368,3 +368,29 @@ export interface TributacaoPadrao {
   confirmado_em?: string | null;
   confirmado_por?: string | null;
 }
+
+/**
+ * O que a SEFAZ recusaria neste produto — conferido ANTES de salvar.
+ *
+ * `procedencia` diz de onde veio cada valor conferido (produto, regra do NCM
+ * ou padrao da loja): campo preenchido sem explicacao, num formulario fiscal,
+ * e pior que campo vazio.
+ */
+export interface ValidacaoFiscalProduto {
+  pode_emitir: boolean;
+  pendencias: { campo: string; mensagem: string }[];
+  procedencia: Record<string, string>;
+}
+
+/** Um codigo da tabela NCM. */
+export interface NcmItem {
+  codigo: string;
+  descricao: string;
+  /** A cadeia de ancestrais — e o que o lojista le para ter certeza. */
+  descricao_completa: string | null;
+}
+
+export interface BuscaNcmResposta {
+  resultados: NcmItem[];
+  total_na_base: number;
+}

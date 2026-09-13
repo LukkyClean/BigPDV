@@ -210,17 +210,27 @@ def verificar_endereco_destinatario(cliente: Cliente) -> list[PendenciaFiscal]:
     return pendencias
 
 
-def verificar_produto_fiscal(db: Session, produto, pendencias: list, simples_nacional: bool):
-    # O gate confere o que REALMENTE vai para a nota: a tributação efetiva,
-    # depois da cascata produto → regra por NCM → padrão da loja. Conferir só
-    # `produto_fiscal` acusaria pendência em produto que a loja já resolveu no
-    # padrão — e aprovaria o contrário.
-    from app.services.fiscal.tributacao import fiscal_efetivo
+def conferir_fiscal_do_produto(
+    fiscal, nome: str, produto_id=None, *, simples_nacional: bool,
+) -> list[PendenciaFiscal]:
+    """
+    Confere um conjunto de dados fiscais e devolve o que impede a emissão.
 
-    fiscal = fiscal_efetivo(db, produto)
+    FUNÇÃO PURA — recebe um objeto com os campos, não o banco. É o que permite
+    a MESMA regra atender dois momentos:
+
+      * o GATE, com a tributação efetiva de um produto cadastrado;
+      * o CADASTRO, com o rascunho que o lojista ainda está digitando.
+
+    Ter dois lugares conferindo seria a pior combinação possível: o cadastro
+    aprovaria o que a emissão recusa, e o lojista descobriria na SEFAZ. Foi o
+    que aconteceu em 12/09/2026 com a forma de pagamento sem código.
+    """
+    pendencias: list[PendenciaFiscal] = []
+
     if not fiscal:
-        pendencias.append(_p("item", "dados_fiscais", f"Produto '{produto.nome}' sem dados fiscais.", produto.id, produto.nome))
-        return
+        pendencias.append(_p("item", "dados_fiscais", f"Produto '{nome}' sem dados fiscais.", produto_id, nome))
+        return pendencias
 
     # `unidade_tributavel` SAIU desta lista de propósito.
     #
@@ -232,19 +242,19 @@ def verificar_produto_fiscal(db: Session, produto, pendencias: list, simples_nac
     # `qTrib`/`vUnTrib`, que a divergência exigiria.
     for c, label in [("ncm", "NCM"), ("cfop_padrao", "CFOP padrão")]:
         if not getattr(fiscal, c, None):
-            pendencias.append(_p("item", c, f"Produto '{produto.nome}' — {label} vazio.", produto.id, produto.nome))
+            pendencias.append(_p("item", c, f"Produto '{nome}' — {label} vazio.", produto_id, nome))
 
     # Validação de formato NCM (8 dígitos numéricos)
     if fiscal.ncm and not _RE_NCM.match(fiscal.ncm):
-        pendencias.append(_p("item", "ncm", f"Produto '{produto.nome}' — NCM '{fiscal.ncm}' deve ter exatamente 8 dígitos numéricos.", produto.id, produto.nome))
+        pendencias.append(_p("item", "ncm", f"Produto '{nome}' — NCM '{fiscal.ncm}' deve ter exatamente 8 dígitos numéricos.", produto_id, nome))
 
     # Validação de formato CFOP (4 dígitos numéricos)
     if fiscal.cfop_padrao and not _RE_CFOP.match(fiscal.cfop_padrao):
-        pendencias.append(_p("item", "cfop_padrao", f"Produto '{produto.nome}' — CFOP '{fiscal.cfop_padrao}' deve ter exatamente 4 dígitos numéricos.", produto.id, produto.nome))
+        pendencias.append(_p("item", "cfop_padrao", f"Produto '{nome}' — CFOP '{fiscal.cfop_padrao}' deve ter exatamente 4 dígitos numéricos.", produto_id, nome))
 
     # Validação de formato CEST (7 dígitos numéricos, quando preenchido)
     if fiscal.cest and not _RE_CEST.match(fiscal.cest):
-        pendencias.append(_p("item", "cest", f"Produto '{produto.nome}' — CEST '{fiscal.cest}' deve ter exatamente 7 dígitos numéricos.", produto.id, produto.nome))
+        pendencias.append(_p("item", "cest", f"Produto '{nome}' — CEST '{fiscal.cest}' deve ter exatamente 7 dígitos numéricos.", produto_id, nome))
 
     # CEST é obrigatório sob substituição tributária. Validar só o formato
     # deixava passar o produto sem CEST, que só era recusado pela SEFAZ.
@@ -252,20 +262,20 @@ def verificar_produto_fiscal(db: Session, produto, pendencias: list, simples_nac
         codigo = fiscal.csosn if simples_nacional else fiscal.cst_icms
         pendencias.append(_p(
             "item", "cest",
-            f"Produto '{produto.nome}' — CEST obrigatório: o código {codigo} "
+            f"Produto '{nome}' — CEST obrigatório: o código {codigo} "
             f"indica substituição tributária.",
-            produto.id, produto.nome,
+            produto_id, nome,
         ))
 
     if fiscal.origem_mercadoria is None:
-        pendencias.append(_p("item", "origem_mercadoria", f"Origem não preenchida.", produto.id, produto.nome))
+        pendencias.append(_p("item", "origem_mercadoria", f"Origem não preenchida.", produto_id, nome))
     elif fiscal.origem_mercadoria not in range(9):
-        pendencias.append(_p("item", "origem_mercadoria", f"Produto '{produto.nome}' — Origem '{fiscal.origem_mercadoria}' deve ser entre 0 e 8.", produto.id, produto.nome))
+        pendencias.append(_p("item", "origem_mercadoria", f"Produto '{nome}' — Origem '{fiscal.origem_mercadoria}' deve ser entre 0 e 8.", produto_id, nome))
 
     if simples_nacional and not fiscal.csosn:
-        pendencias.append(_p("item", "csosn", f"CSOSN não preenchido.", produto.id, produto.nome))
+        pendencias.append(_p("item", "csosn", f"CSOSN não preenchido.", produto_id, nome))
     elif not simples_nacional and not fiscal.cst_icms:
-        pendencias.append(_p("item", "cst_icms", f"CST ICMS não preenchido.", produto.id, produto.nome))
+        pendencias.append(_p("item", "cst_icms", f"CST ICMS não preenchido.", produto_id, nome))
 
     # --- Cobertura do FiscalTaxEngine ---
     # O gate existe para o usuário descobrir o problema no cadastro, não com um
@@ -274,18 +284,18 @@ def verificar_produto_fiscal(db: Session, produto, pendencias: list, simples_nac
     if simples_nacional and fiscal.csosn and fiscal.csosn not in CSOSN_SUPORTADOS:
         pendencias.append(_p(
             "item", "csosn",
-            f"Produto '{produto.nome}' — CSOSN '{fiscal.csosn}' ainda não é "
+            f"Produto '{nome}' — CSOSN '{fiscal.csosn}' ainda não é "
             f"calculado pelo sistema. Suportados: "
             f"{', '.join(sorted(CSOSN_SUPORTADOS))}.",
-            produto.id, produto.nome,
+            produto_id, nome,
         ))
     elif not simples_nacional and fiscal.cst_icms and fiscal.cst_icms not in CST_ICMS_SUPORTADOS:
         pendencias.append(_p(
             "item", "cst_icms",
-            f"Produto '{produto.nome}' — CST ICMS '{fiscal.cst_icms}' ainda não é "
+            f"Produto '{nome}' — CST ICMS '{fiscal.cst_icms}' ainda não é "
             f"calculado pelo sistema. Suportados: "
             f"{', '.join(sorted(CST_ICMS_SUPORTADOS))}.",
-            produto.id, produto.nome,
+            produto_id, nome,
         ))
 
     # CST 20 — redução de base obrigatória
@@ -293,8 +303,8 @@ def verificar_produto_fiscal(db: Session, produto, pendencias: list, simples_nac
         if fiscal.reducao_base_icms is None:
             pendencias.append(_p(
                 "item", "reducao_base_icms",
-                f"Produto '{produto.nome}' — CST 20 exige percentual de redução da base ICMS.",
-                produto.id, produto.nome,
+                f"Produto '{nome}' — CST 20 exige percentual de redução da base ICMS.",
+                produto_id, nome,
             ))
 
     # CST PIS/COFINS — obrigatório só FORA do Simples Nacional.
@@ -307,15 +317,38 @@ def verificar_produto_fiscal(db: Session, produto, pendencias: list, simples_nac
         if not fiscal.cst_pis:
             pendencias.append(_p(
                 "item", "cst_pis",
-                f"Produto '{produto.nome}' — CST PIS não preenchido.",
-                produto.id, produto.nome,
+                f"Produto '{nome}' — CST PIS não preenchido.",
+                produto_id, nome,
             ))
         if not fiscal.cst_cofins:
             pendencias.append(_p(
                 "item", "cst_cofins",
-                f"Produto '{produto.nome}' — CST COFINS não preenchido.",
-                produto.id, produto.nome,
+                f"Produto '{nome}' — CST COFINS não preenchido.",
+                produto_id, nome,
             ))
+
+    return pendencias
+
+
+def verificar_produto_fiscal(db: Session, produto, pendencias: list, simples_nacional: bool):
+    """
+    O gate, sobre um produto cadastrado.
+
+    Confere o que REALMENTE vai para a nota: a tributação EFETIVA, depois da
+    cascata produto → regra por NCM → padrão da loja. Conferir só
+    `produto_fiscal` acusaria pendência em produto que a loja já resolveu no
+    padrão — e aprovaria o contrário.
+    """
+    from app.services.fiscal.tributacao import fiscal_efetivo
+
+    pendencias.extend(
+        conferir_fiscal_do_produto(
+            fiscal_efetivo(db, produto),
+            nome=produto.nome,
+            produto_id=produto.id,
+            simples_nacional=simples_nacional,
+        )
+    )
 
 def verificar_itens_venda(db: Session, venda: Venda, simples_nacional: bool) -> list[PendenciaFiscal]:
     pendencias = []

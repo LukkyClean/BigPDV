@@ -15,6 +15,10 @@ import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
 import { useProductForm } from '../../composables/useProductForm';
 import { useFornecedoresQuery } from '../../../suppliers/composables/useFornecedoresQuery';
 import { useConfiguracoesStore } from '@/shared/stores/configuracoes.store';
+// Lista UNICA de unidades. Havia duas — esta, com G/ML/CM/PC, e a da unidade
+// tributavel, com M2/PAR — e dava para escolher uma unidade comercial que nao
+// existia na tributavel, que nasce igual a ela.
+import { UNIDADE_PRODUTO_OPTIONS } from '@/shared/constants/fiscal.constants';
 
 // =============================================
 // Props
@@ -31,18 +35,6 @@ defineProps<Props>();
 // Constants
 // =============================================
 
-const UNIDADE_MEDIDA_OPTIONS = [
-  { value: 'UN', label: 'Unidade (UN)' },
-  { value: 'KG', label: 'Quilograma (KG)' },
-  { value: 'G', label: 'Grama (G)' },
-  { value: 'L', label: 'Litro (L)' },
-  { value: 'ML', label: 'Mililitro (ML)' },
-  { value: 'M', label: 'Metro (M)' },
-  { value: 'CM', label: 'Centímetro (CM)' },
-  { value: 'CX', label: 'Caixa (CX)' },
-  { value: 'PC', label: 'Peça (PC)' },
-  { value: 'PCT', label: 'Pacote (PCT)' },
-];
 
 // =============================================
 // Form Fields
@@ -154,7 +146,7 @@ function handleGenerateSku() {
             v-model="unidade_medida"
             label="Unidade de Medida"
             :placeholder="unidadeMedidaPadrao"
-            :options="UNIDADE_MEDIDA_OPTIONS"
+            :options="UNIDADE_PRODUTO_OPTIONS"
             :error="submitCount > 0 ? errors.unidade_medida : ''"
             :disabled="disabled"
           />

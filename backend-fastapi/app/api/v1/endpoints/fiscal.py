@@ -44,6 +44,7 @@ from app.schemas.emissao_fiscal import (
     EmissaoResponse,
     FiscalConfiguracao,
 )
+from app.schemas.produto_fiscal import ProdutoFiscalUpdate
 from app.schemas.tributacao import (
     RegraNcmRead,
     RegraNcmUpsert,
@@ -636,6 +637,193 @@ def campos_fiscais_produto(
 
     empresa = crud.get_empresa(db, user_token["empresa_id"])
     return mapa_campos_da_empresa(empresa)
+
+
+# ===========================================================================
+# TABELA NCM (achar o código pela descrição)
+# ===========================================================================
+
+
+@router.get(
+    "/ncm",
+    summary="Buscar NCM por Código ou Descrição",
+    description=(
+        "Procura na tabela NCM embarcada. Aceita o código (com ou sem pontos) "
+        "e a descrição — 'mouse', 'caneta esferográfica'. Funciona sem internet."
+    ),
+)
+def buscar_ncm(
+    user_token: dict = Depends(get_current_active_user),
+    *,
+    buscar: str = Query("", max_length=120),
+    limite: int = Query(20, ge=1, le=50),
+    db: Session = Depends(get_db),
+):
+    """
+    A busca de NCM.
+
+    Reusa `core/busca.py`, o mesmo motor de produto, cliente e serviço — quatro
+    camadas: contém, palavras soltas, acentos com relevância e erro de
+    digitação. Filtrar CSV em Python seria um segundo mecanismo de busca, com
+    outro comportamento, na mesma tela.
+
+    Varre a `descricao_completa` porque a descrição própria costuma ser um
+    fragmento: a do 9608.10.00 é só "Canetas esferográficas", e quem digita
+    "caneta para escrever" não a encontraria.
+    """
+    from app.core import busca as motor_busca
+    from app.db.models.ncm import Ncm
+
+    termo = (buscar or "").strip()
+    if not termo:
+        return {"resultados": [], "total_na_base": db.query(Ncm).count()}
+
+    # Código digitado com pontos ("9608.10.00") casa com o gravado sem eles.
+    so_digitos = "".join(c for c in termo if c.isdigit())
+    if so_digitos and so_digitos == termo.replace(".", "").replace(" ", "") and len(so_digitos) >= 2:
+        resultados = (
+            db.query(Ncm)
+            .filter(Ncm.codigo.startswith(so_digitos))
+            .order_by(Ncm.codigo)
+            .limit(limite)
+            .all()
+        )
+        return {
+            "resultados": [
+                {"codigo": n.codigo, "descricao": n.descricao,
+                 "descricao_completa": n.descricao_completa}
+                for n in resultados
+            ],
+            "total_na_base": db.query(Ncm).count(),
+        }
+
+    # BUSCA EM DUAS PASSADAS, e as duas razões são igualmente importantes.
+    #
+    # RELEVÂNCIA: "caneta" tem de trazer 9608.10.00, não um fichário cujo
+    # CAPÍTULO menciona canetas. Quem casa na descrição própria vem primeiro.
+    #
+    # VELOCIDADE: `descricao_completa` guarda a hierarquia inteira (até 2000
+    # caracteres) e `LIKE %termo%` não usa índice — varrer as 10.437 linhas
+    # custava ~600 ms no pior caso, lento demais para busca enquanto se digita.
+    # A primeira passada olha só campos curtos e resolve a maioria das buscas.
+    def _consultar(campos):
+        consulta = db.query(Ncm)
+        filtro = motor_busca.filtro_busca(termo, campos)
+        if filtro is None:
+            return []
+        consulta = consulta.filter(filtro)
+        ordem = motor_busca.ordenacao_relevancia(termo, Ncm.descricao, (Ncm.codigo,))
+        if ordem is not None:
+            consulta = consulta.order_by(ordem)
+        return consulta.limit(limite).all()
+
+    resultados = _consultar((Ncm.codigo, Ncm.descricao))
+
+    # Segunda passada só quando a primeira NÃO ACHOU NADA — e não quando ela
+    # achou menos que o limite.
+    #
+    # A diferença é de meio segundo: completar 12 achados bons com 8 fracos
+    # obrigava a varrer a hierarquia em TODA busca. Doze resultados relevantes
+    # valem mais que vinte com enchimento.
+    #
+    # A passada existe para o caso do pneu: a descrição própria do 4011.10.00 é
+    # "Dos tipos utilizados em automóveis de passageiros", e "pneumáticos" só
+    # aparece no ancestral.
+    if not resultados:
+        vistos = {n.codigo for n in resultados}
+        complemento = [
+            n for n in _consultar((Ncm.descricao_completa,)) if n.codigo not in vistos
+        ]
+        resultados = (resultados + complemento)[:limite]
+
+    return {
+        "resultados": [
+            {
+                "codigo": n.codigo,
+                "descricao": n.descricao,
+                "descricao_completa": n.descricao_completa,
+            }
+            for n in resultados
+        ],
+        "total_na_base": db.query(Ncm).count(),
+    }
+
+
+
+# ===========================================================================
+# PRÉ-VALIDAÇÃO DO CADASTRO DE PRODUTO
+# ===========================================================================
+
+
+@router.post(
+    "/validar/produto",
+    summary="Conferir os Dados Fiscais Antes de Salvar",
+    description=(
+        "Diz o que a SEFAZ recusaria neste produto, campo a campo, SEM emitir "
+        "nada. Aplica a mesma cascata da emissão (produto → regra por NCM → "
+        "padrão da loja) e roda a MESMA regra do gate."
+    ),
+)
+def validar_produto_fiscal(
+    user_token: dict = Depends(get_current_active_user),
+    *,
+    dados: ProdutoFiscalUpdate,
+    nome_produto: str = Query("Este produto", max_length=120),
+    db: Session = Depends(get_db),
+):
+    """
+    A pré-validação do cadastro.
+
+    POR QUE PASSA PELO SERVIDOR, E NÃO É UM ZOD NA TELA
+    ---------------------------------------------------
+    Porque a regra já existe no `validators.py`, e ela é mais esperta do que
+    "campo obrigatório": CEST só é exigido sob substituição tributária, a
+    redução de base só com CST 20, e há códigos que o motor ainda não calcula.
+    Reescrever isso em Zod criaria um segundo lugar para desatualizar — e
+    quando os dois discordam, o cadastro aprova o que a emissão recusa.
+
+    E POR QUE APLICA A CASCATA
+    --------------------------
+    Sem ela, um produto cadastrado só com NCM apareceria cheio de pendências,
+    quando na verdade a loja já respondeu tudo na tributação padrão. A tela
+    mostraria erro onde não há.
+    """
+    from types import SimpleNamespace
+
+    from app.db.crud import tributacao as tributacao_crud
+    from app.services.fiscal.helpers import obter_crt, usa_csosn
+    from app.services.fiscal.tributacao import mesclar
+    from app.services.fiscal.validators import conferir_fiscal_do_produto
+
+    empresa_id = user_token["empresa_id"]
+    empresa = fiscal_crud.get_empresa(db, empresa_id)
+
+    rascunho = SimpleNamespace(**dados.model_dump())
+
+    padrao = tributacao_crud.get_tributacao_padrao(db, empresa_id)
+    regra = (
+        tributacao_crud.get_regra_ncm(db, empresa_id, dados.ncm)
+        if dados.ncm else None
+    )
+    efetivo = mesclar(produto_fiscal=rascunho, regra_ncm=regra, padrao=padrao)
+
+    pendencias = conferir_fiscal_do_produto(
+        efetivo,
+        nome=nome_produto,
+        simples_nacional=usa_csosn(obter_crt(empresa)),
+    )
+
+    return {
+        "pode_emitir": not pendencias,
+        "pendencias": [
+            {"campo": p.campo, "mensagem": p.mensagem} for p in pendencias
+        ],
+        # De onde veio cada valor conferido — a tela diz "CSOSN 102, da
+        # tributação padrão da loja" em vez de mostrar campo preenchido sem
+        # explicação.
+        "procedencia": getattr(efetivo, "procedencia", {}) or {},
+    }
+
 
 
 

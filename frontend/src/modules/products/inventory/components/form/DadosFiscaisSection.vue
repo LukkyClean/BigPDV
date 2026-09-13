@@ -16,6 +16,8 @@ import BaseSelect from '@/shared/components/ui/BaseSelect/BaseSelect.vue';
 import { useProductForm } from '../../composables/useProductForm';
 import { useCamposFiscaisProduto } from '@/modules/fiscal/composables/useCamposFiscaisProduto';
 import { useTributacaoPadrao } from '@/modules/fiscal/composables/useTributacaoPadrao';
+import { useValidacaoFiscalProduto } from '@/modules/fiscal/composables/useValidacaoFiscalProduto';
+import NcmBuscaInput from '@/modules/fiscal/components/shared/NcmBuscaInput.vue';
 import {
   CST_ICMS_OPTIONS,
   CSOSN_OPTIONS,
@@ -64,6 +66,7 @@ const {
   fiscal_aliquota_cbs_display,
   fiscal_c_benef,
   codigo_barras,
+  nome,
   errors,
 } = useProductForm();
 
@@ -91,6 +94,79 @@ const resumoDoPadrao = computed(() => {
   const situacao = t.csosn ? `CSOSN ${t.csosn}` : t.cst_icms ? `CST ${t.cst_icms}` : '';
   return [situacao, t.cfop_padrao ? `CFOP ${t.cfop_padrao}` : ''].filter(Boolean).join(' · ');
 });
+
+// =============================================
+// O que a SEFAZ recusaria — conferido antes de salvar
+// =============================================
+//
+// A regra vem do servidor, do MESMO `validators.py` que o gate de emissão usa.
+// Reescrevê-la aqui criaria um segundo lugar para desatualizar, e quando os
+// dois discordam o cadastro aprova o que a emissão recusa.
+//
+// É AVISO, não trava: produto pode nascer incompleto de propósito — o lojista
+// está esperando o contador, ou nem emite nota. Quem recusa é o gate.
+
+const {
+  conferir,
+  pendenciaDoCampo,
+  podeEmitir,
+  pendenciasSemCampo,
+  resultado: validacao,
+} = useValidacaoFiscalProduto();
+
+/** Os campos que ESTA tela mostra agora — muda com o regime e com a exceção. */
+const camposVisiveis = computed(() => {
+  const visiveis = ['ncm', 'cest', 'gtin_tributavel', 'unidade_tributavel', 'origem_mercadoria'];
+  if (!temTributacaoPadrao.value || excecaoAberta.value) {
+    visiveis.push('cfop_padrao');
+    if (mostrar('cst_icms')) visiveis.push('cst_icms');
+    if (mostrar('csosn')) visiveis.push('csosn');
+  }
+  if (mostrarAliquotas.value) {
+    visiveis.push('cst_pis', 'cst_cofins', 'aliquota_icms', 'reducao_base_icms');
+  }
+  return visiveis;
+});
+
+/**
+ * Pendência que não tem campo na tela para marcar.
+ *
+ * Erro preso a campo que não é renderizado é o bug do complemento da empresa,
+ * em produção até hoje: o usuário clica em salvar e "não acontece nada".
+ * Estas aparecem no resumo, onde ele lê.
+ */
+const pendenciasNoResumo = computed(() => pendenciasSemCampo(camposVisiveis.value));
+
+/** Confere quando muda algo que altera a regra — não a cada tecla. */
+function conferirAgora() {
+  conferir(
+    {
+      ncm: fiscal_ncm.value || null,
+      cest: fiscal_cest.value || null,
+      cfop_padrao: fiscal_cfop_padrao.value || null,
+      origem_mercadoria:
+        fiscal_origem_mercadoria.value === '' ? null : Number(fiscal_origem_mercadoria.value),
+      cst_icms: fiscal_cst_icms.value || null,
+      csosn: fiscal_csosn.value || null,
+      cst_pis: fiscal_cst_pis.value || null,
+      cst_cofins: fiscal_cst_cofins.value || null,
+    },
+    nome.value || undefined,
+  );
+}
+
+watch(
+  () => [
+    fiscal_ncm.value,
+    fiscal_cest.value,
+    fiscal_cfop_padrao.value,
+    fiscal_origem_mercadoria.value,
+    fiscal_cst_icms.value,
+    fiscal_csosn.value,
+  ],
+  conferirAgora,
+  { immediate: true },
+);
 
 /**
  * O bloco de alíquotas some quando a loja já respondeu — MAS nunca esconde
@@ -309,6 +385,38 @@ const codigoForaDoMotor = computed(() => {
       </span>
     </div>
 
+    <!-- O que a SEFAZ recusaria, conferido antes de salvar -->
+    <div
+      v-if="validacao && !podeEmitir"
+      class="rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3"
+    >
+      <div class="flex items-start gap-2.5">
+        <Info :size="16" class="text-amber-500 mt-0.5 shrink-0" />
+        <div class="text-sm text-amber-800">
+          <p class="font-medium">
+            Falta isto para emitir nota deste produto:
+          </p>
+          <ul class="mt-1.5 space-y-1">
+            <li v-for="p in pendenciasNoResumo" :key="p.campo" class="flex items-start gap-1.5">
+              <span class="mt-1.5 w-1 h-1 rounded-full bg-amber-500 shrink-0" />
+              <span>{{ p.mensagem }}</span>
+            </li>
+          </ul>
+          <p class="mt-2 text-xs text-amber-700">
+            Você pode salvar assim mesmo — o aviso some quando o cadastro ficar completo.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div
+      v-else-if="validacao && podeEmitir"
+      class="flex items-center gap-2 text-xs text-emerald-600"
+    >
+      <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+      Pronto para emitir nota.
+    </div>
+
     <!-- O que a loja já respondeu -->
     <div
       v-if="temTributacaoPadrao"
@@ -323,16 +431,14 @@ const codigoForaDoMotor = computed(() => {
 
     <!-- Grid principal -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-      <!-- NCM -->
-      <BaseInput
+      <!-- NCM: digita "caneta", escolhe 9608.10.00 -->
+      <NcmBuscaInput
         v-model="fiscal_ncm"
         label="NCM"
-        placeholder="Ex: 96081000"
         :required="obrigatorio('ncm')"
         :disabled="disabled"
-        inputmode="numeric"
         :ajuda="AJUDA_CAMPO_FISCAL.ncm"
-        :error="submitCount > 0 ? errors.fiscal_ncm : undefined"
+        :error="(submitCount > 0 ? errors.fiscal_ncm : undefined) || pendenciaDoCampo('ncm') || undefined"
       />
 
       <!-- Unidade Tributável -->
@@ -357,7 +463,7 @@ const codigoForaDoMotor = computed(() => {
         :disabled="disabled"
         placeholder="Selecione a origem"
         :ajuda="AJUDA_CAMPO_FISCAL.origem"
-        :error="submitCount > 0 ? errors.fiscal_origem_mercadoria : undefined"
+        :error="(submitCount > 0 ? errors.fiscal_origem_mercadoria : undefined) || pendenciaDoCampo('origem_mercadoria') || undefined"
       />
 
       <!-- CEST -->
@@ -369,7 +475,7 @@ const codigoForaDoMotor = computed(() => {
         :disabled="disabled"
         inputmode="numeric"
         :ajuda="AJUDA_CAMPO_FISCAL.cest"
-        :error="submitCount > 0 ? errors.fiscal_cest : undefined"
+        :error="(submitCount > 0 ? errors.fiscal_cest : undefined) || pendenciaDoCampo('cest') || undefined"
       />
 
       <!-- GTIN Tributável -->
