@@ -1,7 +1,7 @@
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useNetworkConfigStore } from '@/shared/stores/networkConfig.store'
-import { setRoleServer, setRoleClient, obterIpLocal } from '@/shared/services/system/tauriConfig.service'
+import { setRoleServer, setRoleClient, obterIpLocal, isErroIpLocal } from '@/shared/services/system/tauriConfig.service'
 import { verificarSaude } from '@/shared/services/system/health.service'
 import { reinitBackendUrl } from '@/api/backendUrl'
 
@@ -13,6 +13,8 @@ const tipoMaquina = ref<TipoMaquina | null>(null)
 const ipLocal = ref<string>('')
 const portaConfigurada = ref<number | null>(null)
 const modoTerminalOnly = ref(false)
+/** O IP informado como "servidor" é desta própria máquina — oferecer configurar como servidor. */
+const sugerirServidor = ref(false)
 
 export function useNetworkConfig() {
   const router = useRouter()
@@ -89,6 +91,7 @@ export function useNetworkConfig() {
   async function configurarTerminal(serverIp: string, serverPort: number) {
     networkStore.setTentandoConexao(true)
     networkStore.setErroConexao(null)
+    sugerirServidor.value = false
     currentStep.value = 2
 
     try {
@@ -105,7 +108,16 @@ export function useNetworkConfig() {
 
       finalizarConfiguracao()
     } catch (err: any) {
-      networkStore.setErroConexao(err?.toString() || 'Erro ao configurar terminal')
+      if (isErroIpLocal(err)) {
+        // Rust recusou: o endereço é desta máquina. Era assim que o servidor virava
+        // terminal apontando para o próprio IP de LAN.
+        sugerirServidor.value = true
+        networkStore.setErroConexao(
+          `O endereço ${serverIp} é deste computador. Se o banco de dados fica aqui, configure esta máquina como Servidor.`,
+        )
+      } else {
+        networkStore.setErroConexao(err?.toString() || 'Erro ao configurar terminal')
+      }
     } finally {
       networkStore.setTentandoConexao(false)
     }
@@ -113,12 +125,23 @@ export function useNetworkConfig() {
 
   function finalizarConfiguracao() {
     networkStore.reset()
+    networkStore.setPapel(tipoMaquina.value === 'servidor' ? 'servidor' : 'terminal')
+    networkStore.setOnline(true)
     router.replace({ name: 'auth.user' })
   }
 
   function tentarNovamente() {
     networkStore.setErroConexao(null)
+    sugerirServidor.value = false
     currentStep.value = 1
+  }
+
+  /** Atalho oferecido quando o IP digitado é desta máquina. */
+  async function configurarComoServidor() {
+    sugerirServidor.value = false
+    modoTerminalOnly.value = false
+    tipoMaquina.value = 'servidor'
+    await configurarServidor()
   }
 
   /**
@@ -137,6 +160,7 @@ export function useNetworkConfig() {
     ipLocal.value = ''
     portaConfigurada.value = null
     modoTerminalOnly.value = false
+    sugerirServidor.value = false
     networkStore.setErroConexao(null)
     networkStore.setTentandoConexao(false)
   }
@@ -147,6 +171,7 @@ export function useNetworkConfig() {
     ipLocal,
     portaConfigurada,
     modoTerminalOnly,
+    sugerirServidor,
 
     isStepTipo,
     isStepConfig,
@@ -158,6 +183,7 @@ export function useNetworkConfig() {
     configurarServidor,
     configurarTerminal,
     tentarNovamente,
+    configurarComoServidor,
     iniciarModoTerminalOnly,
     resetConfig,
 

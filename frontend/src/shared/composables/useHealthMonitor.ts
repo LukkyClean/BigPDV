@@ -1,16 +1,22 @@
 import { ref, watch, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
+import { toast } from 'vue-sonner'
 import { useNetworkConfigStore } from '@/shared/stores/networkConfig.store'
 import { verificarSaude } from '@/shared/services/system/health.service'
+import { tentarReconectar } from '@/shared/services/system/reconexao.service'
 import { tauriDisponivel, getConfig } from '@/shared/services/system/tauriConfig.service'
 
 const INTERVALO_PING_MS = 30_000 // 30 segundos
 const MAX_FALHAS_CONSECUTIVAS = 3
 
 /**
- * Monitoramento contínuo de saúde para terminais.
- * Executa ping periódico ao servidor e bloqueia o sistema após falhas consecutivas.
- * Só ativa em terminais Tauri (não em servidores nem em modo browser).
+ * Monitoramento contínuo de saúde do backend (só no runtime Tauri).
+ *
+ * - Alimenta `networkStore.online` para o badge de status.
+ * - Terminal: após 3 falhas seguidas tenta reconectar (redescoberta mDNS — cobre
+ *   o servidor que trocou de IP) antes de bloquear na tela de erro.
+ * - Servidor: após 3 falhas seguidas bloqueia na tela de erro em modo servidor,
+ *   onde o operador pode religar o serviço local.
  *
  * @param appReady - Ref que indica se o app terminou o startup
  */
@@ -20,32 +26,53 @@ export function useHealthMonitor(appReady: Readonly<import('vue').Ref<boolean>>)
 
   const falhasConsecutivas = ref(0)
   let intervalId: ReturnType<typeof setInterval> | null = null
-  let isTerminal = false
+  let ativo = false
+  let verificando = false
 
   async function verificarConexao() {
-    if (networkStore.erroConexaoTerminal) return
+    if (networkStore.semConexaoBackend || verificando) return
+    verificando = true
 
-    // Tenta até 2 vezes antes de contar como falha (tolera microcortes de rede)
-    let ok = await verificarSaude(5000)
-    if (!ok) {
-      await new Promise((r) => setTimeout(r, 2000))
-      ok = await verificarSaude(5000)
-    }
+    try {
+      // Tenta até 2 vezes antes de contar como falha (tolera microcortes de rede)
+      let ok = await verificarSaude(5000)
+      if (!ok) {
+        await new Promise((r) => setTimeout(r, 2000))
+        ok = await verificarSaude(5000)
+      }
+      networkStore.setOnline(ok)
 
-    if (ok) {
-      falhasConsecutivas.value = 0
-    } else {
+      if (ok) {
+        falhasConsecutivas.value = 0
+        return
+      }
+
       falhasConsecutivas.value++
-      if (falhasConsecutivas.value >= MAX_FALHAS_CONSECUTIVAS) {
-        networkStore.setErroConexaoTerminal(true)
+      if (falhasConsecutivas.value < MAX_FALHAS_CONSECUTIVAS) return
+
+      if (networkStore.papel === 'terminal') {
+        const resultado = await tentarReconectar()
+        if (resultado.ok) {
+          falhasConsecutivas.value = 0
+          if (resultado.novoEndereco) {
+            toast.success('Servidor localizado em novo endereço', {
+              description: `${resultado.novoEndereco.ip}:${resultado.novoEndereco.port}`,
+            })
+          }
+          return
+        }
         try {
           const config = await getConfig()
           networkStore.setConfigAtual(config.server_ip, config.server_port)
         } catch {
           // config já pode estar no store via startup
         }
-        router.replace({ name: 'erro-conexao' })
       }
+
+      networkStore.setSemConexaoBackend(true)
+      router.replace({ name: 'erro-conexao' })
+    } finally {
+      verificando = false
     }
   }
 
@@ -67,12 +94,15 @@ export function useHealthMonitor(appReady: Readonly<import('vue').Ref<boolean>>)
 
     try {
       const config = await getConfig()
-      isTerminal = config.configured && !config.is_server
+      ativo = config.configured
+      if (!networkStore.papel) {
+        networkStore.setPapel(config.is_server ? 'servidor' : 'terminal')
+      }
     } catch {
       return
     }
 
-    if (!isTerminal) return
+    if (!ativo) return
 
     // Aguarda appReady para não conflitar com aguardarBackend do startup
     if (appReady.value) {
@@ -82,7 +112,7 @@ export function useHealthMonitor(appReady: Readonly<import('vue').Ref<boolean>>)
         if (ready) {
           unwatch()
           // Só inicia se não entrou em erro no startup
-          if (!networkStore.erroConexaoTerminal) {
+          if (!networkStore.semConexaoBackend) {
             iniciarMonitoramento()
           }
         }
@@ -92,13 +122,25 @@ export function useHealthMonitor(appReady: Readonly<import('vue').Ref<boolean>>)
 
   // Quando o erro é limpo (reconexão bem-sucedida), retoma o monitoramento
   watch(
-    () => networkStore.erroConexaoTerminal,
+    () => networkStore.semConexaoBackend,
     (emErro) => {
-      if (!emErro && isTerminal) {
+      if (!emErro && ativo) {
         falhasConsecutivas.value = 0
         iniciarMonitoramento()
       } else if (emErro) {
         pararMonitoramento()
+      }
+    },
+  )
+
+  // Máquina configurada pelo wizard nesta sessão (não estava configurada no startup):
+  // passa a monitorar assim que o papel é definido.
+  watch(
+    () => networkStore.papel,
+    (novoPapel) => {
+      if (novoPapel && !ativo && tauriDisponivel()) {
+        ativo = true
+        if (appReady.value && !networkStore.semConexaoBackend) iniciarMonitoramento()
       }
     },
   )

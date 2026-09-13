@@ -3304,6 +3304,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "flume",
+ "if-addrs",
  "mdns-sd",
  "printers",
  "serde",

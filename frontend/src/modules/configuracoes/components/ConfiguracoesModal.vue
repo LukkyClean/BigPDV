@@ -16,6 +16,7 @@ import {
   Headphones,
   ShieldCheck,
   Wallet,
+  Network,
 } from 'lucide-vue-next'
 
 import BaseModal from '@/shared/components/commons/BaseModal/BaseModal.vue'
@@ -55,6 +56,7 @@ import ImpressaoPeriferico from './sections/impressao/components/ImpressaoPerife
 import FormatosExibicao from './sections/formatos-exibicao/components/FormatosExibicao.vue'
 import BackupDados from './sections/backup-dados/components/BackupDados.vue'
 import Suporte from './sections/suporte/components/Suporte.vue'
+import RedeConexao from './sections/rede/components/RedeConexao.vue'
 
 const props = defineProps<{ isOpen: boolean; secaoInicial?: SecaoId }>()
 const emit = defineEmits<{ close: [] }>()
@@ -285,6 +287,7 @@ const secoes: SecaoConfiguracao[] = [
   { id: 'impressao',         label: 'Impressão e Periféricos', icone: Printer },
   { id: 'formatos-exibicao', label: 'Formatos e Exibição',   icone: Monitor },
   { id: 'backup-dados',      label: 'Backup dos Dados',      icone: HardDrive },
+  { id: 'rede',              label: 'Rede e Conexão',        icone: Network },
   { id: 'suporte',           label: 'Suporte',               icone: Headphones },
 ]
 
@@ -300,6 +303,7 @@ const componenteMap: Record<SecaoId, Component> = {
   'impressao':         ImpressaoPeriferico,
   'formatos-exibicao': FormatosExibicao,
   'backup-dados':      BackupDados,
+  'rede':              RedeConexao,
   'suporte':           Suporte,
 }
 

@@ -97,6 +97,13 @@ _XML_TASK = """<?xml version="1.0" encoding="UTF-16"?>
       <Enabled>true</Enabled>
       <Delay>PT30S</Delay>
     </BootTrigger>
+    <!-- "Desligar" com Inicialização Rápida do Windows é hibernação: o BootTrigger
+         não dispara ao religar. O LogonTrigger cobre esse caso; com
+         MultipleInstancesPolicy=IgnoreNew é no-op se o serviço já está no ar. -->
+    <LogonTrigger>
+      <Enabled>true</Enabled>
+      <Delay>PT15S</Delay>
+    </LogonTrigger>
   </Triggers>
   <Principals>
     <Principal id="Author">
@@ -134,16 +141,22 @@ _XML_TASK = """<?xml version="1.0" encoding="UTF-16"?>
 
 # Handlers functions for autostart and firewall configuration on Windows systems.
 
-def install_autostart(host: str, port: int) -> None:
+def install_autostart(host: str, port: int, data_dir: str | None = None) -> None:
     print("[autostart] Instalando tarefa de inicialização automática...")
 
     exe = exec_path()
     exe_dir = os.path.dirname(exe)
 
-    # Captura o data_dir do usuário que roda --install (o correto).
-    # Quando a task rodar como SYSTEM, o --data-dir garante que o
-    # backend use este mesmo diretório em vez do LOCALAPPDATA do SYSTEM.
-    from app.core.config import data_dir
+    # O --data-dir fixa a pasta de dados que a task (rodando como SYSTEM) vai usar.
+    # Preferir o valor recebido na linha de comando: o app Tauri passa o
+    # LOCALAPPDATA do usuário LOGADO. Sem ele, cairíamos no LOCALAPPDATA do
+    # processo elevado — que é o da conta que respondeu ao UAC, e pode ser outro
+    # usuário → outro banco → "não reconhece usuário e senha".
+    if not data_dir:
+        from app.core.config import data_dir as data_dir_padrao
+        data_dir = data_dir_padrao
+
+    print(f"[autostart] Pasta de dados da tarefa: {data_dir}")
 
     xml = _XML_TASK.format(
         comando=exe,
@@ -191,7 +204,7 @@ def stop_service() -> None:
     
 # Main commands
 
-def install(host: str, port: int) -> int:
+def install(host: str, port: int, data_dir: str | None = None) -> int:
     print("=" * 60)
     print("\nINSTALANDO SERVIÇO STARTBIG\n")
     print("=" * 60)
@@ -202,7 +215,7 @@ def install(host: str, port: int) -> int:
         return 1
     
     firewall_cfg(port)
-    install_autostart(host, port)
+    install_autostart(host, port, data_dir)
     
     init_now()
     

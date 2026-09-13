@@ -15,7 +15,9 @@ const { currentStep, tipoMaquina, resetConfig, iniciarModoTerminalOnly } = useNe
 const networkStore = useNetworkConfigStore()
 
 onMounted(() => {
-  if (networkStore.erroConexaoTerminal) {
+  // Terminal sem servidor: pula direto para o passo de endereço. Um servidor nunca
+  // chega aqui pela tela de erro (ela não oferece reconfigurar o papel).
+  if (networkStore.semConexaoBackend && networkStore.papel === 'terminal') {
     iniciarModoTerminalOnly()
   }
 })

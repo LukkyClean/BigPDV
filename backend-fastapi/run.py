@@ -73,7 +73,7 @@ def main() -> int:
         from app.core import system
         
         if args.install:
-            return system.install(host, port)
+            return system.install(host, port, args.data_dir)
         if args.uninstall:
             return system.uninstall()
         if args.status:
