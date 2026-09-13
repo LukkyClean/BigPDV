@@ -227,6 +227,35 @@ async def _loop_renovacao_licenca():
         await asyncio.sleep(INTERVALO_RENOVACAO_SEGUNDOS)
 
 
+# Nome da forma de pagamento -> código `tPag` do layout da NF-e.
+#
+# POR QUE ISTO EXISTE
+# -------------------
+# As seis formas padrão nasciam com `codigo_sefaz` NULL, nenhuma tela permitia
+# preencher, e o gate de emissão recusa a nota enquanto houver forma ativa sem
+# código (`pendencias_globais.pagamentos_sem_sefaz`). Resultado: TODA instalação
+# ficava impedida de emitir por um campo que não havia como preencher. Achado
+# numa loja real em 12/09/2026, na tentativa da primeira NF-e.
+#
+# O 17 é o PIX. A NT 2023.004 separou 17 (dinâmico) de 20 (estático) — o nosso
+# QR é estático, mas a forma "PIX" da loja também recebe PIX dinâmico pelo app
+# do banco. Fica 17, que é o de uso geral, e a tela permite trocar.
+_CODIGO_SEFAZ_PADRAO = {
+    "dinheiro": "01",
+    "pix": "17",
+    "cartão de crédito": "03",
+    "cartao de credito": "03",
+    "cartão de débito": "04",
+    "cartao de debito": "04",
+    "transferência bancária": "18",
+    "transferencia bancaria": "18",
+    "boleto": "15",
+    "fiado": "05",           # 05 = Crédito Loja
+    "crediário": "05",
+    "crediario": "05",
+    "cheque": "02",
+}
+
 _FORMAS_PAGAMENTO_PADRAO = [
     "Dinheiro",
     "PIX",
@@ -238,14 +267,35 @@ _FORMAS_PAGAMENTO_PADRAO = [
 
 
 def _seed_formas_pagamento():
-    """Insere formas de pagamento padrão caso a tabela esteja vazia ou faltem registros."""
+    """
+    Insere as formas de pagamento padrão e completa o código SEFAZ do que faltar.
+
+    SÓ PREENCHE O QUE FALTA. Forma com código já gravado não é tocada: a loja
+    pode ter trocado de propósito (o 20 do PIX estático, por exemplo), e
+    sobrescrever desfaria a escolha a cada reinício do sistema.
+    """
     db = SessionLocal()
     try:
         for nome in _FORMAS_PAGAMENTO_PADRAO:
             existe = db.query(FormaPagamento).filter(FormaPagamento.nome.ilike(nome)).first()
             if not existe:
-                db.add(FormaPagamento(nome=nome, ativo=True))
+                db.add(FormaPagamento(
+                    nome=nome,
+                    ativo=True,
+                    codigo_sefaz=_CODIGO_SEFAZ_PADRAO.get(nome.strip().lower()),
+                ))
                 logger.info("Forma de pagamento criada: %s", nome)
+
+        # Backfill: alcança as instalações que já rodam, onde as formas foram
+        # criadas antes de o código existir.
+        for forma in db.query(FormaPagamento).filter(
+            (FormaPagamento.codigo_sefaz == None) | (FormaPagamento.codigo_sefaz == "")  # noqa: E711
+        ).all():
+            codigo = _CODIGO_SEFAZ_PADRAO.get((forma.nome or "").strip().lower())
+            if codigo:
+                forma.codigo_sefaz = codigo
+                logger.info("Código SEFAZ %s atribuído a '%s'.", codigo, forma.nome)
+
         db.commit()
     except Exception:
         db.rollback()

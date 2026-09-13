@@ -104,11 +104,20 @@ const {
           placeholder="Selecione..."
           :disabled="disabled"
         />
+        <!--
+          O texto dizia "Diz à SEFAZ a sua situação perante o ICMS", e isso é
+          falso: no layout da NF-e o indicador de IE existe só para o
+          DESTINATÁRIO. No emitente vão a Inscrição Estadual e o CRT. Este
+          campo é a declaração da loja sobre si mesma, usada pelo sistema para
+          conferir o cadastro antes de emitir.
+        -->
         <p class="text-xs text-zinc-500 mt-1.5">
-          Obrigatório para emitir NF-e. Diz à SEFAZ a sua situação perante o ICMS:
+          Sua situação perante o ICMS:
           <strong>1</strong> se você tem Inscrição Estadual,
           <strong>2</strong> se é isento e
-          <strong>9</strong> se não é contribuinte de ICMS.
+          <strong>9</strong> se não é contribuinte.
+          Tem IE e vende mercadoria? Então é <strong>1</strong> — o sistema avisa se
+          os dois se contradisserem.
         </p>
       </div>
 

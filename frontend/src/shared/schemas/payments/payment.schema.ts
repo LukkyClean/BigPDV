@@ -25,6 +25,18 @@ export const PaymentFormReadSchema = z.object({
      */
     dias_para_receber: z.number().int().nonnegative().catch(0),
     conta_bancaria_id: z.number().int().positive().nullable().catch(null),
+    /**
+     * Codigo `tPag` do layout da NF-e (01 dinheiro, 03 credito, 17 PIX...).
+     *
+     * O gate de emissao RECUSA a nota enquanto houver forma ativa sem ele.
+     * As seis formas padrao nasciam nulas e nenhuma tela preenchia: toda
+     * instalacao ficava impedida de emitir por um campo sem caminho.
+     *
+     * `.catch(null)` pelo mesmo motivo do `dias_para_receber`: backend mais
+     * antigo que este frontend nao manda o campo, e derrubar a lista de formas
+     * quebraria a finalizacao de toda venda.
+     */
+    codigo_sefaz: z.string().nullable().catch(null),
 })
 
 export type PaymentFormReadDataType = z.infer<typeof PaymentFormReadSchema>
@@ -36,6 +48,7 @@ export const PaymentFormUpdateSchema = z.object({
     // Zero limpa a escolha e volta para a conta principal. `undefined` ja quer
     // dizer "nao mexe" num PATCH parcial, entao sobrou o zero para desfazer.
     conta_bancaria_id: z.number().int().nonnegative().nullable().optional(),
+    codigo_sefaz: z.string().nullable().optional(),
 })
 
 export type PaymentFormUpdateDataType = z.infer<typeof PaymentFormUpdateSchema>

@@ -98,6 +98,57 @@ const previewMutation = useFiscalPreviewMutation();
 const { data: pendenciasData } = useFiscalPendenciasQuery();
 const emitenteIncompleto = computed(() => pendenciasData.value ? !pendenciasData.value.emitente_completo : false);
 
+/**
+ * O que exatamente falta no emitente.
+ *
+ * A resposta SEMPRE veio no `emitente_pendencias` e a tela só dizia "os dados
+ * estão incompletos". O lojista ficava sem saber o que abrir: foi o que
+ * aconteceu numa loja real em 12/09/2026, na tentativa da nota de R$ 1,00.
+ */
+const pendenciasEmitente = computed(() => pendenciasData.value?.emitente_pendencias ?? []);
+
+/**
+ * Cadastro errado que NÃO impede emitir.
+ *
+ * Aparece em amarelo e não trava botão nenhum. Misturar isto com pendência
+ * seria travar quem está emitindo bem por causa de um campo que nem vai no
+ * XML.
+ */
+const avisosEmitente = computed(() => pendenciasData.value?.emitente_avisos ?? []);
+const emitenteExpandido = ref(false);
+
+/** Pendências abertas por venda — a linha mostra a lista ali mesmo. */
+const vendaPendenciasAbertas = ref<Set<number>>(new Set());
+
+function alternarPendencias(vendaId: number) {
+  const abertas = new Set(vendaPendenciasAbertas.value);
+  if (abertas.has(vendaId)) abertas.delete(vendaId);
+  else abertas.add(vendaId);
+  vendaPendenciasAbertas.value = abertas;
+}
+
+/**
+ * Leva à tela que resolve a pendência.
+ *
+ * A categoria vem do backend (`emitente`, `destinatario`, `item`,
+ * `pagamento`), e é ela que diz qual cadastro está incompleto.
+ */
+function irParaCadastro(categoria: string) {
+  const destino =
+    categoria === 'item' ? 'products'
+    : categoria === 'destinatario' ? 'customers'
+    : 'enterprise';
+  fecharModal();
+  router.push({ name: destino });
+}
+
+function rotuloDoAtalho(categoria: string): string {
+  if (categoria === 'item') return 'Abrir Produtos';
+  if (categoria === 'destinatario') return 'Abrir Clientes';
+  if (categoria === 'pagamento') return 'Abrir Formas de Pagamento';
+  return 'Abrir Dados da Empresa';
+}
+
 // Verificação fiscal batch — dispara quando vendas com cliente carregam
 const vendaIds = computed(() => {
   const comCliente = vendas.value.filter(v => v.cliente);
@@ -342,11 +393,54 @@ function formatDocumento(doc: string): string {
     <!-- Etapa 1: Selecionar venda -->
     <template v-if="step === 1">
       <!-- Alerta: emitente incompleto -->
-      <div v-if="emitenteIncompleto" class="flex items-start gap-2.5 rounded-lg bg-red-50 border border-red-200 px-3.5 py-2.5 mb-3">
-        <AlertTriangle :size="16" class="text-red-500 mt-0.5 shrink-0" />
-        <p class="text-xs text-red-700 leading-relaxed">
-          Os <strong>dados do emitente estão incompletos</strong>. Corrija as pendências cadastrais da empresa antes de emitir uma NF-e.
-        </p>
+      <div v-if="emitenteIncompleto" class="rounded-lg bg-red-50 border border-red-200 px-3.5 py-2.5 mb-3">
+        <div class="flex items-start gap-2.5">
+          <AlertTriangle :size="16" class="text-red-500 mt-0.5 shrink-0" />
+          <div class="flex-1 min-w-0">
+            <p class="text-xs text-red-700 leading-relaxed">
+              Os <strong>dados do emitente estão incompletos</strong>.
+              <button
+                v-if="pendenciasEmitente.length"
+                type="button"
+                class="underline underline-offset-2 font-semibold cursor-pointer hover:text-red-900"
+                @click="emitenteExpandido = !emitenteExpandido"
+              >
+                {{ emitenteExpandido ? 'Ocultar' : `Ver o que falta (${pendenciasEmitente.length})` }}
+              </button>
+            </p>
+
+            <ul v-if="emitenteExpandido" class="mt-2 space-y-1">
+              <li
+                v-for="(msg, i) in pendenciasEmitente"
+                :key="i"
+                class="text-xs text-red-700 flex items-start gap-1.5"
+              >
+                <span class="mt-1 w-1 h-1 rounded-full bg-red-400 shrink-0" />
+                <span>{{ msg }}</span>
+              </li>
+            </ul>
+
+            <button
+              v-if="emitenteExpandido"
+              type="button"
+              class="mt-2 text-xs font-semibold text-red-700 bg-white border border-red-200 hover:bg-red-100 rounded-lg px-2.5 py-1 cursor-pointer transition-colors"
+              @click="irParaCadastro('emitente')"
+            >
+              Abrir Dados da Empresa
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Avisos de cadastro: contam, não travam -->
+      <div
+        v-if="avisosEmitente.length"
+        class="flex items-start gap-2.5 rounded-lg bg-amber-50 border border-amber-200 px-3.5 py-2.5 mb-3"
+      >
+        <AlertCircle :size="16" class="text-amber-500 mt-0.5 shrink-0" />
+        <ul class="text-xs text-amber-800 leading-relaxed space-y-1">
+          <li v-for="(aviso, i) in avisosEmitente" :key="i">{{ aviso }}</li>
+        </ul>
       </div>
 
       <!-- Toggle Modo Lote -->
@@ -456,10 +550,20 @@ function formatDocumento(doc: string): string {
                     v-else-if="getStatusVenda(venda) === 'rejeitada'"
                     class="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 font-medium whitespace-nowrap shrink-0"
                   >Rejeitada</span>
-                  <span
+                  <!--
+                    Clicável de propósito: antes era só um número, e a lista
+                    só aparecia num toast que some sozinho. Quem precisa
+                    corrigir cadastro precisa LER a lista com calma.
+                  -->
+                  <button
                     v-else-if="getStatusVenda(venda) === 'incompleta'"
-                    class="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium whitespace-nowrap shrink-0"
-                  >{{ verificacaoMap.get(venda.id)?.pendencias.length }} pendência(s)</span>
+                    type="button"
+                    class="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 hover:bg-amber-200 font-medium whitespace-nowrap shrink-0 cursor-pointer transition-colors underline underline-offset-2"
+                    @click.stop="alternarPendencias(venda.id)"
+                  >
+                    {{ verificacaoMap.get(venda.id)?.pendencias.length }} pendência(s) —
+                    {{ vendaPendenciasAbertas.has(venda.id) ? 'ocultar' : 'ver' }}
+                  </button>
                 </div>
 
                 <div class="flex items-center gap-2 shrink-0">
@@ -483,6 +587,33 @@ function formatDocumento(doc: string): string {
                 <template v-else-if="getStatusVenda(venda) === 'sem_cliente'"> · Sem cliente cadastrado (exige cliente p/ NF-e)</template>
                 · {{ formatarData(venda.criado_em) }}
               </p>
+
+              <!-- O que falta nesta venda, com atalho para o cadastro certo -->
+              <div
+                v-if="vendaPendenciasAbertas.has(venda.id)"
+                class="mt-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2"
+                @click.stop
+              >
+                <ul class="space-y-1.5">
+                  <li
+                    v-for="(pend, i) in verificacaoMap.get(venda.id)?.pendencias ?? []"
+                    :key="i"
+                    class="text-xs text-amber-800 flex items-start justify-between gap-3"
+                  >
+                    <span class="flex items-start gap-1.5 min-w-0">
+                      <span class="mt-1 w-1 h-1 rounded-full bg-amber-500 shrink-0" />
+                      <span class="whitespace-normal">{{ pend.mensagem }}</span>
+                    </span>
+                    <button
+                      type="button"
+                      class="text-[11px] font-semibold text-amber-900 bg-white border border-amber-200 hover:bg-amber-100 rounded-lg px-2 py-0.5 shrink-0 cursor-pointer transition-colors"
+                      @click.stop="irParaCadastro(pend.categoria)"
+                    >
+                      {{ rotuloDoAtalho(pend.categoria) }}
+                    </button>
+                  </li>
+                </ul>
+              </div>
             </div>
           </button>
         </template>

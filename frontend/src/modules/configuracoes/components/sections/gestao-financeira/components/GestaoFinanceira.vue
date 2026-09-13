@@ -21,6 +21,8 @@ import { Info } from 'lucide-vue-next'
 
 import BaseInput from '@/shared/components/ui/BaseInput/BaseInput.vue'
 import BaseSelect from '@/shared/components/ui/BaseSelect/BaseSelect.vue'
+import { CODIGO_SEFAZ_PAGAMENTO_OPTIONS } from '@/shared/constants/fiscal.constants'
+import { recursoDisponivel } from '@/shared/config/planos'
 import { useContasBancariasQuery } from '@/modules/financeiro/shared/composables/useFinanceiro'
 
 import { useFormasPagamentoQuery } from '../../../../composables/queries/useFormasPagamentoQuery'
@@ -40,18 +42,32 @@ const atualizar = useAtualizarFormaPagamentoMutation()
 const dias = ref<Record<number, number>>({})
 const conta = ref<Record<number, number>>({})
 
+/**
+ * Código da forma de pagamento na nota fiscal (`tPag`).
+ *
+ * Só aparece para quem tem NF-e: numa loja que não emite, é uma coluna de
+ * números sem sentido. O gate de emissão recusa a nota enquanto houver forma
+ * ATIVA sem código — e até 12/09/2026 não havia tela nenhuma para preencher,
+ * o que impedia a primeira emissão de qualquer instalação.
+ */
+const nfeDisponivel = recursoDisponivel('nfe')
+const codigoSefaz = ref<Record<number, string>>({})
+
 watch(
   formas,
   (lista) => {
     if (!lista) return
     const d: Record<number, number> = {}
     const c: Record<number, number> = {}
+    const cod: Record<number, string> = {}
     for (const forma of lista) {
       d[forma.id] = forma.dias_para_receber ?? 0
       c[forma.id] = forma.conta_bancaria_id ?? 0
+      cod[forma.id] = forma.codigo_sefaz ?? ''
     }
     dias.value = d
     conta.value = c
+    codigoSefaz.value = cod
   },
   { immediate: true },
 )
@@ -79,6 +95,13 @@ function salvarDias(id: number) {
   const atual = formas.value?.find((f) => f.id === id)
   if ((atual?.dias_para_receber ?? 0) === valor) return
   atualizar.mutate({ id, dados: { dias_para_receber: valor } })
+}
+
+function salvarCodigoSefaz(id: number) {
+  const valor = codigoSefaz.value[id] || null
+  const atual = formas.value?.find((f) => f.id === id)
+  if ((atual?.codigo_sefaz ?? null) === valor) return
+  atualizar.mutate({ id, dados: { codigo_sefaz: valor } })
 }
 
 function salvarConta(id: number) {
@@ -149,6 +172,17 @@ function salvarConta(id: number) {
             label="Cai na conta"
             :options="opcoesConta"
             @update:model-value="salvarConta(forma.id)"
+          />
+        </div>
+
+        <div v-if="nfeDisponivel" class="w-64">
+          <BaseSelect
+            v-model="codigoSefaz[forma.id]"
+            label="Como sai na nota fiscal"
+            placeholder="Selecione para poder emitir"
+            :options="CODIGO_SEFAZ_PAGAMENTO_OPTIONS"
+            ajuda="Como esta forma de pagamento é identificada na NF-e. A nota é recusada enquanto uma forma ativa estiver sem isto. O sistema já preenche as formas padrão."
+            @update:model-value="salvarCodigoSefaz(forma.id)"
           />
         </div>
       </li>
