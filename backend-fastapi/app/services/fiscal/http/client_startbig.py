@@ -3,6 +3,7 @@
 # DESCRIÇÃO: Client real que chama a API Online StartBig para emissão fiscal.
 # ---------------------------------------------------------------------------
 
+import json
 import logging
 import httpx
 from typing import Optional
@@ -17,6 +18,34 @@ from .client import (
 
 logger = logging.getLogger(__name__)
 
+
+
+def _registrar_payload(rotulo: str, ref: str, body: dict) -> None:
+    """
+    Grava o JSON exato que sai daqui.
+
+    POR QUE ISTO EXISTE
+    -------------------
+    Em 12/09/2026 a primeira emissão de uma loja real voltou com rejeição de
+    schema da SEFAZ. Descobrir o motivo custou uma tarde de leitura de código e
+    uma acusação errada à plataforma — porque nenhum dos dois lados guardava o
+    payload: aqui só se logava o erro, e lá só a `ref`.
+
+    A causa acabou sendo um nome de campo trocado
+    (`ipi_codigo_enquadramento` em vez de `ipi_codigo_enquadramento_legal`).
+    Com esta linha, o diagnóstico teria durado um minuto.
+
+    Fica em INFO e não em DEBUG de propósito: quando serve, serve na máquina do
+    cliente, onde ninguém vai ligar log verboso antes de emitir. O corpo é dado
+    fiscal da própria loja — a mesma informação que vai impressa no DANFE.
+    """
+    try:
+        logger.info(
+            "[FISCAL] payload %s ref=%s: %s",
+            rotulo, ref, json.dumps(body, ensure_ascii=False, default=str),
+        )
+    except Exception:  # nunca derrubar uma emissão por causa do log
+        logger.info("[FISCAL] payload %s ref=%s: <não serializável>", rotulo, ref)
 
 class EmissaoIncertaError(Exception):
     """A emissao pode ter acontecido, e nao sabemos.
@@ -213,6 +242,8 @@ class FiscalClientStartBig:
         if idempotency_key:
             headers["X-Idempotency-Key"] = idempotency_key
 
+        _registrar_payload("NFE", ref, body)
+
         try:
             with httpx.Client(timeout=30.0) as client:
                 response = client.post(url, json=body, headers=headers)
@@ -250,6 +281,8 @@ class FiscalClientStartBig:
         headers = dict(self.headers)
         if idempotency_key:
             headers["X-Idempotency-Key"] = idempotency_key
+
+        _registrar_payload("NFCE", ref, body)
 
         try:
             with httpx.Client(timeout=30.0) as client:
@@ -294,6 +327,31 @@ class FiscalClientStartBig:
             # — derrubar o fluxo aqui seria perder o cupom por um detalhe de
             # impressão.
             logger.warning("[FISCAL] Falha ao baixar XML em %s: %s", url, exc)
+            return None
+
+    def baixar_pdf(self, caminho: str) -> Optional[bytes]:
+        """
+        Baixa o DANFE em PDF. Devolve None em qualquer falha.
+
+        Espelha o `baixar_xml`, com duas diferenças: devolve BYTES (PDF é
+        binário) e tem timeout maior, porque o DANFE é gerado sob demanda pela
+        emissora e pesa mais que o XML.
+
+        NUNCA levanta: o PDF é conveniência — ele é derivado do XML e pode ser
+        regerado. Falhar aqui não pode afetar uma nota já autorizada.
+        """
+        if not caminho:
+            return None
+
+        url = caminho if caminho.startswith("http") else f"{self.base_url}{caminho}"
+
+        try:
+            with httpx.Client(timeout=30.0) as client:
+                resposta = client.get(url, headers=self.headers)
+                resposta.raise_for_status()
+                return resposta.content
+        except Exception as exc:
+            logger.warning("[FISCAL] Falha ao baixar PDF em %s: %s", url, exc)
             return None
 
     def enviar_certificado(

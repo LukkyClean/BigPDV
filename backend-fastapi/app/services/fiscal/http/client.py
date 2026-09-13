@@ -151,6 +151,15 @@ class FiscalClientProtocol(Protocol):
         """
         ...
 
+    def baixar_pdf(self, caminho: str) -> Optional[bytes]:
+        """Baixa o DANFE em PDF. Devolve None em qualquer falha.
+
+        Existe pelo mesmo motivo do `baixar_xml`: a loja passou a guardar os
+        documentos dela no próprio computador, em vez de depender de um link
+        na emissora. O DANFE é binário, então devolve bytes.
+        """
+        ...
+
     def consultar_config(self) -> dict:
         """Config fiscal como a plataforma a enxerga. {} = não foi possível saber."""
         ...

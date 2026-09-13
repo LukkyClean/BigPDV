@@ -15,6 +15,8 @@ import type { EmissaoPreviewResponse,
   ResultadoVerificacaoBatch,
   VendaCorrecaoFiscalPayload,
   SugestoesFiscaisResponse,
+  CamposFiscaisProdutoResponse,
+  TributacaoPadrao,
 } from '../types/fiscal.types';
 import { TIMEOUT_CONSULTA, TIMEOUT_EMISSAO, TIMEOUT_LOTE } from '../constants/fiscal.constants';
 
@@ -139,6 +141,42 @@ export const fiscalService = {
     };
   },
 
+  /**
+   * O XML de uma nota. O backend lê do disco da loja quando existe — e aí
+   * funciona sem internet.
+   */
+  async baixarXmlDocumento(id: number): Promise<Blob> {
+    const { data } = await api.get<Blob>(
+      `${FISCAL_ENDPOINT}/documentos/${id}/xml`,
+      { responseType: 'blob', timeout: TIMEOUT_CONSULTA },
+    );
+    return data;
+  },
+
+  /** O DANFE de uma nota, lido do disco da loja quando existe. */
+  async baixarPdfDocumento(id: number): Promise<Blob> {
+    const { data } = await api.get<Blob>(
+      `${FISCAL_ENDPOINT}/documentos/${id}/pdf`,
+      { responseType: 'blob', timeout: TIMEOUT_CONSULTA },
+    );
+    return data;
+  },
+
+  /** Guarda nesta máquina os XMLs das notas emitidas antes do arquivamento local. */
+  async sincronizarArquivosFiscais(limite = 200): Promise<{
+    pendentes_encontrados: number;
+    guardados: number;
+    falharam: number;
+    restam: number;
+  }> {
+    const { data } = await api.post(
+      `${FISCAL_ENDPOINT}/documentos/arquivos/sincronizar`,
+      undefined,
+      { params: { limite }, timeout: TIMEOUT_LOTE },
+    );
+    return data;
+  },
+
   async emitirTesteNfe(): Promise<EmissaoResponse> {
     const { data } = await api.post<EmissaoResponse>(
       `${FISCAL_ENDPOINT}/emitir/teste/nfe`,
@@ -182,6 +220,36 @@ export const fiscalService = {
     const { data } = await api.get<SugestoesFiscaisResponse>(
       `${FISCAL_ENDPOINT}/sugestao/produto`,
       { timeout: TIMEOUT_CONSULTA },
+    );
+    return data;
+  },
+
+  /**
+   * Quais campos fiscais o cadastro de produto deve mostrar e exigir.
+   *
+   * Quem responde é o mesmo `obter_crt` que decide na emissão — por isso a
+   * pergunta vai ao servidor em vez de virar `v-if` na tela.
+   */
+  async camposProduto(): Promise<CamposFiscaisProdutoResponse> {
+    const { data } = await api.get<CamposFiscaisProdutoResponse>(
+      `${FISCAL_ENDPOINT}/campos/produto`,
+      { timeout: TIMEOUT_CONSULTA },
+    );
+    return data;
+  },
+
+  /** A tributação padrão da loja. `null` enquanto ninguém configurou. */
+  async obterTributacaoPadrao(): Promise<TributacaoPadrao | null> {
+    const { data } = await api.get<TributacaoPadrao | null>(
+      `${FISCAL_ENDPOINT}/tributacao-padrao`,
+    );
+    return data ?? null;
+  },
+
+  async salvarTributacaoPadrao(dados: Partial<TributacaoPadrao>): Promise<TributacaoPadrao> {
+    const { data } = await api.put<TributacaoPadrao>(
+      `${FISCAL_ENDPOINT}/tributacao-padrao`,
+      dados,
     );
     return data;
   },

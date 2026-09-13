@@ -44,6 +44,12 @@ from app.schemas.emissao_fiscal import (
     EmissaoResponse,
     FiscalConfiguracao,
 )
+from app.schemas.tributacao import (
+    RegraNcmRead,
+    RegraNcmUpsert,
+    TributacaoPadraoRead,
+    TributacaoPadraoUpdate,
+)
 from app.services import documento_fiscal as documento_fiscal_service
 from app.services import pendencias_globais as pendencias_globais_service
 from app.services.fiscal.helpers import dias_para_vencer_certificado, mascarar_csc, obter_csc_token
@@ -583,8 +589,13 @@ def sugerir_campos_fiscais_produto(
     """
     Sugestões para o cadastro de produto.
 
-    Camada de leitura: sugerir não emite nada e não exige o plano fiscal — um
-    lojista pode deixar o catálogo pronto antes de contratar.
+    Camada de leitura: sugerir não emite nada.
+
+    ATENÇÃO: o router inteiro de `/fiscal` exige o módulo NFE
+    (`APIRouter(dependencies=[requer_modulo("NFE")])`), então esta rota TAMBÉM
+    exige — ao contrário do que esta docstring afirmava. Deixar o catálogo
+    pronto antes de contratar depende de mover a rota para fora deste router,
+    o que não foi feito.
 
     Cada campo vem com `fundamentacao` (o "por quê?" que a tela mostra ao lado)
     e `exige_confirmacao`, ligado onde errar produz nota aceita e errada.
@@ -594,6 +605,301 @@ def sugerir_campos_fiscais_produto(
 
     contexto = contexto_do_cadastro(db, user_token["empresa_id"])
     return {"sugestoes": [s.model_dump() for s in derivar_produto(contexto)]}
+
+
+@router.get(
+    "/campos/produto",
+    summary="Campos Fiscais Aplicáveis ao Produto",
+    description=(
+        "Diz quais campos fiscais o cadastro de produto deve mostrar e exigir, "
+        "conforme o regime tributário da empresa. Empresa do Simples não vê "
+        "CST nem alíquota de ICMS; empresa do regime normal não vê CSOSN."
+    ),
+)
+def campos_fiscais_produto(
+    user_token: dict = Depends(get_current_active_user),
+    *,
+    db: Session = Depends(get_db),
+):
+    """
+    O mapa de campos da tela de produto.
+
+    Quem responde é o mesmo `obter_crt` que decide na hora de emitir — é essa
+    a razão de a pergunta vir ao servidor em vez de virar `v-if` na tela.
+
+    Exige o módulo NFE, como todo este router. A tela trata a recusa mostrando
+    TODOS os campos: esconder campo obrigatório por falha de consulta produz
+    cadastro incompleto que ninguém consegue explicar.
+    """
+    from app.db.crud import fiscal as crud
+    from app.services.fiscal.campos_produto import mapa_campos_da_empresa
+
+    empresa = crud.get_empresa(db, user_token["empresa_id"])
+    return mapa_campos_da_empresa(empresa)
+
+
+
+def _cliente_fiscal(db: Session, empresa_id: int):
+    """
+    O client da emissora, montado como a emissão monta.
+
+    Vive aqui porque os endpoints de arquivo precisam dele para o plano B
+    (buscar na emissora o que não está no disco) — e a assinatura pede
+    ambiente e token, não a sessão.
+    """
+    from app.db.crud import fiscal as crud
+    from app.services.fiscal.http.client_factory import get_fiscal_client
+
+    settings_fiscais = crud.get_fiscal_settings(db, empresa_id)
+    ambiente = settings_fiscais.ambiente_emissao if settings_fiscais else 2
+    return get_fiscal_client(ambiente, crud.get_licenca_token(db))
+
+
+
+# ===========================================================================
+# ARQUIVOS DA NOTA (XML guardado no computador da loja)
+# ===========================================================================
+
+
+@router.get(
+    "/documentos/{documento_id}/xml",
+    summary="Baixar o XML da Nota",
+    description=(
+        "Entrega o XML autorizado. Lê do disco da loja quando existe — e aí "
+        "funciona sem internet; cai na emissora só para documentos anteriores "
+        "ao arquivamento local, guardando o que baixar."
+    ),
+)
+def baixar_xml_documento(
+    user_token: dict = Depends(get_current_active_user),
+    documento_id: int = Path(..., ge=1),
+    *,
+    db: Session = Depends(get_db),
+):
+    from fastapi.responses import Response
+    from app.services.fiscal.arquivos import obter_xml
+
+    doc = fiscal_crud.get_documento_fiscal(db, documento_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Documento não encontrado.")
+
+    conteudo = obter_xml(db, _cliente_fiscal(db, user_token["empresa_id"]), doc)
+    if not conteudo:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "XML indisponível: não está guardado nesta máquina e a emissora "
+                "não respondeu."
+            ),
+        )
+    db.commit()  # o `obter_xml` pode ter gravado o caminho recém-arquivado
+
+    nome = f"{doc.chave_acesso or f'documento-{doc.id}'}.xml"
+    return Response(
+        content=conteudo,
+        media_type="application/xml",
+        headers={"Content-Disposition": f'attachment; filename="{nome}"'},
+    )
+
+
+@router.get(
+    "/documentos/{documento_id}/pdf",
+    summary="Baixar o DANFE da Nota",
+    description=(
+        "Entrega o DANFE em PDF. Lê do disco da loja quando existe — e aí "
+        "reimprime sem internet; cai na emissora como plano B."
+    ),
+)
+def baixar_pdf_documento(
+    user_token: dict = Depends(get_current_active_user),
+    documento_id: int = Path(..., ge=1),
+    *,
+    db: Session = Depends(get_db),
+):
+    from fastapi.responses import Response
+    from app.services.fiscal.arquivos import guardar_pdf, ler_pdf
+
+    doc = fiscal_crud.get_documento_fiscal(db, documento_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Documento não encontrado.")
+
+    conteudo = ler_pdf(doc.caminho_pdf_local)
+    if not conteudo and doc.url_pdf:
+        conteudo = _cliente_fiscal(db, user_token["empresa_id"]).baixar_pdf(doc.url_pdf)
+        caminho = guardar_pdf(
+            conteudo, chave=doc.chave_acesso,
+            fallback=f"doc-{doc.id}", quando=doc.data_autorizacao,
+        )
+        if caminho:
+            doc.caminho_pdf_local = caminho
+            db.commit()
+
+    if not conteudo:
+        raise HTTPException(
+            status_code=404,
+            detail="DANFE indisponível: não está nesta máquina e a emissora não respondeu.",
+        )
+
+    nome = f"{doc.chave_acesso or f'documento-{doc.id}'}.pdf"
+    return Response(
+        content=conteudo,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{nome}"'},
+    )
+
+
+@router.post(
+    "/documentos/arquivos/sincronizar",
+    summary="Guardar os XMLs que faltam",
+    description=(
+        "Baixa da emissora o XML das notas autorizadas que ainda não têm "
+        "arquivo nesta máquina. É o caminho das notas emitidas antes do "
+        "arquivamento local existir. Processa em lotes — rode de novo enquanto "
+        "sobrar."
+    ),
+)
+def sincronizar_arquivos_fiscais(
+    user_token: dict = Depends(requer_modulo_fiscal),
+    *,
+    limite: int = Query(200, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
+    from app.services.fiscal.arquivos import sincronizar_pendentes
+
+    def _sincronizar(db_: Session):
+        cliente = _cliente_fiscal(db_, user_token["empresa_id"])
+        return sincronizar_pendentes(db_, cliente, limite=limite)
+
+    return _handle_db_transaction(db, _sincronizar)
+
+
+
+# ===========================================================================
+# TRIBUTAÇÃO DA LOJA (padrão + regras por NCM)
+# ===========================================================================
+#
+# A cascata é: produto (exceção) → regra por NCM → padrão da loja.
+# Ver `app/services/fiscal/tributacao.py` e `docs/cadastro-produto-plano.md`.
+#
+# LER é para qualquer usuário ativo; ESCREVER exige master
+# (`requer_configuracao_fiscal`), porque muda o imposto de TODA nota futura —
+# é decisão do dono, de preferência com o contador.
+
+
+@router.get(
+    "/tributacao-padrao",
+    response_model=Optional[TributacaoPadraoRead],
+    summary="Tributação Padrão da Loja",
+    description=(
+        "A resposta padrão da loja para CFOP, origem, CST/CSOSN e PIS/COFINS. "
+        "Devolve null enquanto ninguém configurou — e nesse estado a cascata é "
+        "inerte: cada produto vale pelo que tem gravado nele."
+    ),
+)
+def obter_tributacao_padrao(
+    user_token: dict = Depends(get_current_active_user),
+    *,
+    db: Session = Depends(get_db),
+):
+    from app.db.crud import tributacao as tributacao_crud
+
+    return tributacao_crud.get_tributacao_padrao(db, user_token["empresa_id"])
+
+
+@router.put(
+    "/tributacao-padrao",
+    response_model=TributacaoPadraoRead,
+    summary="Salvar a Tributação Padrão da Loja",
+    description=(
+        "Cria ou atualiza a tributação padrão. Campo omitido não é apagado: "
+        "vazio significa 'não decido isto' e deixa o produto responder."
+    ),
+)
+def salvar_tributacao_padrao(
+    user_token: dict = Depends(requer_configuracao_fiscal),
+    *,
+    dados: TributacaoPadraoUpdate,
+    db: Session = Depends(get_db),
+):
+    from datetime import datetime, timezone
+    from app.db.crud import tributacao as tributacao_crud
+
+    def _salvar(db_: Session):
+        registro = tributacao_crud.upsert_tributacao_padrao(
+            db_, user_token["empresa_id"], dados,
+        )
+        # Quem confirmou importa: o padrão nasce SUGERIDO pelo motor de
+        # derivação, e emitir com valor que ninguém olhou é o risco da nota
+        # aceita e errada.
+        registro.confirmado_em = datetime.now(timezone.utc)
+        registro.confirmado_por = user_token.get("nome") or "Master"
+        db_.flush()
+        return registro
+
+    return _handle_db_transaction(db, _salvar)
+
+
+@router.get(
+    "/regras-ncm",
+    response_model=list[RegraNcmRead],
+    summary="Regras Tributárias por NCM",
+    description="As exceções ao padrão da loja. Quem tem dez pneus cadastra uma regra, e os dez obedecem.",
+)
+def listar_regras_ncm(
+    user_token: dict = Depends(get_current_active_user),
+    *,
+    db: Session = Depends(get_db),
+):
+    from app.db.crud import tributacao as tributacao_crud
+
+    return tributacao_crud.listar_regras_ncm(db, user_token["empresa_id"])
+
+
+@router.put(
+    "/regras-ncm/{ncm}",
+    response_model=RegraNcmRead,
+    summary="Salvar Regra Tributária de um NCM",
+)
+def salvar_regra_ncm(
+    user_token: dict = Depends(requer_configuracao_fiscal),
+    ncm: str = Path(..., min_length=8, max_length=8, description="NCM de 8 dígitos"),
+    *,
+    dados: RegraNcmUpsert,
+    db: Session = Depends(get_db),
+):
+    from app.db.crud import tributacao as tributacao_crud
+
+    if not ncm.isdigit():
+        raise HTTPException(status_code=422, detail="NCM deve conter 8 dígitos numéricos.")
+
+    return _handle_db_transaction(
+        db, tributacao_crud.upsert_regra_ncm, user_token["empresa_id"], ncm, dados,
+    )
+
+
+@router.delete(
+    "/regras-ncm/{ncm}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Remover Regra Tributária de um NCM",
+    description=(
+        "Os produtos daquele NCM voltam a seguir o padrão da loja. Nenhum "
+        "produto é alterado — a cascata é resolvida na leitura."
+    ),
+)
+def remover_regra_ncm(
+    user_token: dict = Depends(requer_configuracao_fiscal),
+    ncm: str = Path(..., min_length=8, max_length=8),
+    *,
+    db: Session = Depends(get_db),
+):
+    from app.db.crud import tributacao as tributacao_crud
+
+    removeu = _handle_db_transaction(
+        db, tributacao_crud.deletar_regra_ncm, user_token["empresa_id"], ncm,
+    )
+    if not removeu:
+        raise HTTPException(status_code=404, detail=f"Nenhuma regra cadastrada para o NCM {ncm}.")
+
 
 
 # ===========================================================================

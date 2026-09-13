@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models.aliquota_uf import AliquotaUF
 from app.db.models.produto_fiscal import ProdutoFiscal
+from app.services.fiscal.tributacao import fiscal_efetivo
 from app.db.models.venda import Venda
 
 from .constants import (
@@ -168,7 +169,10 @@ def resolver_aliquotas_venda(
 
     for idx, item_venda in enumerate(venda.itens, start=1):
         produto = item_venda.produto
-        fiscal: Optional[ProdutoFiscal] = produto.fiscal if produto else None
+        # Cascata produto → regra por NCM → padrão da loja. Sem nada
+        # configurado devolve o próprio `produto.fiscal`, e o cálculo é o
+        # mesmo de sempre.
+        fiscal = fiscal_efetivo(db, produto) if produto else None
 
         if not fiscal and produto:
             raise DadosFiscaisAusentesError(

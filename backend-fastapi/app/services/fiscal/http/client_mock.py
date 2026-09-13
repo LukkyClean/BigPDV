@@ -138,6 +138,18 @@ class FiscalClientMock:
             "</infNFe></NFe></nfeProc>"
         )
 
+    def baixar_pdf(self, caminho: str) -> Optional[bytes]:
+        """
+        PDF mínimo, mas com o cabeçalho real (`%PDF-`).
+
+        O cabeçalho importa: é por ele que se distingue um PDF de uma página
+        de erro em HTML que a emissora devolva com status 200.
+        """
+        if not caminho:
+            return None
+
+        return b"%PDF-1.4\n% DANFE de teste\n%%EOF\n"
+
     def enviar_certificado(self, arquivo_base64: str, senha: str) -> dict:
         """No mock o envio sempre dá certo -- senão o modo de teste barraria a si mesmo."""
         logger.info("[FISCAL MOCK] enviar_certificado (%d bytes)", len(arquivo_base64 or ""))

@@ -79,6 +79,14 @@ def verificar_emitente(db: Session, empresa_id: int) -> list[PendenciaFiscal]:
     if empresa.indicador_ie == "1" and not empresa.inscricao_estadual:
         pendencias.append(_p("emitente", "inscricao_estadual", "Inscrição Estadual é obrigatória para contribuinte de ICMS (Indicador de IE = 1)."))
 
+    # A contradição "IE preenchida + indicador 9" NÃO entra aqui de propósito.
+    #
+    # Ela é dado errado no cadastro, mas não impede nota nenhuma: o bloco do
+    # emitente manda a IE e o CRT, e o indicador que vai no XML é o do
+    # DESTINATÁRIO. Esta função alimenta o GATE (core.py), então uma pendência
+    # aqui recusaria a emissão de quem hoje emite sem problema. Vive como
+    # AVISO em `pendencias_globais.py`.
+
     endereco = crud.get_endereco_empresa(db, empresa_id)
     if not endereco:
         pendencias.append(_p("emitente", "endereco", "Empresa não possui endereço cadastrado."))
@@ -203,7 +211,13 @@ def verificar_endereco_destinatario(cliente: Cliente) -> list[PendenciaFiscal]:
 
 
 def verificar_produto_fiscal(db: Session, produto, pendencias: list, simples_nacional: bool):
-    fiscal = crud.get_produto_fiscal(db, produto.id)
+    # O gate confere o que REALMENTE vai para a nota: a tributação efetiva,
+    # depois da cascata produto → regra por NCM → padrão da loja. Conferir só
+    # `produto_fiscal` acusaria pendência em produto que a loja já resolveu no
+    # padrão — e aprovaria o contrário.
+    from app.services.fiscal.tributacao import fiscal_efetivo
+
+    fiscal = fiscal_efetivo(db, produto)
     if not fiscal:
         pendencias.append(_p("item", "dados_fiscais", f"Produto '{produto.nome}' sem dados fiscais.", produto.id, produto.nome))
         return

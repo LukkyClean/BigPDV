@@ -207,6 +207,29 @@ def test_payload_traz_os_grupos_obrigatorios(venda_simples):
     assert payload["serie"] == 1
 
 
+def test_item_nao_leva_grupo_de_ipi(venda_simples):
+    """
+    A primeira emissao numa loja real (12/09/2026) voltou com rejeicao de
+    SCHEMA:
+
+        Element '...}IPINT': This element is not expected.
+        Expected is one of ( CNPJProd, cSelo, qSelo, cEnq )
+
+    No XSD da NF-e o grupo IPI exige `cEnq` ANTES do `IPINT`. O ERP mandava
+    `ipi_situacao_tributaria` e `ipi_codigo_enquadramento`, mas o cEnq nao
+    chegava ao XML.
+
+    O grupo e OPCIONAL e este sistema nao calcula IPI: informa-lo era declarar
+    um grupo que nao temos como garantir bem formado, so para dizer que nao ha
+    imposto. Quando houver cliente industria, ele volta calculado de verdade.
+    """
+    payload = _montar(venda_simples)
+
+    for item in payload["items"]:
+        campos_ipi = [c for c in item if c.startswith("ipi")]
+        assert campos_ipi == [], campos_ipi
+
+
 def test_itens_saem_numerados_e_com_valores_em_reais(venda_simples):
     payload = _montar(venda_simples)
     primeiro, segundo = payload["items"]

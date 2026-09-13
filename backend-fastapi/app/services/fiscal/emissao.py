@@ -63,7 +63,99 @@ STATUS_CONSULTAVEIS = ("PROCESSANDO", "INDETERMINADA")
 STATUS_NAO_TRANSMITIDA = "NAO_TRANSMITIDA"
 
 
-def _aplicar_resultado(doc: DocumentoFiscal, resultado: EmissaoResultado) -> None:
+
+def _fiscais_efetivos(db, venda) -> dict:
+    """
+    A tributação efetiva de cada produto da venda (cascata produto → regra por
+    NCM → padrão da loja).
+
+    Resolvida AQUI porque é onde existe sessão: o `payload_builder` recebe o
+    resultado pronto. Sem tributação padrão e sem regra de NCM cadastradas, o
+    valor é o próprio `produto.fiscal` e o payload sai idêntico ao de antes.
+    """
+    from app.services.fiscal.tributacao import fiscal_efetivo
+
+    mapa = {}
+    for item in venda.itens:
+        produto = getattr(item, "produto", None)
+        if produto is not None and produto.id not in mapa:
+            mapa[produto.id] = fiscal_efetivo(db, produto)
+    return mapa
+
+
+def _arquivar_danfe(doc: DocumentoFiscal, client) -> None:
+    """
+    Guarda o DANFE em PDF ao lado do XML.
+
+    Separado do XML porque as consequências de falhar são diferentes: sem XML
+    a loja fica sem o documento que é obrigada a guardar; sem DANFE ela só
+    precisa de internet para reimprimir. Por isso aqui nem se devolve o
+    conteúdo — ninguém depende dele em seguida.
+    """
+    from app.services.fiscal.arquivos import guardar_pdf
+
+    if client is None or not doc.url_pdf or doc.caminho_pdf_local:
+        return
+
+    try:
+        pdf = client.baixar_pdf(doc.url_pdf)
+    except Exception as exc:
+        logger.warning("[FISCAL] Não foi possível baixar o DANFE: %s", exc)
+        return
+
+    caminho = guardar_pdf(
+        pdf, chave=doc.chave_acesso,
+        fallback=f"doc-{doc.id}", quando=doc.data_autorizacao,
+    )
+    if caminho:
+        doc.caminho_pdf_local = caminho
+
+
+def _arquivar_xml(doc: DocumentoFiscal, client) -> Optional[str]:
+    """
+    Baixa o XML autorizado e guarda no computador da loja.
+
+    Devolve o conteúdo, para quem precisar dele em seguida não baixar de novo
+    (é o caso do `vTotTrib`).
+
+    NUNCA levanta. Chega aqui com a nota já autorizada na SEFAZ; disco cheio,
+    rede caída ou emissora fora do ar não podem virar erro para o operador —
+    viram log, e o arquivo se recupera depois pelo mesmo caminho que o ZIP do
+    contador usa.
+    """
+    from app.services.fiscal.arquivos import guardar_pdf, guardar_xml, ler_xml
+
+    _arquivar_danfe(doc, client)
+
+    if client is None or not doc.url_xml:
+        return None
+
+    # Já guardado: não baixa de novo. XML autorizado é imutável.
+    if doc.caminho_xml_local:
+        existente = ler_xml(doc.caminho_xml_local)
+        if existente:
+            return existente
+
+    try:
+        xml = client.baixar_xml(doc.url_xml)
+    except Exception as exc:
+        logger.warning("[FISCAL] Não foi possível baixar o XML para arquivar: %s", exc)
+        return None
+
+    if not xml:
+        return None
+
+    caminho = guardar_xml(
+        xml,
+        chave=doc.chave_acesso,
+        fallback=f"doc-{doc.id}",
+        quando=doc.data_autorizacao,
+    )
+    if caminho:
+        doc.caminho_xml_local = caminho
+    return xml
+
+def _aplicar_resultado(doc: DocumentoFiscal, resultado: EmissaoResultado, client=None) -> None:
     """Atualiza DocumentoFiscal com o resultado da API.
 
     Três desfechos que antes viravam um só, e é por isso que uma lista de
@@ -101,6 +193,9 @@ def _aplicar_resultado(doc: DocumentoFiscal, resultado: EmissaoResultado) -> Non
     if status_api == RESULTADO_AUTORIZADO:
         doc.status = "AUTORIZADA"
         doc.data_autorizacao = datetime.now(timezone.utc)
+        # A nota é da loja a partir de agora: guarda o XML no disco dela.
+        # Best-effort — a autorização já aconteceu e nada aqui pode desfazê-la.
+        _arquivar_xml(doc, client)
     elif status_api == RESULTADO_PROCESSANDO:
         doc.status = "PROCESSANDO"
     elif status_api == RESULTADO_CANCELADO:
@@ -405,6 +500,7 @@ def emitir_nfe_venda(
         empresa, endereco, fiscal_settings, venda, nota_fiscal,
         resultado_calculo=resultado_calculo,
         numero=numero,
+        fiscais=_fiscais_efetivos(db, venda),
     )
 
     # 5. Criar documento fiscal (ref e chave de idempotência únicas por tentativa)
@@ -436,7 +532,7 @@ def emitir_nfe_venda(
 
     try:
         resultado = client.emitir_nfe(ref, payload, idempotency_key=doc.idempotency_key)
-        _aplicar_resultado(doc, resultado)
+        _aplicar_resultado(doc, resultado, client)
     except NotImplementedError as e:
         # Client sem implementação: nada foi transmitido, é recusa local.
         doc.status = "REJEITADA"
@@ -671,6 +767,7 @@ def emitir_nfce_venda(
         empresa, endereco, fiscal_settings, venda, venda.nota_fiscal,
         resultado_calculo=resultado_calculo,
         numero=numero,
+        fiscais=_fiscais_efetivos(db, venda),
     )
 
     tentativas_existentes = crud.contar_documentos_por_venda(db, numero_venda)
@@ -701,7 +798,7 @@ def emitir_nfce_venda(
 
     try:
         resultado = client.emitir_nfce(ref, payload, idempotency_key=doc.idempotency_key)
-        _aplicar_resultado(doc, resultado)
+        _aplicar_resultado(doc, resultado, client)
     except NotImplementedError as e:
         doc.status = "REJEITADA"
         doc.mensagem_sefaz = str(e)
@@ -747,7 +844,7 @@ def consultar_documento(db: Session, documento_id: int, empresa_id: int) -> Docu
 
     try:
         resultado = client.consultar_nfe(doc.ref_api, doc.tipo_documento)
-        _aplicar_resultado(doc, resultado)
+        _aplicar_resultado(doc, resultado, client)
         espelhar_na_nota_da_venda(db, doc)
     except NotImplementedError:
         pass
@@ -879,7 +976,7 @@ def cancelar_documento(
         resultado = client.cancelar_nfe(
             doc.ref_api, justificativa, doc.tipo_documento
         )
-        _aplicar_resultado(doc, resultado)
+        _aplicar_resultado(doc, resultado, client)
     except NotImplementedError as e:
         raise HTTPException(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
@@ -973,7 +1070,7 @@ def emitir_teste_nfe(db: Session, empresa_id: int) -> DocumentoFiscal:
 
     try:
         resultado = client.emitir_nfe(ref, payload)
-        _aplicar_resultado(doc, resultado)
+        _aplicar_resultado(doc, resultado, client)
     except Exception as e:
         logger.error("[FISCAL] Erro ao emitir teste NF-e: %s", e)
         doc.status = "REJEITADA"
@@ -1065,6 +1162,7 @@ def preview_nfe_os(db: Session, numero_os: str, empresa_id: int) -> dict:
     payload = montar_payload_nfe(
         empresa, endereco, fiscal_settings, os_como_venda, os_obj.nota_fiscal,
         resultado_calculo=resultado_calculo,
+        fiscais=_fiscais_efetivos(db, os_como_venda),
     )
 
     return {
@@ -1147,6 +1245,7 @@ def emitir_nfe_os(
         empresa, endereco, fiscal_settings, os_como_venda, os_obj.nota_fiscal,
         resultado_calculo=resultado_calculo,
         numero=numero,
+        fiscais=_fiscais_efetivos(db, os_como_venda),
     )
 
     tentativas = crud.contar_documentos_por_os(db, numero_os)
@@ -1182,7 +1281,7 @@ def emitir_nfe_os(
 
     try:
         resultado = client.emitir_nfe(ref, payload, idempotency_key=doc.idempotency_key)
-        _aplicar_resultado(doc, resultado)
+        _aplicar_resultado(doc, resultado, client)
     except NotImplementedError as e:
         doc.status = "REJEITADA"
         doc.mensagem_sefaz = str(e)

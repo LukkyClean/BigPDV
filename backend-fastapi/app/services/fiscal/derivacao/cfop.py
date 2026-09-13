@@ -37,10 +37,19 @@ SUFIXO_SERVICO = 933            # Prestação de serviço tributado por ISSQN
 # CST/CSOSN que indicam mercadoria com ICMS já retido por substituição.
 SITUACOES_SUBSTITUIDO = frozenset({"60", "500"})
 
-# Atividades em que a saída é de produção própria. `tipo_atividade` já existe
-# na tabela `empresas` — indústria, panificação com produção própria,
-# marcenaria e beneficiamento entram aqui.
-ATIVIDADES_PRODUCAO_PROPRIA = frozenset({TipoAtividade.INDUSTRIA, TipoAtividade.MISTO})
+# Atividades em que a saída é de produção própria — indústria, panificação com
+# produção própria, marcenaria, beneficiamento.
+#
+# MISTO SAIU DAQUI EM 12/09/2026, e o motivo é a etiqueta da tela.
+# O cadastro de empresa oferece `MISTO` como **"Misto (Comércio + Serviços)"**
+# (`empresa.constants.ts`) — é o que a loja de informática que vende peça e faz
+# conserto escolhe, e foi o que aconteceu numa loja real. Com MISTO aqui, a
+# sugestão vinha 5101 ("venda de produção do estabelecimento"), que é de quem
+# FABRICA. Para revenda o certo é 5102.
+#
+# Vale a etiqueta que o usuário leu na hora de escolher, não a que o motor
+# imaginou. Quem fabrica escolhe "Indústria" e continua recebendo 5101.
+ATIVIDADES_PRODUCAO_PROPRIA = frozenset({TipoAtividade.INDUSTRIA})
 
 NATUREZA_POR_CFOP = {
     "5101": "Venda de producao do estabelecimento",

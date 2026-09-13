@@ -12,6 +12,7 @@ from app.db.models.documento_fiscal import DocumentoFiscal
 from app.db.models.venda import Venda
 from app.db.models.cliente import Cliente, ClientePF, ClientePJ
 from app.db.crud import fiscal as fiscal_crud
+from app.services.fiscal.tributacao import fiscal_efetivo
 from app.schemas.documento_fiscal import (
     DocumentoFiscalHistorico,
     DocumentoFiscalListRead,
@@ -45,6 +46,17 @@ def _itens_do_snapshot(doc: DocumentoFiscal) -> list[DocumentoItemResumo]:
 def _hidratar_documento_com_venda(db: Session, doc: DocumentoFiscal) -> DocumentoFiscalRead:
     """Hidrata DocumentoFiscalRead com dados enriquecidos de venda, cliente e itens."""
     doc_read = DocumentoFiscalRead.model_validate(doc)
+
+    # O arquivo está mesmo no disco? Não basta a coluna estar preenchida: o
+    # cliente pode ter restaurado um backup antigo, ou apagado a pasta. A tela
+    # promete "funciona sem internet" — a promessa é conferida aqui.
+    import os
+    doc_read.xml_local = bool(
+        doc.caminho_xml_local and os.path.exists(doc.caminho_xml_local)
+    )
+    doc_read.pdf_local = bool(
+        doc.caminho_pdf_local and os.path.exists(doc.caminho_pdf_local)
+    )
 
     # O snapshot manda quando existe.
     #
@@ -103,9 +115,14 @@ def _hidratar_documento_com_venda(db: Session, doc: DocumentoFiscal) -> Document
                 nome_prod = item.descricao_avulsa or (item.produto.nome if item.produto else "Item")
                 if item.produto:
                     cod_barras = item.produto.codigo_barras
-                    if item.produto.fiscal:
-                        ncm = item.produto.fiscal.ncm
-                        cfop = item.produto.fiscal.cfop_padrao
+                    # Cascata, não `produto.fiscal` cru: o CFOP pode vir do
+                    # padrão da loja, e esta hidratação precisa mostrar o que
+                    # de fato foi para a nota. (Só alcança documento sem
+                    # snapshot — o snapshot congelado vence, logo abaixo.)
+                    fiscal_do_item = fiscal_efetivo(db, item.produto)
+                    if fiscal_do_item:
+                        ncm = fiscal_do_item.ncm
+                        cfop = fiscal_do_item.cfop_padrao
 
                 itens_list.append(
                     DocumentoItemResumo(

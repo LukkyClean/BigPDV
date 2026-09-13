@@ -41,6 +41,13 @@ class DocumentoFiscalRead(BaseModel):
     data_autorizacao: Optional[datetime] = None
     url_pdf: Optional[str] = None
     url_xml: Optional[str] = None
+    # O XML está guardado NESTE computador?
+    #
+    # Booleano e não o caminho: a tela só precisa saber se pode prometer
+    # "funciona sem internet". Caminho absoluto do servidor na resposta seria
+    # ruído — e informação de infraestrutura que a interface não usa.
+    xml_local: bool = False
+    pdf_local: bool = False
     mensagem_sefaz: Optional[str] = None
     codigo_status_sefaz: Optional[int] = None
     motivo_rejeicao: Optional[str] = None
@@ -104,6 +111,9 @@ class PendenciasGlobais(BaseModel):
 
     emitente_completo: bool
     emitente_pendencias: list[str]
+    # Cadastro errado que NÃO impede emitir. Pendência recusa a nota; aviso
+    # só conta. Ver `_avisos_do_emitente`.
+    emitente_avisos: list[str] = []
     # Aviso (nao pendencia): o certificado vence em ate 30 dias, ou ja venceu.
     # Vencido tambem entra em `emitente_pendencias`, porque ai barra o gate.
     certificado_aviso: Optional[str] = None

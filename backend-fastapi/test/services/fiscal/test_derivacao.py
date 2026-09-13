@@ -45,7 +45,10 @@ def _ctx(**kwargs) -> ContextoDerivacao:
     (TipoAtividade.SERVICO, "102", 1, "5102"),
     # Producao propria — industria, panificacao, marcenaria, beneficiamento.
     (TipoAtividade.INDUSTRIA, "102", 1, "5101"),
-    (TipoAtividade.MISTO, "00", 1, "5101"),
+    # MISTO e "Misto (Comercio + Servicos)" na tela da empresa: quem escolhe
+    # isso REVENDE e presta servico, nao fabrica. Ver o comentario em
+    # ATIVIDADES_PRODUCAO_PROPRIA.
+    (TipoAtividade.MISTO, "00", 1, "5102"),
     # Mercadoria com ICMS ja retido por ST.
     (TipoAtividade.COMERCIO, "500", 1, "5405"),
     (TipoAtividade.COMERCIO, "60", 1, "5405"),

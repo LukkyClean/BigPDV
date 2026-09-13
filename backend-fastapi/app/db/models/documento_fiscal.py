@@ -59,6 +59,18 @@ class DocumentoFiscal(Base):
     # --- Arquivos ---
     url_pdf: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     url_xml: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    # Onde o XML autorizado ficou GUARDADO nesta máquina.
+    #
+    # As duas URLs acima são endereços na emissora: dependem de ela estar no
+    # ar, do link não expirar e de continuarmos clientes dela. Quem é obrigado
+    # a guardar o XML por cinco anos é o emitente — a loja. Ver
+    # `services/fiscal/arquivos.py`.
+    caminho_xml_local: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    # O DANFE guardado nesta máquina, em `fiscal/danfe/`. Entra no backup
+    # enquanto a pasta couber no teto (ver `backup/_constants.py`): o XML é
+    # obrigação legal e sobe sempre, o PDF cede lugar se o pacote crescer
+    # demais. Local ele fica de todo jeito, para reimprimir sem internet.
+    caminho_pdf_local: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
     # --- Destinatario ENVIADO (parte do snapshot, gravado antes de transmitir) ---
     # E o que a SEFAZ viu. A tela lia o cliente da venda, e a nota de teste nao

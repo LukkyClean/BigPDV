@@ -283,7 +283,15 @@ def _montar_itens(
     venda: Venda,
     simples_nacional: bool,
     resultado_calculo: Optional[ResultadoCalculo] = None,
+    fiscais: Optional[dict] = None,
 ) -> list[dict]:
+    """
+    `fiscais` traz a tributação EFETIVA por produto_id (cascata produto → NCM →
+    padrão da loja), resolvida em `emissao.py`, que é quem tem a sessão.
+
+    Ausente, cai em `produto.fiscal` — o comportamento de antes da cascata, e o
+    caminho de todo teste que monta payload sem banco.
+    """
     itens = []
 
     # Indexar impostos por numero_item para lookup rápido
@@ -300,7 +308,9 @@ def _montar_itens(
                 f"Todos os itens devem ter produto vinculado para gerar payload NF-e."
             )
 
-        fiscal = produto.fiscal
+        fiscal = (fiscais or {}).get(produto.id) if fiscais else None
+        if fiscal is None:
+            fiscal = produto.fiscal
 
         item_dict = {
             "numero_item": idx,
@@ -355,10 +365,31 @@ def _montar_itens(
                 "cofins_base_calculo": float(imp.cofins_base_calculo),
                 "cofins_aliquota_porcentual": float(imp.cofins_aliquota),
                 "cofins_valor": float(imp.cofins_valor),
-                # IPI
-                "ipi_situacao_tributaria": imp.ipi_situacao_tributaria,
-                "ipi_codigo_enquadramento": imp.ipi_codigo_enquadramento,
+                # IPI: NÃO ENVIADO. Ver o bloco abaixo.
             })
+            # ---------------------------------------------------------------
+            # POR QUE O GRUPO DE IPI SAIU DO PAYLOAD (12/09/2026)
+            # ---------------------------------------------------------------
+            # A primeira emissão numa loja real voltou com rejeição de SCHEMA:
+            #
+            #   Element '...}IPINT': This element is not expected.
+            #   Expected is one of ( CNPJProd, cSelo, qSelo, cEnq )
+            #
+            # No XSD da NF-e, o grupo IPI exige `cEnq` ANTES do `IPINT`. O ERP
+            # mandava os dois campos (`ipi_situacao_tributaria` = 53 e
+            # `ipi_codigo_enquadramento` = 999, ver tax_engine/engine.py), mas
+            # o cEnq não chegou ao XML — perde-se entre daqui e a SEFAZ.
+            #
+            # A correção aqui é não mandar o grupo, e ela é a CERTA por mérito
+            # próprio: o grupo IPI é OPCIONAL no layout, e este sistema não
+            # calcula IPI nenhum (comércio e serviços — ver o comentário do
+            # engine). Declarar "não tributado" era informar um grupo que não
+            # temos como garantir bem formado, para dizer que não há imposto.
+            #
+            # Quando houver cliente indústria, o IPI volta calculado de
+            # verdade, com cEnq na ordem que o schema pede.
+            # ---------------------------------------------------------------
+
             # CST 20 — Redução de base + código benefício fiscal
             if imp.icms_reducao_base is not None:
                 item_dict["icms_reducao_base_calculo"] = float(imp.icms_reducao_base)
@@ -502,6 +533,7 @@ def montar_payload_nfce(
     nota_fiscal: Optional[VendaNotaFiscal],
     resultado_calculo: Optional[ResultadoCalculo] = None,
     numero: Optional[int] = None,
+    fiscais: Optional[dict] = None,
 ) -> dict:
     """Monta o payload da NFC-e (modelo 65) a partir de uma venda.
 
@@ -597,7 +629,7 @@ def montar_payload_nfce(
         "numero": numero,
         "serie": fiscal_settings.serie_nfce,
         "emitente": _montar_emitente(empresa, endereco_empresa, fiscal_settings),
-        "items": _montar_itens(venda, simples, resultado_calculo),
+        "items": _montar_itens(venda, simples, resultado_calculo, fiscais),
         "formas_pagamento": formas_pagamento,
         "valor_troco": valor_troco,
         "totais": totais,
@@ -632,6 +664,7 @@ def montar_payload_nfe(
     nota_fiscal: Optional[VendaNotaFiscal],
     resultado_calculo: Optional[ResultadoCalculo] = None,
     numero: Optional[int] = None,
+    fiscais: Optional[dict] = None,
 ) -> dict:
     """
     Monta payload completo para emissão de NF-e a partir de uma venda.
@@ -699,7 +732,7 @@ def montar_payload_nfe(
         # --- Destinatário (objeto aninhado) ---
         "destinatario": destinatario,
         # --- Itens ---
-        "items": _montar_itens(venda, simples, resultado_calculo),
+        "items": _montar_itens(venda, simples, resultado_calculo, fiscais),
         # --- Pagamentos ---
         "formas_pagamento": formas_pagamento,
         "valor_troco": valor_troco,

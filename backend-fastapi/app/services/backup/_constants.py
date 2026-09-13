@@ -14,6 +14,38 @@ STATIC_DIR = os.path.join(BASE_DIR, "static")
 OLD_DIR = os.path.join(BASE_DIR, "old")
 DATA_DIR = os.path.dirname(database_path)
 
+# Os XMLs autorizados, gravados por `services/fiscal/arquivos.py`.
+#
+# Ficam sob `data/` (ao lado do banco) e NÃO sob `static/`, porque `static` é
+# servida por HTTP sem autenticação para a LAN inteira — é de onde saem foto de
+# produto e logo. Documento fiscal não vai para lá.
+#
+# Como consequência dessa escolha, eles precisavam ser incluídos aqui à mão: o
+# backup levava só o arquivo do banco e a árvore de `static`. Guardar o XML por
+# cinco anos é obrigação do emitente, e obrigação fora do backup é o tipo de
+# coisa que só se descobre quando já era.
+FISCAL_DIR = os.path.join(DATA_DIR, "fiscal")
+FISCAL_DIR_NO_ZIP = "fiscal"
+
+# O DANFE SOBE — mas cede lugar quando o pacote fica grande demais.
+#
+# A primeira versão o deixava sempre de fora, com o argumento de que é
+# "derivado do XML e pode ser regerado". O argumento é fraco: este sistema NÃO
+# tem gerador de DANFE, então quem perder o PDF depende de ferramenta de
+# terceiro para ver a nota. Numa loja pequena (30 notas/mês, ~2 MB de PDF por
+# ano) excluí-lo era perder conveniência sem ganhar nada.
+#
+# O que é real, e vale a trava:
+#   - o ZIP inteiro é lido em MEMÓRIA antes de subir (cloud/upload.py)
+#   - o timeout de escrita é 600s: a 1 Mbps de upload dá ~75 MB
+#   - backup COMPLETO reenvia tudo a cada 7 dias, não uma vez
+#
+# Daí a regra: o XML (obrigação legal de cinco anos) sobe sempre; o DANFE
+# (conveniência) é pulado quando sua pasta passa deste teto, com aviso no log.
+# A loja perde a comodidade, nunca o documento.
+FISCAL_DANFE_SUBPASTA = "danfe"
+FISCAL_DANFE_TETO_BYTES = 100 * 1024 * 1024  # 100 MB
+
 FULL_TO_SAVE = 4
 MIN_DAYS_TO_COMPLETE_SAVE = 7
 

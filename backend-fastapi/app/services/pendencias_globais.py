@@ -77,9 +77,38 @@ def obter_pendencias_globais(db: Session, empresa_id: int) -> PendenciasGlobais:
     return PendenciasGlobais(
         emitente_completo=emitente_completo,
         emitente_pendencias=emitente_msgs,
+        emitente_avisos=_avisos_do_emitente(db, empresa_id),
         certificado_aviso=aviso_certificado(validade),
         certificado_dias_restantes=dias_para_vencer_certificado(validade),
         produtos_sem_ncm=produtos_sem_ncm,
         servicos_sem_lc116=servicos_sem_lc116,
         pagamentos_sem_sefaz=pagamentos_sem_sefaz,
     )
+
+
+def _avisos_do_emitente(db, empresa_id: int) -> list[str]:
+    """
+    O que está errado no cadastro mas NÃO impede emitir.
+
+    Separado das pendências de propósito: pendência recusa a nota, aviso só
+    conta. Confundir os dois é como se trava uma loja que estava emitindo bem.
+
+    Hoje há um: Inscrição Estadual preenchida junto de "9 - Não Contribuinte".
+    Apareceu numa loja real em 12/09/2026 (MEI com IE ativa). O indicador do
+    emitente não vai no XML — quem tem indicador na nota é o destinatário —,
+    então o dado está errado sem quebrar nada.
+    """
+    from app.db.crud import fiscal as crud
+
+    empresa = crud.get_empresa(db, empresa_id)
+    if empresa is None:
+        return []
+
+    avisos: list[str] = []
+    if getattr(empresa, "indicador_ie", None) == "9" and getattr(empresa, "inscricao_estadual", None):
+        avisos.append(
+            f"Indicador de IE está como '9 - Não Contribuinte', mas a empresa tem "
+            f"Inscrição Estadual ({empresa.inscricao_estadual}). Quem tem IE e vende "
+            f"mercadoria é '1 - Contribuinte ICMS'. Não impede a emissão."
+        )
+    return avisos

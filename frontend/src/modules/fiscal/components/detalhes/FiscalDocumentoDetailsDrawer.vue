@@ -27,7 +27,8 @@ import {
 } from 'lucide-vue-next';
 
 import { useToast } from '@/shared/composables/useToast';
-import { abrirArquivo } from '../../utils/abrirArquivo';
+import { salvarArquivo } from '@/shared/utils/arquivo';
+import { fiscalService } from '../../services/fiscal.service';
 import { STATUS_COLORS, STATUS_LABELS } from '../../constants/fiscal.constants';
 import { useFiscalHistoricoQuery } from '../../composables/useFiscalHistoricoQuery';
 import { useFiscalConsultarMutation } from '../../composables/useFiscalConsultarMutation';
@@ -215,16 +216,53 @@ const handleCancelar = async () => {
   }
 };
 
-const handleDownload = (tipo: 'pdf' | 'xml') => {
+
+/**
+ * Baixa o XML pelo BACKEND, que lê do disco da loja quando o arquivo existe.
+ *
+ * Diferente do botão antigo, que abria o link da emissora: aquele depende de
+ * ela estar no ar e o link não ter expirado. Este funciona sem internet — e é
+ * a razão de guardarmos o arquivo, já que a obrigação de manter o XML por
+ * cinco anos é do emitente.
+ */
+const isBaixandoXml = ref(false);
+
+const isBaixandoPdf = ref(false);
+
+const salvarDanfeLocal = async () => {
   if (!documento.value) return;
-  const url = tipo === 'pdf' ? documento.value.url_pdf : documento.value.url_xml;
-  if (!url) {
-    toast.warning('URL do ' + tipo.toUpperCase() + ' não disponível');
-    return;
+  isBaixandoPdf.value = true;
+  try {
+    const blob = await fiscalService.baixarPdfDocumento(documento.value.id);
+    const nome = `${documento.value.chave_acesso || `documento-${documento.value.id}`}.pdf`;
+    const caminho = await salvarArquivo(nome, blob);
+    toast.success('DANFE salvo', caminho ? `Salvo em ${caminho}` : undefined);
+  } catch {
+    toast.error(
+      'Não foi possível obter o DANFE',
+      'Ele não está guardado nesta máquina e a emissora não respondeu.',
+    );
+  } finally {
+    isBaixandoPdf.value = false;
   }
-  // `abrirArquivo` delega ao opener do Tauri (ou a uma nova aba): quem nomeia o
-  // arquivo e o destino, entao nao ha nome de arquivo a passar aqui.
-  abrirArquivo(url);
+};
+
+const salvarXmlLocal = async () => {
+  if (!documento.value) return;
+  isBaixandoXml.value = true;
+  try {
+    const blob = await fiscalService.baixarXmlDocumento(documento.value.id);
+    const nome = `${documento.value.chave_acesso || `documento-${documento.value.id}`}.xml`;
+    const caminho = await salvarArquivo(nome, blob);
+    toast.success('XML salvo', caminho ? `Salvo em ${caminho}` : undefined);
+  } catch {
+    toast.error(
+      'Não foi possível obter o XML',
+      'Ele não está guardado nesta máquina e a emissora não respondeu.',
+    );
+  } finally {
+    isBaixandoXml.value = false;
+  }
 };
 
 // --- Copy helpers ---
@@ -728,20 +766,44 @@ function formatarData(iso?: string | null): string {
                       <div class="grid grid-cols-2 gap-2">
                         <button
                           type="button"
-                          @click="handleDownload('pdf')"
-                          :disabled="!documento.url_pdf"
+                          @click="salvarDanfeLocal"
+                          :disabled="isBaixandoPdf || (!documento.url_pdf && !documento.pdf_local)"
                           class="flex items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white p-3 text-sm font-semibold text-zinc-700 shadow-2xs hover:bg-zinc-50 transition-colors disabled:opacity-40 cursor-pointer"
                         >
-                          <FileText class="h-4 w-4 text-rose-500" /> DANFE (PDF)
+                          <FileText class="h-4 w-4 text-rose-500" />
+                          {{ isBaixandoPdf ? 'Salvando…' : 'DANFE (PDF)' }}
                         </button>
                         <button
                           type="button"
-                          @click="handleDownload('xml')"
-                          :disabled="!documento.url_xml"
+                          @click="salvarXmlLocal"
+                          :disabled="isBaixandoXml || (!documento.url_xml && !documento.xml_local)"
                           class="flex items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white p-3 text-sm font-semibold text-zinc-700 shadow-2xs hover:bg-zinc-50 transition-colors disabled:opacity-40 cursor-pointer"
                         >
-                          <FileCode class="h-4 w-4 text-blue-500" /> XML
+                          <FileCode class="h-4 w-4 text-blue-500" />
+                          {{ isBaixandoXml ? 'Salvando…' : 'XML' }}
                         </button>
+
+                        <!--
+                          O selo é a diferença para o painel do TikTok, onde os
+                          arquivos expiram em 3 minutos: aqui o XML é da loja e
+                          abre sem internet.
+                        -->
+                        <p
+                          class="col-span-2 flex items-center gap-1.5 text-[11px]"
+                          :class="documento.xml_local ? 'text-emerald-600' : 'text-zinc-400'"
+                        >
+                          <span
+                            class="w-1.5 h-1.5 rounded-full shrink-0"
+                            :class="documento.xml_local ? 'bg-emerald-500' : 'bg-zinc-300'"
+                          />
+                          {{
+                            documento.xml_local
+                              ? (documento.pdf_local
+                                  ? 'XML e DANFE guardados neste computador — abrem sem internet. O XML entra no backup.'
+                                  : 'XML guardado neste computador — abre sem internet e entra no backup.')
+                              : 'Arquivos ainda não guardados aqui; serão buscados na emissora.'
+                          }}
+                        </p>
 
                         <button
                           type="button"

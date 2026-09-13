@@ -20,6 +20,10 @@ from ._constants import (
     PRE_RESTORE_PREFIX,
     STATIC_DIR,
     STATIC_DIR_NO_ZIP,
+    FISCAL_DIR,
+    FISCAL_DIR_NO_ZIP,
+    FISCAL_DANFE_SUBPASTA,
+    FISCAL_DANFE_TETO_BYTES,
     BackupError,
 )
 from ._manifest import ManifestBuilder
@@ -43,6 +47,36 @@ def _find_current_anchor() -> Optional[BackupInfo]:
     backups = list_backups()
     return next((b for b in backups if b.completo), None) if backups else None
 
+
+
+def _danfe_excede_teto() -> bool:
+    """
+    A pasta de DANFEs passou do tamanho que vale a pena subir?
+
+    Medida a cada backup, e não uma vez: a loja cresce. Erro de leitura conta
+    como "não excede" — na dúvida, incluir o arquivo é o lado seguro.
+    """
+    pasta = os.path.join(FISCAL_DIR, FISCAL_DANFE_SUBPASTA)
+    if not os.path.isdir(pasta):
+        return False
+
+    total = 0
+    try:
+        for root, _, files in os.walk(pasta):
+            for nome in files:
+                total += os.path.getsize(os.path.join(root, nome))
+                if total > FISCAL_DANFE_TETO_BYTES:
+                    logger.warning(
+                        "[BACKUP] DANFEs somam mais de %d MB: ficam de fora deste "
+                        "pacote para não estourar o envio à nuvem. Os XMLs sobem "
+                        "normalmente, e os PDFs continuam salvos nesta máquina.",
+                        FISCAL_DANFE_TETO_BYTES // (1024 * 1024),
+                    )
+                    return True
+    except OSError:
+        return False
+
+    return False
 
 def _is_full_backup(last_anchor: Optional[BackupInfo]) -> bool:
     return (
@@ -162,15 +196,34 @@ def create_backup(
                     origin=stored_filename,
                 )
 
-                if os.path.isdir(STATIC_DIR):
-                    base_files = load_manifest(last_backup.arquivo)["arquivos"] if last_backup else {}
+                base_files = load_manifest(last_backup.arquivo)["arquivos"] if last_backup else {}
+
+                # Duas árvores, a mesma regra: arquivo que não mudou desde o
+                # último backup entra só no manifesto (incremental), e o que
+                # mudou é regravado.
+                #
+                # `fiscal` entrou em 13/09/2026: são os XMLs autorizados, que a
+                # loja é obrigada a guardar por cinco anos. Ficam sob `data/` e
+                # por isso não vinham na árvore de `static`.
+                for pasta, prefixo in ((STATIC_DIR, STATIC_DIR_NO_ZIP), (FISCAL_DIR, FISCAL_DIR_NO_ZIP)):
+                    if not os.path.isdir(pasta):
+                        continue
 
                     # os.walk percorre a árvore de pastas recursivamente
-                    for root, _, files in os.walk(STATIC_DIR):
+                    for root, subdirs, files in os.walk(pasta):
+                        # O DANFE sobe enquanto couber. Passando do teto, a
+                        # pasta é podada AQUI (antes de percorrer) e o XML
+                        # segue normalmente — documento antes de conveniência.
+                        if pasta == FISCAL_DIR and root == pasta:
+                            if _danfe_excede_teto():
+                                subdirs[:] = [
+                                    d for d in subdirs if d != FISCAL_DANFE_SUBPASTA
+                                ]
+
                         for filename in files:
                             abs_path = os.path.join(root, filename)
-                            rel = os.path.relpath(abs_path, STATIC_DIR)
-                            arcname = os.path.join(STATIC_DIR_NO_ZIP, rel).replace(os.sep, "/")
+                            rel = os.path.relpath(abs_path, pasta)
+                            arcname = os.path.join(prefixo, rel).replace(os.sep, "/")
                             st_info = os.stat(abs_path)
                             data = base_files.get(arcname)
 

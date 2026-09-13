@@ -41,6 +41,16 @@ export interface DocumentoFiscalRead {
   data_autorizacao: string | null;
   url_pdf: string | null;
   url_xml: string | null;
+  /**
+   * O XML esta guardado NESTE computador?
+   *
+   * Quando true, baixar funciona sem internet e o arquivo nao depende de a
+   * emissora estar no ar — que e a diferenca entre ter o documento e ter um
+   * link para ele.
+   */
+  xml_local?: boolean;
+  /** O DANFE esta guardado nesta maquina? (nao entra no backup em nuvem) */
+  pdf_local?: boolean;
   mensagem_sefaz: string | null;
   codigo_status_sefaz: number | null;
   /** Status cru da emissora ('autorizado', 'denegado', 'erro_autorizacao'). */
@@ -124,6 +134,8 @@ export interface DiagnosticoPlataforma {
 export interface PendenciasGlobais {
   emitente_completo: boolean;
   emitente_pendencias: string[];
+  /** Cadastro errado que NÃO impede emitir — aviso, não pendência. */
+  emitente_avisos?: string[];
   /** Aviso (não pendência): certificado vence em até 30 dias, ou já venceu. */
   certificado_aviso?: string | null;
   /** Negativo = vencido; null = sem validade conhecida. */
@@ -307,4 +319,52 @@ export interface CampoSugerido {
 
 export interface SugestoesFiscaisResponse {
   sugestoes: CampoSugerido[];
+}
+
+/**
+ * Regra de um campo fiscal no cadastro de produto.
+ *
+ * Campo invisível NUNCA é obrigatório — o backend garante isso, porque erro
+ * em campo que a tela não renderiza mata o submit em silêncio.
+ */
+export interface RegraCampoFiscal {
+  visivel: boolean;
+  obrigatorio: boolean;
+}
+
+export interface CamposFiscaisProdutoResponse {
+  crt: number;
+  /** Rótulo do regime para a tela ("Simples Nacional", "Regime Normal"...). */
+  regime: string;
+  usa_csosn: boolean;
+  campos: Record<string, RegraCampoFiscal>;
+}
+
+/**
+ * A tributação padrão da loja — a resposta que vale para o catálogo inteiro.
+ *
+ * Primeiro nível da cascata ao contrário: produto → regra por NCM → isto.
+ * Campo vazio significa "não decido isto", nunca "apague".
+ */
+export interface TributacaoPadrao {
+  id?: number;
+  empresa_id?: number;
+  cfop_padrao?: string | null;
+  origem_mercadoria?: number | null;
+  cst_icms?: string | null;
+  csosn?: string | null;
+  aliquota_icms?: number | null;
+  reducao_base_icms?: number | null;
+  codigo_beneficio_fiscal?: string | null;
+  cst_pis?: string | null;
+  cst_cofins?: string | null;
+  aliquota_pis?: number | null;
+  aliquota_cofins?: number | null;
+  c_class_trib?: string | null;
+  cst_ibs_cbs?: string | null;
+  aliquota_ibs?: number | null;
+  aliquota_cbs?: number | null;
+  c_benef?: string | null;
+  confirmado_em?: string | null;
+  confirmado_por?: string | null;
 }

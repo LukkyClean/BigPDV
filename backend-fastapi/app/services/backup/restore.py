@@ -21,6 +21,8 @@ from ._constants import (
     RESTORE_BACKUPS,
     STATIC_DIR,
     STATIC_DIR_NO_ZIP,
+    FISCAL_DIR,
+    FISCAL_DIR_NO_ZIP,
     DATA_DIR,
     BackupError,
 )
@@ -366,9 +368,11 @@ def apply_pending_restore() -> Optional[dict]:
     os.makedirs(snapshot_dir, exist_ok=True)
     old_db = os.path.join(snapshot_dir, DB_NAME)
     old_static = os.path.join(snapshot_dir, STATIC_DIR_NO_ZIP)
+    old_fiscal = os.path.join(snapshot_dir, FISCAL_DIR_NO_ZIP)
 
     staged_db = os.path.join(staging_dir, DB_NAME)
     staged_static = os.path.join(staging_dir, STATIC_DIR_NO_ZIP)
+    staged_fiscal = os.path.join(staging_dir, FISCAL_DIR_NO_ZIP)
 
     # A licenca do backup e substituida pela desta maquina AINDA no staging.
     # Feito antes dos swaps de proposito: se falhar, producao continua intacta
@@ -414,11 +418,20 @@ def apply_pending_restore() -> Optional[dict]:
     if os.path.exists(production_static):
         _swap_dir(production_static, old_static)
 
+    # Os XMLs autorizados seguem o banco: restaurar um backup antigo com os
+    # documentos fiscais de hoje deixaria o banco falando de notas cujo arquivo
+    # não corresponde. O par anterior fica no snapshot, como o `static`.
+    if os.path.exists(FISCAL_DIR):
+        _swap_dir(FISCAL_DIR, old_fiscal)
+
     os.makedirs(DATA_DIR, exist_ok=True)
     if os.path.exists(staged_db):
         _swap_dir(staged_db, production_db)
     if os.path.exists(staged_static):
         _swap_dir(staged_static, production_static)
+
+    if os.path.exists(staged_fiscal):
+        _swap_dir(staged_fiscal, FISCAL_DIR)
 
     try:
         os.remove(MARKER_RESTORE_PATH)

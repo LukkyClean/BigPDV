@@ -39,6 +39,10 @@ export const fiscalKeys = {
   plataforma: () => ['fiscal', 'plataforma'] as const,
   historico: (id: number) => ['fiscal', 'historico', id] as const,
   verificacaoBatch: (ids: number[]) => ['fiscal', 'verificacao-batch', ...ids] as const,
+  /** Mapa de campos do cadastro de produto — muda só com o regime da empresa. */
+  camposProduto: () => ['fiscal', 'campos', 'produto'] as const,
+  /** Tributação padrão da loja — muda a nota de todo produto que herda dela. */
+  tributacaoPadrao: () => ['fiscal', 'tributacao-padrao'] as const,
 };
 
 /**

@@ -53,6 +53,7 @@ from app.db.models.conta_receber import ContaReceber  # noqa: F401
 
 # --- Modulo fiscal (NF-e) ---
 from app.db.models.produto_fiscal import ProdutoFiscal  # noqa: F401
+from app.db.models.tributacao import TributacaoPadrao, RegraTributariaNcm  # noqa: F401
 from app.db.models.servico_fiscal import ServicoFiscal  # noqa: F401
 from app.db.models.venda_nota_fiscal import VendaNotaFiscal  # noqa: F401
 from app.db.models.ordem_servico_nota_fiscal import OrdemServicoNotaFiscal  # noqa: F401

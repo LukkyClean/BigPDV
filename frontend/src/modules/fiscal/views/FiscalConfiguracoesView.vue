@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useQueryClient } from '@tanstack/vue-query';
-import { Shield, Building, MapPin, CheckCircle, AlertCircle, FileCheck, ArrowLeft, CalendarClock } from 'lucide-vue-next';
+import { Shield, Building, MapPin, CheckCircle, AlertCircle, FileCheck, ArrowLeft, CalendarClock, Scale } from 'lucide-vue-next';
 import { formatData } from '@/shared/utils/date.utils';
 import PageReview from '@/shared/components/layout/PageReview/PageReview.vue';
 import LucideIcon from '@/shared/components/icons/LucideIcon.vue';
@@ -10,12 +10,19 @@ import BaseButton from '@/shared/components/ui/BaseButton/BaseButton.vue';
 import FiscalCertificadoModal from '../components/configuracoes/FiscalCertificadoModal.vue';
 import FiscalEmissaoEstadualModal from '../components/configuracoes/FiscalEmissaoEstadualModal.vue';
 import FiscalPlataformaCard from '../components/configuracoes/FiscalPlataformaCard.vue';
+import FiscalTributacaoModal from '../components/configuracoes/FiscalTributacaoModal.vue';
 import { useFiscalConfiguracaoQuery } from '../composables/useFiscalConfiguracaoQuery';
+import { useTributacaoPadrao } from '../composables/useTributacaoPadrao';
 import { useFiscalPlataformaQuery } from '../composables/useFiscalPlataformaQuery';
 import { fiscalKeys } from '../constants/fiscal.constants';
 
 const showCertificadoModal = ref(false);
 const showEstadualModal = ref(false);
+const showTributacaoModal = ref(false);
+
+// Para o cartão dizer se a loja já respondeu — sem isso o dono não sabe que
+// existe uma resposta padrão, e volta a preencher produto por produto.
+const { configurada: tributacaoConfigurada } = useTributacaoPadrao();
 
 const { data: config, isLoading } = useFiscalConfiguracaoQuery();
 
@@ -273,7 +280,41 @@ function aoEnviarCertificado() {
         </BaseButton>
       </div>
 
-      <!-- 3. Emissão Municipal -->
+      <!-- 3. Tributação padrão da loja -->
+      <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between">
+        <div>
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 bg-brand-primary-light rounded-xl flex items-center justify-center text-brand-primary">
+                <LucideIcon :icon="Scale" />
+              </div>
+              <div>
+                <h3 class="text-base font-bold text-zinc-900">Tributação Padrão</h3>
+                <p class="text-xs text-zinc-500">A resposta que vale para o catálogo inteiro</p>
+              </div>
+            </div>
+            <span
+              :class="[
+                'inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border',
+                tributacaoConfigurada
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                  : 'bg-amber-50 text-amber-700 border-amber-200',
+              ]"
+            >
+              {{ tributacaoConfigurada ? 'Configurada' : 'Não configurada' }}
+            </span>
+          </div>
+          <p class="text-sm text-zinc-500 mb-6 leading-relaxed">
+            Responda uma vez CFOP, origem e situação tributária, e cadastrar produto volta a ser
+            nome, preço e NCM. O produto que foge da regra continua podendo ter tributação própria.
+          </p>
+        </div>
+        <BaseButton variant="primary" class="w-full sm:w-auto self-start" @click="showTributacaoModal = true">
+          {{ tributacaoConfigurada ? 'Revisar Tributação Padrão' : 'Configurar Tributação Padrão' }}
+        </BaseButton>
+      </div>
+
+      <!-- 4. Emissão Municipal -->
       <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between">
         <div>
           <div class="flex items-center gap-3 mb-4">
@@ -308,5 +349,6 @@ function aoEnviarCertificado() {
       v-model:is-open="showEstadualModal"
       :configuracao="config"
     />
+    <FiscalTributacaoModal v-model:is-open="showTributacaoModal" />
   </div>
 </template>

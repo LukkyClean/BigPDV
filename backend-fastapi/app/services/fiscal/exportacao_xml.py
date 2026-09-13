@@ -24,6 +24,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.db.crud import fiscal as crud
+from app.services.fiscal.arquivos import guardar_xml, ler_xml
 from app.db.models.documento_fiscal import DocumentoFiscal
 from app.db.models.inutilizacao_fiscal import InutilizacaoFiscal
 
@@ -132,7 +133,25 @@ def montar_pacote_xml(
             )
             caminho = f"{pasta}/{nome}"
 
-            xml = client.baixar_xml(doc.url_xml) if doc.url_xml else None
+            # DISCO PRIMEIRO. O pacote do contador deixou de depender da
+            # emissora estar no ar: o XML autorizado é gravado localmente na
+            # hora da emissão (`fiscal/arquivos.py`). A emissora vira plano B,
+            # para os documentos anteriores a 13/09/2026.
+            xml = ler_xml(doc.caminho_xml_local)
+            if not xml and doc.url_xml:
+                xml = client.baixar_xml(doc.url_xml)
+                # Veio da emissora? Guarda, para o próximo mês sair do disco.
+                if xml:
+                    # `caminho_guardado` e NAO `caminho`: esta ultima e o nome
+                    # do arquivo DENTRO do ZIP, algumas linhas acima. Sobrescrever
+                    # punha o caminho absoluto do disco como nome de entrada no
+                    # pacote do contador.
+                    caminho_guardado = guardar_xml(
+                        xml, chave=doc.chave_acesso,
+                        fallback=f"doc-{doc.id}", quando=doc.data_autorizacao,
+                    )
+                    if caminho_guardado:
+                        doc.caminho_xml_local = caminho_guardado
             if xml:
                 pacote.writestr(caminho, xml)
                 baixados += 1
@@ -140,7 +159,7 @@ def montar_pacote_xml(
                 nao_baixados.append(
                     f"{doc.tipo_documento} {doc.serie}/{doc.numero_documento} "
                     f"chave={doc.chave_acesso or '-'} status={doc.status}: "
-                    + ("sem URL de XML no registro" if not doc.url_xml else "download falhou")
+                    + ("sem arquivo local nem URL de XML" if not doc.url_xml else "download falhou")
                 )
                 caminho = ""
 
